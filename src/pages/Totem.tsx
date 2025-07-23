@@ -323,100 +323,202 @@ const Totem = () => {
 
       {/* Grid de Máquinas */}
       <div className="container mx-auto">
-        <h2 className="text-2xl font-bold text-center mb-8">
-          Selecione uma Máquina
-        </h2>
-        
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-          {machines.map((machine) => {
-            const IconComponent = machine.icon;
-            const isAvailable = machine.status === "available";
-            
-            return (
-              <Card 
-                key={machine.id}
-                className={`relative overflow-hidden transition-all duration-300 cursor-pointer ${
-                  isAvailable 
-                    ? 'hover:shadow-glow hover:scale-105' 
-                    : 'opacity-60 cursor-not-allowed'
-                }`}
-                onClick={() => handleMachineSelect(machine.id)}
-              >
-                {/* Status Badge */}
-                <div className="absolute top-4 right-4">
-                  <div className={`w-3 h-3 rounded-full ${getStatusColor(machine.status)}`}></div>
-                </div>
-
-                <CardHeader className="text-center">
-                  <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 ${
-                    machine.type === "lavadora" ? "bg-blue-100" : "bg-orange-100"
-                  }`}>
-                    <IconComponent 
-                      className={machine.type === "lavadora" ? "text-blue-600" : "text-orange-600"} 
-                      size={32} 
-                    />
+        {/* Lavadoras */}
+        <div className="mb-12">
+          <div className="flex items-center justify-center mb-8 space-x-3">
+            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+              <Droplets className="text-blue-600" size={24} />
+            </div>
+            <h2 className="text-2xl font-bold text-center">
+              Lavadoras
+            </h2>
+          </div>
+          
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
+            {machines.filter(machine => machine.type === "lavadora").map((machine) => {
+              const IconComponent = machine.icon;
+              const isAvailable = machine.status === "available";
+              
+              return (
+                <Card 
+                  key={machine.id}
+                  className={`relative overflow-hidden transition-all duration-300 cursor-pointer ${
+                    isAvailable 
+                      ? 'hover:shadow-glow hover:scale-105' 
+                      : 'opacity-60 cursor-not-allowed'
+                  }`}
+                  onClick={() => handleMachineSelect(machine.id)}
+                >
+                  {/* Status Badge */}
+                  <div className="absolute top-4 right-4">
+                    <div className={`w-3 h-3 rounded-full ${getStatusColor(machine.status)}`}></div>
                   </div>
-                  <CardTitle className="text-lg">{machine.title}</CardTitle>
-                </CardHeader>
 
-                <CardContent className="space-y-4">
-                  <div className="text-center">
-                    <div className="flex items-center justify-center space-x-2 mb-2">
-                      <Euro className="text-primary" size={16} />
-                      <span className="text-2xl font-bold text-primary">
-                        {machine.price.toFixed(2)}
-                      </span>
+                  <CardHeader className="text-center">
+                    <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <IconComponent className="text-blue-600" size={32} />
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      <Clock className="inline mr-1" size={14} />
-                      {machine.duration} minutos
-                    </p>
-                  </div>
+                    <CardTitle className="text-lg">{machine.title}</CardTitle>
+                  </CardHeader>
 
-                  <div className="flex items-center justify-between">
-                    <Badge 
-                      variant={machine.status === "available" ? "default" : "secondary"}
-                      className={
-                        machine.status === "available" 
-                          ? "bg-green-100 text-green-800" 
-                          : machine.status === "running"
-                          ? "bg-blue-100 text-blue-800"
-                          : "bg-red-100 text-red-800"
-                      }
-                    >
-                      {getStatusText(machine.status)}
-                    </Badge>
-                    
+                  <CardContent className="space-y-4">
+                    <div className="text-center">
+                      <div className="flex items-center justify-center space-x-2 mb-2">
+                        <Euro className="text-primary" size={16} />
+                        <span className="text-2xl font-bold text-primary">
+                          {machine.price.toFixed(2)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        <Clock className="inline mr-1" size={14} />
+                        {machine.duration} minutos
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <Badge 
+                        variant={machine.status === "available" ? "default" : "secondary"}
+                        className={
+                          machine.status === "available" 
+                            ? "bg-green-100 text-green-800" 
+                            : machine.status === "running"
+                            ? "bg-blue-100 text-blue-800"
+                            : "bg-red-100 text-red-800"
+                        }
+                      >
+                        {getStatusText(machine.status)}
+                      </Badge>
+                      
+                      {machine.status === "running" && machine.timeRemaining && (
+                        <div className="flex items-center text-sm text-muted-foreground">
+                          <Timer size={14} className="mr-1" />
+                          {machine.timeRemaining}min
+                        </div>
+                      )}
+                    </div>
+
                     {machine.status === "running" && machine.timeRemaining && (
-                      <div className="flex items-center text-sm text-muted-foreground">
-                        <Timer size={14} className="mr-1" />
-                        {machine.timeRemaining}min
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>Progresso</span>
+                          <span>{Math.round(((machine.duration - machine.timeRemaining) / machine.duration) * 100)}%</span>
+                        </div>
+                        <Progress 
+                          value={((machine.duration - machine.timeRemaining) / machine.duration) * 100} 
+                          className="h-2"
+                        />
                       </div>
                     )}
+
+                    {isAvailable && (
+                      <Button variant="fresh" className="w-full">
+                        Selecionar
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Secadoras */}
+        <div>
+          <div className="flex items-center justify-center mb-8 space-x-3">
+            <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
+              <Wind className="text-orange-600" size={24} />
+            </div>
+            <h2 className="text-2xl font-bold text-center">
+              Secadoras
+            </h2>
+          </div>
+          
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
+            {machines.filter(machine => machine.type === "secadora").map((machine) => {
+              const IconComponent = machine.icon;
+              const isAvailable = machine.status === "available";
+              
+              return (
+                <Card 
+                  key={machine.id}
+                  className={`relative overflow-hidden transition-all duration-300 cursor-pointer ${
+                    isAvailable 
+                      ? 'hover:shadow-glow hover:scale-105' 
+                      : 'opacity-60 cursor-not-allowed'
+                  }`}
+                  onClick={() => handleMachineSelect(machine.id)}
+                >
+                  {/* Status Badge */}
+                  <div className="absolute top-4 right-4">
+                    <div className={`w-3 h-3 rounded-full ${getStatusColor(machine.status)}`}></div>
                   </div>
 
-                  {machine.status === "running" && machine.timeRemaining && (
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Progresso</span>
-                        <span>{Math.round(((machine.duration - machine.timeRemaining) / machine.duration) * 100)}%</span>
-                      </div>
-                      <Progress 
-                        value={((machine.duration - machine.timeRemaining) / machine.duration) * 100} 
-                        className="h-2"
-                      />
+                  <CardHeader className="text-center">
+                    <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <IconComponent className="text-orange-600" size={32} />
                     </div>
-                  )}
+                    <CardTitle className="text-lg">{machine.title}</CardTitle>
+                  </CardHeader>
 
-                  {isAvailable && (
-                    <Button variant="fresh" className="w-full">
-                      Selecionar
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
+                  <CardContent className="space-y-4">
+                    <div className="text-center">
+                      <div className="flex items-center justify-center space-x-2 mb-2">
+                        <Euro className="text-primary" size={16} />
+                        <span className="text-2xl font-bold text-primary">
+                          {machine.price.toFixed(2)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        <Clock className="inline mr-1" size={14} />
+                        {machine.duration} minutos
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <Badge 
+                        variant={machine.status === "available" ? "default" : "secondary"}
+                        className={
+                          machine.status === "available" 
+                            ? "bg-green-100 text-green-800" 
+                            : machine.status === "running"
+                            ? "bg-blue-100 text-blue-800"
+                            : "bg-red-100 text-red-800"
+                        }
+                      >
+                        {getStatusText(machine.status)}
+                      </Badge>
+                      
+                      {machine.status === "running" && machine.timeRemaining && (
+                        <div className="flex items-center text-sm text-muted-foreground">
+                          <Timer size={14} className="mr-1" />
+                          {machine.timeRemaining}min
+                        </div>
+                      )}
+                    </div>
+
+                    {machine.status === "running" && machine.timeRemaining && (
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>Progresso</span>
+                          <span>{Math.round(((machine.duration - machine.timeRemaining) / machine.duration) * 100)}%</span>
+                        </div>
+                        <Progress 
+                          value={((machine.duration - machine.timeRemaining) / machine.duration) * 100} 
+                          className="h-2"
+                        />
+                      </div>
+                    )}
+
+                    {isAvailable && (
+                      <Button variant="fresh" className="w-full">
+                        Selecionar
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
         </div>
       </div>
 
