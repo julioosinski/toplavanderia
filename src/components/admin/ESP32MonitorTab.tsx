@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Wifi, WifiOff, Signal, Clock, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Wifi, WifiOff, Signal, Clock, AlertTriangle, CheckCircle, RefreshCw, Zap, TestTube } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -23,6 +25,8 @@ const ESP32MonitorTab: React.FC = () => {
   const [esp32Status, setEsp32Status] = useState<ESP32Status[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [testingCredit, setTestingCredit] = useState(false);
+  const [testAmount, setTestAmount] = useState<number>(10);
   const { toast } = useToast();
 
   const loadESP32Status = async () => {
@@ -150,23 +154,78 @@ const ESP32MonitorTab: React.FC = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-medium">Monitoramento ESP32</h3>
-        <Button 
-          onClick={refreshStatus} 
-          disabled={refreshing}
-          variant="outline"
-        >
-          <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-          Atualizar Status
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            onClick={simulateESP32Data} 
+            variant="outline"
+            size="sm"
+          >
+            <TestTube className="w-4 h-4 mr-2" />
+            Simular ESP32
+          </Button>
+          <Button 
+            onClick={refreshStatus} 
+            disabled={refreshing}
+            variant="outline"
+            size="sm"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            Atualizar Status
+          </Button>
+        </div>
       </div>
+
+      {/* Credit Release Test Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Zap className="text-primary" />
+            <span>Teste de Liberação de Crédito</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center space-x-4">
+            <div className="flex-1">
+              <Label htmlFor="test-amount">Valor do Teste (R$)</Label>
+              <Input
+                id="test-amount"
+                type="number"
+                min="1"
+                max="100"
+                value={testAmount}
+                onChange={(e) => setTestAmount(Number(e.target.value))}
+                className="mt-1"
+              />
+            </div>
+            <Button 
+              onClick={testCreditRelease}
+              disabled={testingCredit}
+              className="mt-6"
+            >
+              <Zap className={`w-4 h-4 mr-2 ${testingCredit ? 'animate-pulse' : ''}`} />
+              {testingCredit ? 'Testando...' : 'Testar Liberação'}
+            </Button>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Teste a comunicação e liberação de crédito com o ESP32
+          </p>
+        </CardContent>
+      </Card>
 
       {esp32Status.length === 0 ? (
         <Card>
           <CardContent className="p-6 text-center">
             <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground mb-4">
               Nenhum ESP32 configurado ou detectado
             </p>
+            <p className="text-sm text-muted-foreground mb-4">
+              Configure o host ESP32 nas configurações ou use o botão "Simular ESP32" para testar
+            </p>
+            <Button onClick={simulateESP32Data} variant="outline">
+              <TestTube className="w-4 h-4 mr-2" />
+              Simular ESP32 para Teste
+            </Button>
           </CardContent>
         </Card>
       ) : (
