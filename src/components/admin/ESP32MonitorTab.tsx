@@ -7,7 +7,6 @@ import { Label } from '@/components/ui/label';
 import { Wifi, WifiOff, Signal, Clock, AlertTriangle, CheckCircle, RefreshCw, Zap, TestTube } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
-import { useESP32CreditRelease } from '@/hooks/useESP32CreditRelease';
 
 interface ESP32Status {
   id: string;
@@ -29,7 +28,6 @@ const ESP32MonitorTab: React.FC = () => {
   const [testingCredit, setTestingCredit] = useState(false);
   const [testAmount, setTestAmount] = useState<number>(10);
   const { toast } = useToast();
-  const { releaseCredit } = useESP32CreditRelease();
 
   const loadESP32Status = async () => {
     try {
@@ -82,6 +80,72 @@ const ESP32MonitorTab: React.FC = () => {
     }
   };
 
+  const testCreditRelease = async () => {
+    setTestingCredit(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('esp32-credit-release', {
+        body: {
+          transactionId: `test-${Date.now()}`,
+          amount: testAmount,
+          esp32Id: 'main'
+        }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: data.success ? "Teste Concluído" : "Teste Falhou",
+        description: data.message,
+        variant: data.success ? "default" : "destructive",
+      });
+    } catch (error) {
+      console.error('Error testing credit release:', error);
+      toast({
+        title: "Erro no Teste",
+        description: "Falha ao testar liberação de crédito",
+        variant: "destructive",
+      });
+    } finally {
+      setTestingCredit(false);
+    }
+  };
+
+  const simulateESP32Data = async () => {
+    try {
+      // Simular dados do ESP32 para teste
+      const mockData = {
+        esp32_id: 'main',
+        ip_address: '192.168.1.100',
+        signal_strength: -45,
+        network_status: 'connected',
+        firmware_version: 'v1.2.3',
+        uptime_seconds: 3600,
+        is_online: true,
+        last_heartbeat: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('esp32_status')
+        .upsert(mockData);
+
+      if (error) throw error;
+
+      toast({
+        title: "Dados Simulados",
+        description: "ESP32 simulado adicionado com sucesso",
+      });
+
+      await loadESP32Status();
+    } catch (error) {
+      console.error('Error simulating ESP32 data:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao simular dados do ESP32",
+        variant: "destructive",
+      });
+    }
+  };
+
   const getSignalIcon = (strength?: number) => {
     if (!strength) return <WifiOff className="w-4 h-4" />;
     if (strength > -50) return <Wifi className="w-4 h-4 text-green-500" />;
@@ -113,57 +177,6 @@ const ESP32MonitorTab: React.FC = () => {
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `${hours}h atrás`;
     return `${Math.floor(hours / 24)}d atrás`;
-  };
-
-  const simulateESP32Data = async () => {
-    try {
-      const mockStatus = {
-        esp32_id: 'SIM001',
-        ip_address: '192.168.1.100',
-        signal_strength: -45,
-        network_status: 'connected',
-        last_heartbeat: new Date().toISOString(),
-        firmware_version: 'v2.1.0',
-        uptime_seconds: 3665,
-        is_online: true
-      };
-
-      const { error } = await supabase
-        .from('esp32_status')
-        .upsert(mockStatus, { onConflict: 'esp32_id' });
-
-      if (error) throw error;
-
-      toast({
-        title: "Simulação Criada",
-        description: "Dados do ESP32 simulado foram inseridos",
-      });
-
-      await loadESP32Status();
-    } catch (error) {
-      console.error('Error simulating ESP32 data:', error);
-      toast({
-        title: "Erro na Simulação",
-        description: "Falha ao criar dados simulados",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const testCreditRelease = async () => {
-    setTestingCredit(true);
-    try {
-      const testTransactionId = `test-${Date.now()}`;
-      await releaseCredit({
-        transactionId: testTransactionId,
-        amount: testAmount,
-        esp32Id: 'main'
-      });
-    } catch (error) {
-      // Error handling is done in the hook
-    } finally {
-      setTestingCredit(false);
-    }
   };
 
   useEffect(() => {

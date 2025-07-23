@@ -28,6 +28,7 @@ import { ReportsTab } from "@/components/admin/ReportsTab";
 import { MaintenanceTab } from "@/components/admin/MaintenanceTab";
 import { SettingsTab } from "@/components/admin/SettingsTab";
 import ESP32MonitorTab from "@/components/admin/ESP32MonitorTab";
+import CreditReleaseWidget from "@/components/admin/CreditReleaseWidget";
 
 interface Machine {
   id: string;
@@ -486,7 +487,10 @@ const Admin = () => {
 
           {/* ESP32 Monitor Tab */}
           <TabsContent value="esp32">
-            <ESP32MonitorTab />
+            <div className="space-y-6">
+              <ESP32MonitorTab />
+              <CreditReleaseWidget />
+            </div>
           </TabsContent>
 
           {/* Settings Tab */}
