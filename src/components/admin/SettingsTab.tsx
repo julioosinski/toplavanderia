@@ -224,46 +224,6 @@ export const SettingsTab = () => {
         </CardContent>
       </Card>
 
-      <Separator />
-
-      {/* Default Settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Settings className="text-primary" />
-            <span>Configurações Padrão</span>
-          </CardTitle>
-          <CardDescription>
-            Configure os valores padrão para novas máquinas
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="default-price">Preço padrão por kg (R$)</Label>
-              <Input
-                id="default-price"
-                type="number"
-                step="0.01"
-                min="0"
-                value={settings.default_price}
-                onChange={(e) => updateSetting('default_price', parseFloat(e.target.value) || 0)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="default-duration">Duração padrão do ciclo (min)</Label>
-              <Input
-                id="default-duration"
-                type="number"
-                min="1"
-                max="180"
-                value={settings.default_cycle_time}
-                onChange={(e) => updateSetting('default_cycle_time', parseInt(e.target.value) || 0)}
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* System Features */}
       <Card>

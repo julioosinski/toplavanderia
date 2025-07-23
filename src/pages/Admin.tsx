@@ -380,21 +380,9 @@ const Admin = () => {
                     </CardHeader>
 
                     <CardContent className="space-y-4">
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Total de Usos</p>
-                          <p className="text-lg font-semibold">{machine.total_uses}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Receita</p>
-                          <p className="text-lg font-semibold">R$ {Number(machine.total_revenue).toFixed(2)}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Capacidade</p>
-                          <p className="text-lg font-semibold">{machine.capacity_kg}kg</p>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Preço/kg</p>
+                          <p className="text-sm text-muted-foreground">Preço/ciclo</p>
                           <p className="text-lg font-semibold">R$ {Number(machine.price_per_kg).toFixed(2)}</p>
                         </div>
                         <div className="space-y-1">

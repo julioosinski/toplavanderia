@@ -214,7 +214,7 @@ export const MachineDialog = ({ machine, onSuccess, trigger }: MachineDialogProp
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="price">Preço/kg (R$)</Label>
+              <Label htmlFor="price">Preço/ciclo (R$)</Label>
               <Input
                 id="price"
                 type="number"

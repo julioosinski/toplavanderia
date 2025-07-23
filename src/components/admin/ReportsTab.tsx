@@ -15,6 +15,7 @@ interface Transaction {
   machine_id: string;
   total_amount: number;
   created_at: string;
+  payment_method?: string;
   machines: {
     name: string;
   };
@@ -66,6 +67,7 @@ export const ReportsTab = () => {
           machine_id,
           total_amount,
           created_at,
+          payment_method,
           machines!inner(name)
         `)
         .gte('created_at', filters.startDate + 'T00:00:00')
@@ -328,6 +330,50 @@ export const ReportsTab = () => {
             ) : (
               <p className="text-muted-foreground text-center py-8">
                 Nenhum dado encontrado para o período selecionado
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Transactions Detail */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Detalhes das Transações</CardTitle>
+          <CardDescription>
+            Informações detalhadas sobre pagamentos
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {transactions.length > 0 ? (
+              transactions.map((transaction) => (
+                <div key={transaction.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-2 h-6 bg-secondary rounded"></div>
+                    <div>
+                      <p className="font-medium">{transaction.machines.name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {new Date(transaction.created_at).toLocaleDateString('pt-BR')} às{' '}
+                        {new Date(transaction.created_at).toLocaleTimeString('pt-BR')}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold">R$ {Number(transaction.total_amount).toFixed(2)}</p>
+                    {transaction.payment_method && (
+                      <p className="text-sm text-muted-foreground">
+                        {transaction.payment_method.includes('*') 
+                          ? `Cartão ${transaction.payment_method}`
+                          : transaction.payment_method}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-muted-foreground text-center py-8">
+                Nenhuma transação encontrada para o período selecionado
               </p>
             )}
           </div>
