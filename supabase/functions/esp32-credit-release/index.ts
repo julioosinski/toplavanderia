@@ -28,29 +28,39 @@ serve(async (req) => {
 
     console.log('Credit release request:', { transactionId, amount, esp32Id });
 
-    // Buscar configurações do sistema
+    // Buscar configurações dos ESP32s
     const { data: settings } = await supabaseClient
       .from('system_settings')
-      .select('esp32_host, esp32_port')
+      .select('esp32_configurations')
       .single();
 
-    if (!settings?.esp32_host) {
-      throw new Error('ESP32 host not configured in system settings');
+    if (!settings?.esp32_configurations) {
+      throw new Error('ESP32 configurations not found in system settings');
+    }
+
+    const targetEsp32Id = esp32Id || 'main';
+    
+    // Encontrar configuração do ESP32 específico
+    const esp32Configs = settings.esp32_configurations;
+    const esp32Config = esp32Configs.find((config: any) => config.id === targetEsp32Id);
+    
+    if (!esp32Config) {
+      throw new Error(`ESP32 configuration not found for ID: ${targetEsp32Id}`);
     }
 
     // Buscar status do ESP32
     const { data: esp32Status } = await supabaseClient
       .from('esp32_status')
       .select('*')
-      .eq('esp32_id', esp32Id || 'main')
+      .eq('esp32_id', targetEsp32Id)
       .single();
 
     if (!esp32Status?.is_online) {
-      throw new Error('ESP32 is offline or not responding');
+      throw new Error(`ESP32 '${targetEsp32Id}' is offline or not responding`);
     }
 
-    // Enviar comando de liberação de crédito para o ESP32
-    const esp32Url = `http://${settings.esp32_host}:${settings.esp32_port}/release-credit`;
+    // Enviar comando de liberação de crédito para o ESP32 específico
+    const esp32Url = `http://${esp32Config.host}:${esp32Config.port}/release-credit`;
     
     const esp32Response = await fetch(esp32Url, {
       method: 'POST',

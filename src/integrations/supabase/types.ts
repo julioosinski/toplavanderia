@@ -23,7 +23,10 @@ export type Database = {
           ip_address: string | null
           is_online: boolean | null
           last_heartbeat: string | null
+          location: string | null
+          machine_count: number | null
           network_status: string | null
+          relay_status: Json | null
           signal_strength: number | null
           updated_at: string
           uptime_seconds: number | null
@@ -36,7 +39,10 @@ export type Database = {
           ip_address?: string | null
           is_online?: boolean | null
           last_heartbeat?: string | null
+          location?: string | null
+          machine_count?: number | null
           network_status?: string | null
+          relay_status?: Json | null
           signal_strength?: number | null
           updated_at?: string
           uptime_seconds?: number | null
@@ -49,7 +55,10 @@ export type Database = {
           ip_address?: string | null
           is_online?: boolean | null
           last_heartbeat?: string | null
+          location?: string | null
+          machine_count?: number | null
           network_status?: string | null
+          relay_status?: Json | null
           signal_strength?: number | null
           updated_at?: string
           uptime_seconds?: number | null
@@ -61,11 +70,13 @@ export type Database = {
           capacity_kg: number
           created_at: string
           cycle_time_minutes: number | null
+          esp32_id: string | null
           id: string
           last_maintenance: string | null
           location: string | null
           name: string
           price_per_kg: number
+          relay_pin: number | null
           status: string
           temperature: number | null
           total_revenue: number | null
@@ -77,11 +88,13 @@ export type Database = {
           capacity_kg?: number
           created_at?: string
           cycle_time_minutes?: number | null
+          esp32_id?: string | null
           id?: string
           last_maintenance?: string | null
           location?: string | null
           name: string
           price_per_kg?: number
+          relay_pin?: number | null
           status?: string
           temperature?: number | null
           total_revenue?: number | null
@@ -93,11 +106,13 @@ export type Database = {
           capacity_kg?: number
           created_at?: string
           cycle_time_minutes?: number | null
+          esp32_id?: string | null
           id?: string
           last_maintenance?: string | null
           location?: string | null
           name?: string
           price_per_kg?: number
+          relay_pin?: number | null
           status?: string
           temperature?: number | null
           total_revenue?: number | null
@@ -141,6 +156,7 @@ export type Database = {
           default_cycle_time: number | null
           default_price: number | null
           enable_esp32_monitoring: boolean | null
+          esp32_configurations: Json | null
           esp32_host: string | null
           esp32_port: number | null
           heartbeat_interval_seconds: number | null
@@ -160,6 +176,7 @@ export type Database = {
           default_cycle_time?: number | null
           default_price?: number | null
           enable_esp32_monitoring?: boolean | null
+          esp32_configurations?: Json | null
           esp32_host?: string | null
           esp32_port?: number | null
           heartbeat_interval_seconds?: number | null
@@ -179,6 +196,7 @@ export type Database = {
           default_cycle_time?: number | null
           default_price?: number | null
           enable_esp32_monitoring?: boolean | null
+          esp32_configurations?: Json | null
           esp32_host?: string | null
           esp32_port?: number | null
           heartbeat_interval_seconds?: number | null

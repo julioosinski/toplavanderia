@@ -4,9 +4,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Wifi, WifiOff, Signal, Clock, AlertTriangle, CheckCircle, RefreshCw, Zap, TestTube } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Wifi, WifiOff, Signal, Clock, AlertTriangle, CheckCircle, RefreshCw, Zap, TestTube, MapPin, Cpu } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
+import type { Json } from '@/integrations/supabase/types';
 
 interface ESP32Status {
   id: string;
@@ -18,6 +20,9 @@ interface ESP32Status {
   firmware_version?: string;
   uptime_seconds?: number;
   is_online: boolean;
+  location?: string;
+  machine_count?: number;
+  relay_status?: Json;
   updated_at: string;
 }
 
@@ -27,6 +32,7 @@ const ESP32MonitorTab: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [testingCredit, setTestingCredit] = useState(false);
   const [testAmount, setTestAmount] = useState<number>(10);
+  const [selectedESP32, setSelectedESP32] = useState<string>('main');
   const { toast } = useToast();
 
   const loadESP32Status = async () => {
@@ -87,7 +93,7 @@ const ESP32MonitorTab: React.FC = () => {
         body: {
           transactionId: `test-${Date.now()}`,
           amount: testAmount,
-          esp32Id: 'main'
+          esp32Id: selectedESP32
         }
       });
 
@@ -250,8 +256,23 @@ const ESP32MonitorTab: React.FC = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center space-x-4">
-            <div className="flex-1">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <Label htmlFor="esp32-select">ESP32 Alvo</Label>
+              <Select value={selectedESP32} onValueChange={setSelectedESP32}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Selecione o ESP32" />
+                </SelectTrigger>
+                <SelectContent>
+                  {esp32Status.map((status) => (
+                    <SelectItem key={status.esp32_id} value={status.esp32_id}>
+                      ESP32 {status.esp32_id} {status.location && `(${status.location})`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
               <Label htmlFor="test-amount">Valor do Teste (R$)</Label>
               <Input
                 id="test-amount"
@@ -263,17 +284,19 @@ const ESP32MonitorTab: React.FC = () => {
                 className="mt-1"
               />
             </div>
-            <Button 
-              onClick={testCreditRelease}
-              disabled={testingCredit}
-              className="mt-6"
-            >
-              <Zap className={`w-4 h-4 mr-2 ${testingCredit ? 'animate-pulse' : ''}`} />
-              {testingCredit ? 'Testando...' : 'Testar Liberação'}
-            </Button>
+            <div className="flex items-end">
+              <Button 
+                onClick={testCreditRelease}
+                disabled={testingCredit || esp32Status.length === 0}
+                className="w-full"
+              >
+                <Zap className={`w-4 h-4 mr-2 ${testingCredit ? 'animate-pulse' : ''}`} />
+                {testingCredit ? 'Testando...' : 'Testar Liberação'}
+              </Button>
+            </div>
           </div>
           <p className="text-sm text-muted-foreground">
-            Teste a comunicação e liberação de crédito com o ESP32
+            Teste a comunicação e liberação de crédito com o ESP32 selecionado
           </p>
         </CardContent>
       </Card>
@@ -300,9 +323,23 @@ const ESP32MonitorTab: React.FC = () => {
             <Card key={status.id}>
               <CardHeader className="pb-3">
                 <div className="flex justify-between items-center">
-                  <CardTitle className="text-base">
-                    ESP32 {status.esp32_id}
-                  </CardTitle>
+                  <div>
+                    <CardTitle className="text-base">
+                      ESP32 {status.esp32_id}
+                    </CardTitle>
+                    {status.location && (
+                      <div className="flex items-center text-sm text-muted-foreground mt-1">
+                        <MapPin className="w-3 h-3 mr-1" />
+                        {status.location}
+                        {status.machine_count && (
+                          <>
+                            <Cpu className="w-3 h-3 ml-2 mr-1" />
+                            {status.machine_count} máquinas
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   {getStatusBadge(status)}
                 </div>
               </CardHeader>

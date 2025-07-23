@@ -27,9 +27,11 @@ serve(async (req) => {
       .select('*')
       .single();
 
-    if (!settings?.esp32_host) {
-      throw new Error('ESP32 host not configured');
+    if (!settings?.esp32_configurations) {
+      throw new Error('ESP32 configurations not found');
     }
+
+    const esp32Configs = settings.esp32_configurations;
 
     if (action === 'heartbeat') {
       // Receber heartbeat do ESP32
@@ -65,64 +67,76 @@ serve(async (req) => {
     }
 
     if (action === 'status') {
-      // Verificar status do ESP32
-      const esp32Url = `http://${settings.esp32_host}:${settings.esp32_port}/status`;
+      // Verificar status de todos os ESP32s configurados
+      const statusResults = [];
       
-      try {
-        const response = await fetch(esp32Url, {
-          method: 'GET',
-          signal: AbortSignal.timeout(5000) // 5 second timeout
-        });
-
-        if (!response.ok) {
-          throw new Error(`ESP32 returned status: ${response.status}`);
-        }
-
-        const statusData = await response.json();
+      for (const esp32Config of esp32Configs) {
+        const esp32Url = `http://${esp32Config.host}:${esp32Config.port}/status`;
         
-        // Atualizar status no banco
-        await supabaseClient
-          .from('esp32_status')
-          .upsert({
-            esp32_id: statusData.esp32_id || 'main',
-            ip_address: statusData.ip_address || settings.esp32_host,
-            signal_strength: statusData.signal_strength,
-            network_status: statusData.network_status || 'connected',
-            firmware_version: statusData.firmware_version,
-            uptime_seconds: statusData.uptime_seconds,
-            is_online: true,
-            last_heartbeat: new Date().toISOString()
+        try {
+          const response = await fetch(esp32Url, {
+            method: 'GET',
+            signal: AbortSignal.timeout(5000) // 5 second timeout
           });
 
-        return new Response(JSON.stringify({
-          success: true,
-          status: statusData,
-          message: 'Status retrieved successfully'
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+          if (!response.ok) {
+            throw new Error(`ESP32 returned status: ${response.status}`);
+          }
 
-      } catch (fetchError) {
-        // ESP32 não está respondendo
-        await supabaseClient
-          .from('esp32_status')
-          .upsert({
-            esp32_id: 'main',
-            ip_address: settings.esp32_host,
-            network_status: 'offline',
-            is_online: false,
-            last_heartbeat: new Date().toISOString()
+          const statusData = await response.json();
+          
+          // Atualizar status no banco
+          await supabaseClient
+            .from('esp32_status')
+            .upsert({
+              esp32_id: esp32Config.id,
+              ip_address: statusData.ip_address || esp32Config.host,
+              signal_strength: statusData.signal_strength,
+              network_status: statusData.network_status || 'connected',
+              firmware_version: statusData.firmware_version,
+              uptime_seconds: statusData.uptime_seconds,
+              location: esp32Config.location,
+              machine_count: esp32Config.machines?.length || 0,
+              relay_status: statusData.relay_status || {},
+              is_online: true,
+              last_heartbeat: new Date().toISOString()
+            });
+
+          statusResults.push({
+            esp32_id: esp32Config.id,
+            success: true,
+            status: statusData
           });
 
-        return new Response(JSON.stringify({
-          success: false,
-          error: fetchError.message,
-          message: 'ESP32 not responding'
-        }), {
-          status: 503,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        } catch (fetchError) {
+          // ESP32 não está respondendo
+          await supabaseClient
+            .from('esp32_status')
+            .upsert({
+              esp32_id: esp32Config.id,
+              ip_address: esp32Config.host,
+              location: esp32Config.location,
+              machine_count: esp32Config.machines?.length || 0,
+              network_status: 'offline',
+              is_online: false,
+              last_heartbeat: new Date().toISOString()
+            });
+
+          statusResults.push({
+            esp32_id: esp32Config.id,
+            success: false,
+            error: fetchError.message
+          });
+        }
       }
+
+      return new Response(JSON.stringify({
+        success: true,
+        message: 'Status check completed for all ESP32s',
+        results: statusResults
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     return new Response(JSON.stringify({
