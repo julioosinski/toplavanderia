@@ -27,6 +27,7 @@ import { MachineDialog } from "@/components/admin/MachineDialog";
 import { ReportsTab } from "@/components/admin/ReportsTab";
 import { MaintenanceTab } from "@/components/admin/MaintenanceTab";
 import { SettingsTab } from "@/components/admin/SettingsTab";
+import ESP32MonitorTab from "@/components/admin/ESP32MonitorTab";
 
 interface Machine {
   id: string;
@@ -337,10 +338,11 @@ const Admin = () => {
       {/* Main Content */}
       <div className="container mx-auto">
         <Tabs defaultValue="machines" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="machines">Máquinas</TabsTrigger>
             <TabsTrigger value="analytics">Relatórios</TabsTrigger>
             <TabsTrigger value="maintenance">Manutenção</TabsTrigger>
+            <TabsTrigger value="esp32">ESP32</TabsTrigger>
             <TabsTrigger value="settings">Configurações</TabsTrigger>
           </TabsList>
 
@@ -480,6 +482,11 @@ const Admin = () => {
           {/* Maintenance Tab */}
           <TabsContent value="maintenance">
             <MaintenanceTab />
+          </TabsContent>
+
+          {/* ESP32 Monitor Tab */}
+          <TabsContent value="esp32">
+            <ESP32MonitorTab />
           </TabsContent>
 
           {/* Settings Tab */}

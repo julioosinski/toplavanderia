@@ -21,6 +21,10 @@ interface SystemSettings {
   default_price: number;
   auto_mode: boolean;
   notifications_enabled: boolean;
+  heartbeat_interval_seconds?: number;
+  max_offline_duration_minutes?: number;
+  signal_threshold_warning?: number;
+  enable_esp32_monitoring?: boolean;
 }
 
 export const SettingsTab = () => {
@@ -35,7 +39,11 @@ export const SettingsTab = () => {
     default_cycle_time: 40,
     default_price: 5.00,
     auto_mode: false,
-    notifications_enabled: true
+    notifications_enabled: true,
+    heartbeat_interval_seconds: 30,
+    max_offline_duration_minutes: 5,
+    signal_threshold_warning: -70,
+    enable_esp32_monitoring: true
   });
   const [loading, setLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
@@ -258,6 +266,77 @@ export const SettingsTab = () => {
               checked={settings.notifications_enabled}
               onCheckedChange={(checked) => updateSetting('notifications_enabled', checked)}
             />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ESP32 Monitoring Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Monitoramento ESP32</CardTitle>
+          <CardDescription>
+            Configure o monitoramento automático dos controladores ESP32
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Monitoramento ESP32</p>
+              <p className="text-sm text-muted-foreground">
+                Habilitar monitoramento automático do ESP32
+              </p>
+            </div>
+            <Switch
+              checked={settings.enable_esp32_monitoring || false}
+              onCheckedChange={(checked) => updateSetting('enable_esp32_monitoring', checked)}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="heartbeat-interval">Intervalo de Heartbeat (segundos)</Label>
+              <Input
+                id="heartbeat-interval"
+                type="number"
+                min="10"
+                max="300"
+                value={settings.heartbeat_interval_seconds || 30}
+                onChange={(e) => updateSetting('heartbeat_interval_seconds', parseInt(e.target.value))}
+              />
+              <p className="text-sm text-muted-foreground">
+                Frequência de verificação (10-300s)
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="offline-duration">Tempo Máx. Offline (min)</Label>
+              <Input
+                id="offline-duration"
+                type="number"
+                min="1"
+                max="60"
+                value={settings.max_offline_duration_minutes || 5}
+                onChange={(e) => updateSetting('max_offline_duration_minutes', parseInt(e.target.value))}
+              />
+              <p className="text-sm text-muted-foreground">
+                Tempo antes de marcar offline
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="signal-threshold">Limite Sinal WiFi (dBm)</Label>
+              <Input
+                id="signal-threshold"
+                type="number"
+                min="-100"
+                max="-30"
+                value={settings.signal_threshold_warning || -70}
+                onChange={(e) => updateSetting('signal_threshold_warning', parseInt(e.target.value))}
+              />
+              <p className="text-sm text-muted-foreground">
+                Limite para alerta sinal fraco
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>

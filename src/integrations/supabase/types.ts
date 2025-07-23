@@ -14,6 +14,48 @@ export type Database = {
   }
   public: {
     Tables: {
+      esp32_status: {
+        Row: {
+          created_at: string
+          esp32_id: string
+          firmware_version: string | null
+          id: string
+          ip_address: string | null
+          is_online: boolean | null
+          last_heartbeat: string | null
+          network_status: string | null
+          signal_strength: number | null
+          updated_at: string
+          uptime_seconds: number | null
+        }
+        Insert: {
+          created_at?: string
+          esp32_id: string
+          firmware_version?: string | null
+          id?: string
+          ip_address?: string | null
+          is_online?: boolean | null
+          last_heartbeat?: string | null
+          network_status?: string | null
+          signal_strength?: number | null
+          updated_at?: string
+          uptime_seconds?: number | null
+        }
+        Update: {
+          created_at?: string
+          esp32_id?: string
+          firmware_version?: string | null
+          id?: string
+          ip_address?: string | null
+          is_online?: boolean | null
+          last_heartbeat?: string | null
+          network_status?: string | null
+          signal_strength?: number | null
+          updated_at?: string
+          uptime_seconds?: number | null
+        }
+        Relationships: []
+      }
       machines: {
         Row: {
           capacity_kg: number
@@ -98,10 +140,14 @@ export type Database = {
           created_at: string
           default_cycle_time: number | null
           default_price: number | null
+          enable_esp32_monitoring: boolean | null
           esp32_host: string | null
           esp32_port: number | null
+          heartbeat_interval_seconds: number | null
           id: string
+          max_offline_duration_minutes: number | null
           notifications_enabled: boolean | null
+          signal_threshold_warning: number | null
           tef_config: string | null
           tef_terminal_id: string | null
           updated_at: string
@@ -113,10 +159,14 @@ export type Database = {
           created_at?: string
           default_cycle_time?: number | null
           default_price?: number | null
+          enable_esp32_monitoring?: boolean | null
           esp32_host?: string | null
           esp32_port?: number | null
+          heartbeat_interval_seconds?: number | null
           id?: string
+          max_offline_duration_minutes?: number | null
           notifications_enabled?: boolean | null
+          signal_threshold_warning?: number | null
           tef_config?: string | null
           tef_terminal_id?: string | null
           updated_at?: string
@@ -128,10 +178,14 @@ export type Database = {
           created_at?: string
           default_cycle_time?: number | null
           default_price?: number | null
+          enable_esp32_monitoring?: boolean | null
           esp32_host?: string | null
           esp32_port?: number | null
+          heartbeat_interval_seconds?: number | null
           id?: string
+          max_offline_duration_minutes?: number | null
           notifications_enabled?: boolean | null
+          signal_threshold_warning?: number | null
           tef_config?: string | null
           tef_terminal_id?: string | null
           updated_at?: string
