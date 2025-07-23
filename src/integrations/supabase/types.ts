@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           capacity_kg: number
           created_at: string
+          cycle_time_minutes: number | null
           id: string
           last_maintenance: string | null
           location: string | null
@@ -33,6 +34,7 @@ export type Database = {
         Insert: {
           capacity_kg?: number
           created_at?: string
+          cycle_time_minutes?: number | null
           id?: string
           last_maintenance?: string | null
           location?: string | null
@@ -48,6 +50,7 @@ export type Database = {
         Update: {
           capacity_kg?: number
           created_at?: string
+          cycle_time_minutes?: number | null
           id?: string
           last_maintenance?: string | null
           location?: string | null
@@ -86,6 +89,54 @@ export type Database = {
           role?: string | null
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      system_settings: {
+        Row: {
+          auto_mode: boolean | null
+          created_at: string
+          default_cycle_time: number | null
+          default_price: number | null
+          esp32_host: string | null
+          esp32_port: number | null
+          id: string
+          notifications_enabled: boolean | null
+          tef_config: string | null
+          tef_terminal_id: string | null
+          updated_at: string
+          wifi_password: string | null
+          wifi_ssid: string | null
+        }
+        Insert: {
+          auto_mode?: boolean | null
+          created_at?: string
+          default_cycle_time?: number | null
+          default_price?: number | null
+          esp32_host?: string | null
+          esp32_port?: number | null
+          id?: string
+          notifications_enabled?: boolean | null
+          tef_config?: string | null
+          tef_terminal_id?: string | null
+          updated_at?: string
+          wifi_password?: string | null
+          wifi_ssid?: string | null
+        }
+        Update: {
+          auto_mode?: boolean | null
+          created_at?: string
+          default_cycle_time?: number | null
+          default_price?: number | null
+          esp32_host?: string | null
+          esp32_port?: number | null
+          id?: string
+          notifications_enabled?: boolean | null
+          tef_config?: string | null
+          tef_terminal_id?: string | null
+          updated_at?: string
+          wifi_password?: string | null
+          wifi_ssid?: string | null
         }
         Relationships: []
       }

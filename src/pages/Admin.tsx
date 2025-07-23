@@ -4,11 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { 
   Settings, 
   Activity, 
@@ -16,18 +13,20 @@ import {
   Users, 
   Droplets, 
   Wind, 
-  BarChart3,
-  Calendar,
-  TrendingUp,
   AlertTriangle,
   CheckCircle,
   XCircle,
   RefreshCw,
   Power,
   Wrench,
-  LogOut
+  LogOut,
+  Trash2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { MachineDialog } from "@/components/admin/MachineDialog";
+import { ReportsTab } from "@/components/admin/ReportsTab";
+import { MaintenanceTab } from "@/components/admin/MaintenanceTab";
+import { SettingsTab } from "@/components/admin/SettingsTab";
 
 interface Machine {
   id: string;
@@ -36,6 +35,7 @@ interface Machine {
   status: 'available' | 'in_use' | 'maintenance' | 'offline';
   price_per_kg: number;
   capacity_kg: number;
+  cycle_time_minutes?: number;
   location?: string;
   temperature?: number;
   last_maintenance?: string;
@@ -201,6 +201,31 @@ const Admin = () => {
     }
   };
 
+  const handleDeleteMachine = async (machineId: string) => {
+    try {
+      const { error } = await supabase
+        .from('machines')
+        .delete()
+        .eq('id', machineId);
+
+      if (error) throw error;
+
+      setMachines(prev => prev.filter(m => m.id !== machineId));
+
+      toast({
+        title: "Máquina excluída",
+        description: "A máquina foi removida com sucesso",
+      });
+    } catch (error) {
+      console.error('Error deleting machine:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao excluir máquina",
+        variant: "destructive"
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -337,6 +362,10 @@ const Admin = () => {
 
           {/* Máquinas Tab */}
           <TabsContent value="machines" className="space-y-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold">Gerenciar Máquinas</h2>
+              <MachineDialog onSuccess={loadData} />
+            </div>
             <div className="grid gap-6">
               {machines.map((machine) => {
                 const StatusIcon = getStatusIcon(machine.status);
@@ -367,7 +396,7 @@ const Admin = () => {
                     </CardHeader>
 
                     <CardContent className="space-y-4">
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                         <div className="space-y-1">
                           <p className="text-sm text-muted-foreground">Total de Usos</p>
                           <p className="text-lg font-semibold">{machine.total_uses}</p>
@@ -384,9 +413,13 @@ const Admin = () => {
                           <p className="text-sm text-muted-foreground">Preço/kg</p>
                           <p className="text-lg font-semibold">R$ {Number(machine.price_per_kg).toFixed(2)}</p>
                         </div>
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Tempo Ciclo</p>
+                          <p className="text-lg font-semibold">{machine.cycle_time_minutes || 40}min</p>
+                        </div>
                       </div>
 
-                      <div className="flex space-x-2">
+                      <div className="flex space-x-2 flex-wrap">
                         {machine.status === "available" && (
                           <Button
                             onClick={() => handleMachineAction(machine.id, "start")}
@@ -423,6 +456,42 @@ const Admin = () => {
                           <RefreshCw size={16} className="mr-1" />
                           Reset
                         </Button>
+                        <MachineDialog 
+                          machine={machine} 
+                          onSuccess={loadData}
+                          trigger={
+                            <Button variant="outline" size="sm">
+                              <Settings size={16} className="mr-1" />
+                              Editar
+                            </Button>
+                          }
+                        />
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="destructive" size="sm">
+                              <Trash2 size={16} className="mr-1" />
+                              Excluir
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Tem certeza que deseja excluir a máquina "{machine.name}"? 
+                                Esta ação não pode ser desfeita.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction 
+                                onClick={() => handleDeleteMachine(machine.id)}
+                                className="bg-red-600 hover:bg-red-700"
+                              >
+                                Excluir
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </CardContent>
                   </Card>
@@ -432,142 +501,18 @@ const Admin = () => {
           </TabsContent>
 
           {/* Analytics Tab */}
-          <TabsContent value="analytics" className="space-y-6">
-            <div className="grid gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center space-x-2">
-                    <BarChart3 className="text-primary" />
-                    <span>Vendas dos Últimos Dias</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {salesArray.length > 0 ? (
-                      salesArray.map((day) => (
-                        <div key={day.date} className="flex items-center justify-between">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-2 h-8 bg-primary rounded"></div>
-                            <div>
-                              <p className="font-medium">{day.date}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {day.sales} vendas
-                              </p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-semibold">R$ {day.revenue.toFixed(2)}</p>
-                            <div className="w-32 h-2 bg-muted rounded overflow-hidden">
-                              <div 
-                                className="h-full bg-primary"
-                                style={{ width: `${Math.min((day.sales / 25) * 100, 100)}%` }}
-                              ></div>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-muted-foreground text-center py-8">
-                        Nenhuma venda registrada ainda
-                      </p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+          <TabsContent value="analytics">
+            <ReportsTab />
           </TabsContent>
 
           {/* Maintenance Tab */}
-          <TabsContent value="maintenance" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Agenda de Manutenção</CardTitle>
-                <CardDescription>Status de manutenção das máquinas</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {machines.map((machine) => {
-                    const lastMaintenance = machine.last_maintenance 
-                      ? new Date(machine.last_maintenance)
-                      : null;
-                    const daysSinceMaintenance = lastMaintenance
-                      ? Math.floor((Date.now() - lastMaintenance.getTime()) / (1000 * 60 * 60 * 24))
-                      : null;
-                    const needsMaintenance = daysSinceMaintenance && daysSinceMaintenance > 30;
-
-                    return (
-                      <div key={machine.id} className="flex items-center justify-between p-4 border rounded-lg">
-                        <div className="flex items-center space-x-3">
-                          <div className={`w-3 h-3 rounded-full ${
-                            needsMaintenance ? 'bg-red-500' : 'bg-green-500'
-                          }`}></div>
-                          <div>
-                            <p className="font-medium">{machine.name}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {lastMaintenance 
-                                ? `Última manutenção: ${lastMaintenance.toLocaleDateString('pt-BR')}`
-                                : 'Nunca passou por manutenção'
-                              }
-                            </p>
-                          </div>
-                        </div>
-                        <Badge variant={needsMaintenance ? "destructive" : "default"}>
-                          {needsMaintenance ? "Manutenção Necessária" : "OK"}
-                        </Badge>
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
+          <TabsContent value="maintenance">
+            <MaintenanceTab />
           </TabsContent>
 
           {/* Settings Tab */}
-          <TabsContent value="settings" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Configurações do Sistema</CardTitle>
-                <CardDescription>Ajustes gerais da lavanderia</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="default-price">Preço padrão por kg (R$)</Label>
-                    <Input id="default-price" type="number" step="0.01" defaultValue="5.00" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="default-duration">Duração padrão (min)</Label>
-                    <Input id="default-duration" type="number" defaultValue="40" />
-                  </div>
-                </div>
-                
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">Modo automático</p>
-                      <p className="text-sm text-muted-foreground">
-                        Inicia automaticamente quando detecta carga
-                      </p>
-                    </div>
-                    <Switch />
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">Notificações</p>
-                      <p className="text-sm text-muted-foreground">
-                        Alertas por email sobre manutenção
-                      </p>
-                    </div>
-                    <Switch defaultChecked />
-                  </div>
-                </div>
-                
-                <Button className="w-full">
-                  Salvar Configurações
-                </Button>
-              </CardContent>
-            </Card>
+          <TabsContent value="settings">
+            <SettingsTab />
           </TabsContent>
         </Tabs>
       </div>
