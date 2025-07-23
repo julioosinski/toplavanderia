@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { 
   Droplets, 
   Wind, 
@@ -14,7 +16,8 @@ import {
   XCircle,
   Timer,
   Sparkles,
-  Euro
+  Euro,
+  Settings
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -83,10 +86,20 @@ const machines = [
   }
 ];
 
+// Configuração do TEF Elgin
+const TEF_CONFIG = {
+  host: "127.0.0.1", // IP do dispositivo com Elgin TEF
+  port: "4321", // Porta padrão do Elgin TEF Web
+  timeout: 60000 // Timeout de 60 segundos
+};
+
 const Totem = () => {
   const [selectedMachine, setSelectedMachine] = useState<string | null>(null);
-  const [paymentStep, setPaymentStep] = useState<"select" | "payment" | "processing" | "success">("select");
+  const [paymentStep, setPaymentStep] = useState<"select" | "payment" | "processing" | "success" | "error">("select");
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [tefConfig, setTefConfig] = useState(TEF_CONFIG);
+  const [showConfig, setShowConfig] = useState(false);
+  const [transactionData, setTransactionData] = useState<any>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -122,15 +135,122 @@ const Totem = () => {
     setPaymentStep("payment");
   };
 
-  const handlePayment = async () => {
+  // Função para inicializar o plugin TEF
+  const initializeTEF = async () => {
+    try {
+      const response = await fetch(`http://${tefConfig.host}:${tefConfig.port}/start`, {
+        method: 'GET',
+        mode: 'cors'
+      });
+      
+      if (response.ok) {
+        console.log("TEF Plugin iniciado com sucesso");
+        return true;
+      }
+    } catch (error) {
+      console.error("Erro ao inicializar TEF:", error);
+      toast({
+        title: "Erro de Conexão TEF",
+        description: "Não foi possível conectar com o sistema TEF. Verifique se o Elgin TEF está instalado.",
+        variant: "destructive"
+      });
+    }
+    return false;
+  };
+
+  // Função principal de pagamento via TEF
+  const handleTEFPayment = async () => {
+    const machine = machines.find(m => m.id === selectedMachine);
+    if (!machine) return;
+
     setPaymentStep("processing");
-    
-    // Simular processamento de pagamento
-    setTimeout(() => {
-      setPaymentStep("success");
-      // Chamar API do ESP32 para ativar a máquina
-      activateMachine();
-    }, 3000);
+
+    try {
+      // 1. Inicializar o plugin TEF
+      const tefInitialized = await initializeTEF();
+      if (!tefInitialized) {
+        setPaymentStep("error");
+        return;
+      }
+
+      // 2. Preparar dados da transação
+      const amount = machine.price * 100; // Converter para centavos
+      const transactionParams = {
+        transacao: "venda", // Tipo de transação
+        valor: amount.toString(), // Valor em centavos
+        cupomFiscal: generateReceiptNumber(), // Número do cupom fiscal
+        dataHora: new Date().toISOString().slice(0, 19).replace('T', ' '), // Data/hora atual
+        estabelecimento: "Top Lavanderia", // Nome do estabelecimento
+        terminal: "001" // Terminal
+      };
+
+      console.log("Iniciando transação TEF:", transactionParams);
+
+      // 3. Realizar transação via POST
+      const tefResponse = await fetch(`http://${tefConfig.host}:${tefConfig.port}/executar`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(transactionParams),
+        signal: AbortSignal.timeout(tefConfig.timeout)
+      });
+
+      if (!tefResponse.ok) {
+        throw new Error(`Erro HTTP: ${tefResponse.status}`);
+      }
+
+      const result = await tefResponse.json();
+      console.log("Resposta TEF:", result);
+
+      // 4. Processar resposta
+      if (result.retorno === "0") { // Transação aprovada
+        setTransactionData(result);
+        setPaymentStep("success");
+        
+        // Ativar a máquina após pagamento aprovado
+        await activateMachine();
+        
+        toast({
+          title: "Pagamento Aprovado!",
+          description: `Transação realizada com sucesso. NSU: ${result.nsu || 'N/A'}`,
+        });
+      } else {
+        // Transação negada ou erro
+        setPaymentStep("error");
+        toast({
+          title: "Pagamento Negado",
+          description: result.mensagem || "Transação não foi aprovada",
+          variant: "destructive"
+        });
+      }
+
+    } catch (error) {
+      console.error("Erro na transação TEF:", error);
+      setPaymentStep("error");
+      
+      let errorMessage = "Erro desconhecido na transação";
+      if (error instanceof Error) {
+        if (error.name === 'TimeoutError') {
+          errorMessage = "Timeout - Transação demorou muito para responder";
+        } else if (error.message.includes('network')) {
+          errorMessage = "Erro de rede - Verifique a conexão com o TEF";
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      toast({
+        title: "Erro no Pagamento",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Gerar número do cupom fiscal
+  const generateReceiptNumber = () => {
+    return Date.now().toString().slice(-6);
   };
 
   const activateMachine = async () => {
@@ -140,34 +260,92 @@ const Totem = () => {
     try {
       // Chamar endpoint do ESP32
       const endpoint = machine.type === "lavadora" ? "/lavadora" : "/secadora";
-      const response = await fetch(`http://${machine.ip}${endpoint}`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      const response = await fetch(`http://${machine.ip}${endpoint}`, {
+        method: 'GET',
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
       
       if (response.ok) {
-        toast({
-          title: "Máquina Ativada!",
-          description: `${machine.title} iniciada com sucesso`,
-        });
+        console.log(`Máquina ${machine.title} ativada com sucesso`);
+      } else {
+        throw new Error("Falha na ativação da máquina");
       }
     } catch (error) {
+      console.error("Erro ao ativar máquina:", error);
       toast({
-        title: "Erro de Conexão",
-        description: "Não foi possível conectar com a máquina",
+        title: "Atenção",
+        description: "Pagamento aprovado, mas houve erro na ativação da máquina. Contacte o suporte.",
         variant: "destructive"
       });
     }
-
-    // Reset após 5 segundos
-    setTimeout(() => {
-      setSelectedMachine(null);
-      setPaymentStep("select");
-    }, 5000);
   };
 
   const resetTotem = () => {
     setSelectedMachine(null);
     setPaymentStep("select");
+    setTransactionData(null);
   };
 
+  // Tela de configuração TEF
+  if (showConfig) {
+    return (
+      <div className="min-h-screen bg-gradient-clean flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-glow">
+          <CardHeader className="text-center">
+            <div className="w-16 h-16 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-4">
+              <Settings className="text-primary-foreground" size={24} />
+            </div>
+            <CardTitle className="text-xl">Configuração TEF</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="host">IP do TEF Elgin</Label>
+              <Input 
+                id="host"
+                value={tefConfig.host}
+                onChange={(e) => setTefConfig({...tefConfig, host: e.target.value})}
+                placeholder="127.0.0.1"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="port">Porta</Label>
+              <Input 
+                id="port"
+                value={tefConfig.port}
+                onChange={(e) => setTefConfig({...tefConfig, port: e.target.value})}
+                placeholder="4321"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="timeout">Timeout (ms)</Label>
+              <Input 
+                id="timeout"
+                type="number"
+                value={tefConfig.timeout}
+                onChange={(e) => setTefConfig({...tefConfig, timeout: parseInt(e.target.value)})}
+                placeholder="60000"
+              />
+            </div>
+            <div className="flex space-x-2">
+              <Button onClick={() => setShowConfig(false)} variant="fresh" className="flex-1">
+                Salvar
+              </Button>
+              <Button onClick={() => setShowConfig(false)} variant="outline" className="flex-1">
+                Cancelar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Tela de processamento
   if (paymentStep === "processing") {
     return (
       <div className="min-h-screen bg-gradient-clean flex items-center justify-center p-4">
@@ -177,14 +355,48 @@ const Totem = () => {
               <CreditCard className="text-primary-foreground" size={24} />
             </div>
             <h2 className="text-2xl font-bold">Processando Pagamento</h2>
-            <p className="text-muted-foreground">Aguarde enquanto processamos seu pagamento...</p>
-            <Progress value={66} className="w-full" />
+            <p className="text-muted-foreground">
+              Passe ou insira o cartão na maquininha...<br/>
+              Aguarde a conclusão da transação.
+            </p>
+            <Progress value={50} className="w-full" />
+            <Button onClick={resetTotem} variant="outline" className="w-full">
+              Cancelar
+            </Button>
           </CardContent>
         </Card>
       </div>
     );
   }
 
+  // Tela de erro
+  if (paymentStep === "error") {
+    return (
+      <div className="min-h-screen bg-gradient-clean flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-glow">
+          <CardContent className="pt-6 text-center space-y-6">
+            <div className="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center mx-auto">
+              <XCircle className="text-white" size={24} />
+            </div>
+            <h2 className="text-2xl font-bold text-red-600">Pagamento Negado</h2>
+            <p className="text-muted-foreground">
+              A transação não foi aprovada. Tente novamente ou use outro cartão.
+            </p>
+            <div className="flex space-x-2">
+              <Button onClick={() => setPaymentStep("payment")} variant="fresh" className="flex-1">
+                Tentar Novamente
+              </Button>
+              <Button onClick={resetTotem} variant="outline" className="flex-1">
+                Cancelar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Tela de sucesso
   if (paymentStep === "success") {
     const machine = machines.find(m => m.id === selectedMachine);
     return (
@@ -200,6 +412,13 @@ const Totem = () => {
               <p className="text-muted-foreground">
                 Tempo estimado: {machine?.duration} minutos
               </p>
+              {transactionData && (
+                <div className="text-sm space-y-1 border-t pt-4">
+                  <p><strong>NSU:</strong> {transactionData.nsu || 'N/A'}</p>
+                  <p><strong>Autorização:</strong> {transactionData.autorizacao || 'N/A'}</p>
+                  <p><strong>Cartão:</strong> **** **** **** {transactionData.ultimosDigitos || '****'}</p>
+                </div>
+              )}
               <Badge variant="secondary" className="bg-green-100 text-green-800">
                 Máquina Iniciada
               </Badge>
@@ -213,6 +432,7 @@ const Totem = () => {
     );
   }
 
+  // Tela de seleção de pagamento
   if (paymentStep === "payment" && selectedMachine) {
     const machine = machines.find(m => m.id === selectedMachine);
     return (
@@ -240,27 +460,20 @@ const Totem = () => {
             <Separator />
 
             <div className="space-y-4">
-              <h3 className="font-semibold text-center">Formas de Pagamento</h3>
-              <div className="grid gap-3">
-                <Button 
-                  onClick={handlePayment}
-                  variant="fresh" 
-                  size="lg" 
-                  className="justify-start"
-                >
-                  <CreditCard className="mr-3" />
-                  Cartão de Crédito/Débito
-                </Button>
-                <Button 
-                  onClick={handlePayment}
-                  variant="clean" 
-                  size="lg" 
-                  className="justify-start"
-                >
-                  <Sparkles className="mr-3" />
-                  PIX
-                </Button>
-              </div>
+              <h3 className="font-semibold text-center">Forma de Pagamento</h3>
+              <Button 
+                onClick={handleTEFPayment}
+                variant="fresh" 
+                size="lg" 
+                className="w-full justify-start"
+              >
+                <CreditCard className="mr-3" />
+                Cartão de Crédito/Débito (TEF)
+              </Button>
+              
+              <p className="text-xs text-muted-foreground text-center">
+                Passe ou insira seu cartão na maquininha para efetuar o pagamento
+              </p>
             </div>
 
             <Button onClick={resetTotem} variant="outline" className="w-full">
@@ -272,6 +485,7 @@ const Totem = () => {
     );
   }
 
+  // Tela principal
   return (
     <div className="min-h-screen bg-gradient-clean p-4">
       {/* Header */}
@@ -286,12 +500,22 @@ const Totem = () => {
               <p className="text-muted-foreground">Sistema Automatizado</p>
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-sm text-muted-foreground">
-              {currentTime.toLocaleDateString('pt-BR')}
-            </div>
-            <div className="text-lg font-semibold">
-              {currentTime.toLocaleTimeString('pt-BR')}
+          <div className="flex items-center space-x-4">
+            <Button 
+              onClick={() => setShowConfig(true)}
+              variant="outline" 
+              size="sm"
+            >
+              <Settings size={16} className="mr-1" />
+              TEF
+            </Button>
+            <div className="text-right">
+              <div className="text-sm text-muted-foreground">
+                {currentTime.toLocaleDateString('pt-BR')}
+              </div>
+              <div className="text-lg font-semibold">
+                {currentTime.toLocaleTimeString('pt-BR')}
+              </div>
             </div>
           </div>
         </div>
