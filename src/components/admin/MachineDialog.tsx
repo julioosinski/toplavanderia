@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,17 +52,27 @@ export const MachineDialog = ({ machine, onSuccess, trigger }: MachineDialogProp
     e.preventDefault();
     setLoading(true);
 
+    console.log('=== MACHINE DIALOG DEBUG ===');
+    console.log('Form data:', formData);
+    console.log('Machine prop:', machine);
+    console.log('Is update:', !!machine?.id);
+
     try {
       if (machine?.id) {
         // Update existing machine
-        const { error } = await supabase
+        console.log('Updating machine with ID:', machine.id);
+        console.log('Update data:', { ...formData, updated_at: new Date().toISOString() });
+        
+        const { data, error } = await supabase
           .from('machines')
           .update({
             ...formData,
             updated_at: new Date().toISOString()
           })
-          .eq('id', machine.id);
+          .eq('id', machine.id)
+          .select();
 
+        console.log('Update response:', { data, error });
         if (error) throw error;
 
         toast({
@@ -71,15 +81,25 @@ export const MachineDialog = ({ machine, onSuccess, trigger }: MachineDialogProp
         });
       } else {
         // Create new machine
-        const { error } = await supabase
+        console.log('Creating new machine');
+        console.log('Insert data:', {
+          ...formData,
+          status: 'available',
+          total_uses: 0,
+          total_revenue: 0
+        });
+
+        const { data, error } = await supabase
           .from('machines')
           .insert([{
             ...formData,
             status: 'available',
             total_uses: 0,
             total_revenue: 0
-          }]);
+          }])
+          .select();
 
+        console.log('Insert response:', { data, error });
         if (error) throw error;
 
         toast({
@@ -137,6 +157,9 @@ export const MachineDialog = ({ machine, onSuccess, trigger }: MachineDialogProp
           <DialogTitle>
             {machine ? "Editar Máquina" : "Nova Máquina"}
           </DialogTitle>
+          <DialogDescription>
+            {machine ? "Modifique as informações da máquina abaixo" : "Cadastre uma nova máquina no sistema"}
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

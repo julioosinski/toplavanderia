@@ -242,22 +242,6 @@ const Admin = () => {
   const activeUsers = machines.filter(m => m.status === "in_use").length;
   const availableMachines = machines.filter(m => m.status === "available").length;
 
-  // Calculate sales data from transactions
-  const salesData = transactions.reduce((acc, transaction) => {
-    const date = new Date(transaction.created_at).toLocaleDateString('pt-BR');
-    if (!acc[date]) {
-      acc[date] = { sales: 0, revenue: 0 };
-    }
-    acc[date].sales += 1;
-    acc[date].revenue += Number(transaction.total_amount);
-    return acc;
-  }, {} as Record<string, { sales: number; revenue: number }>);
-
-  const salesArray = Object.entries(salesData)
-    .map(([date, data]) => ({ date, ...data }))
-    .slice(0, 7)
-    .reverse();
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 to-secondary/5 p-4">
       {/* Header */}
