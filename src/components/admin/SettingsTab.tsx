@@ -6,8 +6,9 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
-import { Settings, Wifi, Cpu, CreditCard, Save } from "lucide-react";
+import { Settings, Wifi, Cpu, CreditCard, Save, Microchip, Database } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import ESP32ConfigurationManager from "./ESP32ConfigurationManager";
 
 interface SystemSettings {
   id: string;
@@ -25,6 +26,16 @@ interface SystemSettings {
   max_offline_duration_minutes?: number;
   signal_threshold_warning?: number;
   enable_esp32_monitoring?: boolean;
+  esp32_configurations?: any[];
+}
+
+interface ESP32Config {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  location: string;
+  machines: string[];
 }
 
 export const SettingsTab = () => {
@@ -43,7 +54,8 @@ export const SettingsTab = () => {
     heartbeat_interval_seconds: 30,
     max_offline_duration_minutes: 5,
     signal_threshold_warning: -70,
-    enable_esp32_monitoring: true
+    enable_esp32_monitoring: true,
+    esp32_configurations: []
   });
   const [loading, setLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
@@ -64,7 +76,12 @@ export const SettingsTab = () => {
       if (error) throw error;
 
       if (data && data.length > 0) {
-        setSettings(data[0]);
+        setSettings({
+          ...data[0],
+          esp32_configurations: Array.isArray(data[0].esp32_configurations) 
+            ? data[0].esp32_configurations 
+            : []
+        });
       }
     } catch (error) {
       console.error('Error loading settings:', error);
@@ -109,6 +126,81 @@ export const SettingsTab = () => {
 
   const updateSetting = (key: keyof SystemSettings, value: any) => {
     setSettings(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleESP32ConfigurationsUpdate = (configs: ESP32Config[]) => {
+    updateSetting('esp32_configurations', configs);
+  };
+
+  const addMockTransactions = async () => {
+    try {
+      const { data: machines } = await supabase.from('machines').select('id, name').limit(3);
+      if (!machines || machines.length === 0) {
+        toast({
+          title: "Erro",
+          description: "Nenhuma máquina encontrada para criar transações",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Create mock transactions for the last 30 days
+      const mockTransactions = [];
+      const today = new Date();
+      
+      for (let i = 0; i < 30; i++) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+        
+        // Random number of transactions per day (0-5)
+        const dailyTransactions = Math.floor(Math.random() * 6);
+        
+        for (let j = 0; j < dailyTransactions; j++) {
+          const machine = machines[Math.floor(Math.random() * machines.length)];
+          const amount = Number((Math.random() * 50 + 15).toFixed(2)); // $15-$65
+          const weight = Number((Math.random() * 8 + 2).toFixed(1)); // 2-10 kg
+          const duration = Math.floor(Math.random() * 30 + 25); // 25-55 minutes
+          
+          const createdAt = new Date(date);
+          createdAt.setHours(Math.floor(Math.random() * 24), Math.floor(Math.random() * 60));
+          
+          const startedAt = new Date(createdAt);
+          startedAt.setMinutes(startedAt.getMinutes() + Math.floor(Math.random() * 10));
+          
+          const completedAt = new Date(startedAt);
+          completedAt.setMinutes(completedAt.getMinutes() + duration);
+          
+          mockTransactions.push({
+            machine_id: machine.id,
+            user_id: null, // Anonymous for testing
+            weight_kg: weight,
+            duration_minutes: duration,
+            total_amount: amount,
+            payment_method: Math.random() > 0.5 ? 'credit_card' : 'cash',
+            status: 'completed',
+            created_at: createdAt.toISOString(),
+            started_at: startedAt.toISOString(),
+            completed_at: completedAt.toISOString()
+          });
+        }
+      }
+
+      const { error } = await supabase.from('transactions').insert(mockTransactions);
+      
+      if (error) throw error;
+
+      toast({
+        title: "Transações Criadas",
+        description: `${mockTransactions.length} transações de teste foram adicionadas`,
+      });
+    } catch (error) {
+      console.error('Error creating mock transactions:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao criar transações de teste",
+        variant: "destructive"
+      });
+    }
   };
 
   if (loading) {
@@ -336,6 +428,53 @@ export const SettingsTab = () => {
               <p className="text-sm text-muted-foreground">
                 Limite para alerta sinal fraco
               </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ESP32 Device Management */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Microchip className="text-primary" />
+            <span>Gerenciamento de Dispositivos ESP32</span>
+          </CardTitle>
+          <CardDescription>
+            Configure e gerencie múltiplos controladores ESP32 para diferentes conjuntos de máquinas
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ESP32ConfigurationManager 
+            configurations={settings.esp32_configurations || []}
+            onUpdate={handleESP32ConfigurationsUpdate}
+          />
+        </CardContent>
+      </Card>
+
+      {/* Development Tools */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Database className="text-primary" />
+            <span>Ferramentas de Desenvolvimento</span>
+          </CardTitle>
+          <CardDescription>
+            Ferramentas para testes e desenvolvimento do sistema
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div>
+                <p className="font-medium">Transações de Teste</p>
+                <p className="text-sm text-muted-foreground">
+                  Adiciona transações fictícias dos últimos 30 dias para testar relatórios
+                </p>
+              </div>
+              <Button variant="outline" onClick={addMockTransactions}>
+                Adicionar Dados de Teste
+              </Button>
             </div>
           </div>
         </CardContent>
