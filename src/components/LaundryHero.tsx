@@ -18,6 +18,8 @@ const LaundryHero = () => {
           <div className="hidden md:flex space-x-6">
             <a href="#services" className="text-foreground hover:text-primary transition-smooth">Servicios</a>
             <a href="#pricing" className="text-foreground hover:text-primary transition-smooth">Precios</a>
+            <a href="/totem" className="text-foreground hover:text-primary transition-smooth">Totem</a>
+            <a href="/admin" className="text-foreground hover:text-primary transition-smooth">Admin</a>
             <a href="#contact" className="text-foreground hover:text-primary transition-smooth">Contacto</a>
           </div>
         </nav>
