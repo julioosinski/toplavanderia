@@ -16,78 +16,16 @@ import {
   Sparkles,
   Euro,
   Shield,
-  Maximize
+  Maximize,
+  Loader2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useKioskSecurity } from "@/hooks/useKioskSecurity";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
+import { useMachines, type Machine } from "@/hooks/useMachines";
 import { SecureTEFConfig } from "@/components/admin/SecureTEFConfig";
 import { AdminPinDialog } from "@/components/admin/AdminPinDialog";
-
-// Configuração das máquinas baseada no JSON original
-const machines = [
-  {
-    id: "c1-lav",
-    type: "lavadora",
-    title: "Conjunto 1 - Lavadora",
-    price: 18.00,
-    ip: "192.168.0.101",
-    duration: 35, // minutos
-    status: "available", // available, running, maintenance
-    icon: Droplets
-  },
-  {
-    id: "c1-sec", 
-    type: "secadora",
-    title: "Conjunto 1 - Secadora",
-    price: 18.00,
-    ip: "192.168.0.101",
-    duration: 40,
-    status: "running",
-    icon: Wind,
-    timeRemaining: 15
-  },
-  {
-    id: "c2-lav",
-    type: "lavadora", 
-    title: "Conjunto 2 - Lavadora",
-    price: 18.00,
-    ip: "192.168.0.102",
-    duration: 35,
-    status: "available",
-    icon: Droplets
-  },
-  {
-    id: "c2-sec",
-    type: "secadora",
-    title: "Conjunto 2 - Secadora", 
-    price: 18.00,
-    ip: "192.168.0.102",
-    duration: 40,
-    status: "available",
-    icon: Wind
-  },
-  {
-    id: "c3-lav",
-    type: "lavadora",
-    title: "Conjunto 3 - Lavadora",
-    price: 18.00,
-    ip: "192.168.0.103", 
-    duration: 35,
-    status: "maintenance",
-    icon: Droplets
-  },
-  {
-    id: "c3-sec",
-    type: "secadora",
-    title: "Conjunto 3 - Secadora",
-    price: 18.00,
-    ip: "192.168.0.103",
-    duration: 40,
-    status: "available", 
-    icon: Wind
-  }
-];
+import { supabase } from "@/integrations/supabase/client";
 
 // Configuração do TEF Elgin
 const TEF_CONFIG = {
@@ -113,6 +51,7 @@ const Totem = () => {
     disableSecurity 
   } = useKioskSecurity();
   const { authenticate: adminAuthenticate } = useAdminAccess();
+  const { machines, loading, error, updateMachineStatus } = useMachines();
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -135,6 +74,7 @@ const Totem = () => {
       case "available": return "bg-green-500";
       case "running": return "bg-blue-500";
       case "maintenance": return "bg-red-500";
+      case "offline": return "bg-gray-500";
       default: return "bg-gray-500";
     }
   };
@@ -144,7 +84,8 @@ const Totem = () => {
       case "available": return "Disponível";
       case "running": return "Em uso";
       case "maintenance": return "Manutenção";
-      default: return "Offline";
+      case "offline": return "Offline";
+      default: return "Desconhecido";
     }
   };
 
@@ -279,22 +220,44 @@ const Totem = () => {
     if (!machine) return;
 
     try {
-      // Chamar endpoint do ESP32
-      const endpoint = machine.type === "lavadora" ? "/lavadora" : "/secadora";
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
-      const response = await fetch(`http://${machine.ip}${endpoint}`, {
-        method: 'GET',
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (response.ok) {
-        console.log(`Máquina ${machine.title} ativada com sucesso`);
-      } else {
-        throw new Error("Falha na ativação da máquina");
+      // Atualizar status da máquina para "running"
+      await updateMachineStatus(machine.id, 'running');
+
+      // Criar transação no banco
+      const { error: transactionError } = await supabase
+        .from('transactions')
+        .insert({
+          machine_id: machine.id,
+          total_amount: machine.price,
+          duration_minutes: machine.duration,
+          status: 'completed',
+          payment_method: 'TEF',
+          started_at: new Date().toISOString(),
+          completed_at: new Date().toISOString()
+        });
+
+      if (transactionError) {
+        console.error('Erro ao criar transação:', transactionError);
+      }
+
+      // Chamar endpoint do ESP32 se tiver IP
+      if (machine.ip_address) {
+        const endpoint = machine.type === "lavadora" ? "/lavadora" : "/secadora";
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
+        const response = await fetch(`http://${machine.ip_address}${endpoint}`, {
+          method: 'GET',
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          console.log(`Máquina ${machine.title} ativada com sucesso`);
+        } else {
+          throw new Error("Falha na ativação da máquina");
+        }
       }
     } catch (error) {
       console.error("Erro ao ativar máquina:", error);
@@ -350,6 +313,19 @@ const Totem = () => {
         onConfigChange={setTefConfig}
         onClose={() => setShowConfig(false)}
       />
+    );
+  }
+
+  // Mostrar loading enquanto carrega máquinas
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-clean flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <Loader2 className="mx-auto animate-spin text-primary" size={48} />
+          <h2 className="text-xl font-semibold">Carregando máquinas...</h2>
+          <p className="text-muted-foreground">Conectando com o sistema</p>
+        </div>
+      </div>
     );
   }
 
