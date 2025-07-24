@@ -10,6 +10,9 @@ import { useKioskSecurity } from "@/hooks/useKioskSecurity";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
 import { useMachines, type Machine } from "@/hooks/useMachines";
 import { useTEFIntegration } from "@/hooks/useTEFIntegration";
+import { EnhancedPayGOAdmin } from '@/components/admin/EnhancedPayGOAdmin';
+import { usePayGOIntegration, PayGOConfig } from '@/hooks/usePayGOIntegration';
+import { DEFAULT_PAYGO_CONFIG } from '@/lib/paygoUtils';
 import { SecureTEFConfig } from "@/components/admin/SecureTEFConfig";
 import { AdminPinDialog } from "@/components/admin/AdminPinDialog";
 import { supabase } from "@/integrations/supabase/client";
@@ -27,6 +30,8 @@ const Totem = () => {
   const [paymentStep, setPaymentStep] = useState<"select" | "payment" | "processing" | "success" | "error">("select");
   const [currentTime, setCurrentTime] = useState(new Date());
   const [tefConfig, setTefConfig] = useState(TEF_CONFIG);
+  const [paygoConfig, setPaygoConfig] = useState<PayGOConfig>({ ...DEFAULT_PAYGO_CONFIG, cnpjCpf: '12.345.678/0001-00' });
+  const [paymentSystem, setPaymentSystem] = useState<'TEF' | 'PAYGO'>('PAYGO');
   const [showConfig, setShowConfig] = useState(false);
   const [transactionData, setTransactionData] = useState<any>(null);
   const [showAdminDialog, setShowAdminDialog] = useState(false);
