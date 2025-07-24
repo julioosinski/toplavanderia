@@ -12,6 +12,8 @@ interface TEFConfig {
   host: string;
   port: string;
   timeout: number;
+  retryAttempts: number;
+  retryDelay: number;
 }
 
 interface SecureTEFConfigProps {
@@ -173,6 +175,42 @@ export const SecureTEFConfig = ({ config, onConfigChange, onClose }: SecureTEFCo
               />
               <p className="text-xs text-muted-foreground">
                 Entre 5.000ms (5s) e 300.000ms (5min)
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="retryAttempts">Tentativas de Retry</Label>
+              <Input 
+                id="retryAttempts"
+                type="number"
+                value={tempConfig.retryAttempts}
+                onChange={(e) => setTempConfig({...tempConfig, retryAttempts: parseInt(e.target.value) || 3})}
+                placeholder="3"
+                min="1"
+                max="5"
+                disabled={!isAuthenticated}
+                className={!isAuthenticated ? "opacity-50" : ""}
+              />
+              <p className="text-xs text-muted-foreground">
+                Entre 1 e 5 tentativas
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="retryDelay">Delay entre Tentativas (ms)</Label>
+              <Input 
+                id="retryDelay"
+                type="number"
+                value={tempConfig.retryDelay}
+                onChange={(e) => setTempConfig({...tempConfig, retryDelay: parseInt(e.target.value) || 2000})}
+                placeholder="2000"
+                min="1000"
+                max="10000"
+                disabled={!isAuthenticated}
+                className={!isAuthenticated ? "opacity-50" : ""}
+              />
+              <p className="text-xs text-muted-foreground">
+                Entre 1.000ms (1s) e 10.000ms (10s)
               </p>
             </div>
             

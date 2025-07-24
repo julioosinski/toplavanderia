@@ -9,17 +9,18 @@ import { useToast } from "@/hooks/use-toast";
 import { useKioskSecurity } from "@/hooks/useKioskSecurity";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
 import { useMachines, type Machine } from "@/hooks/useMachines";
+import { useTEFIntegration } from "@/hooks/useTEFIntegration";
 import { SecureTEFConfig } from "@/components/admin/SecureTEFConfig";
 import { AdminPinDialog } from "@/components/admin/AdminPinDialog";
 import { supabase } from "@/integrations/supabase/client";
 
-// Configuração do TEF Elgin
+// Configuração do TEF Elgin com melhorias
 const TEF_CONFIG = {
   host: "127.0.0.1",
-  // IP do dispositivo com Elgin TEF
   port: "4321",
-  // Porta padrão do Elgin TEF Web
-  timeout: 60000 // Timeout de 60 segundos
+  timeout: 60000, // Timeout de 60 segundos
+  retryAttempts: 3, // Número de tentativas
+  retryDelay: 2000 // Delay entre tentativas (2s)
 };
 const Totem = () => {
   const [selectedMachine, setSelectedMachine] = useState<string | null>(null);
@@ -48,6 +49,14 @@ const Totem = () => {
     error,
     updateMachineStatus
   } = useMachines();
+  
+  const {
+    status: tefStatus,
+    isProcessing: tefProcessing,
+    processTEFPayment,
+    cancelTransaction: cancelTEFTransaction,
+    testConnection: testTEFConnection
+  } = useTEFIntegration(tefConfig);
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
@@ -98,75 +107,36 @@ const Totem = () => {
     setPaymentStep("payment");
   };
 
-  // Função para inicializar o plugin TEF
-  const initializeTEF = async () => {
-    try {
-      const response = await fetch(`http://${tefConfig.host}:${tefConfig.port}/start`, {
-        method: 'GET',
-        mode: 'cors'
-      });
-      if (response.ok) {
-        console.log("TEF Plugin iniciado com sucesso");
-        return true;
-      }
-    } catch (error) {
-      console.error("Erro ao inicializar TEF:", error);
-      toast({
-        title: "Erro de Conexão TEF",
-        description: "Não foi possível conectar com o sistema TEF. Verifique se o Elgin TEF está instalado.",
-        variant: "destructive"
-      });
-    }
-    return false;
+  // Gerar número do cupom fiscal
+  const generateReceiptNumber = () => {
+    return Date.now().toString().slice(-6);
   };
 
-  // Função principal de pagamento via TEF
+  // Função principal de pagamento via TEF com melhorias
   const handleTEFPayment = async () => {
     const machine = machines.find(m => m.id === selectedMachine);
     if (!machine) return;
+    
     setPaymentStep("processing");
+    
     try {
-      // 1. Inicializar o plugin TEF
-      const tefInitialized = await initializeTEF();
-      if (!tefInitialized) {
-        setPaymentStep("error");
-        return;
-      }
-
-      // 2. Preparar dados da transação
+      // Preparar dados da transação
       const amount = machine.price * 100; // Converter para centavos
       const transactionParams = {
         transacao: "venda",
-        // Tipo de transação
         valor: amount.toString(),
-        // Valor em centavos
         cupomFiscal: generateReceiptNumber(),
-        // Número do cupom fiscal
         dataHora: new Date().toISOString().slice(0, 19).replace('T', ' '),
-        // Data/hora atual
         estabelecimento: "Top Lavanderia",
-        // Nome do estabelecimento
-        terminal: "001" // Terminal
+        terminal: "001"
       };
+
       console.log("Iniciando transação TEF:", transactionParams);
 
-      // 3. Realizar transação via POST
-      const tefResponse = await fetch(`http://${tefConfig.host}:${tefConfig.port}/executar`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(transactionParams),
-        signal: AbortSignal.timeout(tefConfig.timeout)
-      });
-      if (!tefResponse.ok) {
-        throw new Error(`Erro HTTP: ${tefResponse.status}`);
-      }
-      const result = await tefResponse.json();
-      console.log("Resposta TEF:", result);
+      // Usar o hook melhorado para processar pagamento
+      const result = await processTEFPayment(transactionParams);
 
-      // 4. Processar resposta
-      if (result.retorno === "0") {
+      if (result && result.retorno === "0") {
         // Transação aprovada
         setTransactionData(result);
         setPaymentStep("success");
@@ -175,41 +145,30 @@ const Totem = () => {
         await activateMachine();
         toast({
           title: "Pagamento Aprovado!",
-          description: `Transação realizada com sucesso. NSU: ${result.nsu || 'N/A'}`
+          description: `Transação realizada com sucesso. NSU: ${result.nsu || 'N/A'}`,
+          variant: "default"
         });
-      } else {
-        // Transação negada ou erro
+      } else if (result) {
+        // Transação negada
         setPaymentStep("error");
         toast({
           title: "Pagamento Negado",
           description: result.mensagem || "Transação não foi aprovada",
           variant: "destructive"
         });
+      } else {
+        // Falha total na comunicação
+        setPaymentStep("error");
       }
     } catch (error) {
-      console.error("Erro na transação TEF:", error);
+      console.error("Erro crítico na transação TEF:", error);
       setPaymentStep("error");
-      let errorMessage = "Erro desconhecido na transação";
-      if (error instanceof Error) {
-        if (error.name === 'TimeoutError') {
-          errorMessage = "Timeout - Transação demorou muito para responder";
-        } else if (error.message.includes('network')) {
-          errorMessage = "Erro de rede - Verifique a conexão com o TEF";
-        } else {
-          errorMessage = error.message;
-        }
-      }
       toast({
-        title: "Erro no Pagamento",
-        description: errorMessage,
+        title: "Erro Crítico",
+        description: "Falha grave no sistema de pagamento. Contacte o suporte.",
         variant: "destructive"
       });
     }
-  };
-
-  // Gerar número do cupom fiscal
-  const generateReceiptNumber = () => {
-    return Date.now().toString().slice(-6);
   };
   const activateMachine = async () => {
     const machine = machines.find(m => m.id === selectedMachine);
@@ -324,9 +283,14 @@ const Totem = () => {
               Aguarde a conclusão da transação.
             </p>
             <Progress value={50} className="w-full" />
-            <Button onClick={resetTotem} variant="outline" className="w-full">
-              Cancelar
-            </Button>
+            <div className="flex space-x-2">
+              <Button onClick={cancelTEFTransaction} variant="outline" className="flex-1">
+                Cancelar TEF
+              </Button>
+              <Button onClick={resetTotem} variant="destructive" className="flex-1">
+                Cancelar Tudo
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>;
@@ -452,6 +416,18 @@ const Totem = () => {
           <div className="flex items-center space-x-4">
             {/* Indicador de Segurança */}
             <div className="flex items-center space-x-2">
+              {/* Indicador TEF */}
+              <div className={`flex items-center space-x-1 rounded-lg px-2 py-1 ${
+                tefStatus.isOnline 
+                  ? 'text-green-600 bg-green-50' 
+                  : 'text-red-600 bg-red-50'
+              }`}>
+                <CreditCard size={14} />
+                <span className="text-xs font-medium">
+                  TEF {tefStatus.isOnline ? 'Online' : 'Offline'}
+                </span>
+              </div>
+
               {securityEnabled ? <div className="flex items-center space-x-1 text-green-600 bg-green-50 rounded-lg px-2 py-1">
                   <Shield size={14} />
                   <span className="text-xs font-medium">Seguro</span>
@@ -494,7 +470,9 @@ const Totem = () => {
             <div className="text-sm text-muted-foreground">Em Uso</div>
           </div>
           <div className="space-y-2">
-            
+            <div className="text-2xl font-bold text-red-600">
+              {machines.filter(m => m.status === "maintenance").length}
+            </div>
             <div className="text-sm text-muted-foreground">Manutenção</div>
           </div>
         </div>
@@ -603,7 +581,7 @@ const Totem = () => {
                   <CardContent className="space-y-4">
                     <div className="text-center">
                       <div className="flex items-center justify-center space-x-2 mb-2">
-                        
+                        <DollarSign className="text-primary" size={16} />
                         <span className="text-2xl font-bold text-primary">
                           R$ {machine.price.toFixed(2).replace('.', ',')}
                         </span>
