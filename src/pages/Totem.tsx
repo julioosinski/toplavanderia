@@ -10,6 +10,7 @@ import { useKioskSecurity } from "@/hooks/useKioskSecurity";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
 import { useMachines, type Machine } from "@/hooks/useMachines";
 import { useTEFIntegration } from "@/hooks/useTEFIntegration";
+import { useCapacitorIntegration } from "@/hooks/useCapacitorIntegration";
 import { EnhancedPayGOAdmin } from '@/components/admin/EnhancedPayGOAdmin';
 import { usePayGOIntegration, PayGOConfig } from '@/hooks/usePayGOIntegration';
 import { DEFAULT_PAYGO_CONFIG } from '@/lib/paygoUtils';
@@ -56,6 +57,14 @@ const Totem = () => {
   } = useMachines();
   
   const {
+    isNative,
+    deviceInfo,
+    isReady,
+    enableKioskMode,
+    disableKioskMode
+  } = useCapacitorIntegration();
+  
+  const {
     status: tefStatus,
     isProcessing: tefProcessing,
     processTEFPayment,
@@ -81,10 +90,25 @@ const Totem = () => {
   useEffect(() => {
     const timer = setTimeout(() => {
       enableSecurity();
+      if (isNative && isReady) {
+        enableKioskMode();
+      }
     }, 2000); // 2 segundos após carregar
 
     return () => clearTimeout(timer);
-  }, [enableSecurity]);
+  }, [enableSecurity, isNative, isReady, enableKioskMode]);
+
+  // Mostrar informações do dispositivo no console para debug
+  useEffect(() => {
+    if (isNative && deviceInfo) {
+      console.log('🔧 Dispositivo detectado:', deviceInfo);
+      toast({
+        title: "Modo Tablet Ativo",
+        description: `Executando em ${deviceInfo.platform} - ${deviceInfo.model}`,
+        variant: "default"
+      });
+    }
+  }, [isNative, deviceInfo, toast]);
   const getStatusColor = (status: string) => {
     switch (status) {
       case "available":
