@@ -128,8 +128,33 @@ export const SettingsTab = () => {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
 
-  const handleESP32ConfigurationsUpdate = (configs: ESP32Config[]) => {
+  const handleESP32ConfigurationsUpdate = async (configs: ESP32Config[]) => {
     updateSetting('esp32_configurations', configs);
+    
+    // Salvar automaticamente no Supabase
+    try {
+      const { error } = await supabase
+        .from('system_settings')
+        .update({
+          esp32_configurations: configs as any,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', settings.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Configurações ESP32 salvas",
+        description: "As configurações dos ESP32s foram atualizadas com sucesso",
+      });
+    } catch (error) {
+      console.error('Error saving ESP32 configurations:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao salvar configurações ESP32",
+        variant: "destructive"
+      });
+    }
   };
 
   const addMockTransactions = async () => {
