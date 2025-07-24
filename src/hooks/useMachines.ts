@@ -52,15 +52,25 @@ export const useMachines = () => {
       const transformedMachines: Machine[] = machinesData?.map(machine => {
         const esp32 = esp32Map.get(machine.esp32_id || 'main');
         
+        // Map database types to frontend types
+        const typeMapping: Record<string, 'lavadora' | 'secadora'> = {
+          'washing': 'lavadora',
+          'drying': 'secadora',
+          'lavadora': 'lavadora',
+          'secadora': 'secadora'
+        };
+        
+        const mappedType = typeMapping[machine.type] || 'lavadora';
+        
         return {
           id: machine.id,
           name: machine.name,
-          type: machine.type as 'lavadora' | 'secadora',
+          type: mappedType,
           title: machine.name,
           price: Number(machine.price_per_kg) || 18.00,
           duration: machine.cycle_time_minutes || 40,
           status: esp32?.is_online === false ? 'offline' : machine.status as any,
-          icon: machine.type === 'lavadora' ? Droplets : Wind,
+          icon: mappedType === 'lavadora' ? Droplets : Wind,
           esp32_id: machine.esp32_id,
           relay_pin: machine.relay_pin,
           location: machine.location,
