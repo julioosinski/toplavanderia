@@ -494,9 +494,7 @@ const Totem = () => {
             <div className="text-sm text-muted-foreground">Em Uso</div>
           </div>
           <div className="space-y-2">
-            <div className="text-2xl font-bold text-red-600">
-              {machines.filter(m => m.status === "maintenance").length}
-            </div>
+            
             <div className="text-sm text-muted-foreground">Manutenção</div>
           </div>
         </div>
