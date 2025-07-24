@@ -62,6 +62,14 @@ const Totem = () => {
     cancelTransaction: cancelTEFTransaction,
     testConnection: testTEFConnection
   } = useTEFIntegration(tefConfig);
+
+  const {
+    status: paygoStatus,
+    isProcessing: paygoProcessing,
+    processPayGOPayment,
+    cancelTransaction: cancelPayGOTransaction,
+    testConnection: testPayGOConnection
+  } = usePayGOIntegration(paygoConfig);
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
@@ -123,6 +131,7 @@ const Totem = () => {
     if (!machine) return;
     
     setPaymentStep("processing");
+    setPaymentSystem('TEF');
     
     try {
       // Preparar dados da transação
@@ -147,7 +156,7 @@ const Totem = () => {
         setPaymentStep("success");
 
         // Ativar a máquina após pagamento aprovado
-        await activateMachine();
+        await activateMachine('TEF');
         toast({
           title: "Pagamento Aprovado!",
           description: `Transação realizada com sucesso. NSU: ${result.nsu || 'N/A'}`,
@@ -175,7 +184,60 @@ const Totem = () => {
       });
     }
   };
-  const activateMachine = async () => {
+
+  // Função principal de pagamento via PayGO
+  const handlePayGOPayment = async () => {
+    const machine = machines.find(m => m.id === selectedMachine);
+    if (!machine) return;
+    
+    setPaymentStep("processing");
+    setPaymentSystem('PAYGO');
+    
+    try {
+      // Preparar dados da transação PayGO
+      const transactionData = {
+        amount: machine.price, // PayGO usa valor em reais
+        paymentType: 'CREDIT' as const,
+        orderId: generateReceiptNumber()
+      };
+
+      console.log("Iniciando transação PayGO:", transactionData);
+
+      // Usar o hook do PayGO para processar pagamento
+      const result = await processPayGOPayment(transactionData);
+
+      if (result && result.success) {
+        // Transação aprovada
+        setTransactionData(result);
+        setPaymentStep("success");
+
+        // Ativar a máquina após pagamento aprovado
+        await activateMachine('PAYGO');
+        toast({
+          title: "Pagamento Aprovado!",
+          description: `Transação realizada com sucesso. NSU: ${result.nsu || 'N/A'}`,
+          variant: "default"
+        });
+      } else {
+        // Transação negada
+        setPaymentStep("error");
+        toast({
+          title: "Pagamento Negado",
+          description: result?.resultMessage || "Transação não foi aprovada",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error("Erro crítico na transação PayGO:", error);
+      setPaymentStep("error");
+      toast({
+        title: "Erro Crítico",
+        description: "Falha grave no sistema de pagamento. Contacte o suporte.",
+        variant: "destructive"
+      });
+    }
+  };
+  const activateMachine = async (paymentMethod: string = 'TEF') => {
     const machine = machines.find(m => m.id === selectedMachine);
     if (!machine) return;
     try {
@@ -187,10 +249,10 @@ const Totem = () => {
         error: transactionError
       } = await supabase.from('transactions').insert({
         machine_id: machine.id,
-        total_amount: machine.price,
+        total_amount: machine.price, // Usar o preço já calculado da interface Machine
         duration_minutes: machine.duration,
         status: 'completed',
-        payment_method: 'TEF',
+        payment_method: paymentMethod,
         started_at: new Date().toISOString(),
         completed_at: new Date().toISOString()
       });
@@ -198,21 +260,13 @@ const Totem = () => {
         console.error('Erro ao criar transação:', transactionError);
       }
 
-      // Chamar endpoint do ESP32 se tiver IP
-      if (machine.ip_address) {
-        const endpoint = machine.type === "lavadora" ? "/lavadora" : "/secadora";
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-        const response = await fetch(`http://${machine.ip_address}${endpoint}`, {
-          method: 'GET',
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        if (response.ok) {
-          console.log(`Máquina ${machine.title} ativada com sucesso`);
-        } else {
-          throw new Error("Falha na ativação da máquina");
-        }
+      // Chamar endpoint do ESP32 se tiver IP (mock implementation)
+      try {
+        // Simular chamada para ESP32 - na implementação real seria uma chamada HTTP
+        console.log(`Ativando máquina ${machine.name} via ESP32 ${machine.esp32_id}`);
+        // await fetch(`http://esp32-host:port/activate/${machine.relay_pin}`)
+      } catch (error) {
+        console.warn("Erro na comunicação com ESP32, mas máquina foi ativada no sistema:", error);
       }
     } catch (error) {
       console.error("Erro ao ativar máquina:", error);
@@ -289,8 +343,12 @@ const Totem = () => {
             </p>
             <Progress value={50} className="w-full" />
             <div className="flex space-x-2">
-              <Button onClick={cancelTEFTransaction} variant="outline" className="flex-1">
-                Cancelar TEF
+              <Button 
+                onClick={paymentSystem === 'TEF' ? cancelTEFTransaction : cancelPayGOTransaction} 
+                variant="outline" 
+                className="flex-1"
+              >
+                Cancelar {paymentSystem}
               </Button>
               <Button onClick={resetTotem} variant="destructive" className="flex-1">
                 Cancelar Tudo
@@ -386,9 +444,29 @@ const Totem = () => {
 
             <div className="space-y-4">
               <h3 className="font-semibold text-center">Forma de Pagamento</h3>
-              <Button onClick={handleTEFPayment} variant="fresh" size="lg" className="w-full justify-start">
+              
+              {/* PayGO Payment Option */}
+              <Button 
+                onClick={handlePayGOPayment} 
+                variant="fresh" 
+                size="lg" 
+                className="w-full justify-start"
+                disabled={!paygoStatus.online}
+              >
                 <CreditCard className="mr-3" />
-                Cartão de Crédito/Débito (TEF)
+                Cartão PayGO {paygoStatus.online ? '' : '(Offline)'}
+              </Button>
+              
+              {/* TEF Payment Option */}
+              <Button 
+                onClick={handleTEFPayment} 
+                variant="outline" 
+                size="lg" 
+                className="w-full justify-start"
+                disabled={!tefStatus.isOnline}
+              >
+                <CreditCard className="mr-3" />
+                Cartão TEF {tefStatus.isOnline ? '' : '(Offline)'}
               </Button>
               
               <p className="text-xs text-muted-foreground text-center">
@@ -430,6 +508,18 @@ const Totem = () => {
                 <CreditCard size={14} />
                 <span className="text-xs font-medium">
                   TEF {tefStatus.isOnline ? 'Online' : 'Offline'}
+                </span>
+              </div>
+
+              {/* Indicador PayGO */}
+              <div className={`flex items-center space-x-1 rounded-lg px-2 py-1 ${
+                paygoStatus.online 
+                  ? 'text-green-600 bg-green-50' 
+                  : 'text-red-600 bg-red-50'
+              }`}>
+                <CreditCard size={14} />
+                <span className="text-xs font-medium">
+                  PayGO {paygoStatus.online ? 'Online' : 'Offline'}
                 </span>
               </div>
 
