@@ -14,7 +14,7 @@ import {
   XCircle,
   Timer,
   Sparkles,
-  Euro,
+  DollarSign,
   Shield,
   Maximize,
   Loader2
@@ -431,9 +431,9 @@ const Totem = () => {
           <CardContent className="space-y-6">
             <div className="text-center space-y-2">
               <div className="flex items-center justify-center space-x-2">
-                <Euro className="text-primary" size={20} />
+                <DollarSign className="text-primary" size={20} />
                 <span className="text-3xl font-bold text-primary">
-                  {machine?.price.toFixed(2)}
+                  R$ {machine?.price.toFixed(2).replace('.', ',')}
                 </span>
               </div>
               <p className="text-muted-foreground">
@@ -586,9 +586,9 @@ const Totem = () => {
                   <CardContent className="space-y-4">
                     <div className="text-center">
                       <div className="flex items-center justify-center space-x-2 mb-2">
-                        <Euro className="text-primary" size={16} />
+                        <DollarSign className="text-primary" size={16} />
                         <span className="text-2xl font-bold text-primary">
-                          {machine.price.toFixed(2)}
+                          R$ {machine.price.toFixed(2).replace('.', ',')}
                         </span>
                       </div>
                       <p className="text-sm text-muted-foreground">
@@ -685,9 +685,9 @@ const Totem = () => {
                   <CardContent className="space-y-4">
                     <div className="text-center">
                       <div className="flex items-center justify-center space-x-2 mb-2">
-                        <Euro className="text-primary" size={16} />
+                        <DollarSign className="text-primary" size={16} />
                         <span className="text-2xl font-bold text-primary">
-                          {machine.price.toFixed(2)}
+                          R$ {machine.price.toFixed(2).replace('.', ',')}
                         </span>
                       </div>
                       <p className="text-sm text-muted-foreground">

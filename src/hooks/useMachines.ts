@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Droplets, Wind } from 'lucide-react';
+import { useMachineAutoStatus } from './useMachineAutoStatus';
 
 export interface Machine {
   id: string;
@@ -24,6 +25,9 @@ export const useMachines = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  
+  // Hook para atualização automática de status
+  useMachineAutoStatus();
 
   const fetchMachines = async () => {
     try {
@@ -62,6 +66,27 @@ export const useMachines = () => {
         
         const mappedType = typeMapping[machine.type] || 'lavadora';
         
+        // Determinar status inteligente baseado em ESP32 e status da máquina
+        let machineStatus = machine.status as any;
+        
+        // Se ESP32 está offline, marcar máquina como offline apenas se não estiver em uso
+        if (esp32?.is_online === false && machine.status !== 'running') {
+          machineStatus = 'offline';
+        }
+        
+        // Se máquina está "running", verificar se passou do tempo esperado
+        if (machine.status === 'running' && machine.updated_at) {
+          const lastUpdate = new Date(machine.updated_at);
+          const now = new Date();
+          const minutesSinceUpdate = (now.getTime() - lastUpdate.getTime()) / (1000 * 60);
+          const cycleTime = machine.cycle_time_minutes || 40;
+          
+          // Se passou mais tempo que o ciclo + 5 minutos de margem, marcar como disponível
+          if (minutesSinceUpdate > cycleTime + 5) {
+            machineStatus = 'available';
+          }
+        }
+        
         return {
           id: machine.id,
           name: machine.name,
@@ -69,7 +94,7 @@ export const useMachines = () => {
           title: machine.name,
           price: Number(machine.price_per_kg) || 18.00,
           duration: machine.cycle_time_minutes || 40,
-          status: esp32?.is_online === false ? 'offline' : machine.status as any,
+          status: machineStatus,
           icon: mappedType === 'lavadora' ? Droplets : Wind,
           esp32_id: machine.esp32_id,
           relay_pin: machine.relay_pin,
