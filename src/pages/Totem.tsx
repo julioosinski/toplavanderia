@@ -4,8 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { 
   Droplets, 
   Wind, 
@@ -17,9 +15,14 @@ import {
   Timer,
   Sparkles,
   Euro,
-  Settings
+  Shield,
+  Maximize
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useKioskSecurity } from "@/hooks/useKioskSecurity";
+import { useAdminAccess } from "@/hooks/useAdminAccess";
+import { SecureTEFConfig } from "@/components/admin/SecureTEFConfig";
+import { AdminPinDialog } from "@/components/admin/AdminPinDialog";
 
 // Configuração das máquinas baseada no JSON original
 const machines = [
@@ -100,7 +103,16 @@ const Totem = () => {
   const [tefConfig, setTefConfig] = useState(TEF_CONFIG);
   const [showConfig, setShowConfig] = useState(false);
   const [transactionData, setTransactionData] = useState<any>(null);
+  const [showAdminDialog, setShowAdminDialog] = useState(false);
+  const [adminClickCount, setAdminClickCount] = useState(0);
   const { toast } = useToast();
+  const { 
+    isFullscreen, 
+    securityEnabled, 
+    enableSecurity, 
+    disableSecurity 
+  } = useKioskSecurity();
+  const { authenticate: adminAuthenticate } = useAdminAccess();
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -108,6 +120,15 @@ const Totem = () => {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Ativar modo kiosk automaticamente ao carregar
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      enableSecurity();
+    }, 2000); // 2 segundos após carregar
+
+    return () => clearTimeout(timer);
+  }, [enableSecurity]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -291,57 +312,44 @@ const Totem = () => {
     setTransactionData(null);
   };
 
-  // Tela de configuração TEF
+  // Função para acesso administrativo oculto
+  const handleAdminAccess = () => {
+    const newCount = adminClickCount + 1;
+    setAdminClickCount(newCount);
+    
+    if (newCount >= 7) { // 7 cliques rápidos para ativar
+      setShowAdminDialog(true);
+      setAdminClickCount(0);
+    }
+    
+    // Reset contador após 3 segundos
+    setTimeout(() => {
+      setAdminClickCount(0);
+    }, 3000);
+  };
+
+  const handleAdminAuthenticate = (pin: string) => {
+    const success = adminAuthenticate(pin);
+    if (success) {
+      toast({
+        title: "Modo Administrativo",
+        description: "Segurança desativada temporariamente",
+        variant: "default"
+      });
+      disableSecurity();
+      setShowConfig(true);
+    }
+    return success;
+  };
+
+  // Tela de configuração TEF segura
   if (showConfig) {
     return (
-      <div className="min-h-screen bg-gradient-clean flex items-center justify-center p-4">
-        <Card className="w-full max-w-md shadow-glow">
-          <CardHeader className="text-center">
-            <div className="w-16 h-16 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-4">
-              <Settings className="text-primary-foreground" size={24} />
-            </div>
-            <CardTitle className="text-xl">Configuração TEF</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="host">IP do TEF Elgin</Label>
-              <Input 
-                id="host"
-                value={tefConfig.host}
-                onChange={(e) => setTefConfig({...tefConfig, host: e.target.value})}
-                placeholder="127.0.0.1"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="port">Porta</Label>
-              <Input 
-                id="port"
-                value={tefConfig.port}
-                onChange={(e) => setTefConfig({...tefConfig, port: e.target.value})}
-                placeholder="4321"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="timeout">Timeout (ms)</Label>
-              <Input 
-                id="timeout"
-                type="number"
-                value={tefConfig.timeout}
-                onChange={(e) => setTefConfig({...tefConfig, timeout: parseInt(e.target.value)})}
-                placeholder="60000"
-              />
-            </div>
-            <div className="flex space-x-2">
-              <Button onClick={() => setShowConfig(false)} variant="fresh" className="flex-1">
-                Salvar
-              </Button>
-              <Button onClick={() => setShowConfig(false)} variant="outline" className="flex-1">
-                Cancelar
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <SecureTEFConfig
+        config={tefConfig}
+        onConfigChange={setTefConfig}
+        onClose={() => setShowConfig(false)}
+      />
     );
   }
 
@@ -501,14 +509,28 @@ const Totem = () => {
             </div>
           </div>
           <div className="flex items-center space-x-4">
-            <Button 
-              onClick={() => setShowConfig(true)}
-              variant="outline" 
-              size="sm"
-            >
-              <Settings size={16} className="mr-1" />
-              TEF
-            </Button>
+            {/* Indicador de Segurança */}
+            <div className="flex items-center space-x-2">
+              {securityEnabled ? (
+                <div className="flex items-center space-x-1 text-green-600 bg-green-50 rounded-lg px-2 py-1">
+                  <Shield size={14} />
+                  <span className="text-xs font-medium">Seguro</span>
+                </div>
+              ) : (
+                <div className="flex items-center space-x-1 text-orange-600 bg-orange-50 rounded-lg px-2 py-1">
+                  <Shield size={14} />
+                  <span className="text-xs font-medium">Desbloqueado</span>
+                </div>
+              )}
+              
+              {!isFullscreen && (
+                <div className="flex items-center space-x-1 text-blue-600 bg-blue-50 rounded-lg px-2 py-1">
+                  <Maximize size={14} />
+                  <span className="text-xs font-medium">Janela</span>
+                </div>
+              )}
+            </div>
+
             <div className="text-right">
               <div className="text-sm text-muted-foreground">
                 {currentTime.toLocaleDateString('pt-BR')}
@@ -750,9 +772,23 @@ const Totem = () => {
       <div className="container mx-auto mt-12 text-center">
         <div className="flex items-center justify-center space-x-2 text-muted-foreground">
           <Wifi size={16} />
-          <span className="text-sm">Sistema Online - Suporte: (11) 9999-9999</span>
+          <span 
+            className="text-sm cursor-pointer select-none"
+            onClick={handleAdminAccess}
+          >
+            Sistema Online - Suporte: (11) 9999-9999
+          </span>
         </div>
       </div>
+
+      {/* Admin Access Dialog */}
+      <AdminPinDialog
+        open={showAdminDialog}
+        onOpenChange={setShowAdminDialog}
+        onAuthenticate={handleAdminAuthenticate}
+        title="Acesso Administrativo"
+        description="Desativar temporariamente as medidas de segurança do kiosk"
+      />
     </div>
   );
 };
