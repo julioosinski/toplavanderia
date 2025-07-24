@@ -57,5 +57,11 @@ verify_jwt = true
 [functions.esp32-monitor]
 verify_jwt = true
 
+[functions.esp32-load-balancer]
+verify_jwt = true
+
+[functions.esp32-network-test]
+verify_jwt = true
+
 [edge_runtime]
 policy = "per_worker"

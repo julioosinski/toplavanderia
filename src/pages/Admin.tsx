@@ -28,6 +28,7 @@ import { ReportsTab } from "@/components/admin/ReportsTab";
 import { MaintenanceTab } from "@/components/admin/MaintenanceTab";
 import { SettingsTab } from "@/components/admin/SettingsTab";
 import ESP32MonitorTab from "@/components/admin/ESP32MonitorTab";
+import ESP32FailoverManager from "@/components/admin/ESP32FailoverManager";
 import CreditReleaseWidget from "@/components/admin/CreditReleaseWidget";
 
 interface Machine {
@@ -339,11 +340,12 @@ const Admin = () => {
       {/* Main Content */}
       <div className="container mx-auto">
         <Tabs defaultValue="machines" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="machines">Máquinas</TabsTrigger>
             <TabsTrigger value="analytics">Relatórios</TabsTrigger>
             <TabsTrigger value="maintenance">Manutenção</TabsTrigger>
             <TabsTrigger value="esp32">ESP32</TabsTrigger>
+            <TabsTrigger value="failover">Failover</TabsTrigger>
             <TabsTrigger value="settings">Configurações</TabsTrigger>
           </TabsList>
 
@@ -491,6 +493,11 @@ const Admin = () => {
               <ESP32MonitorTab />
               <CreditReleaseWidget />
             </div>
+          </TabsContent>
+
+          {/* Failover Tab */}
+          <TabsContent value="failover">
+            <ESP32FailoverManager />
           </TabsContent>
 
           {/* Settings Tab */}

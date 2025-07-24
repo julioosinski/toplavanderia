@@ -7,8 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Wifi, WifiOff, Signal, Clock, AlertTriangle, CheckCircle, RefreshCw, Zap, TestTube, MapPin, Cpu } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
 import type { Json } from '@/integrations/supabase/types';
+import ESP32NetworkTopology from './ESP32NetworkTopology';
 
 interface ESP32Status {
   id: string;
@@ -307,6 +308,9 @@ const ESP32MonitorTab: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Topologia da Rede */}
+      <ESP32NetworkTopology />
+      
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-medium">Monitoramento ESP32</h3>
         <div className="flex gap-2">
