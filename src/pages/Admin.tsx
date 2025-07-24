@@ -30,6 +30,8 @@ import { SettingsTab } from "@/components/admin/SettingsTab";
 import ESP32MonitorTab from "@/components/admin/ESP32MonitorTab";
 import ESP32FailoverManager from "@/components/admin/ESP32FailoverManager";
 import CreditReleaseWidget from "@/components/admin/CreditReleaseWidget";
+import { EnhancedPayGOAdmin } from "@/components/admin/EnhancedPayGOAdmin";
+import { DEFAULT_PAYGO_CONFIG } from "@/lib/paygoUtils";
 
 interface Machine {
   id: string;
@@ -61,6 +63,8 @@ const Admin = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [paygoConfig, setPaygoConfig] = useState(DEFAULT_PAYGO_CONFIG);
+  const [showPaygoAdmin, setShowPaygoAdmin] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -101,6 +105,9 @@ const Admin = () => {
         .limit(50);
       
       if (transactionsError) throw transactionsError;
+
+      // Load PayGO configuration
+      await loadPaygoConfig();
       
       setMachines((machinesData as Machine[]) || []);
       setTransactions((transactionsData as Transaction[]) || []);
@@ -113,6 +120,87 @@ const Admin = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadPaygoConfig = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('system_settings')
+        .select('paygo_host, paygo_port, paygo_automation_key, paygo_cnpj_cpf, paygo_timeout, paygo_retry_attempts, paygo_retry_delay, paygo_enabled')
+        .limit(1)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      if (data) {
+        setPaygoConfig({
+          host: data.paygo_host || DEFAULT_PAYGO_CONFIG.host,
+          port: data.paygo_port || DEFAULT_PAYGO_CONFIG.port,
+          automationKey: data.paygo_automation_key || DEFAULT_PAYGO_CONFIG.automationKey,
+          cnpjCpf: data.paygo_cnpj_cpf || DEFAULT_PAYGO_CONFIG.cnpjCpf,
+          timeout: data.paygo_timeout || DEFAULT_PAYGO_CONFIG.timeout,
+          retryAttempts: data.paygo_retry_attempts || DEFAULT_PAYGO_CONFIG.retryAttempts,
+          retryDelay: data.paygo_retry_delay || DEFAULT_PAYGO_CONFIG.retryDelay,
+        });
+      }
+    } catch (error) {
+      console.error('Error loading PayGO config:', error);
+    }
+  };
+
+  const savePaygoConfig = async (newConfig: typeof paygoConfig) => {
+    try {
+      // Check if a row exists
+      const { data: existing } = await supabase
+        .from('system_settings')
+        .select('id')
+        .limit(1)
+        .single();
+
+      const paygoData = {
+        paygo_host: newConfig.host,
+        paygo_port: newConfig.port,
+        paygo_automation_key: newConfig.automationKey,
+        paygo_cnpj_cpf: newConfig.cnpjCpf,
+        paygo_timeout: newConfig.timeout,
+        paygo_retry_attempts: newConfig.retryAttempts,
+        paygo_retry_delay: newConfig.retryDelay,
+        paygo_enabled: true,
+        updated_at: new Date().toISOString(),
+      };
+
+      let error;
+      if (existing) {
+        // Update existing row
+        ({ error } = await supabase
+          .from('system_settings')
+          .update(paygoData)
+          .eq('id', existing.id));
+      } else {
+        // Insert new row
+        ({ error } = await supabase
+          .from('system_settings')
+          .insert(paygoData));
+      }
+
+      if (error) throw error;
+
+      setPaygoConfig(newConfig);
+      
+      toast({
+        title: "Configuração Salva",
+        description: "Configurações PayGO foram salvas com sucesso",
+      });
+    } catch (error) {
+      console.error('Error saving PayGO config:', error);
+      toast({
+        title: "Erro",
+        description: "Falha ao salvar configurações PayGO",
+        variant: "destructive"
+      });
     }
   };
 
@@ -340,12 +428,13 @@ const Admin = () => {
       {/* Main Content */}
       <div className="container mx-auto">
         <Tabs defaultValue="machines" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="machines">Máquinas</TabsTrigger>
             <TabsTrigger value="analytics">Relatórios</TabsTrigger>
             <TabsTrigger value="maintenance">Manutenção</TabsTrigger>
             <TabsTrigger value="esp32">ESP32</TabsTrigger>
             <TabsTrigger value="failover">Failover</TabsTrigger>
+            <TabsTrigger value="paygo">PayGO</TabsTrigger>
             <TabsTrigger value="settings">Configurações</TabsTrigger>
           </TabsList>
 
@@ -498,6 +587,36 @@ const Admin = () => {
           {/* Failover Tab */}
           <TabsContent value="failover">
             <ESP32FailoverManager />
+          </TabsContent>
+
+          {/* PayGO Tab */}
+          <TabsContent value="paygo">
+            {showPaygoAdmin ? (
+              <EnhancedPayGOAdmin
+                config={paygoConfig}
+                onConfigChange={savePaygoConfig}
+                onClose={() => setShowPaygoAdmin(false)}
+              />
+            ) : (
+              <div className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Configuração PayGO</CardTitle>
+                    <CardDescription>
+                      Gerencie as configurações do sistema de pagamento PayGO
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button 
+                      onClick={() => setShowPaygoAdmin(true)}
+                      className="w-full"
+                    >
+                      Acessar Painel PayGO
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
           </TabsContent>
 
           {/* Settings Tab */}

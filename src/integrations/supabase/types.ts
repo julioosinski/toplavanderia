@@ -163,6 +163,14 @@ export type Database = {
           id: string
           max_offline_duration_minutes: number | null
           notifications_enabled: boolean | null
+          paygo_automation_key: string | null
+          paygo_cnpj_cpf: string | null
+          paygo_enabled: boolean | null
+          paygo_host: string | null
+          paygo_port: number | null
+          paygo_retry_attempts: number | null
+          paygo_retry_delay: number | null
+          paygo_timeout: number | null
           signal_threshold_warning: number | null
           tef_config: string | null
           tef_terminal_id: string | null
@@ -183,6 +191,14 @@ export type Database = {
           id?: string
           max_offline_duration_minutes?: number | null
           notifications_enabled?: boolean | null
+          paygo_automation_key?: string | null
+          paygo_cnpj_cpf?: string | null
+          paygo_enabled?: boolean | null
+          paygo_host?: string | null
+          paygo_port?: number | null
+          paygo_retry_attempts?: number | null
+          paygo_retry_delay?: number | null
+          paygo_timeout?: number | null
           signal_threshold_warning?: number | null
           tef_config?: string | null
           tef_terminal_id?: string | null
@@ -203,6 +219,14 @@ export type Database = {
           id?: string
           max_offline_duration_minutes?: number | null
           notifications_enabled?: boolean | null
+          paygo_automation_key?: string | null
+          paygo_cnpj_cpf?: string | null
+          paygo_enabled?: boolean | null
+          paygo_host?: string | null
+          paygo_port?: number | null
+          paygo_retry_attempts?: number | null
+          paygo_retry_delay?: number | null
+          paygo_timeout?: number | null
           signal_threshold_warning?: number | null
           tef_config?: string | null
           tef_terminal_id?: string | null
