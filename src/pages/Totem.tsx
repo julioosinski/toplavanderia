@@ -583,7 +583,6 @@ const Totem = () => {
           <CardContent className="space-y-6">
             <div className="text-center space-y-2">
               <div className="flex items-center justify-center space-x-2">
-                <DollarSign className="text-primary" size={20} />
                 <span className="text-3xl font-bold text-primary">
                   R$ {machine?.price.toFixed(2).replace('.', ',')}
                 </span>
@@ -607,19 +606,7 @@ const Totem = () => {
                 disabled={!paygoStatus.online}
               >
                 <CreditCard className="mr-3" />
-                Cartão PayGO {paygoStatus.online ? '' : '(Offline)'}
-              </Button>
-              
-              {/* TEF Payment Option */}
-              <Button 
-                onClick={handleTEFPayment} 
-                variant="outline" 
-                size="lg" 
-                className="w-full justify-start"
-                disabled={!tefStatus.isOnline}
-              >
-                <CreditCard className="mr-3" />
-                Cartão TEF {tefStatus.isOnline ? '' : '(Offline)'}
+                Cartão {paygoStatus.online ? '' : '(Offline)'}
               </Button>
 
               {/* Pix Payment Option */}
@@ -771,7 +758,6 @@ const Totem = () => {
                   <CardContent className="space-y-4">
                     <div className="text-center">
                       <div className="flex items-center justify-center space-x-2 mb-2">
-                        <DollarSign className="text-primary" size={16} />
                         <span className="text-2xl font-bold text-primary">
                           R$ {machine.price.toFixed(2).replace('.', ',')}
                         </span>
@@ -841,7 +827,6 @@ const Totem = () => {
                   <CardContent className="space-y-4">
                     <div className="text-center">
                       <div className="flex items-center justify-center space-x-2 mb-2">
-                        <DollarSign className="text-primary" size={16} />
                         <span className="text-2xl font-bold text-primary">
                           R$ {machine.price.toFixed(2).replace('.', ',')}
                         </span>
