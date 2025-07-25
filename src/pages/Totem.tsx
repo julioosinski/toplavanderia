@@ -635,65 +635,48 @@ const Totem = () => {
   }
 
   // Tela principal
-  return <div className="min-h-screen bg-gradient-clean p-4">
+  return <div className="min-h-screen bg-blue-600 p-2 md:p-4">{/*Changed background to blue and reduced padding*/}
       {/* Header */}
-      <div className="container mx-auto mb-8">
+      <div className="container mx-auto mb-4 md:mb-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-12 h-12 bg-gradient-primary rounded-full flex items-center justify-center">
-              <Sparkles className="text-primary-foreground" size={24} />
+            <div className="w-8 h-8 md:w-12 md:h-12 bg-gradient-primary rounded-full flex items-center justify-center">
+              <Sparkles className="text-primary-foreground" size={16} />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-foreground">Top Lavanderia</h1>
-              <p className="text-muted-foreground">Sistema Automatizado</p>
+              <h1 className="text-xl md:text-3xl font-bold text-white">Top Lavanderia</h1>
+              <p className="text-blue-200 text-sm">Sistema Automatizado</p>
             </div>
           </div>
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2 md:space-x-4">
             {/* Indicador de Segurança */}
-            <div className="flex items-center space-x-2">
-              {/* Indicador TEF */}
-              <div className={`flex items-center space-x-1 rounded-lg px-2 py-1 ${
-                tefStatus.isOnline 
-                  ? 'text-green-600 bg-green-50' 
-                  : 'text-red-600 bg-red-50'
-              }`}>
-                <CreditCard size={14} />
-                <span className="text-xs font-medium">
-                  TEF {tefStatus.isOnline ? 'Online' : 'Offline'}
-                </span>
-              </div>
-
+            <div className="flex items-center space-x-1 md:space-x-2">
               {/* Indicador PayGO */}
-              <div className={`flex items-center space-x-1 rounded-lg px-2 py-1 ${
+              <div className={`flex items-center space-x-1 rounded-lg px-1 md:px-2 py-1 ${
                 paygoStatus.online 
-                  ? 'text-green-600 bg-green-50' 
-                  : 'text-red-600 bg-red-50'
+                  ? 'text-green-600 bg-white' 
+                  : 'text-red-600 bg-white'
               }`}>
-                <CreditCard size={14} />
+                <CreditCard size={12} />
                 <span className="text-xs font-medium">
                   PayGO {paygoStatus.online ? 'Online' : 'Offline'}
                 </span>
               </div>
 
-              {securityEnabled ? <div className="flex items-center space-x-1 text-green-600 bg-green-50 rounded-lg px-2 py-1">
-                  <Shield size={14} />
+              {securityEnabled ? <div className="flex items-center space-x-1 text-green-600 bg-white rounded-lg px-1 md:px-2 py-1">
+                  <Shield size={12} />
                   <span className="text-xs font-medium">Seguro</span>
-                </div> : <div className="flex items-center space-x-1 text-orange-600 bg-orange-50 rounded-lg px-2 py-1">
-                  <Shield size={14} />
+                </div> : <div className="flex items-center space-x-1 text-orange-600 bg-white rounded-lg px-1 md:px-2 py-1">
+                  <Shield size={12} />
                   <span className="text-xs font-medium">Desbloqueado</span>
-                </div>}
-              
-              {!isFullscreen && <div className="flex items-center space-x-1 text-blue-600 bg-blue-50 rounded-lg px-2 py-1">
-                  <Maximize size={14} />
-                  <span className="text-xs font-medium">Janela</span>
                 </div>}
             </div>
 
             <div className="text-right">
-              <div className="text-sm text-muted-foreground">
+              <div className="text-xs text-blue-200">
                 {currentTime.toLocaleDateString('pt-BR')}
               </div>
-              <div className="text-lg font-semibold">
+              <div className="text-sm md:text-lg font-semibold text-white">
                 {currentTime.toLocaleTimeString('pt-BR')}
               </div>
             </div>
@@ -702,182 +685,185 @@ const Totem = () => {
       </div>
 
       {/* Status Geral */}
-      <div className="container mx-auto mb-8">
-        <div className="grid grid-cols-3 gap-4 text-center">
-          <div className="space-y-2">
-            <div className="text-2xl font-bold text-green-600">
+      <div className="container mx-auto mb-4 md:mb-6">
+        <div className="grid grid-cols-3 gap-2 md:gap-4 text-center">
+          <div className="space-y-1 bg-white/10 rounded-lg p-2 md:p-3">
+            <div className="text-lg md:text-2xl font-bold text-green-400">
               {machines.filter(m => m.status === "available").length}
             </div>
-            <div className="text-sm text-muted-foreground">Disponíveis</div>
+            <div className="text-xs md:text-sm text-blue-200">Disponíveis</div>
           </div>
-          <div className="space-y-2">
-            <div className="text-2xl font-bold text-blue-600">
+          <div className="space-y-1 bg-white/10 rounded-lg p-2 md:p-3">
+            <div className="text-lg md:text-2xl font-bold text-blue-300">
               {machines.filter(m => m.status === "running").length}
             </div>
-            <div className="text-sm text-muted-foreground">Em Uso</div>
+            <div className="text-xs md:text-sm text-blue-200">Em Uso</div>
           </div>
-          <div className="space-y-2">
-            <div className="text-2xl font-bold text-red-600">
+          <div className="space-y-1 bg-white/10 rounded-lg p-2 md:p-3">
+            <div className="text-lg md:text-2xl font-bold text-red-300">
               {machines.filter(m => m.status === "maintenance").length}
             </div>
-            <div className="text-sm text-muted-foreground">Manutenção</div>
+            <div className="text-xs md:text-sm text-blue-200">Manutenção</div>
           </div>
         </div>
       </div>
 
       {/* Grid de Máquinas */}
       <div className="container mx-auto">
-        {/* Lavadoras */}
-        <div className="mb-12">
-          <div className="flex items-center justify-center mb-8 space-x-3">
-            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-              <Droplets className="text-blue-600" size={24} />
-            </div>
-            <h2 className="text-2xl font-bold text-center">
-              Lavadoras
-            </h2>
-          </div>
+        {/* Layout responsivo com altura fixa para totem */}
+        <div className="grid grid-rows-2 gap-4 md:gap-6 h-[60vh] md:h-[65vh]">
           
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-            {machines.filter(machine => machine.type === "lavadora").map(machine => {
-            const IconComponent = machine.icon;
-            const isAvailable = machine.status === "available";
-            return <Card key={machine.id} className={`relative overflow-hidden transition-all duration-300 cursor-pointer ${isAvailable ? 'hover:shadow-glow hover:scale-105' : 'opacity-60 cursor-not-allowed'}`} onClick={() => handleMachineSelect(machine.id)}>
-                  {/* Status Badge */}
-                  <div className="absolute top-4 right-4">
-                    <div className={`w-3 h-3 rounded-full ${getStatusColor(machine.status)}`}></div>
-                  </div>
-
-                  <CardHeader className="text-center">
-                    <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <IconComponent className="text-blue-600" size={32} />
-                    </div>
-                    <CardTitle className="text-lg">{machine.title}</CardTitle>
-                  </CardHeader>
-
-                  <CardContent className="space-y-4">
-                    <div className="text-center">
-                      <div className="flex items-center justify-center space-x-2 mb-2">
-                        <span className="text-2xl font-bold text-primary">
-                          R$ {machine.price.toFixed(2).replace('.', ',')}
-                        </span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        <Clock className="inline mr-1" size={14} />
-                        {machine.duration} minutos
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <Badge variant={machine.status === "available" ? "default" : "secondary"} className={machine.status === "available" ? "bg-green-100 text-green-800" : machine.status === "running" ? "bg-blue-100 text-blue-800" : "bg-red-100 text-red-800"}>
-                        {getStatusText(machine.status)}
-                      </Badge>
-                      
-                      {machine.status === "running" && machine.timeRemaining && <div className="flex items-center text-sm text-muted-foreground">
-                          <Timer size={14} className="mr-1" />
-                          {machine.timeRemaining}min
-                        </div>}
-                    </div>
-
-                    {machine.status === "running" && machine.timeRemaining && <div className="space-y-1">
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>Progresso</span>
-                          <span>{Math.round((machine.duration - machine.timeRemaining) / machine.duration * 100)}%</span>
-                        </div>
-                        <Progress value={(machine.duration - machine.timeRemaining) / machine.duration * 100} className="h-2" />
-                      </div>}
-
-                    {isAvailable && <Button variant="fresh" className="w-full">
-                        Selecionar
-                      </Button>}
-                  </CardContent>
-                </Card>;
-          })}
-          </div>
-        </div>
-
-        {/* Secadoras */}
-        <div>
-          <div className="flex items-center justify-center mb-8 space-x-3">
-            <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
-              <Wind className="text-orange-600" size={24} />
+          {/* Lavadoras - Superior */}
+          <div className="overflow-hidden">
+            <div className="flex items-center justify-center mb-2 md:mb-4 space-x-2">
+              <div className="w-6 h-6 md:w-8 md:h-8 bg-blue-300 rounded-full flex items-center justify-center">
+                <Droplets className="text-blue-800" size={16} />
+              </div>
+              <h2 className="text-lg md:text-xl font-bold text-white">
+                Lavadoras
+              </h2>
             </div>
-            <h2 className="text-2xl font-bold text-center">
-              Secadoras
-            </h2>
-          </div>
-          
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-            {machines.filter(machine => machine.type === "secadora").map(machine => {
-            const IconComponent = machine.icon;
-            const isAvailable = machine.status === "available";
-            return <Card key={machine.id} className={`relative overflow-hidden transition-all duration-300 cursor-pointer ${isAvailable ? 'hover:shadow-glow hover:scale-105' : 'opacity-60 cursor-not-allowed'}`} onClick={() => handleMachineSelect(machine.id)}>
-                  {/* Status Badge */}
-                  <div className="absolute top-4 right-4">
-                    <div className={`w-3 h-3 rounded-full ${getStatusColor(machine.status)}`}></div>
-                  </div>
-
-                  <CardHeader className="text-center">
-                    <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <IconComponent className="text-orange-600" size={32} />
+            
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 md:gap-3 h-full overflow-y-auto">
+              {machines.filter(machine => machine.type === "lavadora").map(machine => {
+                const IconComponent = machine.icon;
+                const isAvailable = machine.status === "available";
+                return <Card key={machine.id} className={`relative overflow-hidden transition-all duration-300 cursor-pointer bg-white/95 hover:bg-white ${isAvailable ? 'hover:shadow-lg hover:scale-105' : 'opacity-60 cursor-not-allowed'} h-fit`} onClick={() => handleMachineSelect(machine.id)}>
+                    {/* Status Badge */}
+                    <div className="absolute top-2 right-2">
+                      <div className={`w-2 h-2 md:w-3 md:h-3 rounded-full ${getStatusColor(machine.status)}`}></div>
                     </div>
-                    <CardTitle className="text-lg">{machine.title}</CardTitle>
-                  </CardHeader>
 
-                  <CardContent className="space-y-4">
-                    <div className="text-center">
-                      <div className="flex items-center justify-center space-x-2 mb-2">
-                        <span className="text-2xl font-bold text-primary">
-                          R$ {machine.price.toFixed(2).replace('.', ',')}
-                        </span>
+                    <CardHeader className="text-center p-2 md:p-4">
+                      <div className="w-8 h-8 md:w-12 md:h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-1 md:mb-2">
+                        <IconComponent className="text-blue-600" size={16} />
                       </div>
-                      <p className="text-sm text-muted-foreground">
-                        <Clock className="inline mr-1" size={14} />
-                        {machine.duration} minutos
-                      </p>
-                    </div>
+                      <CardTitle className="text-xs md:text-sm">{machine.title}</CardTitle>
+                    </CardHeader>
 
-                    <div className="flex items-center justify-between">
-                      <Badge variant={machine.status === "available" ? "default" : "secondary"} className={machine.status === "available" ? "bg-green-100 text-green-800" : machine.status === "running" ? "bg-blue-100 text-blue-800" : "bg-red-100 text-red-800"}>
-                        {getStatusText(machine.status)}
-                      </Badge>
-                      
-                      {machine.status === "running" && machine.timeRemaining && <div className="flex items-center text-sm text-muted-foreground">
-                          <Timer size={14} className="mr-1" />
-                          {machine.timeRemaining}min
-                        </div>}
-                    </div>
-
-                    {machine.status === "running" && machine.timeRemaining && <div className="space-y-1">
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>Progresso</span>
-                          <span>{Math.round((machine.duration - machine.timeRemaining) / machine.duration * 100)}%</span>
+                    <CardContent className="space-y-2 p-2 md:p-4 pt-0">
+                      <div className="text-center">
+                        <div className="flex items-center justify-center space-x-1 mb-1">
+                          <span className="text-sm md:text-lg font-bold text-primary">
+                            R$ {machine.price.toFixed(2).replace('.', ',')}
+                          </span>
                         </div>
-                        <Progress value={(machine.duration - machine.timeRemaining) / machine.duration * 100} className="h-2" />
-                      </div>}
+                        <p className="text-xs text-muted-foreground">
+                          <Clock className="inline mr-1" size={10} />
+                          {machine.duration}min
+                        </p>
+                      </div>
 
-                    {isAvailable && <Button variant="fresh" className="w-full">
-                        Selecionar
-                      </Button>}
-                  </CardContent>
-                </Card>;
-          })}
+                      <div className="flex items-center justify-center">
+                        <Badge variant={machine.status === "available" ? "default" : "secondary"} className={`text-xs ${machine.status === "available" ? "bg-green-100 text-green-800" : machine.status === "running" ? "bg-blue-100 text-blue-800" : "bg-red-100 text-red-800"}`}>
+                          {getStatusText(machine.status)}
+                        </Badge>
+                      </div>
+
+                      {machine.status === "running" && machine.timeRemaining && (
+                        <div className="space-y-1">
+                          <Progress value={(machine.duration - machine.timeRemaining) / machine.duration * 100} className="h-1" />
+                          <div className="text-center text-xs text-muted-foreground">
+                            {machine.timeRemaining}min
+                          </div>
+                        </div>
+                      )}
+
+                      {isAvailable && <Button variant="fresh" size="sm" className="w-full text-xs">
+                          Selecionar
+                        </Button>}
+                    </CardContent>
+                  </Card>;
+              })}
+            </div>
+          </div>
+
+          {/* Secadoras - Inferior */}
+          <div className="overflow-hidden">
+            <div className="flex items-center justify-center mb-2 md:mb-4 space-x-2">
+              <div className="w-6 h-6 md:w-8 md:h-8 bg-orange-300 rounded-full flex items-center justify-center">
+                <Wind className="text-orange-800" size={16} />
+              </div>
+              <h2 className="text-lg md:text-xl font-bold text-white">
+                Secadoras
+              </h2>
+            </div>
+            
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2 md:gap-3 h-full overflow-y-auto">
+              {machines.filter(machine => machine.type === "secadora").map(machine => {
+                const IconComponent = machine.icon;
+                const isAvailable = machine.status === "available";
+                return <Card key={machine.id} className={`relative overflow-hidden transition-all duration-300 cursor-pointer bg-white/95 hover:bg-white ${isAvailable ? 'hover:shadow-lg hover:scale-105' : 'opacity-60 cursor-not-allowed'} h-fit`} onClick={() => handleMachineSelect(machine.id)}>
+                    {/* Status Badge */}
+                    <div className="absolute top-2 right-2">
+                      <div className={`w-2 h-2 md:w-3 md:h-3 rounded-full ${getStatusColor(machine.status)}`}></div>
+                    </div>
+
+                    <CardHeader className="text-center p-2 md:p-4">
+                      <div className="w-8 h-8 md:w-12 md:h-12 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-1 md:mb-2">
+                        <IconComponent className="text-orange-600" size={16} />
+                      </div>
+                      <CardTitle className="text-xs md:text-sm">{machine.title}</CardTitle>
+                    </CardHeader>
+
+                    <CardContent className="space-y-2 p-2 md:p-4 pt-0">
+                      <div className="text-center">
+                        <div className="flex items-center justify-center space-x-1 mb-1">
+                          <span className="text-sm md:text-lg font-bold text-primary">
+                            R$ {machine.price.toFixed(2).replace('.', ',')}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          <Clock className="inline mr-1" size={10} />
+                          {machine.duration}min
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-center">
+                        <Badge variant={machine.status === "available" ? "default" : "secondary"} className={`text-xs ${machine.status === "available" ? "bg-green-100 text-green-800" : machine.status === "running" ? "bg-blue-100 text-blue-800" : "bg-red-100 text-red-800"}`}>
+                          {getStatusText(machine.status)}
+                        </Badge>
+                      </div>
+
+                      {machine.status === "running" && machine.timeRemaining && (
+                        <div className="space-y-1">
+                          <Progress value={(machine.duration - machine.timeRemaining) / machine.duration * 100} className="h-1" />
+                          <div className="text-center text-xs text-muted-foreground">
+                            {machine.timeRemaining}min
+                          </div>
+                        </div>
+                      )}
+
+                      {isAvailable && <Button variant="fresh" size="sm" className="w-full text-xs">
+                          Selecionar
+                        </Button>}
+                    </CardContent>
+                  </Card>;
+              })}
+            </div>
           </div>
         </div>
       </div>
 
       {/* Footer */}
-      <div className="container mx-auto mt-12 text-center">
-        <div className="flex items-center justify-center space-x-2 text-muted-foreground">
-          <Wifi size={16} />
-          <span className="text-sm cursor-pointer select-none" onClick={handleAdminAccess}>
+      <div className="container mx-auto mt-4 text-center">
+        <div className="flex items-center justify-center space-x-2 text-blue-200">
+          <Wifi size={14} />
+          <span className="text-xs cursor-pointer select-none" onClick={handleAdminAccess}>
             Sistema Online - Suporte: (11) 9999-9999
           </span>
         </div>
       </div>
 
       {/* Admin Access Dialog */}
-      <AdminPinDialog open={showAdminDialog} onOpenChange={setShowAdminDialog} onAuthenticate={handleAdminAuthenticate} title="Acesso Administrativo" description="Desativar temporariamente as medidas de segurança do kiosk" />
+      <AdminPinDialog 
+        open={showAdminDialog} 
+        onOpenChange={setShowAdminDialog} 
+        onAuthenticate={handleAdminAuthenticate} 
+        title="Acesso Administrativo" 
+        description="Desativar temporariamente as medidas de segurança do kiosk" 
+      />
     </div>;
 };
+
 export default Totem;
