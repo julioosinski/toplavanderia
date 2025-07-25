@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { Droplets, Wind, Clock, CreditCard, Wifi, CheckCircle, XCircle, Timer, Sparkles, DollarSign, Shield, Maximize, Loader2 } from "lucide-react";
+import { Droplets, Wind, Clock, CreditCard, Wifi, CheckCircle, XCircle, Timer, Sparkles, DollarSign, Shield, Maximize, Loader2, QrCode } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useKioskSecurity } from "@/hooks/useKioskSecurity";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
@@ -13,6 +13,8 @@ import { useTEFIntegration } from "@/hooks/useTEFIntegration";
 import { useCapacitorIntegration } from "@/hooks/useCapacitorIntegration";
 import { EnhancedPayGOAdmin } from '@/components/admin/EnhancedPayGOAdmin';
 import { usePayGOIntegration, PayGOConfig } from '@/hooks/usePayGOIntegration';
+import { usePixPayment } from '@/hooks/usePixPayment';
+import { PixQRDisplay } from '@/components/payment/PixQRDisplay';
 import { DEFAULT_PAYGO_CONFIG } from '@/lib/paygoUtils';
 import { SecureTEFConfig } from "@/components/admin/SecureTEFConfig";
 import { AdminPinDialog } from "@/components/admin/AdminPinDialog";
@@ -28,15 +30,16 @@ const TEF_CONFIG = {
 };
 const Totem = () => {
   const [selectedMachine, setSelectedMachine] = useState<string | null>(null);
-  const [paymentStep, setPaymentStep] = useState<"select" | "payment" | "processing" | "success" | "error">("select");
+  const [paymentStep, setPaymentStep] = useState<"select" | "payment" | "processing" | "success" | "error" | "pix_qr">("select");
   const [currentTime, setCurrentTime] = useState(new Date());
   const [tefConfig, setTefConfig] = useState(TEF_CONFIG);
   const [paygoConfig, setPaygoConfig] = useState<PayGOConfig>({ ...DEFAULT_PAYGO_CONFIG, cnpjCpf: '12.345.678/0001-00' });
-  const [paymentSystem, setPaymentSystem] = useState<'TEF' | 'PAYGO'>('PAYGO');
+  const [paymentSystem, setPaymentSystem] = useState<'TEF' | 'PAYGO' | 'PIX'>('PAYGO');
   const [showConfig, setShowConfig] = useState(false);
   const [transactionData, setTransactionData] = useState<any>(null);
   const [showAdminDialog, setShowAdminDialog] = useState(false);
   const [adminClickCount, setAdminClickCount] = useState(0);
+  const [pixPaymentData, setPixPaymentData] = useState<any>(null);
   const {
     toast
   } = useToast();
@@ -76,9 +79,22 @@ const Totem = () => {
     status: paygoStatus,
     isProcessing: paygoProcessing,
     processPayGOPayment,
+    processPixPayment,
+    checkPixPaymentStatus,
     cancelTransaction: cancelPayGOTransaction,
     testConnection: testPayGOConnection
   } = usePayGOIntegration(paygoConfig);
+
+  const {
+    generatePixQR,
+    startPixPolling,
+    cancelPixPayment,
+    currentPayment: pixCurrentPayment,
+    isGeneratingQR,
+    isPolling: pixPolling,
+    timeRemaining: pixTimeRemaining,
+    formatTime: formatPixTime,
+  } = usePixPayment(paygoConfig);
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
@@ -261,6 +277,87 @@ const Totem = () => {
       });
     }
   };
+
+  // Função principal de pagamento via Pix
+  const handlePixPayment = async () => {
+    const machine = machines.find(m => m.id === selectedMachine);
+    if (!machine) return;
+    
+    setPaymentStep("processing");
+    setPaymentSystem('PIX');
+    
+    try {
+      // Preparar dados da transação Pix
+      const pixData = {
+        amount: machine.price,
+        orderId: generateReceiptNumber()
+      };
+
+      console.log("Iniciando transação Pix:", pixData);
+
+      // Gerar QR Code Pix
+      const result = await generatePixQR(pixData);
+
+      if (result.success && result.qrCode) {
+        // QR Code gerado com sucesso
+        setPixPaymentData({
+          ...result,
+          amount: machine.price,
+          orderId: pixData.orderId,
+        });
+        setPaymentStep("pix_qr");
+
+        // Iniciar polling para verificar pagamento
+        startPixPolling(pixData.orderId, async (status) => {
+          if (status.status === 'paid') {
+            setTransactionData({
+              success: true,
+              nsu: status.transactionId,
+              transactionId: status.transactionId,
+              amount: status.amount,
+            });
+            setPaymentStep("success");
+            await activateMachine('PIX');
+            toast({
+              title: "Pagamento Pix Confirmado!",
+              description: `Transação realizada com sucesso.`,
+            });
+          } else if (status.status === 'expired') {
+            setPaymentStep("error");
+            toast({
+              title: "QR Code Expirado",
+              description: "O tempo limite para pagamento foi atingido.",
+              variant: "destructive",
+            });
+          } else if (status.status === 'cancelled') {
+            setPaymentStep("error");
+            toast({
+              title: "Pagamento Cancelado",
+              description: "A transação Pix foi cancelada.",
+              variant: "destructive",
+            });
+          }
+        });
+      } else {
+        // Falha ao gerar QR Code
+        setPaymentStep("error");
+        toast({
+          title: "Erro no Pix",
+          description: result.errorMessage || "Falha ao gerar QR Code",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Erro crítico na transação Pix:", error);
+      setPaymentStep("error");
+      toast({
+        title: "Erro Crítico",
+        description: "Falha grave no sistema de pagamento Pix. Contacte o suporte.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const activateMachine = async (paymentMethod: string = 'TEF') => {
     const machine = machines.find(m => m.id === selectedMachine);
     if (!machine) return;
@@ -305,6 +402,7 @@ const Totem = () => {
     setSelectedMachine(null);
     setPaymentStep("select");
     setTransactionData(null);
+    setPixPaymentData(null);
   };
 
   // Função para acesso administrativo oculto
@@ -408,6 +506,37 @@ const Totem = () => {
       </div>;
   }
 
+  // Tela de QR Code Pix
+  if (paymentStep === "pix_qr" && pixPaymentData) {
+    const handleCancelPix = async () => {
+      try {
+        await cancelPixPayment(pixPaymentData.orderId);
+        resetTotem();
+      } catch (error) {
+        console.error("Erro ao cancelar Pix:", error);
+        resetTotem();
+      }
+    };
+
+    const handleCopyCode = () => {
+      // Additional feedback for copied code
+      console.log("Código Pix copiado:", pixPaymentData.qrCode);
+    };
+
+    return (
+      <PixQRDisplay
+        qrCode={pixPaymentData.qrCode}
+        qrCodeBase64={pixPaymentData.qrCodeBase64}
+        pixKey={pixPaymentData.pixKey}
+        amount={pixPaymentData.amount}
+        timeRemaining={pixTimeRemaining}
+        totalTime={pixPaymentData.expiresIn || 300}
+        onCancel={handleCancelPix}
+        onCopyCode={handleCopyCode}
+      />
+    );
+  }
+
   // Tela de sucesso
   if (paymentStep === "success") {
     const machine = machines.find(m => m.id === selectedMachine);
@@ -492,9 +621,21 @@ const Totem = () => {
                 <CreditCard className="mr-3" />
                 Cartão TEF {tefStatus.isOnline ? '' : '(Offline)'}
               </Button>
+
+              {/* Pix Payment Option */}
+              <Button 
+                onClick={handlePixPayment} 
+                variant="secondary" 
+                size="lg" 
+                className="w-full justify-start"
+                disabled={!paygoStatus.online}
+              >
+                <QrCode className="mr-3" />
+                Pix {paygoStatus.online ? '' : '(Offline)'}
+              </Button>
               
               <p className="text-xs text-muted-foreground text-center">
-                Passe ou insira seu cartão na maquininha para efetuar o pagamento
+                Escolha a forma de pagamento: cartão na maquininha ou QR Code Pix
               </p>
             </div>
 

@@ -16,6 +16,12 @@ export interface PayGOTransaction {
   installments?: number;
   paymentType?: 'CREDIT' | 'DEBIT' | 'PIX';
   orderId?: string;
+  pixData?: {
+    qrCode?: string;
+    qrCodeBase64?: string;
+    pixKey?: string;
+    expiresIn?: number;
+  };
 }
 
 export interface PayGOResponse {
@@ -28,6 +34,11 @@ export interface PayGOResponse {
   authorizationCode?: string;
   nsu?: string;
   errorMessage?: string;
+  // Pix-specific fields
+  qrCode?: string;
+  qrCodeBase64?: string;
+  pixKey?: string;
+  expiresIn?: number;
 }
 
 export interface PayGOStatus {
@@ -227,12 +238,100 @@ export const usePayGOIntegration = (config: PayGOConfig) => {
     }
   }, [config]);
 
+  const processPixPayment = useCallback(async (
+    transaction: PayGOTransaction
+  ): Promise<PayGOResponse> => {
+    setIsProcessing(true);
+
+    try {
+      const response = await fetch(`http://${config.host}:${config.port}/pix/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Automation-Key': config.automationKey,
+        },
+        body: JSON.stringify({
+          amount: Math.round(transaction.amount * 100), // Convert to cents
+          orderId: transaction.orderId || Date.now().toString(),
+          expiresIn: 300, // 5 minutes
+        }),
+        signal: AbortSignal.timeout(config.timeout),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        return {
+          success: true,
+          resultCode: 0,
+          resultMessage: "QR Code Pix gerado com sucesso",
+          transactionId: result.transactionId,
+          qrCode: result.qrCode,
+          qrCodeBase64: result.qrCodeBase64,
+          pixKey: result.pixKey,
+          expiresIn: result.expiresIn,
+        };
+      } else {
+        setIsProcessing(false);
+        return {
+          success: false,
+          resultCode: -1,
+          resultMessage: result.message || "Falha ao gerar QR Code Pix",
+          errorMessage: result.message,
+        };
+      }
+    } catch (error) {
+      setIsProcessing(false);
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      
+      return {
+        success: false,
+        resultCode: -1,
+        resultMessage: errorMessage,
+        errorMessage,
+      };
+    }
+  }, [config]);
+
+  const checkPixPaymentStatus = useCallback(async (orderId: string): Promise<PayGOResponse> => {
+    try {
+      const response = await fetch(`http://${config.host}:${config.port}/pix/status/${orderId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Automation-Key': config.automationKey,
+        },
+        signal: AbortSignal.timeout(config.timeout),
+      });
+
+      const result = await response.json();
+      
+      return {
+        success: result.status === 'paid',
+        resultCode: result.status === 'paid' ? 0 : 1,
+        resultMessage: result.message || `Status: ${result.status}`,
+        transactionId: result.transactionId,
+        nsu: result.nsu,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      return {
+        success: false,
+        resultCode: -1,
+        resultMessage: errorMessage,
+        errorMessage,
+      };
+    }
+  }, [config]);
+
   return {
     status,
     isProcessing,
     checkPayGOStatus,
     initializePayGO,
     processPayGOPayment,
+    processPixPayment,
+    checkPixPaymentStatus,
     cancelTransaction,
     testConnection,
   };
