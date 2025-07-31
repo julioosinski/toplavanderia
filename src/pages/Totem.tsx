@@ -635,12 +635,12 @@ const Totem = () => {
   }
 
   // Tela principal
-  return <div className="min-h-screen bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 p-3">
+  return <div className="min-h-screen bg-white p-3">
       {/* Header Compacto */}
       <div className="container mx-auto mb-6">
-        <div className="flex items-center justify-between bg-white/10 backdrop-blur-sm rounded-xl p-3 shadow-lg">
+        <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-3 shadow-lg">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-gradient-to-r from-white/20 to-white/30 rounded-full flex items-center justify-center">
+            <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
               <Sparkles className="text-white" size={20} />
             </div>
             <div>
@@ -683,7 +683,7 @@ const Totem = () => {
               <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
                 <Droplets className="text-blue-600" size={20} />
               </div>
-              <h2 className="text-2xl font-bold text-white">Lavadoras</h2>
+              <h2 className="text-2xl font-bold text-blue-600">Lavadoras</h2>
             </div>
             
             <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
@@ -758,7 +758,7 @@ const Totem = () => {
               <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
                 <Wind className="text-orange-600" size={20} />
               </div>
-              <h2 className="text-2xl font-bold text-white">Secadoras</h2>
+              <h2 className="text-2xl font-bold text-orange-600">Secadoras</h2>
             </div>
             
             <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
@@ -831,7 +831,7 @@ const Totem = () => {
 
       {/* Footer */}
       <div className="container mx-auto mt-4 text-center">
-        <div className="flex items-center justify-center space-x-2 text-blue-200">
+        <div className="flex items-center justify-center space-x-2 text-gray-500">
           <Wifi size={14} />
           <span className="text-xs cursor-pointer select-none" onClick={handleAdminAccess}>
             Sistema Online - Suporte: (11) 9999-9999
