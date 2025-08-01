@@ -635,27 +635,27 @@ const Totem = () => {
   }
 
   // Tela principal
-  return <div className="min-h-screen bg-white p-3">
+  return <div className="h-screen bg-white flex flex-col overflow-hidden">
       {/* Header Compacto */}
-      <div className="container mx-auto mb-6">
-        <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-3 shadow-lg">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
-              <Sparkles className="text-white" size={20} />
+      <div className="container mx-auto px-2 py-2">
+        <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg p-2 shadow-lg">
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+              <Sparkles className="text-white" size={16} />
             </div>
             <div>
-              <h1 className="text-xl md:text-2xl font-bold text-white">Top Lavanderia</h1>
-              <p className="text-blue-100 text-sm">Sistema Automatizado</p>
+              <h1 className="text-lg font-bold text-white">Top Lavanderia</h1>
+              <p className="text-blue-100 text-xs">Sistema Automatizado</p>
             </div>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2">
             {/* Indicador PayGO */}
-            <div className={`flex items-center space-x-2 rounded-lg px-3 py-1.5 ${
+            <div className={`flex items-center space-x-1 rounded px-2 py-1 ${
               paygoStatus.online 
                 ? 'text-green-700 bg-green-100/90' 
                 : 'text-red-700 bg-red-100/90'
             }`}>
-              <CreditCard size={14} />
+              <CreditCard size={12} />
               <span className="text-xs font-medium">
                 {paygoStatus.online ? 'Online' : 'Offline'}
               </span>
@@ -673,20 +673,20 @@ const Totem = () => {
         </div>
       </div>
 
-      {/* Grid de Máquinas - Tela Cheia */}
-      <div className="container mx-auto">
-        <div className="space-y-12">
+      {/* Grid de Máquinas - Otimizado para não precisar scroll */}
+      <div className="container mx-auto px-2 flex-1 flex flex-col">
+        <div className="flex-1 grid grid-rows-2 gap-3">
           
           {/* Lavadoras */}
-          <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-2xl p-6 shadow-lg">
-            <div className="flex items-center justify-center mb-6 space-x-3">
-              <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center shadow-lg">
-                <Droplets className="text-white" size={24} />
+          <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl p-3 shadow-lg flex flex-col">
+            <div className="flex items-center justify-center mb-3 space-x-2">
+              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center shadow-lg">
+                <Droplets className="text-white" size={16} />
               </div>
-              <h2 className="text-3xl font-bold text-blue-700">Lavadoras</h2>
+              <h2 className="text-xl font-bold text-blue-700">Lavadoras</h2>
             </div>
             
-            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
+            <div className="flex-1 grid grid-cols-6 gap-3">
               {[...machines.filter(machine => machine.type === "lavadora"), 
                 // Adicionar máquinas fallback se não houver suficientes no banco
                 ...Array.from({ length: Math.max(0, 3 - machines.filter(m => m.type === "lavadora").length) }, (_, i) => ({
@@ -702,49 +702,49 @@ const Totem = () => {
               ].slice(0, 6).map(machine => {
                 const IconComponent = machine.icon;
                 const isAvailable = machine.status === "available";
-                return <Card key={machine.id} className={`relative overflow-hidden transition-all duration-300 cursor-pointer bg-white ${isAvailable ? 'hover:shadow-2xl hover:scale-105 border-2 border-blue-200 hover:border-blue-400' : 'opacity-70 cursor-not-allowed border-2 border-gray-200'} shadow-xl rounded-xl`} onClick={() => handleMachineSelect(machine.id)}>
+                return <Card key={machine.id} className={`relative overflow-hidden transition-all duration-300 cursor-pointer bg-white ${isAvailable ? 'hover:shadow-lg hover:scale-105 border border-blue-200 hover:border-blue-400' : 'opacity-70 cursor-not-allowed border border-gray-200'} shadow-md rounded-lg h-full flex flex-col`} onClick={() => handleMachineSelect(machine.id)}>
                     {/* Status Badge */}
-                    <div className="absolute top-3 right-3 z-10">
-                      <div className={`w-4 h-4 rounded-full ${getStatusColor(machine.status)} shadow-lg border-2 border-white`}></div>
+                    <div className="absolute top-2 right-2 z-10">
+                      <div className={`w-3 h-3 rounded-full ${getStatusColor(machine.status)} shadow border border-white`}></div>
                     </div>
 
-                    <CardHeader className="text-center p-5 pb-3">
-                      <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-3 shadow-lg">
-                        <IconComponent className="text-white" size={28} />
+                    <CardHeader className="text-center p-2 pb-1 flex-shrink-0">
+                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-1 shadow">
+                        <IconComponent className="text-white" size={16} />
                       </div>
-                      <CardTitle className="text-base font-bold text-gray-800">{machine.title}</CardTitle>
+                      <CardTitle className="text-xs font-bold text-gray-800 leading-tight">{machine.title}</CardTitle>
                     </CardHeader>
 
-                    <CardContent className="space-y-4 p-5 pt-0">
-                      <div className="text-center">
-                        <div className="flex items-center justify-center space-x-1 mb-2">
-                          <span className="text-2xl font-bold text-blue-600">
+                    <CardContent className="flex-1 p-2 pt-0 flex flex-col justify-between">
+                      <div className="text-center mb-2">
+                        <div className="flex items-center justify-center space-x-1 mb-1">
+                          <span className="text-sm font-bold text-blue-600">
                             R$ {machine.price.toFixed(2).replace('.', ',')}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-600 flex items-center justify-center font-medium">
-                          <Clock className="mr-1" size={14} />
-                          {machine.duration} minutos
+                        <p className="text-xs text-gray-600 flex items-center justify-center">
+                          <Clock className="mr-1" size={10} />
+                          {machine.duration}min
                         </p>
                       </div>
 
-                      <div className="flex items-center justify-center">
-                        <Badge variant={machine.status === "available" ? "default" : "secondary"} className={`text-sm font-semibold px-3 py-1 ${machine.status === "available" ? "bg-green-100 text-green-700 border-green-300" : machine.status === "running" ? "bg-blue-100 text-blue-700 border-blue-300" : "bg-red-100 text-red-700 border-red-300"}`}>
+                      <div className="flex items-center justify-center mb-2">
+                        <Badge variant={machine.status === "available" ? "default" : "secondary"} className={`text-xs px-2 py-0.5 ${machine.status === "available" ? "bg-green-100 text-green-700" : machine.status === "running" ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-700"}`}>
                           {getStatusText(machine.status)}
                         </Badge>
                       </div>
 
                       {machine.status === "running" && machine.timeRemaining && (
-                        <div className="space-y-2">
-                          <Progress value={(machine.duration - machine.timeRemaining) / machine.duration * 100} className="h-2" />
-                          <div className="text-center text-sm text-gray-600 font-medium">
-                            {machine.timeRemaining}min restantes
+                        <div className="space-y-1 mb-2">
+                          <Progress value={(machine.duration - machine.timeRemaining) / machine.duration * 100} className="h-1" />
+                          <div className="text-center text-xs text-gray-600">
+                            {machine.timeRemaining}min
                           </div>
                         </div>
                       )}
 
-                      {isAvailable && <Button variant="default" size="lg" className="w-full text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-lg">
-                          Selecionar Máquina
+                      {isAvailable && <Button variant="default" size="sm" className="w-full text-xs bg-blue-600 hover:bg-blue-700 text-white h-6">
+                          Selecionar
                         </Button>}
                     </CardContent>
                   </Card>;
@@ -753,15 +753,15 @@ const Totem = () => {
           </div>
 
           {/* Secadoras */}
-          <div className="bg-gradient-to-r from-orange-50 to-orange-100 rounded-2xl p-6 shadow-lg">
-            <div className="flex items-center justify-center mb-6 space-x-3">
-              <div className="w-12 h-12 bg-orange-600 rounded-full flex items-center justify-center shadow-lg">
-                <Wind className="text-white" size={24} />
+          <div className="bg-gradient-to-r from-orange-50 to-orange-100 rounded-xl p-3 shadow-lg flex flex-col">
+            <div className="flex items-center justify-center mb-3 space-x-2">
+              <div className="w-8 h-8 bg-orange-600 rounded-full flex items-center justify-center shadow-lg">
+                <Wind className="text-white" size={16} />
               </div>
-              <h2 className="text-3xl font-bold text-orange-700">Secadoras</h2>
+              <h2 className="text-xl font-bold text-orange-700">Secadoras</h2>
             </div>
             
-            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
+            <div className="flex-1 grid grid-cols-6 gap-3">
               {[...machines.filter(machine => machine.type === "secadora"),
                 // Adicionar máquinas fallback se não houver suficientes no banco
                 ...Array.from({ length: Math.max(0, 3 - machines.filter(m => m.type === "secadora").length) }, (_, i) => ({
@@ -777,49 +777,49 @@ const Totem = () => {
               ].slice(0, 6).map(machine => {
                 const IconComponent = machine.icon;
                 const isAvailable = machine.status === "available";
-                return <Card key={machine.id} className={`relative overflow-hidden transition-all duration-300 cursor-pointer bg-white ${isAvailable ? 'hover:shadow-2xl hover:scale-105 border-2 border-orange-200 hover:border-orange-400' : 'opacity-70 cursor-not-allowed border-2 border-gray-200'} shadow-xl rounded-xl`} onClick={() => handleMachineSelect(machine.id)}>
+                return <Card key={machine.id} className={`relative overflow-hidden transition-all duration-300 cursor-pointer bg-white ${isAvailable ? 'hover:shadow-lg hover:scale-105 border border-orange-200 hover:border-orange-400' : 'opacity-70 cursor-not-allowed border border-gray-200'} shadow-md rounded-lg h-full flex flex-col`} onClick={() => handleMachineSelect(machine.id)}>
                     {/* Status Badge */}
-                    <div className="absolute top-3 right-3 z-10">
-                      <div className={`w-4 h-4 rounded-full ${getStatusColor(machine.status)} shadow-lg border-2 border-white`}></div>
+                    <div className="absolute top-2 right-2 z-10">
+                      <div className={`w-3 h-3 rounded-full ${getStatusColor(machine.status)} shadow border border-white`}></div>
                     </div>
 
-                    <CardHeader className="text-center p-5 pb-3">
-                      <div className="w-16 h-16 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center mx-auto mb-3 shadow-lg">
-                        <IconComponent className="text-white" size={28} />
+                    <CardHeader className="text-center p-2 pb-1 flex-shrink-0">
+                      <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center mx-auto mb-1 shadow">
+                        <IconComponent className="text-white" size={16} />
                       </div>
-                      <CardTitle className="text-base font-bold text-gray-800">{machine.title}</CardTitle>
+                      <CardTitle className="text-xs font-bold text-gray-800 leading-tight">{machine.title}</CardTitle>
                     </CardHeader>
 
-                    <CardContent className="space-y-4 p-5 pt-0">
-                      <div className="text-center">
-                        <div className="flex items-center justify-center space-x-1 mb-2">
-                          <span className="text-2xl font-bold text-orange-600">
+                    <CardContent className="flex-1 p-2 pt-0 flex flex-col justify-between">
+                      <div className="text-center mb-2">
+                        <div className="flex items-center justify-center space-x-1 mb-1">
+                          <span className="text-sm font-bold text-orange-600">
                             R$ {machine.price.toFixed(2).replace('.', ',')}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-600 flex items-center justify-center font-medium">
-                          <Clock className="mr-1" size={14} />
-                          {machine.duration} minutos
+                        <p className="text-xs text-gray-600 flex items-center justify-center">
+                          <Clock className="mr-1" size={10} />
+                          {machine.duration}min
                         </p>
                       </div>
 
-                      <div className="flex items-center justify-center">
-                        <Badge variant={machine.status === "available" ? "default" : "secondary"} className={`text-sm font-semibold px-3 py-1 ${machine.status === "available" ? "bg-green-100 text-green-700 border-green-300" : machine.status === "running" ? "bg-blue-100 text-blue-700 border-blue-300" : "bg-red-100 text-red-700 border-red-300"}`}>
+                      <div className="flex items-center justify-center mb-2">
+                        <Badge variant={machine.status === "available" ? "default" : "secondary"} className={`text-xs px-2 py-0.5 ${machine.status === "available" ? "bg-green-100 text-green-700" : machine.status === "running" ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-700"}`}>
                           {getStatusText(machine.status)}
                         </Badge>
                       </div>
 
                       {machine.status === "running" && machine.timeRemaining && (
-                        <div className="space-y-2">
-                          <Progress value={(machine.duration - machine.timeRemaining) / machine.duration * 100} className="h-2" />
-                          <div className="text-center text-sm text-gray-600 font-medium">
-                            {machine.timeRemaining}min restantes
+                        <div className="space-y-1 mb-2">
+                          <Progress value={(machine.duration - machine.timeRemaining) / machine.duration * 100} className="h-1" />
+                          <div className="text-center text-xs text-gray-600">
+                            {machine.timeRemaining}min
                           </div>
                         </div>
                       )}
 
-                      {isAvailable && <Button variant="default" size="lg" className="w-full text-sm font-semibold bg-orange-600 hover:bg-orange-700 text-white shadow-lg">
-                          Selecionar Máquina
+                      {isAvailable && <Button variant="default" size="sm" className="w-full text-xs bg-orange-600 hover:bg-orange-700 text-white h-6">
+                          Selecionar
                         </Button>}
                     </CardContent>
                   </Card>;
@@ -830,9 +830,9 @@ const Totem = () => {
       </div>
 
       {/* Footer */}
-      <div className="container mx-auto mt-4 text-center">
+      <div className="container mx-auto px-2 py-2 text-center">
         <div className="flex items-center justify-center space-x-2 text-gray-500">
-          <Wifi size={14} />
+          <Wifi size={12} />
           <span className="text-xs cursor-pointer select-none" onClick={handleAdminAccess}>
             Sistema Online - Suporte: (11) 9999-9999
           </span>
