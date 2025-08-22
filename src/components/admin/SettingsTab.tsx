@@ -6,9 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
-import { Settings, Wifi, Cpu, CreditCard, Save, Microchip, Database } from "lucide-react";
+import { Settings, Wifi, Cpu, CreditCard, Save, Microchip, Database, Receipt, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ESP32ConfigurationManager from "./ESP32ConfigurationManager";
+import { NFSeTestWidget } from "./NFSeTestWidget";
 
 interface SystemSettings {
   id: string;
@@ -27,6 +28,11 @@ interface SystemSettings {
   signal_threshold_warning?: number;
   enable_esp32_monitoring?: boolean;
   esp32_configurations?: any[];
+  zapier_webhook_url?: string;
+  nfse_enabled?: boolean;
+  company_cnpj?: string;
+  company_name?: string;
+  company_email?: string;
 }
 
 interface ESP32Config {
@@ -55,7 +61,12 @@ export const SettingsTab = () => {
     max_offline_duration_minutes: 5,
     signal_threshold_warning: -70,
     enable_esp32_monitoring: true,
-    esp32_configurations: []
+    esp32_configurations: [],
+    zapier_webhook_url: '',
+    nfse_enabled: false,
+    company_cnpj: '',
+    company_name: '',
+    company_email: ''
   });
   const [loading, setLoading] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
@@ -476,6 +487,92 @@ export const SettingsTab = () => {
           />
         </CardContent>
       </Card>
+
+      {/* NFSe Integration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Receipt className="text-primary" />
+            <span>Integração Nota Fiscal de Serviço (NFSe)</span>
+          </CardTitle>
+          <CardDescription>
+            Configure a integração automática com emissão de NFSe via Zapier
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Habilitar NFSe Automática</p>
+              <p className="text-sm text-muted-foreground">
+                Emite automaticamente NFSe para transações concluídas
+              </p>
+            </div>
+            <Switch
+              checked={settings.nfse_enabled || false}
+              onCheckedChange={(checked) => updateSetting('nfse_enabled', checked)}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="company-name">Nome da Empresa</Label>
+              <Input
+                id="company-name"
+                value={settings.company_name || ''}
+                onChange={(e) => updateSetting('company_name', e.target.value)}
+                placeholder="Nome da pousada/empresa"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="company-cnpj">CNPJ da Empresa</Label>
+              <Input
+                id="company-cnpj"
+                value={settings.company_cnpj || ''}
+                onChange={(e) => updateSetting('company_cnpj', e.target.value)}
+                placeholder="00.000.000/0001-00"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="company-email">Email da Empresa</Label>
+              <Input
+                id="company-email"
+                type="email"
+                value={settings.company_email || ''}
+                onChange={(e) => updateSetting('company_email', e.target.value)}
+                placeholder="contato@pousada.com.br"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="zapier-webhook">
+              <Zap className="inline w-4 h-4 mr-1" />
+              Zapier Webhook URL
+            </Label>
+            <Input
+              id="zapier-webhook"
+              value={settings.zapier_webhook_url || ''}
+              onChange={(e) => updateSetting('zapier_webhook_url', e.target.value)}
+              placeholder="https://hooks.zapier.com/hooks/catch/..."
+            />
+            <p className="text-sm text-muted-foreground">
+              1. Crie um Zap no Zapier com trigger "Webhooks by Zapier"<br/>
+              2. Conecte com seu provedor de NFSe (EasyGestor, TiraNota, etc.)<br/>
+              3. Cole aqui a URL do webhook gerada pelo Zapier
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* NFSe Test Widget */}
+      {settings.nfse_enabled && (
+        <NFSeTestWidget
+          webhookUrl={settings.zapier_webhook_url || ''}
+          companyName={settings.company_name || ''}
+          companyCnpj={settings.company_cnpj || ''}
+          companyEmail={settings.company_email || ''}
+        />
+      )}
 
       {/* Development Tools */}
       <Card>
