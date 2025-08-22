@@ -7,7 +7,7 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instanciate createClient with right options
+  // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "12.2.12 (cd3cf9e)"
@@ -152,6 +152,9 @@ export type Database = {
       system_settings: {
         Row: {
           auto_mode: boolean | null
+          company_cnpj: string | null
+          company_email: string | null
+          company_name: string | null
           created_at: string
           default_cycle_time: number | null
           default_price: number | null
@@ -162,6 +165,7 @@ export type Database = {
           heartbeat_interval_seconds: number | null
           id: string
           max_offline_duration_minutes: number | null
+          nfse_enabled: boolean | null
           notifications_enabled: boolean | null
           paygo_automation_key: string | null
           paygo_cnpj_cpf: string | null
@@ -177,9 +181,13 @@ export type Database = {
           updated_at: string
           wifi_password: string | null
           wifi_ssid: string | null
+          zapier_webhook_url: string | null
         }
         Insert: {
           auto_mode?: boolean | null
+          company_cnpj?: string | null
+          company_email?: string | null
+          company_name?: string | null
           created_at?: string
           default_cycle_time?: number | null
           default_price?: number | null
@@ -190,6 +198,7 @@ export type Database = {
           heartbeat_interval_seconds?: number | null
           id?: string
           max_offline_duration_minutes?: number | null
+          nfse_enabled?: boolean | null
           notifications_enabled?: boolean | null
           paygo_automation_key?: string | null
           paygo_cnpj_cpf?: string | null
@@ -205,9 +214,13 @@ export type Database = {
           updated_at?: string
           wifi_password?: string | null
           wifi_ssid?: string | null
+          zapier_webhook_url?: string | null
         }
         Update: {
           auto_mode?: boolean | null
+          company_cnpj?: string | null
+          company_email?: string | null
+          company_name?: string | null
           created_at?: string
           default_cycle_time?: number | null
           default_price?: number | null
@@ -218,6 +231,7 @@ export type Database = {
           heartbeat_interval_seconds?: number | null
           id?: string
           max_offline_duration_minutes?: number | null
+          nfse_enabled?: boolean | null
           notifications_enabled?: boolean | null
           paygo_automation_key?: string | null
           paygo_cnpj_cpf?: string | null
@@ -233,6 +247,7 @@ export type Database = {
           updated_at?: string
           wifi_password?: string | null
           wifi_ssid?: string | null
+          zapier_webhook_url?: string | null
         }
         Relationships: []
       }

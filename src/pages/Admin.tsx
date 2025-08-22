@@ -58,6 +58,8 @@ interface Transaction {
   created_at: string;
 }
 
+import { useTransactionNFSe } from '@/hooks/useTransactionNFSe';
+
 const Admin = () => {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -67,6 +69,9 @@ const Admin = () => {
   const [showPaygoAdmin, setShowPaygoAdmin] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Initialize NFSe automation
+  useTransactionNFSe();
 
   useEffect(() => {
     checkAuth();
