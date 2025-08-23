@@ -30,6 +30,8 @@ import { SettingsTab } from "@/components/admin/SettingsTab";
 import ESP32MonitorTab from "@/components/admin/ESP32MonitorTab";
 import ESP32FailoverManager from "@/components/admin/ESP32FailoverManager";
 import CreditReleaseWidget from "@/components/admin/CreditReleaseWidget";
+import { PayGOSetupGuide } from '@/components/payment/PayGOSetupGuide';
+import { SimplePayGOWidget } from '@/components/payment/SimplePayGOWidget';
 import { EnhancedPayGOAdmin } from "@/components/admin/EnhancedPayGOAdmin";
 import { DEFAULT_PAYGO_CONFIG } from "@/lib/paygoUtils";
 
@@ -433,13 +435,14 @@ const Admin = () => {
       {/* Main Content */}
       <div className="container mx-auto">
         <Tabs defaultValue="machines" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-7">
+          <TabsList className="grid w-full grid-cols-8">
             <TabsTrigger value="machines">Máquinas</TabsTrigger>
             <TabsTrigger value="analytics">Relatórios</TabsTrigger>
             <TabsTrigger value="maintenance">Manutenção</TabsTrigger>
             <TabsTrigger value="esp32">ESP32</TabsTrigger>
             <TabsTrigger value="failover">Failover</TabsTrigger>
             <TabsTrigger value="paygo">PayGO</TabsTrigger>
+            <TabsTrigger value="paygo-setup">Setup PayGO</TabsTrigger>
             <TabsTrigger value="settings">Configurações</TabsTrigger>
           </TabsList>
 
@@ -622,6 +625,11 @@ const Admin = () => {
                 </Card>
               </div>
             )}
+          </TabsContent>
+
+          {/* PayGO Setup Tab */}
+          <TabsContent value="paygo-setup">
+            <PayGOSetupGuide />
           </TabsContent>
 
           {/* Settings Tab */}
