@@ -30,7 +30,7 @@ const TEF_CONFIG = {
   retryDelay: 2000 // Delay entre tentativas (2s)
 };
 const Totem = () => {
-  const [selectedMachine, setSelectedMachine] = useState<string | null>(null);
+  const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
   const [paymentStep, setPaymentStep] = useState<"select" | "payment" | "processing" | "success" | "error" | "pix_qr">("select");
   const [currentTime, setCurrentTime] = useState(new Date());
   const [tefConfig, setTefConfig] = useState(TEF_CONFIG);
@@ -156,9 +156,25 @@ const Totem = () => {
   };
   const handleMachineSelect = (machineId: string) => {
     const machine = machines.find(m => m.id === machineId);
-    if (machine?.status !== "available") return;
-    setSelectedMachine(machineId);
-    setPaymentStep("payment");
+    if (machine && machine.status === "available") {
+      setSelectedMachine(machine);
+      setPaymentStep("payment");
+    }
+  };
+
+  const handleUniversalPaymentSuccess = async (result: any) => {
+    console.log('Pagamento universal bem-sucedido:', result);
+    await activateMachine(`Universal - ${result.method.toUpperCase()}`);
+  };
+
+  const handleUniversalPaymentError = (error: string) => {
+    console.error('Erro no pagamento universal:', error);
+    toast({
+      title: "Erro no Pagamento",
+      description: error,
+      variant: "destructive"
+    });
+    setPaymentStep('error');
   };
 
   // Gerar número do cupom fiscal
@@ -168,15 +184,14 @@ const Totem = () => {
 
   // Função principal de pagamento via TEF com melhorias
   const handleTEFPayment = async () => {
-    const machine = machines.find(m => m.id === selectedMachine);
-    if (!machine) return;
+    if (!selectedMachine) return;
     
     setPaymentStep("processing");
     setPaymentSystem('TEF');
     
     try {
       // Preparar dados da transação
-      const amount = machine.price * 100; // Converter para centavos
+      const amount = selectedMachine.price * 100; // Converter para centavos
       const transactionParams = {
         transacao: "venda",
         valor: amount.toString(),
@@ -228,8 +243,7 @@ const Totem = () => {
 
   // Função principal de pagamento via PayGO
   const handlePayGOPayment = async () => {
-    const machine = machines.find(m => m.id === selectedMachine);
-    if (!machine) return;
+    if (!selectedMachine) return;
     
     setPaymentStep("processing");
     setPaymentSystem('PAYGO');
@@ -237,7 +251,7 @@ const Totem = () => {
     try {
       // Preparar dados da transação PayGO
       const transactionData = {
-        amount: machine.price, // PayGO usa valor em reais
+        amount: selectedMachine.price, // PayGO usa valor em reais
         paymentType: 'CREDIT' as const,
         orderId: generateReceiptNumber()
       };
@@ -281,8 +295,7 @@ const Totem = () => {
 
   // Função principal de pagamento via Pix
   const handlePixPayment = async () => {
-    const machine = machines.find(m => m.id === selectedMachine);
-    if (!machine) return;
+    if (!selectedMachine) return;
     
     setPaymentStep("processing");
     setPaymentSystem('PIX');
@@ -290,7 +303,7 @@ const Totem = () => {
     try {
       // Preparar dados da transação Pix
       const pixData = {
-        amount: machine.price,
+        amount: selectedMachine.price,
         orderId: generateReceiptNumber()
       };
 
@@ -303,7 +316,7 @@ const Totem = () => {
         // QR Code gerado com sucesso
         setPixPaymentData({
           ...result,
-          amount: machine.price,
+          amount: selectedMachine.price,
           orderId: pixData.orderId,
         });
         setPaymentStep("pix_qr");
@@ -360,19 +373,18 @@ const Totem = () => {
   };
 
   const activateMachine = async (paymentMethod: string = 'TEF') => {
-    const machine = machines.find(m => m.id === selectedMachine);
-    if (!machine) return;
+    if (!selectedMachine) return;
     try {
       // Atualizar status da máquina para "running"
-      await updateMachineStatus(machine.id, 'running');
+      await updateMachineStatus(selectedMachine.id, 'running');
 
       // Criar transação no banco
       const {
         error: transactionError
       } = await supabase.from('transactions').insert({
-        machine_id: machine.id,
-        total_amount: machine.price, // Usar o preço já calculado da interface Machine
-        duration_minutes: machine.duration,
+        machine_id: selectedMachine.id,
+        total_amount: selectedMachine.price, // Usar o preço já calculado da interface Machine
+        duration_minutes: selectedMachine.duration,
         status: 'completed',
         payment_method: paymentMethod,
         started_at: new Date().toISOString(),
@@ -385,7 +397,7 @@ const Totem = () => {
       // Chamar endpoint do ESP32 se tiver IP (mock implementation)
       try {
         // Simular chamada para ESP32 - na implementação real seria uma chamada HTTP
-        console.log(`Ativando máquina ${machine.name} via ESP32 ${machine.esp32_id}`);
+        console.log(`Ativando máquina ${selectedMachine.name} via ESP32 ${selectedMachine.esp32_id}`);
         // await fetch(`http://esp32-host:port/activate/${machine.relay_pin}`)
       } catch (error) {
         console.warn("Erro na comunicação com ESP32, mas máquina foi ativada no sistema:", error);
@@ -540,7 +552,6 @@ const Totem = () => {
 
   // Tela de sucesso
   if (paymentStep === "success") {
-    const machine = machines.find(m => m.id === selectedMachine);
     return <div className="min-h-screen bg-gradient-clean flex items-center justify-center p-4">
         <Card className="w-full max-w-md shadow-glow">
           <CardContent className="pt-6 text-center space-y-6">
@@ -549,9 +560,9 @@ const Totem = () => {
             </div>
             <h2 className="text-2xl font-bold text-green-600">Pagamento Aprovado!</h2>
             <div className="space-y-2">
-              <p className="font-semibold">{machine?.title}</p>
+              <p className="font-semibold">{selectedMachine?.name}</p>
               <p className="text-muted-foreground">
-                Tempo estimado: {machine?.duration} minutos
+                Tempo estimado: {selectedMachine?.duration} minutos
               </p>
               {transactionData && <div className="text-sm space-y-1 border-t pt-4">
                   <p><strong>NSU:</strong> {transactionData.nsu || 'N/A'}</p>
@@ -572,24 +583,23 @@ const Totem = () => {
 
   // Tela de seleção de pagamento
   if (paymentStep === "payment" && selectedMachine) {
-    const machine = machines.find(m => m.id === selectedMachine);
     return <div className="min-h-screen bg-gradient-clean flex items-center justify-center p-4">
         <Card className="w-full max-w-md shadow-glow">
           <CardHeader className="text-center">
             <div className="w-16 h-16 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-4">
-              <machine.icon className="text-primary-foreground" size={24} />
+              <selectedMachine.icon className="text-primary-foreground" size={24} />
             </div>
-            <CardTitle className="text-xl">{machine?.title}</CardTitle>
+            <CardTitle className="text-xl">{selectedMachine?.name}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="text-center space-y-2">
               <div className="flex items-center justify-center space-x-2">
                 <span className="text-3xl font-bold text-primary">
-                  R$ {machine?.price.toFixed(2).replace('.', ',')}
+                  R$ {selectedMachine?.price.toFixed(2).replace('.', ',')}
                 </span>
               </div>
               <p className="text-muted-foreground">
-                Duração: {machine?.duration} minutos
+                Duração: {selectedMachine?.duration} minutos
               </p>
             </div>
 
@@ -597,7 +607,7 @@ const Totem = () => {
 
               <div className="space-y-4">
                 <UniversalPaymentWidget
-                  amount={selectedMachine?.price_per_kg || 0}
+                  amount={selectedMachine?.price || 0}
                   onSuccess={handleUniversalPaymentSuccess}
                   onError={handleUniversalPaymentError}
                   onCancel={resetTotem}

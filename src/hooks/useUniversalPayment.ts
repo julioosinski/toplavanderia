@@ -211,13 +211,16 @@ export const useUniversalPayment = () => {
         case 'tef':
           try {
             const tefResponse = await tefIntegration.processTEFPayment({
-              amount: transaction.amount,
-              paymentType: transaction.type.toUpperCase(),
-              orderId: transaction.orderId
+              transacao: 'venda',
+              valor: transaction.amount.toString(),
+              cupomFiscal: transaction.orderId || Date.now().toString(),
+              dataHora: new Date().toISOString().slice(0, 19).replace('T', ' '),
+              estabelecimento: 'Top Lavanderia',
+              terminal: '001'
             });
             
             return {
-              success: tefResponse.resultCode === 0,
+              success: tefResponse.retorno === '0',
               method: 'tef',
               data: tefResponse,
               transactionId: tefResponse.nsu
