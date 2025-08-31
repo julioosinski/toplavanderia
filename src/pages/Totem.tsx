@@ -11,7 +11,8 @@ import { useAdminAccess } from "@/hooks/useAdminAccess";
 import { useMachines, type Machine } from "@/hooks/useMachines";
 import { useTEFIntegration } from "@/hooks/useTEFIntegration";
 import { useCapacitorIntegration } from "@/hooks/useCapacitorIntegration";
-import { EnhancedPayGOAdmin } from '@/components/admin/EnhancedPayGOAdmin';
+import { SimplePayGOWidget } from '@/components/payment/SimplePayGOWidget';
+import { UniversalPaymentWidget } from '@/components/payment/UniversalPaymentWidget';
 import { usePayGOIntegration, PayGOConfig } from '@/hooks/usePayGOIntegration';
 import { usePixPayment } from '@/hooks/usePixPayment';
 import { PixQRDisplay } from '@/components/payment/PixQRDisplay';
@@ -594,37 +595,14 @@ const Totem = () => {
 
             <Separator />
 
-            <div className="space-y-4">
-              <h3 className="font-semibold text-center">Forma de Pagamento</h3>
-              
-              {/* PayGO Payment Option */}
-              <Button 
-                onClick={handlePayGOPayment} 
-                variant="fresh" 
-                size="lg" 
-                className="w-full justify-start"
-                disabled={!paygoStatus.online}
-              >
-                <CreditCard className="mr-3" />
-                Cartão {paygoStatus.online ? '' : '(Offline)'}
-              </Button>
-
-              {/* Pix Payment Option */}
-              <Button 
-                onClick={handlePixPayment} 
-                variant="secondary" 
-                size="lg" 
-                className="w-full justify-start"
-                disabled={!paygoStatus.online}
-              >
-                <QrCode className="mr-3" />
-                Pix {paygoStatus.online ? '' : '(Offline)'}
-              </Button>
-              
-              <p className="text-xs text-muted-foreground text-center">
-                Escolha a forma de pagamento: cartão na maquininha ou QR Code Pix
-              </p>
-            </div>
+              <div className="space-y-4">
+                <UniversalPaymentWidget
+                  amount={selectedMachine?.price_per_kg || 0}
+                  onSuccess={handleUniversalPaymentSuccess}
+                  onError={handleUniversalPaymentError}
+                  onCancel={resetTotem}
+                />
+              </div>
 
             <Button onClick={resetTotem} variant="outline" className="w-full">
               Cancelar
