@@ -435,14 +435,13 @@ const Admin = () => {
       {/* Main Content */}
       <div className="container mx-auto">
         <Tabs defaultValue="machines" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-8">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="machines">Máquinas</TabsTrigger>
             <TabsTrigger value="analytics">Relatórios</TabsTrigger>
             <TabsTrigger value="maintenance">Manutenção</TabsTrigger>
             <TabsTrigger value="esp32">ESP32</TabsTrigger>
             <TabsTrigger value="failover">Failover</TabsTrigger>
             <TabsTrigger value="paygo">PayGO</TabsTrigger>
-            <TabsTrigger value="paygo-setup">Setup PayGO</TabsTrigger>
             <TabsTrigger value="settings">Configurações</TabsTrigger>
           </TabsList>
 
