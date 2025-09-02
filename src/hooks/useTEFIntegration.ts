@@ -48,6 +48,39 @@ export const useTEFIntegration = (config: TEFConfig) => {
   const { toast } = useToast();
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Função para auto-detectar IP da Positivo L4 na rede local
+  const findPositivoL4 = useCallback(async (): Promise<string | null> => {
+    const commonIPs = ['192.168.1.100', '192.168.0.100', '10.0.0.100'];
+    
+    for (const ip of commonIPs) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        
+        const response = await fetch(`http://${ip}:8080/status`, {
+          method: 'GET',
+          mode: 'cors',
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const data = await response.json();
+          // Verificar se é realmente uma Positivo L4
+          if (data.model?.includes('L4') || data.device?.includes('Positivo')) {
+            return ip;
+          }
+        }
+      } catch (error) {
+        // Continue tentando outros IPs
+        continue;
+      }
+    }
+    
+    return null;
+  }, []);
+
   // Função para verificar status do TEF
   const checkTEFStatus = useCallback(async (): Promise<boolean> => {
     try {
@@ -282,6 +315,7 @@ export const useTEFIntegration = (config: TEFConfig) => {
     processTEFPayment,
     cancelTransaction,
     checkTEFStatus,
-    testConnection
+    testConnection,
+    findPositivoL4
   };
 };

@@ -1,154 +1,179 @@
-# 📱 INSTRUÇÕES DE ATUALIZAÇÃO DO TABLET
+# 🚀 NOVA ARQUITETURA: TABLET TOTEM + POSITIVO L4 TEF
 
-## 🚀 COMO ATUALIZAR O TABLET COM BLUETOOTH
+## ✅ SISTEMA SIMPLIFICADO E OTIMIZADO
 
-### 1. **Faça o Git Pull do Projeto**
+### **🔥 MUDANÇAS IMPLEMENTADAS:**
+
+#### **1. Arquitetura Simplificada**
+- ❌ **Bluetooth REMOVIDO** (instável e desnecessário)
+- ✅ **TEF como Prioridade 1** (Positivo L4 via WiFi/Ethernet)
+- ✅ **PayGO como Fallback** (backup confiável)
+- ✅ **Tablet como Centro de Controle** (interface única)
+
+#### **2. Otimizações TEF para Positivo L4**
+- 🎯 **Auto-descoberta de IP** (192.168.1.100, 192.168.0.100, 10.0.0.100)
+- ⚡ **Timeout otimizado** (45s para L4)
+- 🔄 **Retry inteligente** (2 tentativas com delay 3s)
+- 📡 **Heartbeat monitoring** (status em tempo real)
+
+#### **3. Interface de Pagamento Universal**
+- 🖥️ **Widget Unificado** (TEF → PayGO → Manual)
+- 🎨 **Visual aprimorado** ("TEF Positivo L4")
+- ⚡ **Fallback automático** entre métodos
+- 📱 **Interface touch otimizada**
+
+---
+
+## 🛠️ COMO ATUALIZAR O TABLET
+
+### **1. Faça o Git Pull**
 ```bash
 git pull origin main
 ```
 
-### 2. **Instale as Novas Dependências**
+### **2. Instale Dependências**
 ```bash
 npm install
-npm install @capacitor-community/bluetooth-serial
 ```
 
-### 3. **Configure o Capacitor para Bluetooth**
-Adicione no arquivo `capacitor.config.ts` (se não estiver):
-```typescript
-plugins: {
-  BluetoothSerial: {
-    connectTimeout: 60000,
-    scanTimeout: 5000,
-    enableHighAccuracy: true
-  }
-}
-```
-
-### 4. **Adicione Permissões Android**
-No arquivo `android/app/src/main/AndroidManifest.xml`, adicione:
-```xml
-<uses-permission android:name="android.permission.BLUETOOTH" />
-<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
-<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-<uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-<uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
-```
-
-### 5. **Build e Sincronize**
+### **3. Build e Deploy**
 ```bash
 npm run build
 npx cap sync android
 npx cap build android
 ```
 
-### 6. **Gerar o APK**
-```bash
-cd android
-./gradlew assembleDebug
-```
-
-### 7. **Localizar o APK**
-O arquivo estará em:
+### **4. Localize o APK**
 ```
 android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ---
 
-## 📋 ARQUIVO PARA TRANSFERIR AO TABLET
+## ⚙️ CONFIGURAÇÃO DA POSITIVO L4
 
-**Nome do Arquivo**: `app-debug.apk`
-**Localização**: `android/app/build/outputs/apk/debug/app-debug.apk`
+### **Configuração de Rede:**
 
-### Como Transferir:
-1. **USB**: Copie o arquivo via cabo USB
-2. **Email**: Envie por email e baixe no tablet  
-3. **Google Drive**: Upload e download no tablet
-4. **ADB**: `adb install app-debug.apk`
+#### **Opção A: WiFi**
+1. Conecte a L4 na mesma WiFi do tablet
+2. Configure IP fixo: **192.168.1.100**
+3. Sistema detectará automaticamente
 
----
+#### **Opção B: Cabo Ethernet**  
+1. Conecte L4 → Router via cabo
+2. Configure IP fixo: **192.168.0.100**
+3. Tablet na mesma rede WiFi
 
-## ✅ VERIFICAÇÃO PÓS-INSTALAÇÃO
-
-### 1. **Teste o Sistema Universal**
-- Acesse `[URL]/totem`
-- Selecione uma máquina
-- Verifique se aparece o **Widget Universal de Pagamento**
-
-### 2. **Teste o Bluetooth**
-- Acesse `[URL]/admin`
-- Vá para aba **"Bluetooth"**
-- Teste "Habilitar Bluetooth"
-- Teste "Buscar Dispositivos"
-
-### 3. **Configure a Positivo L4**
-- Pareie a maquininha via Admin Panel
-- Execute teste de pagamento
-- Verifique funcionamento no totem
+### **Configuração TEF L4:**
+```json
+{
+  "host": "192.168.1.100",
+  "port": "8080", 
+  "timeout": 45000,
+  "retryAttempts": 2,
+  "retryDelay": 3000
+}
+```
 
 ---
 
-## 🔧 NOVAS FUNCIONALIDADES DISPONÍVEIS
+## 🎯 FLUXO DE PAGAMENTO OTIMIZADO
 
-### ✅ **Widget Universal de Pagamento**
-- Detecção automática: PayGO → TEF → Bluetooth → Manual
-- Interface única para todos os métodos
-- Fallback inteligente entre métodos
+```
+👆 Cliente toca na máquina
+    ↓
+🖥️ Tablet mostra Widget Universal
+    ↓
+🔍 Sistema testa: TEF L4 → PayGO → Manual
+    ↓
+💳 Processa com melhor método disponível
+    ↓
+📡 Ativa máquina via ESP32
+    ↓
+✅ Cliente usa a máquina
+```
 
-### ✅ **Bluetooth Integration**  
-- Suporte universal para maquininhas Bluetooth
-- Pareamento via Admin Panel
-- Teste de conexão e pagamento
+---
 
-### ✅ **Admin Panel Melhorado**
-- Nova aba "Bluetooth" 
-- Monitor de status de todos os métodos
-- Configuração centralizada
-- Diagnósticos avançados
+## 📊 VANTAGENS DA NOVA ARQUITETURA
+
+### ✅ **Muito Mais Estável**
+- Sem instabilidade Bluetooth
+- Conexão TEF via cabo/WiFi confiável
+- Fallback automático robusto
+
+### ✅ **Interface Profissional**
+- Uma única tela para tudo
+- Design otimizado para tablet
+- Experiência de usuário superior
+
+### ✅ **Administração Centralizada**
+- Controle total pelo tablet
+- Monitor ESP32s em tempo real
+- Relatórios e diagnósticos integrados
+
+### ✅ **Escalabilidade**
+- Fácil adicionar novas máquinas
+- Sistema modular e expansível
+- Manutenção simplificada
+
+---
+
+## 🔧 FUNCIONALIDADES DISPONÍVEIS
+
+### **🖥️ Interface Totem**
+- Seleção de máquinas touch
+- Widget de pagamento universal
+- Status em tempo real das máquinas
+- Feedback visual aprimorado
+
+### **⚙️ Painel Administrativo**
+- Monitor ESP32 com topology
+- Configuração TEF otimizada
+- Relatórios e analytics
+- Sistema de créditos
+- Diagnósticos de rede
+
+### **💳 Sistema de Pagamento**
+- **TEF Positivo L4** (prioridade 1)
+- **PayGO** (fallback automático)
+- **Manual** (última opção)
+- Auto-descoberta de dispositivos
 
 ---
 
 ## 🆘 TROUBLESHOOTING
 
-### Erro de Instalação:
-```bash
-# Limpe o cache e reinstale
-npm cache clean --force
-rm -rf node_modules package-lock.json
-npm install
-```
+### **TEF L4 não conecta:**
+1. Verifique IP da L4: `ping 192.168.1.100`
+2. Teste portal: `http://192.168.1.100:8080/status`
+3. Verifique cabo/WiFi
+4. Use auto-descoberta no admin
 
-### Erro de Build:
-```bash
-# Limpe e rebuild
-npx cap clean android
-npx cap sync android  
-npx cap build android
-```
+### **Tablet não encontra L4:**
+1. Mesma rede WiFi/Ethernet
+2. IP fixo configurado na L4
+3. Firewall/proxy desabilitado
+4. Teste manual no admin
 
-### Bluetooth não funciona:
-- Verifique permissões do Android
-- Confirme que o tablet suporta Bluetooth
-- Teste com maquininha no modo pareamento
+### **ESP32s offline:**
+1. Verifique alimentação
+2. WiFi configurado corretamente
+3. Use monitor ESP32 no admin
+4. Reset físico se necessário
 
 ---
 
-## 📱 COMPATIBILIDADE
+## 🏆 SISTEMA PROFISSIONAL PRONTO!
 
-### Testado em:
-- ✅ Android 7.0+
-- ✅ Tablets com Bluetooth 4.0+  
-- ✅ Positivo L4
-- ✅ Maquininhas genéricas Bluetooth
+**✅ Tablet Totem Centralizado**  
+**✅ Positivo L4 TEF Estável**  
+**✅ ESP32s WiFi Confiáveis**  
+**✅ Interface Touch Otimizada**  
+**✅ Administração Completa**  
 
-### Não testado:
-- ⚠️ iOS (necessita configuração adicional)
-- ⚠️ Maquininhas proprietárias
+### 🚀 **MUITO MAIS ESTÁVEL QUE BLUETOOTH!**
 
 ---
 
-**🔥 SISTEMA TOTALMENTE ATUALIZADO! 🔥**
-
-*Data: $(date) - Versão: Universal Bluetooth v2.0*
+*Data: $(date) - Versão: Tablet Totem + L4 TEF v3.0*

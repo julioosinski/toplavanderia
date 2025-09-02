@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useUniversalPayment, PaymentType, PaymentMethod } from '@/hooks/useUniversalPayment';
-import { Loader2, CreditCard, Smartphone, Bluetooth, Wifi, AlertCircle, CheckCircle } from 'lucide-react';
+import { Loader2, CreditCard, Smartphone, Wifi, AlertCircle, CheckCircle } from 'lucide-react';
 import { formatPayGOAmount } from '@/lib/paygoUtils';
 
 interface UniversalPaymentWidgetProps {
@@ -61,8 +61,6 @@ export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
         return <Wifi className="h-4 w-4" />;
       case 'tef':
         return <CreditCard className="h-4 w-4" />;
-      case 'bluetooth':
-        return <Bluetooth className="h-4 w-4" />;
       case 'manual':
         return <Smartphone className="h-4 w-4" />;
       default:
@@ -75,9 +73,7 @@ export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
       case 'paygo':
         return 'PayGO';
       case 'tef':
-        return 'TEF';
-      case 'bluetooth':
-        return 'Bluetooth';
+        return 'TEF Positivo L4';
       case 'manual':
         return 'Manual';
       default:

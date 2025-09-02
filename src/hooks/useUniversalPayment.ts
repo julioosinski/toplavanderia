@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { usePayGOIntegration } from './usePayGOIntegration';
 import { useTEFIntegration } from './useTEFIntegration';
-import { useBluetoothIntegration } from './useBluetoothIntegration';
 import { useToast } from './use-toast';
 
-export type PaymentMethod = 'paygo' | 'tef' | 'bluetooth' | 'manual';
+export type PaymentMethod = 'paygo' | 'tef' | 'manual';
 export type PaymentType = 'credit' | 'debit' | 'pix';
 
 export interface UniversalTransaction {
@@ -41,12 +40,13 @@ const DEFAULT_PAYGO_CONFIG = {
   cnpjCpf: ''
 };
 
+// Configuração otimizada para Positivo L4
 const DEFAULT_TEF_CONFIG = {
-  host: 'localhost',
-  port: '8081',
-  timeout: 30000,
-  retryAttempts: 3,
-  retryDelay: 2000
+  host: '192.168.1.100', // IP padrão da Positivo L4
+  port: '8080',
+  timeout: 45000, // Timeout maior para L4 
+  retryAttempts: 2,
+  retryDelay: 3000
 };
 
 export const useUniversalPayment = () => {
@@ -54,16 +54,14 @@ export const useUniversalPayment = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentMethod, setCurrentMethod] = useState<PaymentMethod | null>(null);
   const [methodsStatus, setMethodsStatus] = useState<PaymentMethodStatus[]>([
-    { method: 'paygo', available: false, connected: false, priority: 1 },
-    { method: 'tef', available: false, connected: false, priority: 2 },
-    { method: 'bluetooth', available: false, connected: false, priority: 3 },
-    { method: 'manual', available: true, connected: true, priority: 4 }
+    { method: 'tef', available: false, connected: false, priority: 1 }, // TEF como prioridade 1
+    { method: 'paygo', available: false, connected: false, priority: 2 },
+    { method: 'manual', available: true, connected: true, priority: 3 }
   ]);
 
   // Hooks dos diferentes métodos
   const paygoIntegration = usePayGOIntegration(DEFAULT_PAYGO_CONFIG);
   const tefIntegration = useTEFIntegration(DEFAULT_TEF_CONFIG);
-  const bluetoothIntegration = useBluetoothIntegration();
 
   // Função para testar conectividade de todos os métodos
   const testAllMethods = useCallback(async () => {
@@ -121,34 +119,10 @@ export const useUniversalPayment = () => {
       }
     }
 
-    // Testar Bluetooth
-    try {
-      const bluetoothEnabled = await bluetoothIntegration.checkBluetoothEnabled();
-      const bluetoothIndex = newStatus.findIndex(s => s.method === 'bluetooth');
-      if (bluetoothIndex >= 0) {
-        newStatus[bluetoothIndex] = {
-          ...newStatus[bluetoothIndex],
-          available: bluetoothEnabled && bluetoothIntegration.isNative,
-          connected: bluetoothIntegration.isConnected,
-          lastTest: new Date(),
-          error: bluetoothEnabled ? undefined : 'Bluetooth não disponível'
-        };
-      }
-    } catch (error) {
-      const bluetoothIndex = newStatus.findIndex(s => s.method === 'bluetooth');
-      if (bluetoothIndex >= 0) {
-        newStatus[bluetoothIndex] = {
-          ...newStatus[bluetoothIndex],
-          available: false,
-          connected: false,
-          lastTest: new Date(),
-          error: error instanceof Error ? error.message : 'Erro desconhecido'
-        };
-      }
-    }
+    // Sem teste Bluetooth - removido da arquitetura
 
     setMethodsStatus(newStatus);
-  }, [paygoIntegration, tefIntegration, bluetoothIntegration, methodsStatus]);
+  }, [paygoIntegration, tefIntegration, methodsStatus]);
 
   // Encontrar o melhor método disponível
   const getBestAvailableMethod = useCallback((): PaymentMethod | null => {
@@ -234,28 +208,7 @@ export const useUniversalPayment = () => {
             throw error;
           }
 
-        case 'bluetooth':
-          try {
-            const bluetoothResponse = await bluetoothIntegration.processPayment({
-              amount: transaction.amount,
-              type: transaction.type,
-              orderId: transaction.orderId
-            });
-            
-            return {
-              success: bluetoothResponse.success,
-              method: 'bluetooth',
-              data: bluetoothResponse.data,
-              transactionId: bluetoothResponse.transactionId
-            };
-          } catch (error) {
-            // Fallback para próximo método
-            const nextMethod = getBestAvailableMethod();
-            if (nextMethod && nextMethod !== 'bluetooth') {
-              return processPayment(transaction, nextMethod);
-            }
-            throw error;
-          }
+        // Bluetooth removido da nova arquitetura
 
         default:
           return {
@@ -280,7 +233,7 @@ export const useUniversalPayment = () => {
       setIsProcessing(false);
       setCurrentMethod(null);
     }
-  }, [methodsStatus, getBestAvailableMethod, paygoIntegration, tefIntegration, bluetoothIntegration, currentMethod, toast]);
+  }, [methodsStatus, getBestAvailableMethod, paygoIntegration, tefIntegration, currentMethod, toast]);
 
   // Testar métodos periodicamente
   useEffect(() => {
@@ -302,7 +255,6 @@ export const useUniversalPayment = () => {
     
     // Integrações individuais
     paygoIntegration,
-    tefIntegration,
-    bluetoothIntegration
+    tefIntegration
   };
 };
