@@ -31,9 +31,10 @@ import ESP32MonitorTab from "@/components/admin/ESP32MonitorTab";
 import ESP32FailoverManager from "@/components/admin/ESP32FailoverManager";
 import CreditReleaseWidget from "@/components/admin/CreditReleaseWidget";
 import { PayGOSetupGuide } from '@/components/payment/PayGOSetupGuide';
-import { SimplePayGOWidget } from '@/components/payment/SimplePayGOWidget';
 import { EnhancedPayGOAdmin } from "@/components/admin/EnhancedPayGOAdmin";
 import { DEFAULT_PAYGO_CONFIG } from "@/lib/paygoUtils";
+import { useTransactionNFSe } from '@/hooks/useTransactionNFSe';
+import { TEFPositivoL4Config } from "@/components/admin/TEFPositivoL4Config";
 
 interface Machine {
   id: string;
@@ -59,8 +60,6 @@ interface Transaction {
   total_amount: number;
   created_at: string;
 }
-
-import { useTransactionNFSe } from '@/hooks/useTransactionNFSe';
 
 const Admin = () => {
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -351,7 +350,7 @@ const Admin = () => {
             </div>
             <div>
               <h1 className="text-3xl font-bold text-foreground">Painel Administrativo</h1>
-              <p className="text-muted-foreground">Top Lavanderia - Sistema de Gestão</p>
+              <p className="text-muted-foreground">Top Lavanderia - Nova Arquitetura TEF</p>
             </div>
           </div>
           <div className="flex items-center space-x-4">
@@ -435,13 +434,14 @@ const Admin = () => {
       {/* Main Content */}
       <div className="container mx-auto">
         <Tabs defaultValue="machines" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-7">
+          <TabsList className="grid w-full grid-cols-8">
             <TabsTrigger value="machines">Máquinas</TabsTrigger>
             <TabsTrigger value="analytics">Relatórios</TabsTrigger>
             <TabsTrigger value="maintenance">Manutenção</TabsTrigger>
             <TabsTrigger value="esp32">ESP32</TabsTrigger>
             <TabsTrigger value="failover">Failover</TabsTrigger>
             <TabsTrigger value="paygo">PayGO</TabsTrigger>
+            <TabsTrigger value="tef">TEF L4</TabsTrigger>
             <TabsTrigger value="settings">Configurações</TabsTrigger>
           </TabsList>
 
@@ -495,54 +495,48 @@ const Admin = () => {
                       <div className="flex space-x-2 flex-wrap">
                         {machine.status === "available" && (
                           <Button
-                            onClick={() => handleMachineAction(machine.id, "start")}
-                            variant="default"
                             size="sm"
+                            onClick={() => handleMachineAction(machine.id, "start")}
+                            className="bg-green-600 hover:bg-green-700"
                           >
-                            <Power size={16} className="mr-1" />
+                            <Power size={14} className="mr-1" />
                             Iniciar
                           </Button>
                         )}
+                        
                         {machine.status === "in_use" && (
                           <Button
-                            onClick={() => handleMachineAction(machine.id, "stop")}
-                            variant="destructive"
                             size="sm"
+                            variant="destructive"
+                            onClick={() => handleMachineAction(machine.id, "stop")}
                           >
-                            <Power size={16} className="mr-1" />
+                            <Power size={14} className="mr-1" />
                             Parar
                           </Button>
                         )}
+                        
                         <Button
-                          onClick={() => handleMachineAction(machine.id, "maintenance")}
-                          variant="outline"
                           size="sm"
+                          variant="outline"
+                          onClick={() => handleMachineAction(machine.id, "maintenance")}
                         >
-                          <Wrench size={16} className="mr-1" />
+                          <Wrench size={14} className="mr-1" />
                           Manutenção
                         </Button>
+                        
                         <Button
-                          onClick={() => handleMachineAction(machine.id, "reset")}
-                          variant="outline"
                           size="sm"
+                          variant="outline"
+                          onClick={() => handleMachineAction(machine.id, "reset")}
                         >
-                          <RefreshCw size={16} className="mr-1" />
+                          <RefreshCw size={14} className="mr-1" />
                           Reset
                         </Button>
-                        <MachineDialog 
-                          machine={machine} 
-                          onSuccess={loadData}
-                          trigger={
-                            <Button variant="outline" size="sm">
-                              <Settings size={16} className="mr-1" />
-                              Editar
-                            </Button>
-                          }
-                        />
+
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button variant="destructive" size="sm">
-                              <Trash2 size={16} className="mr-1" />
+                            <Button size="sm" variant="destructive">
+                              <Trash2 size={14} className="mr-1" />
                               Excluir
                             </Button>
                           </AlertDialogTrigger>
@@ -550,13 +544,12 @@ const Admin = () => {
                             <AlertDialogHeader>
                               <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Tem certeza que deseja excluir a máquina "{machine.name}"? 
-                                Esta ação não pode ser desfeita.
+                                Tem certeza que deseja excluir a máquina "{machine.name}"? Esta ação não pode ser desfeita.
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                              <AlertDialogAction 
+                              <AlertDialogAction
                                 onClick={() => handleDeleteMachine(machine.id)}
                                 className="bg-red-600 hover:bg-red-700"
                               >
@@ -583,12 +576,9 @@ const Admin = () => {
             <MaintenanceTab />
           </TabsContent>
 
-          {/* ESP32 Monitor Tab */}
+          {/* ESP32 Tab */}
           <TabsContent value="esp32">
-            <div className="space-y-6">
-              <ESP32MonitorTab />
-              <CreditReleaseWidget />
-            </div>
+            <ESP32MonitorTab />
           </TabsContent>
 
           {/* Failover Tab */}
@@ -597,7 +587,7 @@ const Admin = () => {
           </TabsContent>
 
           {/* PayGO Tab */}
-          <TabsContent value="paygo">
+          <TabsContent value="paygo" className="space-y-6">
             {showPaygoAdmin ? (
               <EnhancedPayGOAdmin
                 config={paygoConfig}
@@ -605,16 +595,32 @@ const Admin = () => {
                 onClose={() => setShowPaygoAdmin(false)}
               />
             ) : (
-              <div className="space-y-6">
+              <div className="grid gap-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Configuração PayGO</CardTitle>
+                    <CardTitle>Sistema PayGO</CardTitle>
                     <CardDescription>
-                      Gerencie as configurações do sistema de pagamento PayGO
+                      Integração com sistema PayGO para processamento de pagamentos
                     </CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <Button 
+                  <CardContent className="space-y-4">
+                    <div className="space-y-4">
+                      <h3 className="font-medium text-primary">PayGO - Sistema Integrado</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Sistema PayGO configurado e pronto para uso. Use o widget de pagamento universal no totem.
+                      </p>
+                      <div className="bg-success/10 p-4 rounded-lg">
+                        <div className="flex items-center gap-2 text-success">
+                          <CheckCircle className="h-5 w-5" />
+                          <span className="font-medium">Pronto para usar no Totem</span>
+                        </div>
+                        <p className="text-sm text-success mt-2">
+                          Acesse /totem para usar o widget universal de pagamentos
+                        </p>
+                      </div>
+                    </div>
+                    <CreditReleaseWidget />
+                    <Button
                       onClick={() => setShowPaygoAdmin(true)}
                       className="w-full"
                     >
@@ -626,9 +632,9 @@ const Admin = () => {
             )}
           </TabsContent>
 
-          {/* PayGO Setup Tab */}
-          <TabsContent value="paygo-setup">
-            <PayGOSetupGuide />
+          {/* TEF L4 Tab */}
+          <TabsContent value="tef">
+            <TEFPositivoL4Config />
           </TabsContent>
 
           {/* Settings Tab */}
