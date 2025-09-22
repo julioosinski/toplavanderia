@@ -35,7 +35,17 @@ const config: CapacitorConfig = {
     captureInput: true,
     webContentsDebuggingEnabled: true,
     appendUserAgent: 'TotemLavanderia/1.0.0',
-    loggingBehavior: 'debug'
+    loggingBehavior: 'debug',
+    useLegacyBridge: false,
+    flavor: 'main',
+    buildOptions: {
+      keystorePath: undefined,
+      keystoreAlias: undefined,
+      keystoreAliasPassword: undefined,
+      keystorePassword: undefined,
+      releaseType: 'APK',
+      signingType: 'apksigner'
+    }
   },
   ios: {
     contentInset: 'automatic',

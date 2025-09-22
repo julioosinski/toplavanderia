@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Positivo L4 USB Pinpad -->
+    <usb-device vendor-id="1155" product-id="22336" />
+    
+    <!-- Common TEF/POS USB devices -->
+    <usb-device vendor-id="1027" product-id="24577" />
+    <usb-device vendor-id="1105" product-id="32768" />
+    
+    <!-- Generic CDC/ACM devices (common for pinpads) -->
+    <usb-device class="2" subclass="2" protocol="1" />
+    
+    <!-- Serial devices -->
+    <usb-device class="255" subclass="0" protocol="0" />
+</resources>

@@ -35,6 +35,7 @@ import { EnhancedPayGOAdmin } from "@/components/admin/EnhancedPayGOAdmin";
 import { DEFAULT_PAYGO_CONFIG } from "@/lib/paygoUtils";
 import { useTransactionNFSe } from '@/hooks/useTransactionNFSe';
 import { TEFPositivoL4Config } from "@/components/admin/TEFPositivoL4Config";
+import { USBDiagnosticsTab } from "@/components/admin/USBDiagnosticsTab";
 
 interface Machine {
   id: string;
@@ -434,7 +435,7 @@ const Admin = () => {
       {/* Main Content */}
       <div className="container mx-auto">
         <Tabs defaultValue="machines" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-8">
+          <TabsList className="grid w-full grid-cols-9">
             <TabsTrigger value="machines">Máquinas</TabsTrigger>
             <TabsTrigger value="analytics">Relatórios</TabsTrigger>
             <TabsTrigger value="maintenance">Manutenção</TabsTrigger>
@@ -442,6 +443,7 @@ const Admin = () => {
             <TabsTrigger value="failover">Failover</TabsTrigger>
             <TabsTrigger value="paygo">PayGO</TabsTrigger>
             <TabsTrigger value="tef">TEF L4</TabsTrigger>
+            <TabsTrigger value="usb">USB</TabsTrigger>
             <TabsTrigger value="settings">Configurações</TabsTrigger>
           </TabsList>
 
@@ -635,6 +637,11 @@ const Admin = () => {
           {/* TEF L4 Tab */}
           <TabsContent value="tef">
             <TEFPositivoL4Config />
+          </TabsContent>
+
+          {/* USB Diagnostics Tab */}
+          <TabsContent value="usb">
+            <USBDiagnosticsTab />
           </TabsContent>
 
           {/* Settings Tab */}

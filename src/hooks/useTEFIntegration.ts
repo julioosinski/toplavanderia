@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { useToast } from '@/components/ui/use-toast';
+import { useUSBConnection } from './useUSBConnection';
 
 interface TEFConfig {
   host: string;
@@ -34,6 +35,7 @@ interface TEFStatus {
   version?: string;
   lastCheck: Date;
   consecutiveFailures: number;
+  connectionAttempts: number;
   isInitialized: boolean;
 }
 
@@ -42,11 +44,13 @@ export const useTEFIntegration = (config: TEFConfig) => {
     isOnline: false,
     lastCheck: new Date(),
     consecutiveFailures: 0,
+    connectionAttempts: 0,
     isInitialized: false
   });
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
   const abortControllerRef = useRef<AbortController | null>(null);
+  const { getConnectedPinpads, isSupported: usbSupported } = useUSBConnection();
 
   // Função para auto-detectar IP da Positivo L4 na rede local
   const findPositivoL4 = useCallback(async (): Promise<string | null> => {
@@ -81,8 +85,24 @@ export const useTEFIntegration = (config: TEFConfig) => {
     return null;
   }, []);
 
-  // Função para verificar status do TEF
   const checkTEFStatus = useCallback(async (): Promise<boolean> => {
+    // First try USB connection if available
+    if (usbSupported) {
+      const connectedPinpads = getConnectedPinpads();
+      if (connectedPinpads.length > 0) {
+        setStatus(prev => ({
+          ...prev,
+          isOnline: true,
+          version: 'USB Connected',
+          lastCheck: new Date(),
+          connectionAttempts: prev.connectionAttempts + 1,
+          consecutiveFailures: 0
+        }));
+        return true;
+      }
+    }
+    
+    // Fallback to network connection
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -95,17 +115,18 @@ export const useTEFIntegration = (config: TEFConfig) => {
 
       clearTimeout(timeoutId);
 
-      if (response.ok) {
-        const data = await response.json();
-        setStatus(prev => ({
-          isOnline: true,
-          version: data.version,
-          lastCheck: new Date(),
-          consecutiveFailures: 0,
-          isInitialized: prev.isInitialized
-        }));
-        return true;
-      }
+        if (response.ok) {
+          const data = await response.json();
+          setStatus(prev => ({
+            isOnline: true,
+            version: data.version,
+            lastCheck: new Date(),
+            consecutiveFailures: 0,
+            connectionAttempts: prev.connectionAttempts + 1,
+            isInitialized: prev.isInitialized
+          }));
+          return true;
+        }
     } catch (error) {
       console.error('TEF Status Check Failed:', error);
     }
@@ -117,7 +138,7 @@ export const useTEFIntegration = (config: TEFConfig) => {
       consecutiveFailures: prev.consecutiveFailures + 1
     }));
     return false;
-  }, [config.host, config.port]);
+  }, [config.host, config.port, usbSupported, getConnectedPinpads]);
 
   // Função para inicializar TEF com retry
   const initializeTEF = useCallback(async (): Promise<boolean> => {
