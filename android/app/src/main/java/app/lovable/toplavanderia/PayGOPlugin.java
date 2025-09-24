@@ -90,4 +90,26 @@ public class PayGOPlugin extends Plugin {
             call.reject("Failed to detect pinpad: " + e.getMessage());
         }
     }
+    
+    @PluginMethod
+    public void getSystemStatus(PluginCall call) {
+        try {
+            JSObject result = paygoManager.getSystemStatus();
+            call.resolve(result);
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting system status", e);
+            call.reject("Failed to get system status: " + e.getMessage());
+        }
+    }
+    
+    @PluginMethod
+    public void testConnection(PluginCall call) {
+        try {
+            JSObject result = paygoManager.testConnection();
+            call.resolve(result);
+        } catch (Exception e) {
+            Log.e(TAG, "Error testing connection", e);
+            call.reject("Failed to test connection: " + e.getMessage());
+        }
+    }
 }

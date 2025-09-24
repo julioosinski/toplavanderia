@@ -7,6 +7,14 @@ import android.util.Log;
 import com.getcapacitor.JSObject;
 import java.util.HashMap;
 
+// PayGO Library Imports
+import br.com.phoebus.android.payments.api.Credentials;
+import br.com.phoebus.android.payments.api.PaymentClient;
+import br.com.phoebus.android.payments.api.PaymentRequest;
+import br.com.phoebus.android.payments.api.PaymentResponse;
+import br.com.phoebus.android.payments.api.PaymentStatus;
+import br.com.phoebus.android.payments.api.exception.ClientException;
+
 public class PayGOManager {
     
     private static final String TAG = "PayGOManager";
@@ -17,11 +25,15 @@ public class PayGOManager {
     private int currentPort;
     private String automationKey;
     
+    // PayGO Client
+    private PaymentClient paymentClient;
+    private Credentials credentials;
+    
     // PPC930 Device IDs
-    private static final int PPC930_VENDOR_ID_1 = 8137;
-    private static final int PPC930_PRODUCT_ID_1 = 5169;
-    private static final int PPC930_VENDOR_ID_2 = 1027;
-    private static final int PPC930_PRODUCT_ID_2 = 24577;
+    private static final int PPC930_VENDOR_ID_1 = PayGOConfig.PPC930_VENDOR_ID_PRIMARY;
+    private static final int PPC930_PRODUCT_ID_1 = PayGOConfig.PPC930_PRODUCT_ID_PRIMARY;
+    private static final int PPC930_VENDOR_ID_2 = PayGOConfig.PPC930_VENDOR_ID_SECONDARY;
+    private static final int PPC930_PRODUCT_ID_2 = PayGOConfig.PPC930_PRODUCT_ID_SECONDARY;
     
     public PayGOManager(Context context) {
         this.context = context;
@@ -34,9 +46,17 @@ public class PayGOManager {
             this.currentPort = port;
             this.automationKey = automationKey;
             
-            // Initialize PayGO library here
-            // This would typically involve calling the actual PayGO SDK initialization
-            Log.i(TAG, "Initializing PayGO with host: " + host + ", port: " + port);
+            // Initialize PayGO credentials
+            this.credentials = new Credentials();
+            this.credentials.setLogicNumber("1");
+            this.credentials.setSerial("PPC930");
+            this.credentials.setAutomationKey(automationKey);
+            
+            // Initialize PayGO client
+            this.paymentClient = new PaymentClient();
+            this.paymentClient.bind(context);
+            
+            Log.i(TAG, "PayGO initialized successfully with host: " + host + ", port: " + port);
             
             this.isInitialized = true;
             return true;
@@ -73,33 +93,74 @@ public class PayGOManager {
             return result;
         }
         
+        // Validate input parameters
+        if (!PayGOConfig.isValidAmount(amount)) {
+            result.put("success", false);
+            result.put("message", "Invalid amount. Must be between " + PayGOConfig.MIN_AMOUNT + " and " + PayGOConfig.MAX_AMOUNT);
+            return result;
+        }
+        
+        if (!PayGOConfig.isValidOrderId(orderId)) {
+            result.put("success", false);
+            result.put("message", "Invalid order ID. Must not be empty and max " + PayGOConfig.MAX_ORDER_ID_LENGTH + " characters");
+            return result;
+        }
+        
         try {
-            // Here you would integrate with the actual PayGO library
-            // For now, we'll simulate the response structure
+            // Create PayGO payment request
+            PaymentRequest paymentRequest = new PaymentRequest();
+            paymentRequest.setAmount(PayGOConfig.amountToCents(amount)); // Amount in cents
+            paymentRequest.setOrderId(orderId);
+            
+            // Set payment type
+            switch (paymentType.toLowerCase()) {
+                case "credit":
+                    paymentRequest.setPaymentType(PayGOConfig.PAYMENT_TYPE_CREDIT);
+                    break;
+                case "debit":
+                    paymentRequest.setPaymentType(PayGOConfig.PAYMENT_TYPE_DEBIT);
+                    break;
+                case "pix":
+                    paymentRequest.setPaymentType(PayGOConfig.PAYMENT_TYPE_PIX);
+                    break;
+                default:
+                    result.put("success", false);
+                    result.put("message", "Invalid payment type: " + paymentType);
+                    return result;
+            }
+            
             Log.i(TAG, "Processing " + paymentType + " payment for amount: " + amount);
             
-            // Simulate payment processing
-            boolean success = simulatePaymentProcessing(paymentType, amount, orderId);
+            // Process payment with PayGO library
+            PaymentResponse paymentResponse = paymentClient.startPaymentV2(paymentRequest, credentials);
             
-            result.put("success", success);
+            result.put("success", paymentResponse.getResponseCode() == PaymentResponse.SUCCESS);
             result.put("paymentType", paymentType);
             result.put("amount", amount);
             result.put("orderId", orderId);
-            result.put("transactionId", "TXN" + System.currentTimeMillis());
+            result.put("transactionId", paymentResponse.getTransactionId());
             result.put("timestamp", System.currentTimeMillis());
             
-            if (success) {
+            if (paymentResponse.getResponseCode() == PaymentResponse.SUCCESS) {
                 result.put("message", "Payment processed successfully");
                 result.put("status", "approved");
+                result.put("nsu", paymentResponse.getAuthorisationCode());
+                result.put("authorizationCode", paymentResponse.getAuthorisationCode());
             } else {
-                result.put("message", "Payment failed");
+                result.put("message", paymentResponse.getResponseText());
                 result.put("status", "denied");
             }
             
+        } catch (ClientException e) {
+            Log.e(TAG, "PayGO ClientException", e);
+            result.put("success", false);
+            result.put("message", "PayGO error: " + e.getMessage());
+            result.put("status", "error");
         } catch (Exception e) {
             Log.e(TAG, "Error processing payment", e);
             result.put("success", false);
             result.put("message", "Payment processing error: " + e.getMessage());
+            result.put("status", "error");
         }
         
         return result;
@@ -111,9 +172,17 @@ public class PayGOManager {
         }
         
         try {
-            // Implement actual transaction cancellation with PayGO library
+            // Cancel transaction with PayGO library
             Log.i(TAG, "Cancelling current transaction");
-            return true;
+            PaymentResponse cancelResponse = paymentClient.abort(credentials);
+            
+            boolean success = cancelResponse.getResponseCode() == PaymentResponse.SUCCESS;
+            Log.i(TAG, "Transaction cancellation result: " + success);
+            
+            return success;
+        } catch (ClientException e) {
+            Log.e(TAG, "PayGO ClientException during cancellation", e);
+            return false;
         } catch (Exception e) {
             Log.e(TAG, "Error cancelling transaction", e);
             return false;
@@ -172,17 +241,86 @@ public class PayGOManager {
         }
         
         return null;
-    }
     
-    private boolean simulatePaymentProcessing(String paymentType, double amount, String orderId) {
-        // Simulate processing time
+    /**
+     * Gets detailed PayGO system status including library version and device info
+     */
+    public JSObject getSystemStatus() {
+        JSObject status = new JSObject();
+        
         try {
-            Thread.sleep(2000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            status.put("initialized", isInitialized);
+            status.put("host", currentHost);
+            status.put("port", currentPort);
+            
+            if (isInitialized && paymentClient != null) {
+                status.put("clientConnected", true);
+                status.put("libraryVersion", "PayGO v2.1.0.6");
+            } else {
+                status.put("clientConnected", false);
+            }
+            
+            // Check USB device status
+            boolean usbDetected = detectPPC930();
+            status.put("usbDeviceDetected", usbDetected);
+            
+            if (usbDetected) {
+                UsbDevice device = findPPC930Device();
+                if (device != null) {
+                    status.put("deviceInfo", new JSObject()
+                        .put("vendorId", device.getVendorId())
+                        .put("productId", device.getProductId())
+                        .put("deviceName", device.getDeviceName())
+                        .put("serialNumber", device.getSerialNumber()));
+                }
+            }
+            
+            status.put("timestamp", System.currentTimeMillis());
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting system status", e);
+            status.put("error", e.getMessage());
         }
         
-        // Simulate 90% success rate
-        return Math.random() > 0.1;
+        return status;
+    }
+    
+    /**
+     * Tests the PayGO connection and returns detailed results
+     */
+    public JSObject testConnection() {
+        JSObject result = new JSObject();
+        
+        if (!isInitialized) {
+            result.put("success", false);
+            result.put("message", "PayGO not initialized");
+            return result;
+        }
+        
+        try {
+            // Test USB connection
+            boolean usbConnected = detectPPC930();
+            result.put("usbConnection", usbConnected);
+            
+            // Test PayGO client
+            if (paymentClient != null) {
+                result.put("clientStatus", "connected");
+                result.put("success", usbConnected);
+                result.put("message", usbConnected ? "PayGO connection test successful" : "PPC930 device not detected");
+            } else {
+                result.put("clientStatus", "disconnected");
+                result.put("success", false);
+                result.put("message", "PayGO client not initialized");
+            }
+            
+            result.put("timestamp", System.currentTimeMillis());
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Error testing PayGO connection", e);
+            result.put("success", false);
+            result.put("message", "Connection test failed: " + e.getMessage());
+        }
+        
+        return result;
     }
 }

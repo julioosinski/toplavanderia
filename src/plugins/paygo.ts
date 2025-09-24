@@ -35,6 +35,31 @@ export interface PayGOPlugin {
     serialNumber?: string;
     error?: string;
   }>;
+
+  getSystemStatus(): Promise<{
+    initialized: boolean;
+    host?: string;
+    port?: number;
+    clientConnected: boolean;
+    libraryVersion?: string;
+    usbDeviceDetected: boolean;
+    deviceInfo?: {
+      vendorId: number;
+      productId: number;
+      deviceName: string;
+      serialNumber: string;
+    };
+    timestamp: number;
+    error?: string;
+  }>;
+
+  testConnection(): Promise<{
+    success: boolean;
+    usbConnection: boolean;
+    clientStatus: string;
+    message: string;
+    timestamp: number;
+  }>;
 }
 
 const PayGO = registerPlugin<PayGOPlugin>('PayGO');
