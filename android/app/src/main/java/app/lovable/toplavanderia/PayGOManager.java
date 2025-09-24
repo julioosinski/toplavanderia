@@ -241,6 +241,7 @@ public class PayGOManager {
         }
         
         return null;
+    }
     
     /**
      * Gets detailed PayGO system status including library version and device info
