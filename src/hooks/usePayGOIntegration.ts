@@ -1,5 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { Capacitor } from '@capacitor/core';
+import PayGO from '../plugins/paygo';
 
 export interface PayGOConfig {
   host: string;
@@ -61,24 +63,40 @@ export const usePayGOIntegration = (config: PayGOConfig) => {
 
   const checkPayGOStatus = useCallback(async (): Promise<boolean> => {
     try {
-      const response = await fetch(`http://${config.host}:${config.port}/status`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Automation-Key': config.automationKey,
-        },
-        signal: AbortSignal.timeout(config.timeout),
-      });
+      // Use native plugin on mobile, fallback to HTTP on web
+      if (Capacitor.isNativePlatform()) {
+        const result = await PayGO.checkStatus();
+        const isOnline = result.connected;
+        
+        setStatus(prev => ({
+          ...prev,
+          online: isOnline,
+          lastCheck: new Date(),
+          consecutiveFailures: isOnline ? 0 : prev.consecutiveFailures + 1,
+        }));
+        
+        return isOnline;
+      } else {
+        // Fallback to HTTP for web platform
+        const response = await fetch(`http://${config.host}:${config.port}/status`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Automation-Key': config.automationKey,
+          },
+          signal: AbortSignal.timeout(config.timeout),
+        });
 
-      const isOnline = response.ok;
-      setStatus(prev => ({
-        ...prev,
-        online: isOnline,
-        lastCheck: new Date(),
-        consecutiveFailures: isOnline ? 0 : prev.consecutiveFailures + 1,
-      }));
+        const isOnline = response.ok;
+        setStatus(prev => ({
+          ...prev,
+          online: isOnline,
+          lastCheck: new Date(),
+          consecutiveFailures: isOnline ? 0 : prev.consecutiveFailures + 1,
+        }));
 
-      return isOnline;
+        return isOnline;
+      }
     } catch (error) {
       console.error('PayGO status check failed:', error);
       setStatus(prev => ({
@@ -130,56 +148,90 @@ export const usePayGOIntegration = (config: PayGOConfig) => {
     setIsProcessing(true);
 
     try {
-      let retryCount = 0;
-      
-      while (retryCount <= config.retryAttempts) {
-        try {
-          const response = await fetch(`http://${config.host}:${config.port}/transaction`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Automation-Key': config.automationKey,
-            },
-            body: JSON.stringify({
-              amount: Math.round(transaction.amount * 100), // Convert to cents
-              installments: transaction.installments || 1,
-              paymentType: transaction.paymentType || 'CREDIT',
-              orderId: transaction.orderId || Date.now().toString(),
-            }),
-            signal: AbortSignal.timeout(config.timeout),
+      // Use native plugin on mobile, fallback to HTTP on web
+      if (Capacitor.isNativePlatform()) {
+        const result = await PayGO.processPayment({
+          paymentType: (transaction.paymentType?.toLowerCase() || 'credit') as 'credit' | 'debit' | 'pix',
+          amount: transaction.amount,
+          orderId: transaction.orderId || Date.now().toString(),
+        });
+        
+        setIsProcessing(false);
+        
+        if (result.success) {
+          toast({
+            title: "Pagamento aprovado",
+            description: `Transação processada com sucesso. ID: ${result.transactionId}`,
           });
-
-          const result = await response.json();
-          
-          setIsProcessing(false);
-          
-          if (result.success) {
-            toast({
-              title: "Pagamento aprovado",
-              description: `Transação processada com sucesso. NSU: ${result.nsu}`,
-            });
-          } else {
-            toast({
-              title: "Pagamento negado",
-              description: result.resultMessage || "Falha no processamento",
-              variant: "destructive",
-            });
-          }
-
-          return result;
-        } catch (error) {
-          retryCount++;
-          
-          if (retryCount <= config.retryAttempts) {
-            await new Promise(resolve => setTimeout(resolve, config.retryDelay));
-            continue;
-          }
-          
-          throw error;
+        } else {
+          toast({
+            title: "Pagamento negado",
+            description: result.message || "Falha no processamento",
+            variant: "destructive",
+          });
         }
+
+        return {
+          success: result.success,
+          resultCode: result.success ? 0 : -1,
+          resultMessage: result.message,
+          transactionId: result.transactionId,
+          nsu: result.transactionId, // Use transactionId as NSU for now
+          errorMessage: result.success ? undefined : result.message,
+        };
+      } else {
+        // Fallback to HTTP for web platform
+        let retryCount = 0;
+        
+        while (retryCount <= config.retryAttempts) {
+          try {
+            const response = await fetch(`http://${config.host}:${config.port}/transaction`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Automation-Key': config.automationKey,
+              },
+              body: JSON.stringify({
+                amount: Math.round(transaction.amount * 100), // Convert to cents
+                installments: transaction.installments || 1,
+                paymentType: transaction.paymentType || 'CREDIT',
+                orderId: transaction.orderId || Date.now().toString(),
+              }),
+              signal: AbortSignal.timeout(config.timeout),
+            });
+
+            const result = await response.json();
+            
+            setIsProcessing(false);
+            
+            if (result.success) {
+              toast({
+                title: "Pagamento aprovado",
+                description: `Transação processada com sucesso. NSU: ${result.nsu}`,
+              });
+            } else {
+              toast({
+                title: "Pagamento negado",
+                description: result.resultMessage || "Falha no processamento",
+                variant: "destructive",
+              });
+            }
+
+            return result;
+          } catch (error) {
+            retryCount++;
+            
+            if (retryCount <= config.retryAttempts) {
+              await new Promise(resolve => setTimeout(resolve, config.retryDelay));
+              continue;
+            }
+            
+            throw error;
+          }
+        }
+        
+        throw new Error('Maximum retry attempts reached');
       }
-      
-      throw new Error('Maximum retry attempts reached');
     } catch (error) {
       setIsProcessing(false);
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
@@ -201,19 +253,27 @@ export const usePayGOIntegration = (config: PayGOConfig) => {
 
   const cancelTransaction = useCallback(async (): Promise<boolean> => {
     try {
-      const response = await fetch(`http://${config.host}:${config.port}/cancel`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Automation-Key': config.automationKey,
-        },
-        signal: AbortSignal.timeout(config.timeout),
-      });
+      // Use native plugin on mobile, fallback to HTTP on web
+      if (Capacitor.isNativePlatform()) {
+        const result = await PayGO.cancelTransaction();
+        setIsProcessing(false);
+        return result.success;
+      } else {
+        // Fallback to HTTP for web platform
+        const response = await fetch(`http://${config.host}:${config.port}/cancel`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Automation-Key': config.automationKey,
+          },
+          signal: AbortSignal.timeout(config.timeout),
+        });
 
-      const result = await response.json();
-      setIsProcessing(false);
-      
-      return result.success;
+        const result = await response.json();
+        setIsProcessing(false);
+        
+        return result.success;
+      }
     } catch (error) {
       console.error('PayGO cancel failed:', error);
       setIsProcessing(false);
@@ -223,20 +283,50 @@ export const usePayGOIntegration = (config: PayGOConfig) => {
 
   const testConnection = useCallback(async (): Promise<boolean> => {
     try {
-      const response = await fetch(`http://${config.host}:${config.port}/ping`, {
-        method: 'GET',
-        headers: {
-          'X-Automation-Key': config.automationKey,
-        },
-        signal: AbortSignal.timeout(config.timeout),
-      });
+      // Use native plugin on mobile, fallback to HTTP on web
+      if (Capacitor.isNativePlatform()) {
+        const result = await PayGO.checkStatus();
+        return result.connected;
+      } else {
+        // Fallback to HTTP for web platform
+        const response = await fetch(`http://${config.host}:${config.port}/ping`, {
+          method: 'GET',
+          headers: {
+            'X-Automation-Key': config.automationKey,
+          },
+          signal: AbortSignal.timeout(config.timeout),
+        });
 
-      return response.ok;
+        return response.ok;
+      }
     } catch (error) {
       console.error('PayGO connection test failed:', error);
       return false;
     }
   }, [config]);
+
+  const detectPinpad = useCallback(async () => {
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const result = await PayGO.detectPinpad();
+        return result;
+      } else {
+        // Web fallback - cannot detect USB devices
+        return {
+          detected: false,
+          deviceName: "USB detection only available on mobile",
+          error: "Web platform cannot access USB devices directly"
+        };
+      }
+    } catch (error) {
+      console.error('Pinpad detection failed:', error);
+      return {
+        detected: false,
+        deviceName: "Detection failed",
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }, []);
 
   const processPixPayment = useCallback(async (
     transaction: PayGOTransaction
@@ -334,5 +424,6 @@ export const usePayGOIntegration = (config: PayGOConfig) => {
     checkPixPaymentStatus,
     cancelTransaction,
     testConnection,
+    detectPinpad,
   };
 };

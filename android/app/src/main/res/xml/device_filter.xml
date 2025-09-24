@@ -3,6 +3,10 @@
     <!-- Positivo L4 USB Pinpad -->
     <usb-device vendor-id="1155" product-id="22336" />
     
+    <!-- PPC930 Pinpad (PayGO) -->
+    <usb-device vendor-id="8137" product-id="5169" />
+    <usb-device vendor-id="1027" product-id="24577" />
+    
     <!-- Common TEF/POS USB devices -->
     <usb-device vendor-id="1027" product-id="24577" />
     <usb-device vendor-id="1105" product-id="32768" />
