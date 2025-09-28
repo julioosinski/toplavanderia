@@ -1,73 +1,243 @@
-# Welcome to your Lovable project
+# 🏪 Top Lavanderia - Sistema de Totem com PayGo
 
-## Project info
+Sistema completo de autoatendimento para lavanderia com integração real de pagamento via PayGo Android Kit v4.1.50.5 e PPC930.
 
-**URL**: https://lovable.dev/projects/1d41a6b9-83a6-47d2-99a8-147b204a13ef
+## 🚀 Funcionalidades
 
-## How can I edit this code?
+### ✨ **Sistema de Totem**
+- 🏪 Interface intuitiva para seleção de máquinas
+- 🧺 Máquinas de lavar e secar com preços configuráveis
+- ⏱️ Tempo de ciclo personalizável por máquina
+- 📱 Interface otimizada para tablet Android
 
-There are several ways of editing your application.
+### 💳 **Integração de Pagamento Real**
+- 🔌 Comunicação real com PPC930 via PayGo Android Kit v4.1.50.5
+- 💰 Processamento de pagamentos com cartão
+- ✅ Confirmação automática de transações
+- 🔄 Sistema de retry e tratamento de erros
 
-**Use Lovable**
+### 🌐 **Sistema Híbrido Online/Offline**
+- ☁️ Sincronização com Supabase em tempo real
+- 📊 Armazenamento local para funcionamento offline
+- 🔄 Sincronização automática quando online
+- 📈 Relatórios e monitoramento de operações
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/1d41a6b9-83a6-47d2-99a8-147b204a13ef) and start prompting.
+### ⚙️ **Painel Administrativo**
+- 📊 Dashboard com estatísticas em tempo real
+- 🏭 Gerenciamento de máquinas
+- 📋 Relatórios de vendas e operações
+- ⚙️ Configurações do sistema
+- 🧪 Testes de conectividade PayGo/PPC930
 
-Changes made via Lovable will be committed automatically to this repo.
+## 🛠️ Tecnologias Utilizadas
 
-**Use your preferred IDE**
+### **Frontend (Web)**
+- ⚛️ React 18 + TypeScript
+- 🎨 Tailwind CSS
+- 🔧 Vite
+- 📱 Capacitor
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### **Backend**
+- 🗄️ Supabase (PostgreSQL)
+- 🔐 Autenticação JWT
+- 📊 APIs REST
+- 🔄 Sincronização em tempo real
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### **Mobile (Android)**
+- ☕ Java 8
+- 🏗️ Android Gradle Plugin
+- 📱 Android API 24+
+- 🔌 PayGo Android Kit v4.1.50.5
 
-Follow these steps:
+### **Integração de Pagamento**
+- 💳 PayGo Integrado CERT/PROD
+- 🔌 PPC930 Pinpad
+- 📡 Comunicação USB/Serial
+- 🔐 Certificação PCI
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+## 📦 Estrutura do Projeto
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```
+toplavanderia/
+├── 📱 android/                    # Aplicativo Android
+│   ├── app/src/main/java/         # Código Java
+│   │   └── app/lovable/toplavanderia/
+│   │       ├── TotemActivity.java      # Interface principal
+│   │       ├── AdminActivity.java      # Painel administrativo
+│   │       ├── RealPayGoManager.java   # Integração PayGo
+│   │       ├── SupabaseHelper.java     # Conexão Supabase
+│   │       └── DatabaseHelper.java     # Banco local
+│   └── app/build/outputs/apk/     # APK compilado
+├── 🌐 src/                        # Frontend React
+│   ├── components/                # Componentes React
+│   ├── pages/                     # Páginas da aplicação
+│   ├── hooks/                     # Hooks customizados
+│   └── integrations/supabase/     # Configuração Supabase
+├── 📊 supabase/                   # Backend Supabase
+│   ├── migrations/                # Migrações do banco
+│   └── functions/                 # Edge Functions
+├── 📦 tablet_package/             # Pacote para instalação
+└── 📚 docs/                       # Documentação
 ```
 
-**Edit a file directly in GitHub**
+## 🚀 Instalação e Configuração
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### **1. Pré-requisitos**
+- Node.js 18+
+- Java 8+
+- Android SDK
+- PayGo Android Kit v4.1.50.5
+- PPC930 Pinpad
 
-**Use GitHub Codespaces**
+### **2. Configuração do Supabase**
+```bash
+# URL do projeto
+https://rkdybjzwiwwqqzjfmerm.supabase.co
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+# Chave anônima
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg
+```
 
-## What technologies are used for this project?
+### **3. Instalação do Frontend**
+```bash
+npm install
+npm run build
+```
 
-This project is built with:
+### **4. Compilação do Android**
+```bash
+cd android
+./gradlew assembleDebug
+```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+### **5. Instalação no Tablet**
+```bash
+adb install app/build/outputs/apk/debug/app-debug.apk
+```
 
-## How can I deploy this project?
+## 🔧 Configuração do PayGo
 
-Simply open [Lovable](https://lovable.dev/projects/1d41a6b9-83a6-47d2-99a8-147b204a13ef) and click on Share -> Publish.
+### **1. Instalação do PayGo Integrado**
+- Instale o APK do PayGo Integrado (CERT ou PROD)
+- Configure a PPC930 via cabo USB
+- Teste a conectividade
 
-## Can I connect a custom domain to my Lovable project?
+### **2. Configuração da PPC930**
+- Conecte via USB ao tablet
+- Configure os parâmetros de comunicação
+- Teste transações de exemplo
 
-Yes, you can!
+### **3. Teste de Integração**
+```bash
+# Verificar logs
+adb logcat | findstr "RealPayGo\|SupabaseHelper\|TotemActivity"
+```
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+## 📱 Uso do Sistema
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+### **Interface do Totem**
+1. **Seleção de Máquina**: Escolha entre lavadoras e secadoras
+2. **Confirmação**: Visualize preço e duração
+3. **Pagamento**: Processe via PPC930
+4. **Liberação**: Máquina é liberada automaticamente
+
+### **Painel Administrativo**
+1. **Dashboard**: Estatísticas em tempo real
+2. **Máquinas**: Gerenciar status e configurações
+3. **Relatórios**: Histórico de operações
+4. **Configurações**: Ajustes do sistema
+
+## 🔄 Sincronização de Dados
+
+### **Online**
+- ✅ Máquinas carregadas do Supabase
+- ✅ Transações salvas em tempo real
+- ✅ Status atualizado automaticamente
+- ✅ Relatórios sincronizados
+
+### **Offline**
+- ⚠️ Máquinas padrão carregadas
+- ⚠️ Transações salvas localmente
+- ⚠️ Sincronização quando conectar
+- ⚠️ Funcionamento limitado
+
+## 🐛 Resolução de Problemas
+
+### **Problema: Tablet mostra "Offline"**
+```bash
+# Verificar conectividade
+adb logcat | findstr "SupabaseHelper"
+```
+
+### **Problema: PayGo não conecta**
+```bash
+# Verificar PayGo
+adb logcat | findstr "RealPayGo"
+```
+
+### **Problema: Máquinas não aparecem**
+1. Verificar se há máquinas cadastradas no Supabase
+2. Verificar logs de conectividade
+3. Testar com máquinas padrão
+
+## 📊 Monitoramento
+
+### **Logs Importantes**
+- `SupabaseHelper`: Conexão com banco
+- `TotemActivity`: Interface do totem
+- `RealPayGo`: Comunicação com PPC930
+- `AdminActivity`: Painel administrativo
+
+### **Comandos Úteis**
+```bash
+# Ver logs em tempo real
+adb logcat | findstr "SupabaseHelper\|TotemActivity\|RealPayGo"
+
+# Limpar logs
+adb logcat -c
+
+# Reiniciar aplicativo
+adb shell am force-stop app.lovable.toplavanderia
+adb shell am start -n app.lovable.toplavanderia/.TotemActivity
+```
+
+## 📈 Roadmap
+
+### **Versão Atual (v1.0.0)**
+- ✅ Sistema de totem completo
+- ✅ Integração real PayGo/PPC930
+- ✅ Sincronização Supabase
+- ✅ Painel administrativo
+- ✅ Sistema híbrido online/offline
+
+### **Próximas Versões**
+- 🔄 Integração com ESP32
+- 📊 Relatórios avançados
+- 🔔 Notificações push
+- 🌍 Multi-idioma
+- 📱 App iOS
+
+## 🤝 Contribuição
+
+1. Fork o projeto
+2. Crie uma branch para sua feature
+3. Commit suas mudanças
+4. Push para a branch
+5. Abra um Pull Request
+
+## 📄 Licença
+
+Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
+
+## 📞 Suporte
+
+Para suporte técnico ou dúvidas:
+- 📧 Email: suporte@toplavanderia.com
+- 📱 WhatsApp: (11) 99999-9999
+- 🌐 Website: https://toplavanderia.com
+
+---
+
+**🎯 Sistema completo de totem de lavanderia com integração real de pagamento!**
+
+Desenvolvido com ❤️ para revolucionar o autoatendimento em lavanderias.
