@@ -1,0 +1,29 @@
+﻿{
+  "app": {
+    "name": "Top Lavanderia",
+    "version": "1.0.0",
+    "package": "app.lovable.toplavanderia"
+  },
+  "paygo": {
+    "enabled": true,
+    "version": "4.1.50.5",
+    "interface_version": "2.1.0.6",
+    "default_host": "192.168.1.100",
+    "default_port": 3000,
+    "supported_payments": ["credit", "debit", "pix"],
+    "device_support": ["PPC930"]
+  },
+  "features": {
+    "kiosk_mode": true,
+    "auto_payment": true,
+    "receipt_printing": true,
+    "machine_control": true,
+    "admin_panel": true
+  },
+  "requirements": {
+    "android_version": "5.1",
+    "api_level": 22,
+    "usb_support": true,
+    "bluetooth_support": true
+  }
+}

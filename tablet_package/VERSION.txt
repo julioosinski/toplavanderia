@@ -1,0 +1,21 @@
+﻿Top Lavanderia - Pacote para Tablet
+==================================
+
+VersÃ£o: 1.0.0
+Data: 2025-09-26 14:46:42
+
+Componentes:
+- Top Lavanderia App: 1.0.0
+- PayGo Integrado: 4.1.50.5
+- InterfaceAutomacao: 2.1.0.6
+- Android Target: API 22+
+
+Arquivos:
+- PayGo CERT: PGIntegrado-v4.1.50.5_CERT_geral_250605.zip
+- PayGo PROD: PGIntegrado-v4.1.50.5_PROD_geral_250605.zip
+
+ConfiguraÃ§Ãµes:
+- Host PadrÃ£o: 192.168.1.100
+- Porta PadrÃ£o: 3000
+- Dispositivo: PPC930
+- Modo: Kiosk

@@ -1,0 +1,28 @@
+{
+    "logs": [
+        {
+            "outputFile": "app.lovable.toplavanderia.app-mergeDebugResources-32:/values-v11/values-v11.xml",
+            "map": [
+                {
+                    "source": "C:\\Users\\ideapad GAMING\\.gradle\\caches\\transforms-3\\97191051c967225da2bdf1bba98ce355\\transformed\\jetified-InterfaceAutomacao-v2.1.0.6\\res\\values-v11\\values-v11.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endLines": "4",
+                        "endColumns": "12",
+                        "endOffsets": "187"
+                    },
+                    "to": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endLines": "4",
+                        "endColumns": "12",
+                        "endOffsets": "138"
+                    }
+                }
+            ]
+        }
+    ]
+}

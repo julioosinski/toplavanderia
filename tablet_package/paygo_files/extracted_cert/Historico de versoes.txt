@@ -1,0 +1,3918 @@
+*********************************************************************
+                C6Pay Integrado - Histórico de versões
+*********************************************************************
+ v4.1.11.0 -  16/04/2021
+----------------------------------------------------------------------
+- Primeira versão.
+    - Esta versão contempla apenas a versão do N910.
+- Esta versão não contempla integração com automação comercial.
+
+v4.1.12.0 -  17/05/2021
+----------------------------------------------------------------------
+- Esta versão não contempla integração com automação comercial.
+
+*** APLICAÇÃO ***
+
+- ID18060: Nova funcionalidade: App é executado como launcher nos POS Android.
+- ID18214: Nova funcionalidade: Passa a permitir venda digitada, basta clicar na tela de inserção do
+           cartão.
+- ID18058: Correção: Não permite imprimir repetidas vezes o comprovante do cliente.
+- ID18093: Correção: Passa a exibir adequadamente a última linha do comprovante da operação
+           "Configuração".
+- ID18324: Correção: Os dados técnicos "Empresa de Automação" e "Nome de Automação" estavam sendo
+           enviados com valores trocados.
+- ID18932: Passa a exibir na tela do dispositivo Android o mesmo comprovante que é impresso.
+-          Nova funcionalidade: Adicionado endereço padrão de produção.
+- ID18936: Correção: Informa que o terminal está sem bobina para imprimir os comprovantes.
+- ID18153: Correção: Estava ocorrendo crash ao final do processo de venda com Getnet.
+- ID18159: Correção: Foi realizada a troca para exibir o comprovante gráfico ou de texto.
+- ID18161: Correção: Passa a bloquear a abertura do menu lateral durante as vendas.
+- ID19476: Correção: Ao executar uma função administrativa "Reimpressão", fornece a opção de
+           imprimir a via do cliente.
+- ID19716: Correção: Passa a exibir o valor correto ao iniciar a venda pela inserção do cartão.
+- ID19713: Correção: Passa a solicitar a remoção do cartão ao final da venda.
+-          Correção: Removido o botão de cancelar da tela de remover o cartão.
+- ID19852: Correção: Em caso de falha na venda, após bloqueio e desbloqueio da tela, volta para a
+           tela principal.
+- ID16951: Correção: Criado timeout de 30s para verificar inatividade e cancelar operações.
+- ID20295 : Passa a enviar os erros para o Sentry.
+- ID19749: Nova Funcionalidade: Passa a enviar o tempo de percepção do usuário (T5).
+-          Correção: Não permite clicar em vender após inserir o cartão.
+- ID19736: Correção: Ajuste para evitar travamento ocasional na tela "ERRO PINPAD [-2142] RETIRE
+           O CARTÃO".
+- ID19972: Nova Funcionalidade: Passa a solicitar a senha técnica para entrar nas configurações
+           do Android.
+- ID16120: Nova Funcionalidade: Tela de ajuda.
+-          Nova funcionalidade: Nova senha técnica gerada através do gerador de senhas, caso o PDC esteja
+           instalado.
+
+*** PGWebLib (v4.1.12.0) ***
+>>> Módulo PGWebLib <<<
+- ID19301: Correção (interna): Passa a reiniciar os valores timeout para interação com usuário após
+           a manutenção. Isso foi feito para que o teste de chaves funcione adequadamente após uma
+           manutenção.
+- ID19066: Correção (interna): Corrige o pós processamento dos dados adicionais da rede adquirente
+           durante a captura do cartão. Anteriormente, o terminal poderia reiniciar caso processasse
+           um cartão para rede adquirente de índice 01.
+
+>>> Módulo Android <<<
+- ID18107: Melhoria: Adição do texto 'Android' na versão do Android exibida no comprovante dados
+           terminal.
+- ID19713: Correção: Passa a pedir a remoção do cartão no POS Android quando a transação é cancelada
+           no fluxo transacional e o cartão está inserido.
+- ID19749: Nova Funcionalidade: Passa a enviar o T5 da transação
+-          Melhoria: Passa a remover as informações do pdc após manutenção.
+- ID19739: Correção: Ajuste para evitar crash na confirmação de transações com VISA crédito.
+
+    > Newland (N910)
+    * bcnewland-release:    v1.90
+    * kernel: 3.10.49 / build: V2.3.04
+    * PPComp Newland: v1.31
+
+v4.1.12.1 -  27/05/2021
+----------------------------------------------------------------------
+- Esta versão não contempla integração com automação comercial e não suporta iniciar a venda por
+inserção de cartão.
+
+*** APLICAÇÃO ***
+- ID20691: Correção: Estava exibindo subtotal 0 no teste de chaves.
+- ID20829: Correção: Passa a não permitir que seja digitado zero como primeiro digito.
+- ID20827: Correção: Passa a formatar o valor em pt-BR.
+- ID20831: Correção: Durante algumas transações, travava em "Processando".
+-          Melhoria: Modificado o applicationId, mantendo o mesmo do C6Pay.
+- ID20835: Correção: ajustado problema de deslocamento de comprovante.
+- ID20960: Correção: criada funções para acessar o remove card da pgweblib após impressão do
+           comprovante.
+- ID21137: Correção: A barra lateral do aplicativo não estava sendo fechada após inserir o cartão e
+           iniciar a venda.
+
+*** PGWebLib (v4.1.12.1) ***
+>>> Módulo PGWebLib <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- ID21142: Correção: Ao executar diversas transações seguidas pela inserção do cartão, ocorriam
+           travamentos.
+- ID20837: Correção: Função criada para chamar o remove card após a impressão do comprovante.
+-          Correção: Mesmo em caso de falha na instalação, passava a pedir a senha técnica do
+           gerador de senha. Agora essa senha só é pedida após uma instalação bem sucedida.
+
+    > Newland (N910)
+    * bcnewland-release:    v1.90
+    * kernel: 3.10.49 / build: V2.3.04
+    * PPComp Newland: v1.31
+
+v4.1.12.2 -  28/05/2021
+----------------------------------------------------------------------
+- Esta versão não contempla integração com automação comercial e não suporta iniciar a venda por
+inserção de cartão.
+*** APLICAÇÃO ***
+- ID21781: Correção: Erro na leitura do cartão na 1ª venda.
+- ID21794: Correção: Após realizar várias vendas seguidas, terminal ficou travado no processando.
+-          Melhoria: Uso do teclado definido por UX.
+*** PGWebLib (v4.1.12.1) ***
+>>> Módulo PGWebLib <<<
+- Não houve alterações neste módulo.
+>>> Módulo Android <<<
+- Não houve alterações neste módulo.
+    > Newland (N910)
+    * bcnewland-release:    v1.90
+    * kernel: 3.10.49 / build: V2.3.04
+    * PPComp Newland: v1.31
+
+v4.1.12.3 -  09/06/2021
+----------------------------------------------------------------------
+- Esta versão não contempla integração com automação comercial e não suporta iniciar a venda por
+inserção de cartão.
+
+*** APLICAÇÃO ***
+- ID23241: Nova funcionalidade: Definir launcher C6Pay Integrado como prioritário no dispositivo.
+- ID22017: Correção: Metodo de timeout das telas ajustado.
+- ID22159: Correção: Mensagens de erro de impressão ajustado.
+- ID22340: Correção: A aplicação estava travando em "PROCESSANDO" após acessar o "Menu Administrativo" e cancelar a operação.
+- ID22347: Correção: Trocada a senha do lojista de "000000" para "999999"
+- ID22306: Correção: Ao emitir uma mensagem de modo inválido na leitura de NFC, estava ficando preso nessa tela. Agora ele volta para a tela de inserção do cartão.
+- ID21959: Correção: Após imprimir a via do cliente, e desligar e ligar a tela do terminal o app travava.
+- ID20737: Correção: Timeout na tela de inserir o cartão ou digitar.
+-          Correção: não permitir duplo clique em botões que chamam o HomeFragment.
+		   Correção: Valor da transação é exibido em uma única linha.
+-          Alteração: removido o idSuffix dos flavors.
+-          Alteração: retirado o suspend da função callPrinter.
+- 		   Atualização: PGWeblib_Android.
+-          Atualização: PPCompNewland.
+-          Atualização: Printer.
+-          Atualização: Printer_N910.
+
+*** PGWebLib (v4.1.12.3) ***
+>>> Módulo PGWebLib <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- ID22040: Correção: A numeração da versão do C6Pay Integrado estava incorreta,
+estava exibindo a versão da PGWebLib (Menu administrativo -> Versão).
+- ID22978: Correção: Não chama mais o removeCard em operações ADM.
+- ID22334: Correção: Não exibe a mensagem para inserir um cartão quando tiver um cartão inserido.
+
+
+    > Newland (N910)
+    * bcnewland-release:    v2.01
+    * kernel: 3.10.49 / build: V2.3.04
+    * PPComp Newland: v1.32
+
+v4.1.12.4 -  15/06/2021
+----------------------------------------------------------------------
+- Esta versão não contempla integração com automação comercial e não suporta iniciar a venda por
+inserção de cartão.
+
+*** APLICAÇÃO ***
+- ID23337: Correção: Falha após ter clicado rapidamente nos botões de "imprimir via do cliente"
+e "Finalizar".
+- ID23349: Correção: Ao acessar os itens de menu que não são transacionais (vender e adm)
+e clicar no botão "voltar" do terminal estava indo para a tela home, posteriormente ao tentar
+acessar o mesmo menu não deixava acessar.
+- ID23351: Correção: Telefone e e-mail do menu "Ajuda" estavam incorretos.
+- ID23408: Correção: Ajuste para reduzir o tempo de exibição da tela “Processando”.
+- ID23340: Correção: Ajuste no fluxo do RemoveCard ao finalizar ou cancelar transações.
+- ID23338: Correção: Telas com animação (processando, erro, sucesso) agora tem timeout de 30s.
+- ID23476: Correção: Após a atualização, o launcher novo não está sendo priorizado.
+- ID23339: Correção: O timeout estava sendo enviado para o fluxo de PIN-Pad, nisso a aplicação
+ficava travada em processando sempre ao iniciar uma nova venda.
+- ID23656: Correção: Sempre que dava timeout no remover o cartão a próxima venda era cancelada
+no meio do fluxo.
+- ID23434: Correção: Ao remover a bateria na tela de transação autorizada a venda ficava pendente.
+- ID23655: Correção: Remover o cartão depois de alguns minutos da transação ser finalizadadeixava
+a aplicação travada.
+- 		   Atualização: PGWeblib_Android.
+-          Atualização: PPCompNewland.
+
+*** PGWebLib (v4.1.12.4) ***
+>>> Módulo PGWebLib <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- ID23434: Correção: validação para verificar transações pendentes ao inicializar a lib.
+- ID23655: Correção: remover o cartão depois de alguns minutos da transação ser
+finalizadadeixava a aplicação travada.
+- ID23340: Correção: alterado o método removeCard para chamar o RMC ao invés de um CKE.
+
+
+    > Newland (N910)
+    * bcnewland-release:    v2.01
+    * kernel: 3.10.49 / build: V2.3.04
+    * PPComp Newland: v1.33
+
+
+v4.1.15.0 -  13/07/2021
+----------------------------------------------------------------------
+- Esta versão não contempla integração com automação comercial e não suporta iniciar a venda por
+inserção de cartão.
+
+*** APLICAÇÃO ***
+
+- ID23838: Estava exibindo a mensagem de operação cancelada antes de imprimir o teste de chaves.
+- ID23865: Correção: Sobreposição de telas quando navega de "Ajuda" para "Sobre" e posteriormente clica em voltar.
+- ID23871: Correção: Informações do menu Ajuda.
+- ID23968: Correção: Inserido timeout na tela removeCard apenas para quando o cartão for retirado efetivamente, para casos de travamento nessa tela.
+- ID23345: Correção: Tela de Configurações
+- ID24314: Correção: Menu Lateral
+- ID24120: Correção: Ao clicar 2x botão cancelar da data de vencimento do cartão, ele cancelava a venda atual e a seguinte. Clicando múltiplas vezes, travava o terminal.
+- ID23895: Correção: Ao remover a bateria durante a impressão do comprovante, a transação estava ficando pendente, o que deixava o pdc bloqueado. Agora, essa transação é confirmada após religar o terminal.
+- ID23902: Melhoria: Diminuição do tempo de exibição da mensagem “PROCESSANDO” ao iniciar uma venda/cancelamento.
+- ID24357: Correção: Alteração de titulo na tela principal.
+- ID24074: Correção: Priorizar C6Pay Integrado como launcher padrão.
+- ID24386: Melhoria: Criada mensagem personalizada para tela de timeout
+- ID24386: Correção: Alteracao do valor de boolean de controle do timeout.
+- ID24668: Melhoria: Alterar botões de ação na tela de comprovante.
+- ID24736: Correção: Definir priorização do launcher apenas para flavors POS.
+- ID24646: Melhoria: Alteração LABELS no menu ADM.
+- ID22210: Correção: O terminal estava reimprimindo os dois comprovantes juntos, caso o botão "Imprimir via do cliente" fosse clicado durante a reimpressão da via do estabelecimento.
+- ID18326: Correção: Adicionado título "Selecione:" aos menus que não tinham título.
+- ID21305: Melhoria: Passa a exibir o teclado numérico para captura de pdc e cpf/cnpj.
+- ID21505: Correção: Ao realizar o cancelamento, na tela de inserção do cartão, o subtotal está com o valor zerado.
+- ID18383: Correção: Alteração tamanho da fonte
+- ID25126: Melhoria: Alteração botões
+- ID25338: Melhoria: Migrado Kotlin 1.5 e Atualizado Hilt.
+- Correção: Ajuste para evitar duas mensagens de erro de timeout na tela de inserção do cartão.
+- Correção: Após clicar no botão cancelar na tela de insira o cartão, era possível clicar no restante da tela e fazer a venda digitada.
+- Melhoria: Adição de mais logs e ajuste loop flow para tentar obter mais info sobre travamentos processando
+- Atualização: meSDK.
+- Atualização: BCNewland.
+- Atualização: PPCompNewland.
+- Atualização: PGWebLib.
+
+
+*** PGWebLib (v4.1.15.0) ***
+>>> Módulo PGWebLib <<<
+- ID19412: Nova funcionalidade: Passa a detalhar o erro de formato inválido para certificação L07.
+- ID16724: Nova funcionalidade: Passa a enviar o tipo da transação para o PIN-pad em PIN-pads ABECS.
+- ID19832: Nova funcionalidade: Passa a detalhar processo de remapeamento de tabelas nos logs para ser possível depurar eventuais problemas.
+- ID20626: Nova funcionalidade: Adicionada nova função PW_iPPCommTest. Esta função é utilizada para realizar teste de comunicação com o PINpad.
+           Caso não encontre o PINpad com a porta já configurada, procura de forma automática.
+- ID15798: Correção (interna): Passa a considerar o PIN-pad como fechado caso ocorra erro na transmissão do comando para fechar o PIN-pad.
+
+>>> Módulo Android <<<
+- ID23895: Correção: Ajuste para armazenar os dados da transação em cache ao remover a bateria.
+- ID21164: Correção: Ao manter o cartão inserido até o final da transação não irá começar outra automaticamente.
+- ID21164: Correção: Apenas reiniciar a checagem de insertCard ao realizar o removeCard.
+Correção: Estava sendo solicitada a captura do cartão mais de uma vez durante o fluxo transacional.
+
+
+    > Newland (N910)
+    * bcnewland-release:    v2.04
+    * kernel: 3.10.49 / build: V2.3.04
+    * PPComp Newland: v1.34
+
+
+v4.1.15.1 -  12/08/2021
+----------------------------------------------------------------------
+- Esta versão não contempla integração com automação comercial e não suporta iniciar a venda por
+inserção de cartão.
+
+*** APLICAÇÃO ***
+
+- ID26630: Correção: Travamento por instabilidade da conexão dos dados móveis.
+
+*** PGWebLib (v4.1.15.0) ***
+>>> Módulo PGWebLib <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Não houve alterações neste módulo.
+
+
+    > Newland (N910)
+    * bcnewland-release:    v2.04
+    * kernel: 3.10.49 / build: V2.3.04
+    * PPComp Newland: v1.34
+
+v4.1.15.2 -  03/09/2021
+----------------------------------------------------------------------
+- Esta versão não contempla integração com automação comercial e não suporta iniciar a venda por
+inserção de cartão.
+
+*** APLICAÇÃO ***
+- Primeira versão.
+    - Esta versão contempla apenas a versão do GPOS700 Mini.
+
+
+*** PGWebLib (v4.1.15.0) ***
+>>> Módulo PGWebLib <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Não houve alterações neste módulo.
+
+
+    > Newland (N910)
+    * bcnewland-release:    v2.04
+    * kernel: 3.10.49 / build: V2.3.04
+    * PPComp Newland: v1.34
+
+    > GPOS700
+    * gedi: 1.14.15.200208
+    * ppcomp: 1.29.210113
+    * kernel: 3.10.49 / build: WPOS-3_V1.01_20021722
+    * PPCompGERTEC v1.34
+
+
+v4.1.15.3 -  20/09/2021
+----------------------------------------------------------------------
+- Esta versão não contempla integração com automação comercial.
+
+*** APLICAÇÃO ***
+-          Correção: Para de enviar confirmação em operações que não precisam de confirmação.
+- ID28435: Correção: Os asteriscos já vem preenchidos na tela de pin algumas vezes.
+- ID28672: Correção: Display duplicado de Operação Cancelada no menu de pinpad.
+- ID28599: Correção: Crash durante o timeout no menu de PIN-Pad.
+- ID26390: Correção: Máximo de caracteres atingido.
+- SPM-86 : Nova Funcionalidade: Tageamento do aplicativo.
+- SPM-79 : Nova Funcionalidade: Refatoração da navegação do Front.
+- SPM-171: Nova Funcionalidade: Criada função para saber as modalidades de pagamento suportadas.
+- SPM-146: Nova Funcionalidade: Criada tela para selecionar o tipo de pagamento.
+- SPM-148: Nova Funcionalidade: Implementado notas da versão.
+- ID27901: Nova Funcionalidade: Criado tela Conheça o Portal C6 Pay.
+-          Nova Funcionalidade: Venda por inserção de cartão.
+- ID27410: Nova Funcionalidade: Aba relatórios no menu lateral.
+- ID26442: Nova Funcionalidade: Exibir dados do estabelecimento comercial
+           (CNPJ/CPF e razão social) na Home.
+
+*** PGWebLib (v4.1.15.1) ***
+>>> Módulo PGWebLib <<<
+- ID25521: Correção (interna) : Passa a permitir até 99 AID's no remapeamento de AID's da camada de
+           tratamento PIN-pad. Esta correção corrige o problema de modo inválido para alguns AID's
+           em uma inicialização com roteamento de bandeiras.
+- PGWEB-44: Nova funcionalidade: Passa a retornar a modalidade de pagamento em PW_iGetOperationEx.
+- PGWEB-36: Correção (interna): Deixa de sobrescrever a mensagem de EQUIPAMENTO INCOMPATÍVEL COM
+            REDE ADQUIRENTE por ERRO PINPAD [-2140].
+
+>>> Módulo Android <<<
+- Não houve alterações neste módulo.
+
+
+    > Newland (N910)
+    * bcnewland-release:    v2.04
+    * kernel: 3.10.49 / build: V2.3.04
+    * PPComp Newland: v1.34
+
+    > GPOS700
+    * gedi: 1.14.15.200208
+    * ppcomp: 1.29.210113
+    * kernel: 3.10.49 / build: WPOS-3_V1.01_20021722
+    * PPCompGERTEC v1.34
+
+v4.1.15.4 - Versão Interna (testes)
+v4.1.15.5 - Idêntica a versão 4.1.15.1
+
+v4.1.15.6 -  08/11/2021
+----------------------------------------------------------------------
+- Esta versão não contempla integração com automação comercial.
+
+*** APLICAÇÃO ***
+- SPM-189: Correção: A mensagem "Cartão com erro ou mal inserido" é exibida cortado no display e
+ com palavras juntas.
+- SPM-186: Correção: Com o roteamento de bandeiras configurado, ao iniciar uma venda e cancelar a
+ operação, a aplicação trava.
+- SPM-201: Correção: O botão "voltar" do terminal, retorna para as telas anteriores até cancelar a
+ operação.
+- SPM-178: Correção: Após aprovar transações de módulo CTLS, tarja e digitado, terminal exibe
+ "Imprimindo...".
+- SPM-59: Nova Funcionalidade: Cancelamento de venda - Atualização de fluxo.
+- SPM-232: Correção: Falha ao solicitar "Aproxime, Insira ou passe o cartão".
+- SPM-175: Correção: "Retire o Cartão" é exibido 2x e na primeira vez exibe "Retireo Cartão".
+- SPM-218: Correção: Estava pedindo para remover o cartão em caso de tarja. Agora só pede a remoção
+ em caso de chip.
+- SPM-225: Correção: Alteração do comportamento do timeout: agora são contabilizados 30 segundos de
+ inatividade e não 30 segundos na mesma tela.
+- SPM-179: Correção: A aplicação do C6Pay Integrado travava após entrar e sair das configurações do
+ Android.
+- SPM-255: Correção: Ajuste para atualização de versão: após a atualização da versão o usuário é
+ direcionado para a tela inicial do C6Pay Integrado.
+- SPM-269: Correção: Total estava sendo exibido rapidamente na tela de remoção do cartão.
+- SPM-211: Correção: Ao iniciar uma venda por cartão, durante o processo a aplicação solicitava o
+ cartão novamente.
+- SPM-221: Nova Funcionalidade: Criado Webview para carregar o portal da PayGo.
+- SPM-264: Correção: Ao tentar imprimir relatório no N910 aplicação estava travando.
+
+*** PGWebLib (v4.1.15.2) ***
+>>> Módulo PGWebLib <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- SPM-128: Correção: Estava sendo exibida uma mensagem reduntante sobre a inserção do cartão após
+  erro na primeira leitura.
+- Correção: Ao iniciar uma venda pela inserção do cartão não deve pedir para inserir um cartão.
+- Correção: Para alguns dispositivos GPOS700 estava pegando o clitype errado, impossibilitando a
+  realização de transações.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.04
+    * kernel: 3.10.49 / build: V2.3.04
+    * PPComp Newland: v1.35
+
+    > GPOS700
+    * gedi: 1.14.15.200208
+    * ppcomp: 1.30.3
+    * kernel: 3.10.49 / build: WPOS-3_V1.01_20021722
+    * PPCompGERTEC v1.36
+
+v4.1.15.7 -  22/11/2021
+----------------------------------------------------------------------
+- Esta versão não contempla integração com automação comercial.
+
+*** APLICAÇÃO ***
+- SPM-284: Melhoria: Ajuste na formatação da frase "Cartão com erro ou mal inserido".
+- SPM-275: Correção: No N910 durante o processo de venda por inserção de cartão, a aplicação estava travando.
+- SPM-282: Correção: Aplicação estava travando na tela de imprimir ao pressionar voltar na tela de recibo.
+- SPM-277: Correção: Erro ao informar valor de uma venda iniciada por inserção.
+
+*** PGWebLib (v4.1.15.3) ***
+>>> Módulo PGWebLib (v4.1.15) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Correção: Ao iniciar uma venda por inserção de cartão e retirar o cartão, travava em processando.
+- Correção: Após a instalação do pdc, era necessário reiniciar o terminal para conseguir vender por
+  inserção de cartão.
+- SPM-289: Correção: Aleatoriamente o terminal travava na tela de "Retire o cartão".
+
+    > Newland (N910)
+    * bcnewland-release:    v2.11
+    * kernel: 3.10.49 / build: V2.3.04
+    * PPComp Newland: v1.36
+
+    > GPOS700
+    * gedi: 1.14.15.200208
+    * ppcomp: 1.30.3
+    * kernel: 3.10.49 / build: WPOS-3_V1.01_20021722
+    * PPCompGERTEC v1.37
+
+v4.1.15.8 -  09/12/2021
+----------------------------------------------------------------------
+- Esta versão não contempla integração com automação comercial.
+
+*** APLICAÇÃO ***
+- SPM-330: Correção: Alteração logo comprovante PayGo para C6 Pay.
+- SPM-331: Correção: Ajuste label do Portal C6 Pay.
+
+
+*** PGWebLib (v4.1.15.4) ***
+>>> Módulo PGWebLib (v4.1.15) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- SPM-334: Correção: Ao atualizar o logo do comprovante gráfico, não estava imprimindo o logo novo
+caso o aplicativo não fosse reinstalado.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.11
+    * kernel: 3.10.49 / build: V2.3.04
+    * PPComp Newland: v1.36
+
+    > GPOS700
+    * gedi: 1.14.15.200208
+    * ppcomp: 1.30.3
+    * kernel: 3.10.49 / build: WPOS-3_V1.01_20021722
+    * PPCompGERTEC v1.37
+
+v4.1.15.9 -  05/01/2022
+----------------------------------------------------------------------
+- Esta versão não contempla integração com automação comercial.
+
+*** APLICAÇÃO ***
+- Idêntica a versão 4.1.15.8
+
+*** PGWebLib (v4.1.15.4) ***
+>>> Módulo PGWebLib (v4.1.15) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Não houve alterações neste módulo.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.04
+    * kernel: 3.10.49 / build: V2.3.04
+    * PPComp Newland: v1.36
+
+    > GPOS700
+    * gedi: 1.14.15.200208
+    * ppcomp: 1.30.3
+    * kernel: 3.10.49 / build: WPOS-3_V1.01_20021722
+    * PPCompGERTEC v1.37
+
+v4.1.15.10 -  07/02/2022
+----------------------------------------------------------------------
+- Esta versão não contempla integração com automação comercial.
+
+*** APLICAÇÃO ***
+- SPM-393: Melhoria: Ajuste cardholder name
+
+*** PGWebLib (v4.1.15.4) ***
+>>> Módulo PGWebLib (v4.1.15) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Não houve alterações neste módulo.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.13
+    * kernel: 3.10.49 / build: V2.3.04
+    * PPComp Newland: v1.38
+
+    > GPOS700
+    * gedi: 1.14.15.200208
+    * ppcomp: 1.30.3
+    * kernel: 3.10.49 / build: WPOS-3_V1.01_20021722
+    * PPCompGERTEC v1.37
+
+
+v4.1.15.11 -  07/03/2022
+----------------------------------------------------------------------
+- Esta versão não contempla integração com automação comercial.
+
+*** APLICAÇÃO ***
+SPM-428: Correção: Exibe mensagem de senha incorreta em caso de erro na digitação da senha.
+SPM-381: Correção: Ajuste na mensagem de saldo disponível.
+SPM-430: Correção: Passa a tratar mensagem adicional quando existir.
+
+*** PGWebLib (v4.1.15.4) ***
+>>> Módulo PGWebLib (v4.1.15) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Não houve alterações neste módulo.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.13
+    * kernel: 3.10.49 / build: V2.3.04
+    * PPComp Newland: v1.38
+
+    > GPOS700
+    * gedi: 1.14.15.200208
+    * ppcomp: 1.30.3
+    * kernel: 3.10.49 / build: WPOS-3_V1.01_20021722
+    * PPCompGERTEC v1.37
+
+
+v4.1.15.12 -  22/03/2022
+----------------------------------------------------------------------
+- Esta versão não contempla integração com automação comercial.
+
+*** APLICAÇÃO ***
+- Atualização: BCNewland: Adicionada mensagem de Pin Blocked quando o pin
+                          offline faz com que a transação falhe.
+
+*** PGWebLib (v4.1.15.4) ***
+>>> Módulo PGWebLib (v4.1.15) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Não houve alterações neste módulo.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.16
+    * kernel: 3.10.49 / build: V2.3.04
+    * PPComp Newland: v1.38
+
+    > GPOS700
+    * gedi: 1.14.15.200208
+    * ppcomp: 1.30.3
+    * kernel: 3.10.49 / build: WPOS-3_V1.01_20021722
+    * PPCompGERTEC v1.37
+
+
+v4.1.15.13 -  05/04/2022
+----------------------------------------------------------------------
+- Esta versão não contempla integração com automação comercial.
+
+*** APLICAÇÃO ***
+- Atualização: BCNewland: Correção na hora de pegar o tamanho do DDOL
+                        para cartões Ticket.
+
+*** PGWebLib (v4.1.15.4) ***
+>>> Módulo PGWebLib (v4.1.15) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Não houve alterações neste módulo.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.17
+    * kernel: 3.10.49 / build: V2.3.04
+    * PPComp Newland: v1.38
+
+    > GPOS700
+    * gedi: 1.14.15.200208
+    * ppcomp: 1.30.3
+    * kernel: 3.10.49 / build: WPOS-3_V1.01_20021722
+    * PPCompGERTEC v1.37
+
+
+v4.1.15.14 -  06/04/2022
+----------------------------------------------------------------------
+- Esta versão não contempla integração com automação comercial.
+
+*** APLICAÇÃO ***
+- Atualização: BCNewland: Correção no retorno da trilha 2 com tamanho maior que 37.
+
+*** PGWebLib (v4.1.15.4) ***
+>>> Módulo PGWebLib (v4.1.15) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Não houve alterações neste módulo.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.18
+    * kernel: 3.10.49 / build: V2.3.04
+    * PPComp Newland: v1.38
+
+    > GPOS700
+    * gedi: 1.14.15.200208
+    * ppcomp: 1.30.3
+    * kernel: 3.10.49 / build: WPOS-3_V1.01_20021722
+    * PPCompGERTEC v1.37
+
+v4.1.17.0 -  31/12/2021
+----------------------------------------------------------------------
+- Esta versão não contempla integração com automação comercial.
+
+*** APLICAÇÃO ***
+- SPM-266: Melhoria: Exibe somente uma mensagem de operação cancelada.
+- SPM-360: Melhoria: Ajustado tempo de transição de telas e componentes.
+- SPM-358: Melhoria: Incluso timer para 'timeout' nas telas de display de erro.
+- Melhoria: No teste de chaves, passa a exibir a tela de processando após a captura de cada senha.
+
+*** PGWebLib (v4.1.17.0) ***
+>>> Módulo PGWebLib (v4.1.17) <<<
+- ID25521: Correção (interna): Passa a permitir até 99 AID's no remapeamento de AID's da camada de
+           tratamento PIN-pad. Esta correção corrige o problema de modo inválido para alguns AID's
+           em uma inicialização com roteamento de bandeiras.
+- PGWEB-44: Nova funcionalidade: Passa a retornar a modalidade de pagamento em PW_iGetOperationEx.
+- PGWEB-36: Correção (interna): Deixa de sobrescrever a mensagem de EQUIPAMENTO INCOMPATÍVEL COM
+            REDE ADQUIRENTE por ERRO PINPAD [-2140].
+- PGWEB-62: Correção (interna): Deixa de traduzir o erro de conexão na rede GSM como erro de conexão
+            a rede WI-FI. Problema foi detectado durante o piloto do MP35 onde o terminal ao falhar
+            ao se conectar a rede móvel, retornava o erro NAO FOI POSSIVEL REGISTRAR NA REDE [-10],
+            que é relacionada ao erro de registro na rede WI-FI.
+- PGWEB-53: Correção (interna): Passa a centralizar o QR-Code no display para plataformas que exibe
+            a imagem junto com texto.
+- PGWEB-33: Passa a filtrar caracteres da camada de script gráfico ({, }, ~) as mensagens recebidas
+            do PGWeb para evitar erros de display.
+- PGWEB-187: Nova funcionalidade: Passa a bloquear a instalação caso muxx tenha sinalizado que há
+             alguma chave incompatível no terminal.
+- PGWEB-281: Nova funcionalidade: Troca a mensagem de "OPERACAO CANCELADA" para "TEMPO LIMITE
+             EXCEDIDO" para erros de timeout durante a captura do cartão/senha. Esta alteração foi
+             feita para dar melhor visibilidade para as transações com falha na análise de piloto
+             das diversas plataformas.
+
+>>> Módulo Android <<<
+- Correção: Ajuste para exibir a mensagem de inserção do cartão após erro na leitura de cartão de
+  tarja (caso em que fallback não está habilitado).
+- SPM-116: Nova funcionalidade: Verifica se existe o arquivo de configurações e carrega as informações contidas nele.
+- SPM-116: Nova funcionalidade: Valida a operadora do chip para inserir a APN correta.
+- SPM-116: Nova funcionalidade: Valida o modo de conexão atual: Mobile ou WIFI.
+- SPM-116: Nova funcionalidade: Valida o tipo de conexão mobile: 4G, 3G, 2G.
+- SPM-265: Correção: Envia modo de conexão tanto para chip quanto WIFI.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.11
+    * kernel: 3.10.49 / build: V2.3.04
+    * PPComp Newland: v1.36
+
+    > GPOS700
+    * gedi: 1.14.15.200208
+    * ppcomp: 1.30.3
+    * kernel: 3.10.49 / build: WPOS-3_V1.01_20021722
+    * PPCompGERTEC v1.37
+
+v4.1.17.1 -  10/01/2022
+----------------------------------------------------------------------
+- Esta versão não contempla integração com automação comercial.
+
+*** APLICAÇÃO ***
+- SPM-369: Correção: Corrigido impressão múltipla de comprovantes idênticos.
+- SPM-371: Correção: Apresentar aviso quando digitar senha incorreta.
+
+*** PGWebLib (v4.1.17.1) ***
+>>> Módulo PGWebLib (v4.1.17) <<<
+- Correção: removido tratamento para realizar 3 tentativas de CKE para terminais Android.
+- Correção: acrescentado novo do código da operadora TIM.
+
+>>> Módulo Android <<<
+- Não houve alterações neste módulo.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.04
+    * kernel: 3.10.49 / build: V2.3.04
+    * PPComp Newland: v1.36
+
+    > GPOS700
+    * gedi: 1.14.15.200208
+    * ppcomp: 1.30.3
+    * kernel: 3.10.49 / build: WPOS-3_V1.01_20021722
+    * PPCompGERTEC v1.37
+
+
+v4.1.17.2 -  29/03/2022
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- SPM-463: Funcionalidade: GPOSMini: Desligar o terminal quando a bateria estiver em 5%.
+- SPM-481: Funcionalidade: Exibir % da bateria na barra de status.
+- SPM-509: Funcionalidade: Inserir botão "Imprimir outro relatório".
+- SPM-388: Melhoria: Ajuste de cores das ações do teclado.
+- SPM-383: Melhoria: Fluxo de venda por inserção de cartão passa a capturar alguns dados com tela
+cheia.
+- SPM-386: Melhoria: Fluxo de impressão.
+- SPM-382: Melhoria: Implementar aviso de bateria baixa.
+- SPM-389: Melhoria: Ajustar os ícones das mensagens.
+- SPM-351: Melhoria: Exibição do QR Code.
+- SPM-423: Melhoria: Bloqueio do teclado em caso de bateria baixa ou falta de conexão com a
+internet.
+- SPM-416: Melhoria: Restringir toques na tela após seleção no fluxo de venda.
+- SPM-415: Melhoria: Redução das mensagens de Processando.
+- SPM-422: Melhoria: Bloqueio do menu administrativo.
+- SPM-446: Melhoria: Exibir forma de pagamento no fluxo de venda.
+- SPM-453: Melhoria: Alterar como as mensagens de erro na captura são exibidas.
+- SPM-460: Melhoria: GPOSMini: Centralizar Cabeçalho das telas.
+- SPM-473: Melhoria: Remover o botão de voltar das telas de captura.
+- SPM-499: Melhoria: Alterar posição da mensagem "pagamento realizado".
+- SPM-450: Melhoria: Inserir tabela de seleção calendário.
+- SPM:475: Melhoria: Ajustar o tamanho do texto dos botões.
+- SPM-450: Melhoria: Mostrar placeholder na inserção de senha lojista.
+- SPM-478: Melhoria: Ajustar os botões de cancelamento.
+- SPM-452: Melhoria: Trocar tela de aproximação de cartão.
+- SPM-508: Melhoria: Inserir mensagem de senha incorreta do lojista.
+- SPM-507: Melhoria: Ícone informativo da senha do lojista.
+- SPM-387: Correção: Era possível clicar múltiplas vezes no botão de imprimir.
+- SPM-387: Correção: Botão "imprimir" do menu "Imprimir relatórios" estava permitindo cliques
+múltiplos.
+- SPM-429: Correção: Bloqueio do acesso ao menu lateral durante a venda por inserção do cartão.
+- SPM-436: Correção: Corrigido crash na tela de imprimir relatórios e ajustado o fluxo do
+seletor de data.
+- SPM-461: Correção: GPOSMini: Crash ao enviar comprovante por SMS.
+- SPM-428: Correção: Exibe mensagem de senha incorreta em caso de erro na digitação da senha.
+- SPM-381: Correção: Ajuste na mensagem de saldo disponivel.
+- SPM-430: Correção: Passa a tratar mensagem adicional quando existir.
+- SPM-474: Correção: GPOSMini: Ajustar digitos de telefone.
+- SPM-505: Correção: Alterar cor do ícone lateral do menu caso estejamos usando o PDVS.
+- SPM-514: Correção: Seleção automática do método de cobrança.
+- SPM-515: Correção: Mensagem de código de segurança inválido desalinhado.
+- Melhoria: Alterado o ícone dos itens de menu.
+- Correção: Texto de acesso ao portal (estava escrito "reltórios").
+- Correção: restrição de toques no botão cancelar no fluxo de venda.
+
+*** PGWebLib (v4.1.17.2) ***
+>>> Módulo PGWebLib (v4.1.17) <<<
+- SPM-415: Melhoria: Passa a disparar uma mensagem de processando quando realizada a
+conexão com o PGWeb.
+- SPM-410: Correção: Compatibilidade com Android 12.
+- SPM-439: Correção: Corrigir acesso aos identificadores do Android (IMEI, Serial...).
+- SPM-366: Correção: Estava exibindo indevidamente a tela de "Insira o Cartão" e
+solicitando a seleção de aplicação do cartão duas vezes.
+- SPM-459: Correção: Mensagem Modo Inválido está escrita de forma incorreta.
+- SPM-502: Correção: Corrigir mensagem "Cartão invalidado invalidado".
+- Correção: Durante a configuração de um PdC estava limpando os dados de conexão.
+- Melhoria: Caso uma venda seja iniciada pela inserção de um cartão, não é
+solicitado o tipo de cartão no inicio da venda.
+
+>>> Módulo Android <<<
+- Não houve alterações neste módulo.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.16
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v1.38
+
+    > GPOS700
+    * gedi: 1.14.15.200208
+    * ppcomp: 1.30.3
+    * kernel: 3.10.49 / build: WPOS-3_V1.01_20021722
+    * PPCompGERTEC v1.37
+
+
+v4.1.17.3 -  14/04/2022
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- SPM-534: Correção: Imprime duas vezes a via do cliente.
+- SPM-535: Correção: Ao clicar no header de imprimindo, na tela do comprovante, estava indo para tela de processando.
+- SPM-537: Melhoria: Quando o erro de impressão for falta de papel, não haverá tempo limite para a exibição do comprovante.
+- SPM-539: Correção: Mensagem de senha inválida não estava sendo exibida no fluxo de impressão dos relatórios.
+- SPM-542: Correção: Botão não está de acordo com o Figma.
+- SPM-540: Correção: Crash na aplicação após selecionar várias vezes a data no relatório.
+- SPM-532: Correção: A mensagem "aproxime, insira ou passe o cartão" estava chumbada no código.
+- SPM-532: Correção: A mensagem "aproxime, insira ou passe o cartão" estava chumbada no código.
+
+*** PGWebLib (v4.1.17.3) ***
+>>> Módulo PGWebLib (v4.1.17) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- SPM-538: Correção: Falha na primeira tentativa de instalação.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.18
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v1.38
+
+    > GPOS700
+    * gedi: 1.14.15.200208
+    * ppcomp: 1.30.3
+    * kernel: 3.10.49 / build: WPOS-3_V1.01_20021722
+    * PPCompGERTEC v1.37
+
+
+v4.1.17.4 -  09/05/2022
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- SPM-551: Correção: Menu lateral bloqueado no relatório.
+- Atualização: PGWebLib.
+
+*** PGWebLib (v4.1.17.4) ***
+>>> Módulo PGWebLib (v4.1.17) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- SPM-571: Correção: Não é possível usar a internet do SIMCard, sem ter configurado e instalado o pdc via WIFI.
+- SPM-572: Correção: Não é possível realizar a troca de SIMCards no terminal.
+- SPM-577: Correção: Mensagem de erro 'Configure o terminal'.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.18
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v1.38
+
+    > GPOS700
+    * gedi: 1.14.15.200208
+    * ppcomp: 1.30.3
+    * kernel: 3.18.71 / build: WPOS-V01.00_2202151428
+    * PPCompGERTEC v1.37
+
+
+v4.1.19.0 -  21/06/2022
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- SPM-613: Nova funcionalidade: Exibir SO (BuildNumber) no "Dados do terminal".
+- Atualização: PGWebLib.
+- Atualização: BCNewland.
+
+*** PGWebLib (v4.1.19.0) ***
+>>> Módulo PGWebLib (v4.1.18) <<<
+- PGWEB-187: Nova funcionalidade: Passa a bloquear a instalação caso muxx tenha sinalizado que há alguma chave incompatível no terminal.
+- PGWEB-281: Nova funcionalidade: Troca a mensagem de "OPERACAO CANCELADA" para "TEMPO LIMITE EXCEDIDO" para erros de timeout durante a captura do cartão/senha. Esta alteração foi feita
+             para dar melhor visibilidade para as transações com falha na análise de piloto das diversas plataformas.
+- PGWEB-309: Correção (interna): Corrige fluxo para apresentação de resultado de falha durante a instalação para um terminal com chaves incompatíveis.
+             anteriormente a instalação não era realizada, mas a mensagem exibida era de sucesso.
+- BSC-190:   Nova funcionalidade: Adiciona verificação da instalação do SDK Topaz durante atualização de versão da biblioteca.
+             Passa a finalizar o processo da Topaz no encerramento da biblioteca para que seja possível desinstalar/reinstalar o SDK Topaz.
+- PGWEB-425: Nova funcionalidade: Passa a verificar se o SDK Topaz foi corretamente instalado e está rodando corretamente, além de proteger os diretórios da aplicação.
+- PGWEB-432: Correção (interna): Adiciona verificação da instalação tanto do SDK da Warsaw quanto do aplicativo de proteção. Anteriormente, se apenas o aplicativo fosse desinstalado a biblioteca não detectava e
+             permitia que o ponto continuasse transacionando até ele ser reiniciado.
+- PGWEB-464: Nova funcionalidade: Atualiza SDK da topaz para permitir a instalação em windows 7. Passa a suportar chaves diferentes para prod e teste para o SDK da topaz.
+
+>>> Módulo PGWebLib (v4.1.19) <<<
+- PGWEB-309: Corrige fluxo para apresentação de resultado de falha durante a instalação para um terminal com chaves incompatíveis.
+             Anteriormente a instalação não era realizada, mas a mensagem exibida era de sucesso.
+- PGWEB-393
+- PGWEB-473: Mudando caixa e acentuação de todas as strings montadas pelo ponto de captura, caso o servidor sinalize que suporta.
+             Caso transacionando em ambiente antigo a maior parte das strings serão exibidas em maiúsculo como o usual.
+- PGWEB-400: Retorna a quantidade máxima e mínima de parcelas nas transações para a automação e exibe limite quando inserido fora do limite permitido.
+- PGWEB-401: Adicionado valor mínimo/máximo na mensagem de resultado quando a transação falha.
+- PGWEB-430: Passa a apagar o comprovante em caso de falha no finishchip. Anteriormente, este comprovante não era apagado e poderia ser impresso
+             num cenário que o host negou a transação, enviou  comprovante e o FNC falhou.
+- PGWEB-436: Passa a retornar a necessidade da realização de exportação de logs automática na tag PWINFO_EXPORTLOGNEEDED.
+- PGWEB-475: Adiciona criptografia específica para PagSeguro. Implementada para a especificação 2.0.3 do autorizador.
+- PGWEB-469: Corrige problema identificado ao configurar PdC com roteamento e tarja desabilitada. Anteriormente, incorretamente a transação era
+             finalizada porque a camada de tratamento PIN-pad escrevia no buffer de retorno antes da captura ser finalizada.
+- PGWEB-470: Corrige invasão de memória ao carregar 90 AID. Anteriormente, ao utilizar PIN-pad 2.12 e 90 AIDs, ocorria uma invasão de memória
+             que corrompia as tabelas de certificado.
+             Aumenta limites de tabela de AID/REV/CAPK. Para PIN-pad BC o limite agora é 99, para ABECS1295. Altera protocolo de comunicação
+             com o servidor para aceitar até 1295 índices. Para PIN-pad que não suportaram este limite, os registros após o 99 são desprezados.
+
+>>> Módulo Android <<<
+- SPM-552: Correção: Erro de Configure o Terminal.
+- SPM-585: Correção: Ao gerar versão o Javadoc não está sendo gerado.
+-          Correção: seta modo de comunicação do arquivo de configurações.
+- SPM-613: Nova funcionalidade: Exibir SO (BuildNumber) no "Dados do terminal".
+
+    > Newland (N910)
+    * bcnewland-release:    v2.22
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v1.38
+
+    > GPOS700
+    * gedi: 1.14.15.200208
+    * ppcomp: 1.30.3
+    * kernel: 3.18.71 / build: WPOS-V01.00_2202151428
+    * PPCompGERTEC v1.37
+
+v4.1.19.1 -  12/07/2022
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- SPM-631: Correção: Transação com modo de comunicação incorreto.
+- SPM-633: Correção: Exibição da tela de atualização após reiniciar.
+- SPM-637: Nova funcionalidade: Exibir mínimo e máximo de parcelas permitida.
+- Atualização: PGWebLib.
+
+*** PGWebLib (v4.1.19.1) ***
+>>> Módulo PGWebLib (v4.1.19) <<<
+- Correção: enviar o "Modo de Comunicação" correto quando for 3G.
+
+>>> Módulo Android <<<
+- Nova funcionalidade: Adicionar implementação para alimentar a biblioteca com informações da plataforma.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.22
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v1.38
+
+    > GPOS700
+    * gedi: 1.14.15.200208
+    * ppcomp: 1.30.3
+    * kernel: 3.18.71 / build: WPOS-V01.00_2202151428
+    * PPCompGERTEC v1.37
+
+v4.1.19.2 -  25/07/2022
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Habilitar todas as opções de configuração do status bar.
+- Correção: Corrigir tratamento na captura de valor min e max.
+
+*** PGWebLib (v4.1.19.1) ***
+>>> Módulo PGWebLib (v4.1.19) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Não houve alterações neste módulo.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.22
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v1.38
+
+    > GPOS700
+    * gedi: 1.14.15.200208
+    * ppcomp: 1.30.3
+    * kernel: 3.18.71 / build: WPOS-V01.00_2202151428
+    * PPCompGERTEC v1.37
+
+
+v4.1.21.0 -  19/08/2022
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Nova funcionalidade: Passa a exibir a lista de automações na home no caso de PayGo Integrado.
+- Melhoria: No caso de Paygo Integrado, ajustado o portal tef e itens do menu lateral.
+- Nova funcionalidade: Adicionado botão para atualizar aplicativos de automação.
+- Nova funcionalidade: Exibe mensagem de erro quando não há automação instalada.
+- Correção: Ao iniciar venda passando tipo de cartão via automação não estava exibindo
+a tela de "insira o cartão".
+
+*** PGWebLib (v4.1.21.0) ***
+>>> Módulo PGWebLib (v4.1.20) <<<
+- PGWEB-477: Nova funcionalidade: Implementação para o DCC. Passa a suportar a exibição de um menu no PIN-pad e faz a validação para interromper o processamento offline caso DCC seja selecionado.
+- PGWEB-497: Correção (interna): Corrige montagem do bloco de criptografia da PagSeguro para PAN com 19 dígitos. Corrige envio dos dados do PIN-pad ABECS na primeira instalação para PIN-pad ABECS.
+             Corrige algoritmo para determinar a ligação da antena CTLS em captura do cartão com valor zerado.
+             Atualização SDK Topaz.
+- PGWEB-500: Nova versão com nova Tag DCC BF97
+- PGWEB-500: Correção na verificação de status do PP ABECS para retornar status de TimeOut
+
+>>> Módulo Android <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo PGWebLib (v4.1.21) <<<
+- Altera a posição do contador de conexões consecutivas com sucesso para contingência (Fallback Conexão Padrão).
+- PGWEB-500: Correção (interna): Corrige exibição de mensagem de erro caso ocorra problema durante a captura de PP_iMenu.
+- PGWEB-507: Preenche parametros de mensagem de parcelas inválidas.
+- PGWEB-508: Correção (interna): Ajuste no Buffer de criptografia.
+- PGWEB-511: Correção (interna): Adiciona parametros para Fallback.
+- PGWEB-491: Nova funcionalidade: Atualização de tabelas sem inserir cartão.
+- PGWEB-513 : Correção (interna): Corrige reinicio do terminal ao pressionar teclas durante a espera do cartão.
+- Altera seed para iniciar módulo topaz.
+
+>>> Módulo Android <<<
+- Correção: inserido G-BOT como AndroidLib no CliType.
+- Correção: solicitar o comando GTI apenas para terminais android.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.22
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v1.38
+
+    > GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * kernel: Kernel: 3.18.71-g347f0f1 Build: WPOS- V01.00_2202151428
+    * PPCompGERTEC v1.39
+
+
+v4.1.21.1 -  27/09/2022
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLibAndroid: A msg de carga de tabelas não estava sendo exibida.
+- Nova funcionalidade: Insere a APN nos terminais Gertec.
+- Nova funcionalidade: Senha técnica para PayGo Integrado volta a ser a senha técnica padrão.
+- Nova funcionalidade: Implementado acesso a calculadora padrão.
+- Nova funcionalidade: Criada opção no menu lateral para exportação de logs na versão de cert.
+- Nova funcionalidade: Adicionada opção de acesso ao POS7 no PayGo Integrado.
+- Melhoria: Ajustes tela de comprovante modo landscape.
+- Melhoria: Ajustes na tela de seleção/pareamento de PIN-Pad.
+- Melhoria: Ajustes na visualização do bottomsheet
+- Melhoria: Realizados ajustes na tela de inserção do cartao (flavor geral).
+- Melhoria: Aumentada o tamanho da fonte (modo landscape)
+- Melhoria: Ajustado posicionamento vertical das mensagens de display.
+- Melhoria: Aumentar o logo do comprovante.
+- Melhoria: Realizados ajustes para o modo landscape + fullscreen. Ajustada a tela de processando do relatório.
+- Melhoria: Removido Sentry e adicionado o Crashlytics.
+- Melhoria: Ajuste teclado alfanumérico no modo landscape.
+- Melhoria: Bloqueia modo landscape no celular, mas permite em telas maiores (tablet).
+- Melhoria: Trocada a cor dos ícones do calendário e de info em caso integração.
+- Melhoria: Estorno via automação - caso a hora da transação seja 00:00:00 não envia isso p/ lib.
+- Correção: Estava ocorrendo crash devido ao getPinType null
+- Correção: implementado getFirmware para terminais gertec.
+- Correção: Flavor geral estava como launcher.
+- Correção: Ajuste de telas para modo landscape.
+- Correção: Removida a opção de simulador de PIN-Pad.
+- Correção: Função lockScreenOrientation volta a ser privada.
+- Correção: Na tela de relatório, no modo landscape, o bottomsheet de captura de senha estava cortado.
+- Correção: Ao clicar em configurações, estava sendo exibida na toolbar "realizar venda".
+- Correção: processando fullscrean para tablet.
+- Correção: Ajuste para correta exibição do logo em caso de automação comercial + Android 11 ou superior.
+- Correção: context da confirmação estava ficando nulo ao final de uma operação administrativa.
+- Correção: Tela de "selecionado:" estava como dsp_livre o correto é dsp_selecionado.
+- Correção: PG Integrado: Aleatóriamente, começava a ocorrer crash e ai era necessário reinstalar o apk.
+- Correção: PG Integrado: Caso não fosse solicitada a forma de pagamento (crédito ou débito) antes de solicitar a inserção do cartão, os dados da tela de inserção estavam errados.
+- Correção: Deixando o init da pgweblib em uma GlobalScope.
+- Correção: Ao entrar em uma operação ADM ao final da mesma a mensagem de RMC ficava travada no pp bt.
+- Correção: Cancelamento parcial estava exibindo valor incorreto no header.
+- Correção: No estorno via automação estava enviando o tipo de cartão como "null".
+- Correção: Estava aceitando o envio de data de vencimento vazia na venda digitada.
+- Correção: Cancelamento parcial.
+- Correção: Corrigido valor total exibido no cancelamento parcial.
+- Correção: Ajuste para não aceitar data de vencimento sem atingir o tamanho mínimo para o campo.
+- Correção: para bloquear o btn "voltar" do android.
+
+>>> Módulo PGWebLib (v4.1.21) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Correção: Solicita versão do firmware apenas nos POSAndroid
+- Correção: Mensagens de RMC no display do checkout não estavam sendo exibididas.
+- Correção: Ao final de uma transação a mensagem final ficava travada no PP.
+- Correção: Não estava sendo gerada as chaves RSA.
+- Correção: CKMaLists do xplug.
+- Correção: Tela de "selecionado:" estava como dsp_livre o correto é dsp_selecionado.
+- Correção: Ao entrar em uma operação ADM ao final da mesma a mensagem de RMC ficava travada no pp bt.
+- Correção: Removido PinpadUserInterface / Correção crash getPinType null
+- Correção: A msg de carga de tabelas não estava sendo exibida.
+- Correção: Ajustadas mensagens do log comms.
+
+
+    > Newland (N910)
+    * bcnewland-release:    v2.22
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v1.38
+
+    > GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * kernel: Kernel: 3.18.71-g347f0f1 Build: WPOS- V01.00_2202151428
+    * PPCompGERTEC v1.39
+
+
+v4.1.21.2 -  24/10/2022
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLibAndroid
+- Nova Funcionalidade: Habilitada a venda autônoma no Paygo Integrado.
+- Nova Funcionalidade: Adicionada opção para visualização do release notes no Sobre.
+- Nova Funcionalidade: botão caps lock no teclado alfanumérico.
+- Nova Funcionalidade: Solicita a senha lojista para acessar a tela de configuração de PIN-Pad.
+- Melhoria: Aumentado o timeout das telas de display para 1 minuto.
+- Melhoria: Visualização do logo enviado pela automação comercial.
+- Melhoria: Ajustado o tamanho dos comprovantes exibidos na tela.
+- Melhoria: Scroll sendo exibido nas telas de comprovante no modo horizontal.
+- Correção: Estava ocorrendo crash ao parear PIN-Pad Android 12.
+- Correção: Estava dando crash ao inserir um cartão na tela de aplicativos.
+- Correção: Ao acessar o portal e rapidamente clicar no menu administrativo estava dando crash.
+- Correção: Nova validação para quando deixar enviar um valor nulo.
+- Correção: Removido timeout para carga de tabelas - a operação acabava sendo cancelada quando a carga demorava mais de 30s.
+- Correção: Solicitas todas as permissões necessárias e suportadas ao iniciar o app.
+- Correção: Ao entrar no menu PIN-Pad e posteriormente clicar na opção de menu Aplicativos o app estava dando crash.
+- Correção: Ao desligar o WI-FI e o plano de dados o PG Integrado estava ficando travado até ter conexão com a internet.
+- Correção: Tela de PIN-Pad estava sendo recarregada ao clicar em PIN-Pad no menu lateral.
+- Correção: Crash teste PIN-Pad.
+- Correção: Portal - Modo landscape estava ficando distorcido.
+- Correção: Teste de chaves estava dando crash ao clicar em finalizar.
+- Correção: Estava ocorrendo crash no RemoveCard em caso de abort no PIN-Pad.
+
+>>> Módulo PGWebLib (v4.1.21) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Correção: em caso de um cancelamento ficar pendente, a próxima transação não estava realizando
+ a confirmação dessa pendência.
+- Correção: teste de chaves estava dando crash ao clicar em finalizar.
+
+
+    > Newland (N910)
+    * bcnewland-release:    v2.22
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v1.38
+
+    > Gertec (GPOS700 e GPOS700x)
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC :v1.39
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_22021111
+    * Kernel Version (GPOS700x): 3.18.71 (Fri Feb 11 12:06:43 CST 2022)
+
+
+v4.1.21.3 -  30/11/2022
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: Interface Automação.
+- Atualização: PGWebLib Android.
+- Nova implementação: subir as versões de build version, firmware,
+pdc e S/N no Firebase Crashlytics.
+- Melhoria: removido printFormFeed desnecessário para os terminais da Gertec.
+- Melhoria: faz um close no newTransaction apenas quando for um N910.
+- Correção: comprovante de Relatório estava com timeout para dispositivos móveis.
+
+>>> Módulo PGWebLib (v4.1.21) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Atualização: inserido GPOS800 como MUXCLI_LIBANDROID.
+- Correção: implementado novo modo de conexão USB para dar
+suporte aos Pinpad USB mais antigos.
+
+
+    > Newland (N910)
+    * bcnewland-release:    v2.22
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v1.38
+
+    > Gertec (GPOS700 e GPOS700x)
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC :v1.39
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_22021111
+    * Kernel Version (GPOS700x): 3.18.71 (Fri Feb 11 12:06:43 CST 2022)
+
+
+v4.1.21.4 -  03/12/2022
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Melhoria: opção de extrair log no menu lateral.
+
+>>> Módulo PGWebLib (v4.1.21) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Não houve alterações neste módulo.
+
+
+    > Newland (N910)
+    * bcnewland-release:    v2.22
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v1.38
+
+    > Gertec (GPOS700 e GPOS700x)
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC :v1.39
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_22021111
+    * Kernel Version (GPOS700x): 3.18.71 (Fri Feb 11 12:06:43 CST 2022)
+
+
+v4.1.21.5 -  19/12/2022
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Correção: Quando a Interface Automação estiver dentro de um service estava
+ dando crash ao chamar ela no final da transação por meio de uma automação.
+
+>>> Módulo PGWebLib (v4.1.21) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Não houve alterações neste módulo.
+
+
+    > Newland (N910)
+    * bcnewland-release:    v2.22
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v1.38
+
+    > Gertec (GPOS700 e GPOS700x)
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC :v1.39
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_22021111
+    * Kernel Version (GPOS700x): 3.18.71 (Fri Feb 11 12:06:43 CST 2022)
+
+
+v4.1.21.6 -  19/01/2023
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Nova implementação: Exportação automática de logs,
+ agendada através do PGWeb.
+- Nova implementação: Firebase In App Messaging.
+- Nova implementação: Firebase Messaging.
+- Nova implementação: Permissões para utilizar Firebase Messaging.
+- Atualização: Package dos modulos POSPlug Android.
+- Atualização: SDK Android 13.
+- Atualização: PGWebLib Android.
+- Correção: Para quando o RESULTMSG referente a um erro vem null.
+- Correção: Em alguns momentos o índice selecionado de um menu
+ estava vindo com um valor maior que a quantidade de opções disponíveis.
+
+>>> Módulo PGWebLib (v4.1.21) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Nova funcionalidade: POSPlug Android como subModulo.
+- Nova funcionalidade: Exportação manual de logs, através do menu admin.
+- Nova funcionalidade: Exportação automática de logs, agendada através do PGWeb.
+- Atualização: SDK Android 13.
+- Melhoria: Adicionado Log de comunicação no comms.
+- Melhoria: Separado em dois comandos a solicitação do KSN das chaves DUKPT de DADOS e de PIN.
+- Correção: Tempo de timeout de 5s para 10s em um comando abecs não blocante.
+- Correção: Removida conexão SSL do PGW_iExportLogs.
+- Correção: Inserido pinpad usb Ingenico como OLD USB.
+
+
+    > Newland (N910)
+    * bcnewland-release:    v2.22
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v1.38
+
+    > Gertec (GPOS700 e GPOS700x)
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC :v1.39
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_22021111
+    * Kernel Version (GPOS700x): 3.18.71 (Fri Feb 11 12:06:43 CST 2022)
+
+
+v4.1.21.7 -  17/02/2023
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Melhoria: Suporte a integrações antigas.
+- Melhoria: Lista com todos os aplicativos do terminal no menu lateral.
+- Melhoria: Validação para saber quando é uma integração via URI.
+- Correção: Mensagem de pareamento do pinpad.
+- Correção: unbindService do serviço de integração.
+
+
+>>> Módulo PGWebLib (v4.1.21) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Não houve alterações neste módulo.
+
+
+    > Newland (N910)
+    * bcnewland-release:    v2.22
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v1.38
+
+    > Gertec (GPOS700 e GPOS700x)
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC :v1.39
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_22021111
+    * Kernel Version (GPOS700x): 3.18.71 (Fri Feb 11 12:06:43 CST 2022)
+
+v4.1.21.8 -  08/03/2023
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Correção: Corrigido travamento ao inicializar o aplicativo no GPOS.
+- Correção: Transação via PIX, em alguns casos, exibia tela de processando durante a exibição do QR Code.
+
+>>> Módulo PGWebLib (v4.1.21) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Não houve alterações neste módulo.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.22
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v1.38
+
+    > Gertec (GPOS700 e GPOS700x)
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC :v1.39
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_22021111
+    * Kernel Version (GPOS700x): 3.18.71 (Fri Feb 11 12:06:43 CST 2022)
+
+v4.1.23.0 -  28/03/2023
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Nova funcionalidade: Implementada conexão via Ethernet.
+- Correção: Adicionado Identificador da Transação (transactionId) na saidaTransacao.
+- Melhoria: Ofuscação de código.
+- Melhoria: Sem conexão com a internet, desabilita venda autônoma e venda via automação comercial.
+
+>>> Módulo PGWebLib (v4.1.23) <<<
+- PGWEB-518: Correção (interna): Corrige modo inválido.
+- PGWEB-543: Alteração na carga de tabelas após instalação.
+- PGWEB-542: Correção (interna): Altera PIN-pad menu para ficar de acordo com especificação da REDE.
+- PGWEB-553: Correção (interna): Corrige problema em que o terminal ficava sem proteção para queda de energia
+              entre receber a resposta do servidor e realizar o FinishChip. Isto gerava uma pequena janela em que a transação
+              poderia ficar pendente caso o terminal fosse reiniciado.
+- PGWEB-551: Nova funcionalidade: Para a certificação da Pagseguro, passa enviar no comando GoOnChip parâmetro para bloquear bypass
+              de senha caso sinalizado na tabela de produtos.
+- PGWEB-490: Adiciona novo certificado.
+- PGWEB-549: Correção (interna): Corrige carga de tabelas para rede sem cartão com chip. Anteriormente em toda
+            transação gerava uma tentativa de carga de tabelas.
+- Correção (interna): Passa a validar o tamanho do buffer de saída ao copiar a razão social.
+- ATPOS-45: Correção (interna): Passa a considerar o valor como zero caso MUXTAG_TOTALAMNT não esteja presente
+            ao montar o bloco de criptografia da PagSeguro.
+- ATPOS-49: Nova funcionalidade: Pasta a somar a taxa de embarque ao valor da transação para que o processamento
+            EMV seja realizado com o valor correto.
+- ATPOS-52: Correção (interna): Corrige tratamento de erro caso PP_iMenu não retorne OK.
+- ATPOS-44: Nova funcionalidade: Altera teste de chaves para consultar chaves em PP Abecs utilizando o GIX, percorrer até o índice 100 e
+              sincroniza obtenção de chaves para teste de chaves e envio ao Muxx numa mesma função.
+- ATPOS-54 : Correção (interna): Modifica iWaitCard para aceitar entrada de transações digitadas sem fallback habilitado.
+- ATPOS-11: Adiciona verificação de financiamento antes de inserir cartão.
+- ATPOS-19: Adiciona verificata ode DEVTYPE, MUXTAG_CHOLDDEVTYPE.
+- ATPOS-66: Correção (interna): Passa a utilizar os 8 bytes mais significativos do número serial do PIN-pad caso
+            seja ABECS 2.12 e tenha mais de 16 caracteres retornados no GIX. Anteriormente isto causava erro na criptografia da PS para Lane3000.
+- ATPOS-65: Correção (interna): Deixa de adiantar dados de financiamento para transações que não venda.
+- ATPOS-67: Correção (interna): Remove verificação de tipofinanciamento para seleção da tabela de produto
+            a partir da tabela de transação. Com este novo tratamento a operação de cancelamento não funcionava devidamente.
+- ATPOS-89: Correção (interna): Corrige montagem do IV para criptografia PagSeguro utilizando PIN-pad ABECS. Anteriormente
+            a captura do serial para transação digitada.
+- ATPOS-87: Correção (interna): Corrige carga de tabela em ingenico não abecs. Anteriormente o mapeamento para este
+            tratamento estava sendo feito de maneira incorreta.
+
+>>> Módulo Android <<<
+- Nova funcionalidade: Adicionada a opção de publicar a pgweblib via Maven.
+- Nova funcionalidade: Implementada conexão via Ethernet.
+- Melhoria: Ofuscação de código.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.22
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v1.38
+
+    > Gertec (GPOS700 e GPOS700x)
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC :v1.39
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_22021111
+    * Kernel Version (GPOS700x): 3.18.71 (Fri Feb 11 12:06:43 CST 2022)
+
+v4.1.23.1 -  20/06/2023
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Nova funcionalidade: Adicionado flavor para GPOS700x.
+
+>>> Módulo PGWebLib (v4.1.23) <<<
+- Não houve alterações neste módulo.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.22
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v1.38
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC :v1.39
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35.230609
+    * PPComp GERTEC :v1.39
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+v4.1.23.2 -  04/07/2023
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Correção: Corrigido crash na exibição dos comprovantes.
+
+>>> Módulo PGWebLib (v4.1.23) <<<
+- Não houve alterações neste módulo.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.22
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v1.38
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC :v1.39
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35.230609
+    * PPComp GERTEC :v1.39
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+v4.1.23.3 -  16/08/2023
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Nova Funcionalidade: Aplicação passa a funcionar para o terminal GPOS780.
+
+>>> Módulo PGWebLib (v4.1.23) <<<
+- Nova funcionalidade: Adicionado clitype para GPOS780.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.22
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v1.38
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v1.39
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v1.39
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v1.40
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+v4.1.23.4 -  25/08/2023
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLibAndroid.
+- Melhoria: Implementação do novo método setApn.
+- Correção: envio do T5 ao muxx durante a impressão.
+
+>>> Módulo PGWebLib (v4.1.23) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Atualização: Inclusão da APN VIRTUEYES no arquivo CONFIG.INI.
+- Melhoria: Validação para verificar a presença de uma configuração de APN com
+ conectividade à internet.
+- Melhoria: Tentativas automáticas de conexão com as APNs associadas ao IMSI do chip em uso.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.22
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v1.38
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v1.39
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v1.39
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v1.40
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+v4.1.23.5 -  26/12/2023
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Nova implementação: Obtêm os valores a serem enviados na telemetria.
+- Melhoria: Atualizado Kotlin e Hilt + remoção FireBase in app messaging.
+
+>>> Módulo PGWebLib (v4.1.23) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Nova implementação: certificado novo e validação do mesmo.
+- Melhoria: insere uma lista de certificados.
+- Correção: envio da telemetria.
+- Melhoria: Inserido nas capacidades da automação o valor para realizar uma criptografia CBC.
+- Correção: Envio do PW_CLICAP_CRYPTOPAG para realizar criptografia CBC.
+- Correção: Após passar a tarja de um cartão com chip e ser emitida uma mensagem de erro,
+  não estava sendo exibida a notificação para a inserção do cartão.
+- Correção: Exportação de logs automática para os terminais Android (N910 e GPOS).
+- Nova Implementação: Adicionado log de operação cancelado ao comms.
+- Nova Implementação: Permite alterar o texto das notificações da ppcomp de acordo com o
+  PW_LANGUAGE definido no ambiente.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v2.00
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.01
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+v4.1.23.6 -  02/01/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Correção: resolvido crash na aplicação devido a problema na PGWebLib.
+
+
+>>> Módulo PGWebLib (v4.1.23) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Correção: alterada configuração da ofuscação para release.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v2.00
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.01
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+v4.1.23.7 -  03/01/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Correção: Removida a configuração de minify no build(app) que conflitava com a reflexão e gerava crashes.
+
+
+>>> Módulo PGWebLib (v4.1.23) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Correção: alterada configuração da ofuscação para release.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v2.00
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.01
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+v4.1.24.0 -  19/01/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Correção: Corrigido crash devido à ofuscação do código.
+- Atualização: PGWebLibAndroid.
+- Atualização: Printer Android.
+
+
+>>> Módulo PGWebLib (v4.1.24) <<<
+- PGWEB-518: Correção (interna): Corrige modo inválido.
+- PGWEB-543: Alteração na carga de tabelas após instalação.
+- PGWEB-553: Correção (interna): Corrige problema em que o terminal ficava sem proteção para queda de energia
+  entre receber a resposta do servidor e realizar o FinishChip. Isto gerava uma pequena janela em que a transação
+  poderia ficar pendente caso o terminal fosse reiniciado.
+- PGWEB-551: Nova funcionalidade: Para a certificação da Pagseguro, passa enviar no comando GoOnChip parâmetro para bloquear bypass
+  de senha caso sinalizado na tabela de produtos.
+- PGWEB-549: Correção (interna): Corrige carga de tabelas para rede sem cartão com chip. Anteriormente em toda
+  transação gerava uma tentativa de carga de tabelas.
+- Correção (interna): Passa a validar o tamanho do buffer de saída ao copiar a razão social.
+- ATPOS-45: Correção (interna): Passa a considerar o valor como zero caso MUXTAG_TOTALAMNT não esteja presente
+  ao montar o bloco de criptografia da PagSeguro.
+- ATPOS-49: Nova funcionalidade: Pasta a somar a taxa de embarque ao valor da transação para que o processamento
+  EMV seja realizado com o valor correto.
+- ATPOS-106: Correção (interna): Corrige problemas nas capturas de PIN-pad blocantes executadas fora do fluxo transacional.
+  Anteriormente caso estas capturas fossem abortadas numa thread paralela a thread principal ficava em um estado indeterminado.
+- ATPOS-54 : Correção (interna): Modifica iWaitCard para aceitar entrada de transações digitadas sem fallback habilitado.
+- ATPOS-11: Adiciona verificação de financiamento antes de inserir cartão.
+- ATPOS-19: Adiciona verificata ode DEVTYPE, MUXTAG_CHOLDDEVTYPE.
+- ATPOS-66: Correção (interna): Passa a utilizar os 8 bytes mais significativos do número serial do PIN-pad caso
+  seja ABECS 2.12 e tenha mais de 16 caracteres retornados no GIX. Anteriormente isto causava erro na criptografia da PS para Lane3000.
+- ATPOS-65: Correção (interna): Deixa de adiantar dados de financiamento para transações que não venda.
+- ATPOS-67: Correção (interna): Remove verificação de tipofinanciamento para seleção da tabela de produto
+  a partir da tabela de transação. Com este novo tratamento a operação de cancelamento não funcionava devidamente.
+- ATPOS-89: Correção (interna): Corrige montagem do IV para criptografia PagSeguro utilizando PIN-pad ABECS. Anteriormente
+  a captura do serial para transação digitada.
+- ATPOS-87: Correção (interna): Corrige carga de tabela em ingenico não abecs. Anteriormente o mapeamento para este
+  tratamento estava sendo feito de maneira incorreta.
+- ATPOS-110: Correção (interna): Passa a salvar um desfazimento após a transação ser finalizada com sucesso no FNC e a automação
+  não receber os dados da transação por uma queda de energia. Este problema gerava um volume significativo de transações pendentes.
+- ATPOS-95: Nova funcionalidade: Passa a excluir linhas já exportadas nos logs caso a transmissão falhe.
+- ATPOS-59: Adiciona Versão no Comprovante do teste de chaves.
+- ATPOS-64: Adiciona limite superior para transação financeira.
+- ATPOS-125: Nova funcionalidade: Passa a enviar telemetria para servidor.
+- ATPOS-116: Nova funcionalidade: Passa a realizar atualização de parâmetros após envio de advice.
+- ATPOS-114: Nova funcionalidade: Passa a receber os parâmetros para conexão nos serviços rest via xml do PGWeb.
+- ATPOS-123: Nova funcionalidade: Passa a baixar certificados SSL do bucket S3.
+- ATPOS-136: Remove numero de parcelas.
+- ATPOS-137: Passa a limitar o tamanho máximo do arquivo de telemetria em 1MB. Caso este limite seja excedido as 15 mais antigas são excluídas.
+- ATPOS-139: Passa a logar os parâmetros do certificado utilizado para a conexão SSL.
+- ATPOS-140:  Adiciona versao no comprovante do teste de chaves.
+- ATPOS-155: Alinhamento de mensagens de erro entre PWUTL_iErrMsg e PP_iRemoveCard para casos de transacao cancelada.
+- ATPOS-164: Troca de "GPRS" por dados móveis.
+- ATPOS-169: (Correção interna): Corrige envio de telemetria/log caso a entrada tivesse mais de 5239 caracteres. Anteriormente estas requisições
+            falhariam com erro "SEM RESPOSTA DO SERVIDOR.
+- ATPOS-128: Retira CPF e CNPJ dos logs.
+- ATPOS-127: Nova funcionalidade: Passa a exibir detalhamento para erros comuns na barra de status.
+- ATPOS-171: Corrige retorno de sinal zerado do wifi. Anteriormente ao reiniciar o terminal após uma manutenção a barra de status
+             exibia eternamente 0 de sinal.
+- ATPOS-172: Passa a reiniciar a sessão SSL sempre que realizar uma comunicação ao bucket S3. Anteriormente a conexão ao bucket poderia falhar caso a sessão de comunicação com o servidor transacional tentasse ser reaproveitada incorretamente.
+			 Corrige o erro "-2422" ao realizar transações em configurações em CTLS e com a 'flag' "inicia transação por tipo cartão" desmarcada.
+- ATPOS-196: Correção no erro que causava falha na integridade transacional, originado na implementação do mecanimos criado para evitar transações pendentes.
+
+
+>>> Módulo Android <<<
+- Correção: Foi implementada uma validação para identificar se existe uma confirmação pendente de envio dentro da PGWeblib, se houver uma confirmação pendente,
+ o desfazimento criado por precaução é descartado, evitando assim que um desfazimento sobrescreva uma confirmação, o que poderia comprometer a integridade transacional.
+- Correção: A variável responsável por exibir mensagens no Display do Pinpad não estava sendo inicializada de forma adequada.
+ Este problema foi corrigido para garantir o funcionamento correto da exibição de mensagens no Pinpad.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v2.00
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.01
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+v4.1.26.0 -  30/01/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLibAndroid.
+
+
+>>> Módulo PGWebLib (v4.1.26) <<<
+- Não houve alterações neste módulo.
+
+
+>>> Módulo Android <<<
+- Correção: alterada configuração da ofuscação para release.
+- Nova Implementação: Inserido ClyType para o terminal GPOS720.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v2.00
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.01
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+
+
+v4.1.26.1 -  09/02/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLibAndroid.
+
+
+>>> Módulo PGWebLib (v4.1.26) <<<
+- Não houve alterações neste módulo.
+
+
+>>> Módulo Android <<<
+- Atualização: Removida ofuscação do PGIntegrado.
+- Atualização: Removido botão de acesso ao Portal C6 Pay.
+- Correção: Corrigido o problema relacionado à opção de compartilhamento de logs,
+ agora só é possível compartilhar via bluetooth.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v2.00
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.01
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+v4.1.26.2 -  16/02/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Nova implementação: Adicionado suporte para o terminal GPOS720.
+
+
+>>> Módulo PGWebLib (v4.1.26) <<<
+- Não houve alterações neste módulo.
+
+
+>>> Módulo Android <<<
+- Nova implementação: Adicionado suporte para o terminal GPOS720.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v2.00
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS720
+    * gedi: 0.16.20
+    * gandi: 0.1.19
+    * ppcomp: 1.39
+    * PPComp GERTEC: N/A
+    * Kernel: F20_OS_1.01.07.00_02_06122366
+    * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.01
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+
+
+v4.1.26.3 -  19/02/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLib Android
+
+
+>>> Módulo PGWebLib (v4.1.26) <<<
+- Correção: Adicionado suporte ao SNI (Server Name Indication) para conexões SSL,
+ utilizando reflaction para configurar dinamicamente o SNI. Isso garante o envio correto do nome
+  do host durante o handshake SSL, assegurando compatibilidade com servidores que requerem SNI.
+
+
+>>> Módulo Android <<<
+- Nova implementação: Adicionado suporte para o terminal GPOS720.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v2.00
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS720
+    * gedi: 0.16.20
+    * gandi: 0.1.19
+    * ppcomp: 1.39
+    * PPComp GERTEC: N/A
+    * Kernel: F20_OS_1.01.07.00_02_06122366
+    * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.01
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+
+v4.1.26.4 -  23/02/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLib Android
+- Nova funcionalidade: Adicionado Flavor para C6Pay integrado com automação.
+- Nova funcionalidade: Script para geração de versão C6Pay N910 Integrado.
+- Correção: Alterado o texto do item de "Configuração" do menu Principal, para "Config. Dispositivo"
+- Correção: Para acessar o item de "Configurações" do menu Principal,
+ passa a ser solicitado a senha técnica
+- Nova funcionalidade: Agora é possível especificar o nome da pasta onde as informações
+ relacionadas à instalação do PDC serão armazenadas.
+
+
+>>> Módulo PGWebLib (v4.1.26) <<<
+- Correção: Agora é possível especificar o nome da pasta onde as informações relacionadas à
+ instalação do PDC serão armazenadas.
+- Correção: Implementação do envio da chave pública para ambientes de homologação e produção
+- Correção: Suporte ao terminal GPOS780 e GPOS720.
+- Correção: Configuração do SNI otimizada para ser aplicada exclusivamente em terminais com
+ versão Android 5.1 ou inferior, uma vez que versões mais recentes já realizam essa
+  configuração de maneira automática.
+
+
+
+>>> Módulo Android <<<
+- Nova implementação: Adicionado suporte para o terminal GPOS720.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v2.00
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS720
+    * gedi: 0.16.20
+    * gandi: 0.1.19
+    * ppcomp: 1.39
+    * PPComp GERTEC: N/A
+    * Kernel: F20_OS_1.01.07.00_02_06122366
+    * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.01
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+
+
+v4.1.26.5 -  06/03/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Nova Funcionalidade: validação da senha administrativa do mês atual.
+- Atualização: PPComp Gertec v2.02.
+- Atualização: PGWeblibAndroid
+- Correção: certificados antigos removidos.
+- Correção: insere a permissão de localização conforme a versão do Android.
+
+
+>>> Módulo PGWebLib (v4.1.26) <<<
+- Não houve alterações neste módulo.
+
+
+>>> Módulo Android <<<
+- Correção: Configuração do SNI otimizada para ser aplicada exclusivamente em terminais
+  com versão Android 5.1 ou inferior, uma vez que versões mais recentes já realizam essa
+  configuração de maneira automática.
+- Correção: Ajuste na execução do IdleProc
+- Correção: Caso seja retornado uma lista de certificados em um único arquivo .crt,
+ carregue-os separadamente.
+- Correção: Lógica de carregamento interno do certificado removida.
+- Atualização: PPComp Gertec V2.02.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v2.00
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS720
+    * gedi: 0.16.20
+    * gandi: 0.1.19
+    * ppcomp: 1.39
+    * PPComp GERTEC: N/A
+    * Kernel: F20_OS_1.01.07.00_02_06122366
+    * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.02
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+
+
+v4.1.26.6 -  07/03/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWeblibAndroid
+
+
+>>> Módulo PGWebLib (v4.1.26) <<<
+- Não houve alterações neste módulo.
+
+
+>>> Módulo Android <<<
+- Correção: ajuste realizado no envio de telemetria durante a inicialização da pgweblib.
+- Correção: incluido um OPEN antes da execução de um GetInfo("00").
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v2.00
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS720
+    * gedi: 0.16.20
+    * gandi: 0.1.19
+    * ppcomp: 1.39
+    * PPComp GERTEC: N/A
+    * Kernel: F20_OS_1.01.07.00_02_06122366
+    * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.02
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+
+
+v4.1.26.7 -  13/03/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLibAndroid.
+- Atualização: Bibliotecas de impressora (Printer).
+- Atualização: PPComp N910.
+- Atualização: Firebase.
+- Correção: Inserido "dispachers.io" na inicialização do aplicativo para garantir o correto
+ funcionamento da camada de impressão.
+- Correção: Simplificada a validação no caso de ser GPOS720.
+- Correção: O display de "processando" estava sendo chamado durante um "advice".
+- Correção: Adicionado tratamento para evitar que a tela seja desligada durante as operações.
+- Correção: Bloqueio do botão home do N910.
+- Correção: Bloquear o desligamento da tela durante a impressão de comprovantes.
+- Correção: Inicialização da printer.
+
+
+>>> Módulo PGWebLib (v4.1.26) <<<
+- Não houve alterações neste módulo.
+
+
+>>> Módulo Android <<<
+- Correção: Envio da telemetria durante o processo de inatividade (IdleProc).
+- Nova Funcionalidade: Implementação de um método para verificar a existência de uma
+ operação em curso.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v2.03
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS720
+    * gedi: 0.16.20
+    * gandi: 0.1.19
+    * ppcomp: 1.39
+    * PPComp GERTEC: N/A
+    * Kernel: F20_OS_1.01.07.00_02_06122366
+    * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.02
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+
+
+v4.1.26.8 -  25/03/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLibAndroid
+- Atualização: PPComp N910
+- Correção: exibe desde a primeira msg vinda do muxx durante uma transação Pix.
+- Correção: exibe corretamente o hint para os campos que solicita a senha do lojista.
+- Correção: lógica para exibir botão de cancelar na tela de processando.
+- Correção: remoção do hint para o campo de senha de pin.
+
+
+>>> Módulo PGWebLib (v4.1.26) <<<
+- Não houve alterações neste módulo.
+
+
+>>> Módulo Android <<<
+- Nova Funcionalidade: passa a deletar os logs após 3 meses.
+- Atualização: PPComp Gertec v2.03.
+- Correção: passa a pegar o caminho correto do certificado na telemetria e exportação dos logs.
+- Correção: adiciona no arquivo de telemetria apenas quando existir um evento válido.
+- Correção: inserido apns da avatek.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v2.07
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS720
+    * gedi: 0.16.20
+    * gandi: 0.1.19
+    * ppcomp: 1.39
+    * PPComp GERTEC: N/A
+    * Kernel: F20_OS_1.01.07.00_02_06122366
+    * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.03
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+v4.1.26.9 -  26/03/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLibAndroid
+
+>>> Módulo PGWebLib (v4.1.26) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Atualização: PPComp Gertec v2.03 e PGWebLib v4.1.26.9.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v2.07
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS720
+    * gedi: 0.16.20
+    * gandi: 0.1.19
+    * ppcomp: 1.39
+    * PPComp GERTEC: N/A
+    * Kernel: F20_OS_1.01.07.00_02_06122366
+    * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.03
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+
+
+v4.1.26.10 -  05/04/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Melhoria: Os dados de uma APN válida são salvos automaticamente.
+- Melhoria: Implementada validação ao alterar o modo de comunicação.
+- Correção: Modificações realizadas no processo de inserção da APN e na definição da APN default.
+- Atualização: PGWebLib Android
+
+>>> Módulo PGWebLib (v4.1.26) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Melhoria: Implementação de um método mais eficiente para verificar a conexão com a internet.
+- Melhoria: Os dados de uma APN válida são salvos automaticamente.
+- Correção: Resolvido o problema que impedia a execução da criptografia extendida no ambiente C6.
+- Correção: Ajustes realizados na validação de conexão móvel para evitar falhas.
+- Correção: Eliminado o loop que ocorria durante a captura de dados do usuário de uma transação digitada.
+- Correção: Tempo de validação do modo de comunicação reduzido.
+- Correção: A ordem de inserção da APN para um chip da TIM foi modificada.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v2.07
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS720
+    * gedi: 0.16.20
+    * gandi: 0.1.19
+    * ppcomp: 1.39
+    * PPComp GERTEC: N/A
+    * Kernel: F20_OS_1.01.07.00_02_06122366
+    * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.03
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+
+
+v4.1.27.1 -  08/04/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLib Android
+
+>>> Módulo PGWebLib (v4.1.26) <<<
+- Correção: Identificador de desfazimento atualizado.
+- Correção: Dados corretos enviados para o servidor.
+
+>>> Módulo Android <<<
+- Não houve alterações neste módulo.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.48
+    * PPComp Newland: v2.07
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS720
+    * gedi: 0.16.20
+    * gandi: 0.1.19
+    * ppcomp: 1.39
+    * PPComp GERTEC: N/A
+    * Kernel: F20_OS_1.01.07.00_02_06122366
+    * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.03
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+
+
+v4.1.27.2 -  12/04/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLib Android
+
+>>> Módulo PGWebLib (v4.1.26) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Correção: envio do build number juntamente com so.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.63
+    * PPComp Newland: v2.07
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS720
+    * gedi: 0.16.20
+    * gandi: 0.1.19
+    * ppcomp: 1.39
+    * PPComp GERTEC: N/A
+    * Kernel: F20_OS_1.01.07.00_02_06122366
+    * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.03
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+
+
+
+v4.1.27.3 -  15/04/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLib Android
+- Correção: atualização do modo de conexão.
+
+>>> Módulo PGWebLib (v4.1.26) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Correção: correção proguard.
+- Correção: ajustes no método de verificação do nível de conexão móvel.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.63
+    * PPComp Newland: v2.07
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS720
+    * gedi: 0.16.20
+    * gandi: 0.1.19
+    * ppcomp: 1.39
+    * PPComp GERTEC: N/A
+    * Kernel: F20_OS_1.01.07.00_02_06122366
+    * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.03
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+
+
+
+v4.1.27.4 -  19/04/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLib Android
+
+>>> Módulo PGWebLib (v4.1.26) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Correção: Serial Pax USB
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.63
+    * PPComp Newland: v2.07
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS720
+    * gedi: 0.16.20
+    * gandi: 0.1.19
+    * ppcomp: 1.39
+    * PPComp GERTEC: N/A
+    * Kernel: F20_OS_1.01.07.00_02_06122366
+    * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.03
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+
+
+v4.1.27.5 -  30/04/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLib Android
+- Correção: Ajustada sobreposição de hints nas senhas técnica e lojista.
+- Correção: Passa a enviar o valor da APN para o Muxx.
+
+>>> Módulo PGWebLib (v4.1.26) <<<
+- Correção: Obtem a porta para o ambiente ao qual os logs devem ser enviados.
+- Correção: Alterado o nó de finalidade da exportação de logs de 3 para 4.
+- Correção: Alterado o nó de finalidade do certificado de 4 para 8.
+- Correção: Alterado o nó de finalidade da telemetria de 5 para 16.
+
+>>> Módulo Android <<<
+- Melhoria: Implementação da função PG_iFileGenDel.
+- Correção: Obtem a APN para envio ao Muxx durante uma transação.
+- Correção: Implementação do envio dos logs e do indleProc chamado no AlarmReceiver em segundo plano.
+- Correção: Exclusão dos arquivos de certificado durante uma manutenção.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.63
+    * PPComp Newland: v2.07
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS720
+    * gedi: 0.16.20
+    * gandi: 0.1.19
+    * ppcomp: 1.39
+    * PPComp GERTEC: N/A
+    * Kernel: F20_OS_1.01.07.00_02_06122366
+    * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.03
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+
+
+v4.1.27.6 -  14/05/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLib Android
+
+>>> Módulo PGWebLib (v4.1.26) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Correção: método que recupera o tipo de conexão móvel (2G, 3G ou 4G).
+- Melhoria: converte nível de conexão LTE (4G) para a escala 0-31.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.63
+    * PPComp Newland: v2.07
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS720
+    * gedi: 0.16.20
+    * gandi: 0.1.19
+    * ppcomp: 1.39
+    * PPComp GERTEC: N/A
+    * Kernel: F20_OS_1.01.07.00_02_06122366
+    * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.30.12-gpos780
+    * PPComp GERTEC: v2.03
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+
+
+v4.1.27.7 -  17/05/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: BC GPOS780.
+- Atualização: HCL GPOS780.
+
+>>> Módulo PGWebLib (v4.1.26) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Não houve alterações neste módulo.
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.63
+    * PPComp Newland: v2.07
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS720
+    * gedi: 0.16.20
+    * gandi: 0.1.19
+    * ppcomp: 1.39
+    * PPComp GERTEC: N/A
+    * Kernel: F20_OS_1.01.07.00_02_06122366
+    * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.32-240506-gpos780
+    * PPComp GERTEC: v2.03
+    * Hcl: 1.0.8-gpos780
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+
+
+v4.1.27.8 -  23/05/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLib Android
+
+>>> Módulo PGWebLib (v4.1.26) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Correção: método que recupera o tipo de conexão móvel (2G, 3G ou 4G).
+
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.63
+    * PPComp Newland: v2.07
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS720
+    * gedi: 0.16.20
+    * gandi: 0.1.19
+    * ppcomp: 1.39
+    * PPComp GERTEC: N/A
+    * Kernel: F20_OS_1.01.07.00_02_06122366
+    * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.32-240506-gpos780
+    * PPComp GERTEC: v2.03
+    * Hcl: 1.0.8-gpos780
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+v4.1.27.9 -  29/05/2024
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLib Android
+
+>>> Módulo PGWebLib (v4.1.27) <<<
+- Não houve alterações neste módulo.
+
+>>> Módulo Android <<<
+- Correção: modificados os IPs de envio de logs e telemetria.
+
+
+    > Newland (N910)
+    * bcnewland-release:    v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.63
+    * PPComp Newland: v2.07
+
+    > Gertec GPOS700
+    * gedi: 1.16.8
+    * gandi: 1.2.10
+    * ppcomp: 1.30.3
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+    * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+    > Gertec GPOS700x
+    * gedi: 1.16.15.1
+    * gandi: 1.2.10
+    * ppcomp: 1.35
+    * PPComp GERTEC:v2.01
+    * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+    * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+    > Gertec GPOS720
+    * gedi: 0.16.20
+    * gandi: 0.1.19
+    * ppcomp: 1.39
+    * PPComp GERTEC: N/A
+    * Kernel: F20_OS_1.01.07.00_02_06122366
+    * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.32-240506-gpos780
+    * PPComp GERTEC: v2.03
+    * Hcl: 1.0.8-gpos780
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+ v4.1.27.10 -  04/06/2024
+ ----------------------------------------------------------------------
+ *** APLICAÇÃO ***
+ - Correção: Realizada correção para compatibilidade da versão v2.0.0.8 da interface automação. Foi
+ reportado problema ao enviar o provedor na EntradaTransacao.
+
+ >>> Módulo PGWebLib (v4.1.27) <<<
+ - Não houve alterações neste módulo.
+
+ >>> Módulo Android <<<
+ - Não houve alterações neste módulo.
+
+
+     > Newland (N910)
+     * bcnewland-release:    v2.25 - a5
+     * kernel: 3.10.49 / build: V2.3.63
+     * PPComp Newland: v2.07
+
+     > Gertec GPOS700
+     * gedi: 1.16.8
+     * gandi: 1.2.10
+     * ppcomp: 1.30.3
+     * PPComp GERTEC:v2.01
+     * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+     * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+     > Gertec GPOS700x
+     * gedi: 1.16.15.1
+     * gandi: 1.2.10
+     * ppcomp: 1.35
+     * PPComp GERTEC:v2.01
+     * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+     * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+     > Gertec GPOS720
+     * gedi: 0.16.20
+     * gandi: 0.1.19
+     * ppcomp: 1.39
+     * PPComp GERTEC: N/A
+     * Kernel: F20_OS_1.01.07.00_02_06122366
+     * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+     > Gertec GPOS780
+     * gedi: 1.16.17
+     * gandi: 1.2.15
+     * ppcomp:1.32-240506-gpos780
+     * PPComp GERTEC: v2.03
+     * Hcl: 1.0.8-gpos780
+     * Kernel: A01.00_S2_83_230602
+     * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+v4.1.27.11 -  11/06/2024
+ ----------------------------------------------------------------------
+ *** APLICAÇÃO ***
+ - Não houve alterações neste módulo.
+
+ >>> Módulo PGWebLib (v4.1.27) <<<
+ - Não houve alterações neste módulo.
+
+ >>> Módulo Android <<<
+ - Melhoria: novo clitype para ControlPay.
+ - Correção: Ajustado clitype para funcionamento com o totem SK210 (Gertec).
+
+     > Newland (N910)
+     * bcnewland-release:    v2.25 - a5
+     * kernel: 3.10.49 / build: V2.3.63
+     * PPComp Newland: v2.07
+
+     > Gertec GPOS700
+     * gedi: 1.16.8
+     * gandi: 1.2.10
+     * ppcomp: 1.30.3
+     * PPComp GERTEC:v2.01
+     * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+     * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+     > Gertec GPOS700x
+     * gedi: 1.16.15.1
+     * gandi: 1.2.10
+     * ppcomp: 1.35
+     * PPComp GERTEC:v2.01
+     * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+     * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+     > Gertec GPOS720
+     * gedi: 0.16.20
+     * gandi: 0.1.19
+     * ppcomp: 1.39
+     * PPComp GERTEC: N/A
+     * Kernel: F20_OS_1.01.07.00_02_06122366
+     * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+     > Gertec GPOS780
+     * gedi: 1.16.17
+     * gandi: 1.2.15
+     * ppcomp:1.32-240506-gpos780
+     * PPComp GERTEC: v2.03
+     * Hcl: 1.0.8-gpos780
+     * Kernel: A01.00_S2_83_230602
+     * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+
+
+v4.1.27.12 -  28/06/2024
+ ----------------------------------------------------------------------
+ *** APLICAÇÃO ***
+- Correção: Ajuste na chamada de retorno da automação ao final da transação em dispositivos móveis.
+
+ >>> Módulo PGWebLib (v4.1.27) <<<
+ - Não houve alterações neste módulo.
+
+ >>> Módulo Android <<<
+ - Não houve alterações neste módulo.
+
+     > Newland (N910)
+     * bcnewland-release:    v2.25 - a5
+     * kernel: 3.10.49 / build: V2.3.63
+     * PPComp Newland: v2.07
+
+     > Gertec GPOS700
+     * gedi: 1.16.8
+     * gandi: 1.2.10
+     * ppcomp: 1.30.3
+     * PPComp GERTEC:v2.01
+     * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+     * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+     > Gertec GPOS700x
+     * gedi: 1.16.15.1
+     * gandi: 1.2.10
+     * ppcomp: 1.35
+     * PPComp GERTEC:v2.01
+     * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+     * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+     > Gertec GPOS720
+     * gedi: 0.16.20
+     * gandi: 0.1.19
+     * ppcomp: 1.39
+     * PPComp GERTEC: N/A
+     * Kernel: F20_OS_1.01.07.00_02_06122366
+     * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+     > Gertec GPOS780
+     * gedi: 1.16.17
+     * gandi: 1.2.15
+     * ppcomp:1.32-240506-gpos780
+     * PPComp GERTEC: v2.03
+     * Hcl: 1.0.8-gpos780
+     * Kernel: A01.00_S2_83_230602
+     * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+
+
+v4.1.27.13 -  11/09/2024
+ ----------------------------------------------------------------------
+ *** APLICAÇÃO ***
+ - Não houve alterações neste módulo.
+
+ >>> Módulo PGWebLib (v4.1.27) <<<
+- Correção: ajuste na montagem e envio das chaves DUKPT de PIN e DADOS para o Muxx.
+
+ >>> Módulo Android <<<
+ - Não houve alterações neste módulo.
+
+     > Newland (N910)
+     * bcnewland-release:    v2.25 - a5
+     * kernel: 3.10.49 / build: V2.3.63
+     * PPComp Newland: v2.07
+
+     > Gertec GPOS700
+     * gedi: 1.16.8
+     * gandi: 1.2.10
+     * ppcomp: 1.30.3
+     * PPComp GERTEC:v2.01
+     * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+     * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+     > Gertec GPOS700x
+     * gedi: 1.16.15.1
+     * gandi: 1.2.10
+     * ppcomp: 1.35
+     * PPComp GERTEC:v2.01
+     * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+     * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+     > Gertec GPOS720
+     * gedi: 0.16.20
+     * gandi: 0.1.19
+     * ppcomp: 1.39
+     * PPComp GERTEC: N/A
+     * Kernel: F20_OS_1.01.07.00_02_06122366
+     * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+     > Gertec GPOS780
+     * gedi: 1.16.17
+     * gandi: 1.2.15
+     * ppcomp:1.32-240506-gpos780
+     * PPComp GERTEC: v2.03
+     * Hcl: 1.0.8-gpos780
+     * Kernel: A01.00_S2_83_230602
+     * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+
+
+v4.1.35.1 -  02/10/2024
+ ----------------------------------------------------------------------
+ *** APLICAÇÃO ***
+- Nova implementação: teste de hardware para N910
+- Nova implementação: teste de hardware para demais terminais
+- Correção: remoção do módulo "selftest", adequação dos fontes à estrutura do projeto, ajuste na feature "keyboard" por problemas com dependências.
+- Correção: tratamento para operação cancelada e timeout no teste de hardware.
+- Correção: quantidade de itens no menu de teste de hardware, melhorias na UI, chamada dos testes de hardaware por automação externa,
+ NetworkInfo para dados móveis.
+- Melhoria: alterações na UI/Nofificações.
+- Melhoria: manter o dispositivo operacional caso não haja bateria instalada (BatteryManager.EXTRA_PRESENT).
+- Correção: HomeFragment, alterada margem da mensagem de notificação sobrepondo valor.
+
+ >>> Módulo PGWebLib (v4.1.35) <<<
+- Corrigido: Ao realizar uma transação com cartão inserido na qual ocorre erro de registro na rede móvel, a mensagem "Transação Cancelada" era apresentada na tela.
+- Adiciona "MUXTAG_SRVAUTH" nos dados obrigatórios do buffer de envio.
+- Corrigido: No envio de transação do advice, atualiza os parâmetros antes de checar se os parâmetros obrigatórios estão presentes.
+- Corrigido adiciona TAG "MUXTAG_SRVAUTH" caso a mesma não esteja incluida no bin dos dados obrigatórios de envio.
+- Alterados os códigos da "finalidade transacional" (3 -> 4, 4 -> 8 e 5 -> 16);
+- Alteração para que a porta de conexão da função exporta logs seja dinâmica também.
+- Adicionado: Ao realizar manutenção do terminal, passa a remover os arquivos de certificados (*.sig, *.crt) e Logs.
+- Alteração dos endereços IP e PORTA para Logs e Telemetria.
+- Alterado campo informativo MUXTAG_OSVERSION para envio correto de informações para classificação de terminais MP35 e MP35P
+- Correção do case COMAND_PINPADMENU em que não tinha um break ao final. Isso gerava problemas no fluxo DCC.
+- Correção do case COMAND_PINPADMENU em que não tinha um break ao final. Isso gerava problemas no fluxo DCC.
+- Adicionada verificação em todas as funções exportadas para ver se a lib foi inicializada na variável de ambiente, pois
+quando a lib dava erro na função PW_iInit por conta de iniciar a lib fora da variável de ambiente. Retornava sempre "falha de lib não iniciada".
+O que estava certo, mas não deixava claro pro cliente o motivo. Modificando o primeiro motivo nas outras funções também, fica mais claro para
+que o cliente que esteja integrando o faça.
+- Corrigido: Sincronismo de semáforo em LogMsgModem, que poderia ocasionar conflito na escrita do arquivo de Logs;
+- Corrigido: Remoção da função LogByteModem e utilização da PGW_AddLogLine para Logs de TX e RX;
+- Adicionado: Checagem de Timestamp em iParseAndSubmitLogFile antes de adicionar registro no JSON;
+- Corrigido: Interrompe a escrita de Logs enquanto a aplicação está exportando Logs;
+- Modificado a função de exporta logs para que a porta seja configurada de forma dinâmica também.
+- Corrigido: Remoção de Log que causava Crash nos terminais GERTEC GEDI.
+- Corrigido: Passa a exibir sinal Wifi e Mobile apenas da cor preta.
+- Corrigido: Passa a exibir a mensagem "WI-FI CONECTADO" por 2 segundos e volta a tela de IDLE para continuidade do fluxo operacional.
+- Corrigido o erro de registro na rede Wi-Fi, que ocorria após a telecarga, para versão 4.1.28.x.
+              (Bug introduzido na versão 4.1.28.0).
+- Corrigido: a mensagem "..." passa a ser exibida no header (mobile) do terminal, ao invés de "Erro de attach",
+               quando o terminal estiver refazendo o PDP.
+- Corrigido: a aplicação exibia uma rede Wi-Fi já esquecida, no Header do terminal;
+- Corrigido: Passa exibir corretamente o status Wi-Fi e Mobile, no header do terminal, durante o "boot";
+- Revisão do processo de telemetria, pois as informações de bateria estavam sendo enviadas com uma frequencia elevada.
+- Corrigido: deixa de exibir a mensagem "reinicie o terminal", no header;
+- Corrigido: Aumento o tamanho do Buffer szIPManual nas funções PGWEB_iAppConclude e PGWEB_iAppDownload;
+- Alterado: Mensagem exibida na barra de status mobile para o erro "POSNETSTS_GSMREGFAIL"/"MODSTS_NOTREGISTERED" alterada
+               de "SEM SINAL" para "ERRO DE REGISTRO GSM";
+
+
+ >>> Módulo Android <<<
+- Nova Implementação: Adicionado submodulo pdc_utils
+- Melhoria: criado no CMaKeList uma função para adicionar os .h dos novos submodulos pdc, commons e pos.
+- Nova Implementação: inserido fontes do submodulo pdc_utils.
+- Melhoria: criado no CMaKeList uma função para adicionar os .h dos novos submodulos pdc, commons e pos.
+- Nova Implementação: inserido fontes do submodulo pdc_utils.
+- Nova Implementação: Adicionado submodulo pos_commons.
+- Nova Implementação: adicionada PIN_iGetPINOff no pinplug.h
+- Correção: encoding PW_Util2.c
+- Nova Implementação: merge da pgweblib android com o submódulo pos_commons.
+- Atualização: adição dos fontes do submódulo pos_commons ao CMakeLists.
+- Atualização: remoção dos fontes duplicados da pgweblib já presentes no submódulo pos_commons, eliminando redundâncias de código.
+- Correção: clitype enviado para a pgweblib android.
+- Correção: quantidade de itens exibidos no teste de hardware.
+- Correção: no comprovante do teste de hardware completo.
+- Nova Implementação: novo clitype para o terminal P3 da Pax.
+- Nova implementação: Adicionada declaração externa da função "AdicionaLinha".
+- Nova implementação: Adicionado item de Teste de Hardware no menu Adm para Android.
+
+     > Newland (N910)
+     * bcnewland-release:    v2.25 - a5
+     * kernel: 3.10.49 / build: V2.3.63
+     * PPComp Newland: v2.07
+
+     > Gertec GPOS700
+     * gedi: 1.16.8
+     * gandi: 1.2.10
+     * ppcomp: 1.30.3
+     * PPComp GERTEC:v2.01
+     * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+     * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+     > Gertec GPOS700x
+     * gedi: 1.16.15.1
+     * gandi: 1.2.10
+     * ppcomp: 1.35
+     * PPComp GERTEC:v2.01
+     * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+     * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+     > Gertec GPOS720
+     * gedi: 0.16.20
+     * gandi: 0.1.19
+     * ppcomp: 1.39
+     * PPComp GERTEC: N/A
+     * Kernel: F20_OS_1.01.07.00_02_06122366
+     * Versão: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+
+     > Gertec GPOS780
+     * gedi: 1.16.17
+     * gandi: 1.2.15
+     * ppcomp:1.32-240506-gpos780
+     * PPComp GERTEC: v2.03
+     * Hcl: 1.0.8-gpos780
+     * Kernel: A01.00_S2_83_230602
+     * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+
+
+
+
+v4.1.35.2 -  07/10/2024
+ ----------------------------------------------------------------------
+ *** APLICAÇÃO ***
+- Nova implementação: Inserido recuperação de dados da BC do N910.
+- Correção: Adicionado alerta de remoção de cartão após concluir teste de hardware cartão ICC.
+- Correção: modificados itens que causavam erro em release.
+
+ >>> Módulo PGWebLib (v4.1.35) <<<
+ - Não houve alterações neste módulo.
+
+ >>> Módulo Android <<<
+ - Não houve alterações neste módulo.
+
+     > Newland (N910)
+     * bcnewland-release:    v2.25 - a5
+     * kernel: 3.10.49 / build: V2.3.63
+     * PPComp Newland: v2.07
+
+     > Gertec GPOS700
+     * gedi: 1.16.8
+     * gandi: 1.2.10
+     * ppcomp: 1.30.3
+     * PPComp GERTEC:v2.01
+     * Build Number (GPOS700): WPOS-3_V1.01_211124174103
+     * Kernel Version (GPOS700): 3.10.49 (Wed Nov 24 18:23:10 CST 2021)
+
+     > Gertec GPOS700x
+     * gedi: 1.16.15.1
+     * gandi: 1.2.10
+     * ppcomp: 1.35
+     * PPComp GERTEC:v2.01
+     * Build Number (GPOS700x): WPOS3X_Android8_P0_V01.00_23032718
+     * Kernel Version (GPOS700x): 3.18.71 (Mon Mar 27 18:45:28 CST 2023)
+
+     > Gertec GPOS720
+     * gedi: 0.16.20
+     * gandi: 0.1.19
+     * ppcomp: 1.39
+     * PPComp GERTEC: N/A
+     * Build Number: F20_OS_1.01.06.00_000_202312010349_GERTEC_155.6_user
+     * Kernel Version: F20_OS_1.01.07.00_02_06122366
+
+     > Gertec GPOS780
+     * gedi: 1.16.17
+     * gandi: 1.2.15
+     * ppcomp:1.32-240506-gpos780
+     * PPComp GERTEC: v2.03
+     * Hcl: 1.0.8-gpos780
+     * Build Number: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+     * Kernel Version: A01.00_S2_83_230602
+
+
+v4.1.35.3 -  03/01/2025
+ ----------------------------------------------------------------------
+ *** APLICAÇÃO ***
+- Nova Funcionalidade: Migração Sunmi P3.
+- Atualização: SDK do Android para a versão 34.
+- Correção: Exibição QRCode PIX Itaú, quando integrado com automação.
+
+ >>> Módulo PGWebLib (v4.1.35) <<<
+ - Não houve alterações neste módulo.
+
+ >>> Módulo Android <<<
+ - Nova funcionalidade: Suporte ao terminal P3 da Sunmi.
+ - Correção: Obtém o IMSI em Android superior ao 9.
+ - Correção: Inserida flag para receivers serem imutáveis.
+
+     > Newland (N910)
+     * bcnewland-release:    v2.25 - a5
+     * kernel: 3.10.49 / build: V2.3.63
+     * PPComp Newland: v2.07
+
+     > Gertec GPOS780
+     * gedi: 1.16.17
+     * gandi: 1.2.15
+     * ppcomp:1.32-240506-gpos780
+     * PPComp GERTEC: v2.03
+     * Hcl: 1.0.8-gpos780
+     * Kernel: A01.00_S2_83_230602
+     * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+     > Sunmi (P3)
+     * ppcomp-sunmi: 1.63
+     * paylib: 1.4.85
+     * Versão OS: P3H-B_user_3.0.0_9_20240724
+     * Versão FW: V6.0.0
+     * Versão SV: 7.1.2
+
+v4.1.35.4 -  29/01/2025
+ ----------------------------------------------------------------------
+ *** APLICAÇÃO ***
+- Correção: Corrigida senha técnica do menu de Configurações do Dispositivo para flavors PayGo.
+- Correção: Modo landscape não estava funcionando.
+- Correção: Exibe um Toast quando ocorre erro PIN-Pad no remove card chamado no botão "Tentar Novamente".
+- Correção: Passa a exibir a mensagem de retire o cartão somente se tiver um cartão inserido.
+- Correção: passa a capturar os digitos corretos do teclado PIN do P3.
+
+ >>> Módulo PGWebLib (v4.1.35) <<<
+ - Não houve alterações neste módulo.
+
+ >>> Módulo Android <<<
+- Correção: Os arquivos são excluídos corretamente ao informar uma nova pasta para salvar os arquivos da pgweblib.
+- Correção: 3 minutos são adicionados ao tempo de idleProc caso ele seja criado com um horário inferior ao atual.
+- Correção: A função responsável por dar permissão ao dispositivo USB estava causando travamento.
+
+     > Newland (N910)
+     * bcnewland-release: v2.25 - a5
+     * kernel: 3.10.49 / build: V2.3.63
+     * PPComp Newland: v2.07
+
+     > Gertec GPOS780
+     * gedi: 1.16.17
+     * gandi: 1.2.15
+     * ppcomp:1.32-240506-gpos780
+     * PPComp GERTEC: v2.03
+     * Hcl: 1.0.8-gpos780
+     * Kernel: A01.00_S2_83_230602
+     * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+     > Sunmi (P3)
+     * ppcomp-sunmi: 1.65
+     * paylib: 1.4.85
+     * Versão OS: P3H-B_user_3.0.0_9_20240724
+     * Versão FW: V6.0.0
+     * Versão SV: 7.1.2
+
+v4.1.35.5 -  31/01/2025
+ ----------------------------------------------------------------------
+ *** APLICAÇÃO ***
+- Não houve alterações neste módulo.
+
+ >>> Módulo PGWebLib (v4.1.35) <<<
+ - Não houve alterações neste módulo.
+
+ >>> Módulo Android <<<
+- Correção: Comunicação USB para Android 14.
+
+     > Newland (N910)
+     * bcnewland-release: v2.25 - a5
+     * kernel: 3.10.49 / build: V2.3.63
+     * PPComp Newland: v2.07
+
+     > Gertec GPOS780
+     * gedi: 1.16.17
+     * gandi: 1.2.15
+     * ppcomp:1.32-240506-gpos780
+     * PPComp GERTEC: v2.03
+     * Hcl: 1.0.8-gpos780
+     * Kernel: A01.00_S2_83_230602
+     * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+     > Sunmi (P3)
+     * ppcomp-sunmi: 1.65
+     * paylib: 1.4.85
+     * Versão OS: P3H-B_user_3.0.0_9_20240724
+     * Versão FW: V6.0.0
+     * Versão SV: 7.1.2
+
+v4.1.35.6 -  04/02/2025
+ ----------------------------------------------------------------------
+ *** APLICAÇÃO ***
+- Correção: Printer para novo Build.Model do terminal P3.
+
+ >>> Módulo PGWebLib (v4.1.35) <<<
+ - Não houve alterações neste módulo.
+
+ >>> Módulo Android <<<
+- Não houve alterações neste módulo.
+
+     > Newland (N910)
+     * bcnewland-release: v2.25 - a5
+     * kernel: 3.10.49 / build: V2.3.63
+     * PPComp Newland: v2.07
+
+     > Gertec GPOS780
+     * gedi: 1.16.17
+     * gandi: 1.2.15
+     * ppcomp:1.32-240506-gpos780
+     * PPComp GERTEC: v2.03
+     * Hcl: 1.0.8-gpos780
+     * Kernel: A01.00_S2_83_230602
+     * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+     > Sunmi (P3)
+     * ppcomp-sunmi: 1.65
+     * paylib: 1.4.85
+     * Versão OS: P3H-B_user_3.0.0_9_20240724
+     * Versão FW: V6.0.0
+     * Versão SV: 7.1.2
+
+
+v4.1.35.7 -  13/02/2025
+ ----------------------------------------------------------------------
+ *** APLICAÇÃO ***
+- Atualização: PGWebLibAndroid.
+
+ >>> Módulo PGWebLib (v4.1.35) <<<
+- Atualização: Novo método para criptografia EBX CBC (PP_EncryptBufferExCBC)
+- Correção: Passa a tratar o vetor de inicialização da forma correta.
+- Correção: Passa a tratar o vetor de inicialização da forma correta.
+
+ >>> Módulo Android <<<
+- Correção: Travamento devido a null pointer em alguns casos de comando PIN-Pad.
+- Melhoria: Adicionado modelo do terminal ao log.
+
+     > Newland (N910)
+     * bcnewland-release: v2.25 - a5
+     * kernel: 3.10.49 / build: V2.3.63
+     * PPComp Newland: v2.07
+
+     > Gertec GPOS780
+     * gedi: 1.16.17
+     * gandi: 1.2.15
+     * ppcomp:1.32-240506-gpos780
+     * PPComp GERTEC: v2.03
+     * Hcl: 1.0.8-gpos780
+     * Kernel: A01.00_S2_83_230602
+     * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+     > Sunmi (P3)
+     * ppcomp-sunmi: 1.65
+     * paylib: 1.4.85
+     * Versão OS: P3H-B_user_3.0.0_9_20240724
+     * Versão FW: V6.0.0
+     * Versão SV: 7.1.2
+
+ v4.1.35.8 -  19/02/2025
+  ----------------------------------------------------------------------
+  *** APLICAÇÃO ***
+ - Correção: Em caso de autoatendimento, o QRCode não estava sendo exibido corretamente.
+
+  >>> Módulo PGWebLib (v4.1.35) <<<
+ - Não houve alterações neste módulo.
+
+  >>> Módulo Android <<<
+ - Não houve alterações neste módulo.
+
+      > Newland (N910)
+      * bcnewland-release: v2.25 - a5
+      * kernel: 3.10.49 / build: V2.3.63
+      * PPComp Newland: v2.07
+
+      > Gertec GPOS780
+      * gedi: 1.16.17
+      * gandi: 1.2.15
+      * ppcomp:1.32-240506-gpos780
+      * PPComp GERTEC: v2.03
+      * Hcl: 1.0.8-gpos780
+      * Kernel: A01.00_S2_83_230602
+      * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+      > Sunmi (P3)
+      * ppcomp-sunmi: 1.65
+      * paylib: 1.4.85
+      * Versão OS: P3H-B_user_3.0.0_9_20240724
+      * Versão FW: V6.0.0
+      * Versão SV: 7.1.2
+
+
+
+
+ v4.1.35.9 -  21/02/2025
+  ----------------------------------------------------------------------
+  *** APLICAÇÃO ***
+ - Atualização: PGWebLibAndroid.
+ - Atualização: PayLib P3.
+ - Melhoria: Desempenho da finalização da transação.
+ - Correção: Tentar novamente estava retornando exceção.
+ - Correção: Corrigido fluxo para inserir APN no P3.
+ - Correção: Corrigido fluxo de modo de comunicação.
+
+ >>> Módulo PGWebLib (v4.1.35) <<<
+ - Correção: Alterado momento de exibibição do processando na comunicação com o Muxx.
+
+ >>> Módulo Android <<<
+ - Atualização: PayLib da Sunmi..
+ - Correção: Todos os dispositivos Sunmi estavam com cliType P3.
+ - Correção: Removido do log comms o erros do modulo File.
+
+      > Newland (N910)
+      * bcnewland-release: v2.25 - a5
+      * kernel: 3.10.49 / build: V2.3.63
+      * PPComp Newland: v2.07
+
+      > Gertec GPOS780
+      * gedi: 1.16.17
+      * gandi: 1.2.15
+      * ppcomp:1.32-240506-gpos780
+      * PPComp GERTEC: v2.03
+      * Hcl: 1.0.8-gpos780
+      * Kernel: A01.00_S2_83_230602
+      * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+      > Sunmi (P3)
+      * ppcomp-sunmi: 1.65
+      * paylib: 1.4.109
+      * Versão OS: P3H-B_user_3.0.2_25_20241026
+      * Versão FW: V6.1.0
+      * Versão SV: 7.1.3
+
+
+v4.1.35.10 -  12/03/2025
+  ----------------------------------------------------------------------
+  *** APLICAÇÃO ***
+- Correção: Desabilitada venda iniciada por inserção do cartão quando integrado com automação.
+- Melhoria: Melhorias na exibição da SplashScreen.
+
+ >>> Módulo PGWebLib (v4.1.35) <<<
+- Não houve alterações neste módulo.
+
+ >>> Módulo Android <<<
+ - Correção: Comprovante gráfico não estava sendo impresso para o P3.
+ - Correção: Realizadas diversas melhorias no fluxo do idlecProc para resolução de travamentos.
+
+      > Newland (N910)
+      * bcnewland-release: v2.25 - a5
+      * kernel: 3.10.49 / build: V2.3.63
+      * PPComp Newland: v2.07
+
+      > Gertec GPOS780
+      * gedi: 1.16.17
+      * gandi: 1.2.15
+      * ppcomp:1.32-240506-gpos780
+      * PPComp GERTEC: v2.03
+      * Hcl: 1.0.8-gpos780
+      * Kernel: A01.00_S2_83_230602
+      * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+      > Sunmi (P3)
+      * ppcomp-sunmi: 1.65
+      * paylib: 1.4.109
+      * Versão OS: P3H-B_user_3.0.2_25_20241026
+      * Versão FW: V6.1.0
+      * Versão SV: 7.1.3
+
+
+
+
+v4.1.46.1 -  21/03/2025
+  ----------------------------------------------------------------------
+  *** APLICAÇÃO ***
+- Nova implementação: Adicionados novos métodos de plataforma para obter dados da bateria e configurações do terminal, como nível de brilho da tela e volume do som.
+
+ >>> Módulo PGWebLib (v4.1.46) <<<
+- Correção: No método UTLCOMMSTATS_setDeviceMode, foi adicionado ifdef _XPLUG_ANDROID_ para capturar o modo de comunicação passado pelo Android.
+- Correção: Removido da PGWebLib Android o envio da média de tempo de ping dos IPs de comunicação na telemetria.
+- Correção: Na PGWebLib Android, é necessário definir PW_LANG_PORT como linguagem padrão.
+- Correção: Removidos os testes de comunicação com IPs de download de certificados, logs, telemetria e RDS7.
+- Correção: Corrigido o envio do modo de comunicação mapeado para o Muxx, que estava sendo erroneamente inserido no modo de comunicação da PGWebLib.
+- Correção: Removida a solicitação da senha do WiFi e da configuração de APN das operações de instalação e configuração, exclusivamente para Android.
+- Correção: Removida a coleta do nível de brilho da tela nos dados de telemetria quando em modo idle, pois no Android não há brilho nesse estado.
+
+ >>> Módulo Android <<<
+- Nova Implementação: adicionado o método getPosTickMs para obter o tempo de funcionamento do terminal.
+- Nova Implementação: Adicionado o POSNET_INF_STATUS para recuperar o status atual da comunicação com a internet.
+- Nova Implementação: Captura dos dados da bateria.
+- Nova Implementação: Envio do S/N no lugar do número do PdC quando o PdC não estiver instalado no terminal.
+- Nova Implementação: Armazenamento das configurações atuais do terminal em arquivo.
+- Nova Implementação: Inclusão dos dados de bateria no arquivo de configurações.
+- Nova Implementação: Registro de telemetria em caso de crash da aplicação, com envio de logs para análise do incidente.
+- Nova Implementação: Registro de telemetria com dados de comunicação e eventos relacionados à bateria.
+- Nova Implementação: Funções criadas para obter dados via POSNET: GSMRSSI, WIFISIGNAL e APNAME.
+- Nova Implementação: Função criada para obter o IP tanto do WiFi quanto da Rede Móvel.
+- Nova Implementação: Adicionados novos defines no java_inter.h.
+- Nova Implementação: passa a obter os dados de nível de áudio, nível de cinza da impressão e nível de brilho da tela.
+- Melhoria: Aprimorado o tratamento do download do certificado e da assinatura para garantir que os retornos sejam processados corretamente e armazenados no arquivo de telemetria.
+- Correção: Os fontes UTL_BatteryStats, UTL_CommStats, UTL_Telemetry, PGW_Utils e PW_Tap2Pix foram incluídos na PGWebLib Android após merge.
+- Correção: Adicionadas imagens do novo comprovante gráfico na PGWebLib Android.
+- Correção: Novos métodos de obtenção de dados de bateria incluídos na PGWebLib Android para envio na telemetria.
+- Correção: Adicionado o método PGW_iCleanTelemetryFile na PGWebLib Android para deletar o arquivo de telemetria após o seu envio.
+- Correção: A PGWebLib Android passa a utilizar os mesmos arquivos de imagens e fontes da Pax para o comprovante gráfico.
+- Correção: Comprovante gráfico não estava sendo impresso para o P3.
+- Correção: Registra o WiFi SLL para testar a comunicação com os IPs do Muxx.
+- Correção: Na PGWebLib Android para integração com o novo comprovante gráfico.
+- Correção: Ajustes para garantir o registro correto dos dados de telemetria de comunicação e bateria tanto na instalação inicial quanto em terminais com um PdC já instalado.
+- Correção: Ajustes, testes e correções na integração com o novo comprovante gráfico.
+- Correção: Do método para obtenção do MAC address do WiFi.
+
+      > Newland (N910)
+      * bcnewland-release: v2.25 - a5
+      * kernel: 3.10.49 / build: V2.3.63
+      * PPComp Newland: v2.07
+
+      > Gertec GPOS780
+      * gedi: 1.16.17
+      * gandi: 1.2.15
+      * ppcomp:1.32-240506-gpos780
+      * PPComp GERTEC: v2.03
+      * Hcl: 1.0.8-gpos780
+      * Kernel: A01.00_S2_83_230602
+      * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+      > Sunmi (P3)
+      * ppcomp-sunmi: 1.65
+      * paylib: 1.4.109
+      * Versão OS: P3H-B_user_3.0.4_43_20250313
+      * Versão FW: V6.1.0
+      * Versão SV: 7.1.6
+
+
+
+
+v4.1.46.2 -  27/03/2025
+  ----------------------------------------------------------------------
+  *** APLICAÇÃO ***
+- Correção: Transações PIX estavam retornando timeout reduzido.
+- Correção: Ajustada forma para obter o firmware do terminal.
+
+ >>> Módulo PGWebLib (v4.1.46) <<<
+- Atualização: Adicionada a descrição dos códigos ausentes na tag MUXTAG_WALLETUSERIDTYPE.
+- Correção: Removido o define MULTI_SSID para dispositivos Android.
+- Correção: Ajuste na exibição da data na mensagem padrão do Pinpad.
+
+ >>> Módulo Android <<<
+- Nova Implementação: Criada uma nova flag para obter o tamanho de uma string no arquivo java_inter.h.
+- Correção: Ajustado o processo para obter o firmware do terminal.
+- Correção: Em terminais Android, a mensagem padrão do Pinpad não será mais exibida.
+
+      > Newland (N910)
+      * bcnewland-release: v2.25 - a5
+      * kernel: 3.10.49 / build: V2.3.63
+      * PPComp Newland: v2.07
+
+      > Gertec GPOS780
+      * gedi: 1.16.17
+      * gandi: 1.2.15
+      * ppcomp:1.32-240506-gpos780
+      * PPComp GERTEC: v2.03
+      * Hcl: 1.0.8-gpos780
+      * Kernel: A01.00_S2_83_230602
+      * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+      > Sunmi (P3)
+      * ppcomp-sunmi: 1.65
+      * paylib: 1.4.109
+      * Versão OS: P3H-B_user_3.0.4_43_20250313
+      * Versão FW: V6.1.0
+      * Versão SV: 7.1.6
+
+
+
+
+v4.1.50.0 -  14/04/2025
+  ----------------------------------------------------------------------
+  *** APLICAÇÃO ***
+- Atualização: Printer e PGWebLibAndroid.
+- Nova Implementação: Tratamento para bloquear o uso do aplicativo caso o cliente não conceda as permissões necessárias.
+- Nova Implementação: adicionadas as funções "obtem" para os dados de CNPJ/CPF e Nome da entidade pagadora, que são preenchidos automaticamente ao realizar uma transação via PAT-Elo.
+- Nova Implementação: ConfigPlatf para todas as plataformas.
+- Nova Implementação: passa a setar a intensidade da impressão.
+- Nova Funcionalidade: Aponta erro caso as permissões para funcionamento do app não sejam concedidas.
+- Correção: Teclado PIN estava aparecendo rapidamente de forma indevida em operações administrativas no P3.
+- Correção: retorno dos dados de bateria.
+
+ >>> Módulo PGWebLib (v4.1.50) <<<
+- Nova Implementação: Semaforo para escrita da flag de display de QRCode (Obs: Corrigido erro no qual o QRcode deixava de ser exibido após mudanças na bateria).
+- Nova Implementação: Estatística para envio da operadora "Arqia".
+- Nova Implementação: Semáforo para prevenção de erro de Script na tela de Idle.
+- Correção: Envio do nível de bateria para as estatísticas do MUXX.
+- Correção: Passa a exibir o produto "Credito" corretamente nas operações de "Pre Venda".
+- Correção: Mensagem de erro quando nenhum meio de comunicação habilitado de "CONFIGURE O TERMINAL" para "CONFIGURE UM MEIO DE COMUNICACAO"
+- Correção: Passa a exibir a mensagem retornada pelo HOST em caso de transação cancelada quando cartão está inserido.
+- Correção: Reduzida a quantidade de vezes que o comando GIX é utilizado, durante uma transação.
+- Correção: Passa a exibir/distribuir corretamente as opções de forma visual em todos os menus para os terminais PAX S920.
+- Correção: Teste de impressora na opção de testes de hardware para terminais que não possuem impressora.
+- Correção: Edição de senha Wi-Fi passa a exibir caracteres ocultos por "*".
+- Correção: No comprovante a taxa de juros passa a ter o símbolo de "%".
+- Correção: Taxa de juros e valores no comprovante passam a utilizar vírgula ao invés de ponto.
+- Correção: Alinhamento do campo "PDC" no comprovante de cancelamento.
+- Correção: Ao realizar transação com PIX o QRCode não some da tela caso ocorra variação do nível de bateria e alteração na fonte de energia.
+- Correção: Alinhamento do campo "EC" no comprovante de cancelamento.
+- Correção: Espaçamento dos campos AUT, PDC e EC no rodapé do comprovante.
+- Correção: Valor exibido de "CET Anual" no comporvante de parcelado com emissor.
+- Correção: Na tela de idle, em caso de exibição de nome de um estabelecimento maior que os limites da tela, quebra a linha sem comprometer o texto inteiro.
+- Correção: Erro no qual após aprovação de transação com PIX exibia o QR-Code quando esperava o usuário selecionar menu de impressão de 2ª via.
+- Correção: Deixa de exibir erroneamente tela de espera do cartão nas trocas de menu quando um cartão está inserido nos terminais MP35(P).
+- Correção: Passa a exibir corretamente nos terminais MP35(P) os indicativos "Senha técnica" e "Senha Lojista" respeitando o tipo de senha solicitado.
+- Correção: Em caso de Cancelamento ou timeout na seleção de dados da transação, desconecta o host com objetivo de prevenir atrasos e travamentos no registro wifi e mobile.
+- Correção: Exibição de animação de processamento enquanto realiza os testes de IP.
+- Correção: Acumula telemetria de tempo no qual o terminal fica sem carregador. Antes após o segundo reset, o tempo era reiniciado.
+
+ >>> Módulo Android <<<
+- Nova Implementação: Agora é possível obter o IMEI do terminal e o ICCID do chip por meio do SDK do fabricante em dispositivos com Android superior à versão 8.
+- Nova Implementação: As informações do chip serão registradas mesmo quando a conexão primária for via WiFi.
+- Nova Implementação: Registro da quantidade de tentativas de conexão durante a comunicação com o Muxx.
+- Nova Implementação: Registro do tempo necessário para estabelecer conexão com a internet.
+- Nova Implementação: Captura do nome da rede WiFi registrada.
+- Nova Implementação: Agora é possível obter o nome da operadora registrada.
+- Nova Implementação: Obtém a quantidade de espaço disponível em disco no terminal.
+- Nova Implementação: Adicionado um novo #define no java_inter.h para chamar métodos não estáticos que retornam um long.
+- Atualizado: Ajustadas as configurações dos SIM cards no arquivo de configuração.
+- Melhoria: Aprimorado o método de obtenção do status da conexão móvel em dispositivos com Android 6 ou superior.
+- Melhoria: Adicionado no CONFIG.INI os dados de APN para Arquia.
+- Correção: Inserido novos dados a serem enviados na telemetria.
+- Correção: Resolvido warning por causa do TSTKEY.ini.
+
+      > Newland (N910)
+      * bcnewland-release: v2.25 - a5
+      * kernel: 3.10.49 / build: V2.3.63
+      * PPComp Newland: v2.07
+
+      > Gertec GPOS780
+      * gedi: 1.16.17
+      * gandi: 1.2.15
+      * ppcomp:1.32-240506-gpos780
+      * PPComp GERTEC: v2.03
+      * Hcl: 1.0.8-gpos780
+      * Kernel: A01.00_S2_83_230602
+      * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+      > Sunmi (P3)
+      * ppcomp-sunmi: 1.65
+      * paylib: 1.4.109
+      * Versão OS: P3H-B_user_3.0.4_43_20250313
+      * Versão FW: V6.1.0
+      * Versão SV: 7.1.6
+
+
+
+
+v4.1.50.1 -  30/04/2025
+  ----------------------------------------------------------------------
+  *** APLICAÇÃO ***
+- Atualização: PGWebLib Android e BC Sunmi.
+- Nova Funcionalidade: Adicionado endereço de produção do ambiente C6 para o C6Pay Produtivo.
+- Nova Funcionalidade: Adicionadas as funções "informa" e "obtem" para os dados referenciaLocalOriginal (REF) e idECVirtualOriginal (EC), utilizados no cancelamento.
+- Correção: Teclado pin estava aparecendo ao entrar em uma operação administrativa.
+- Correção: Estava ocorrendo travamento ao cancelar uma venda PIX e ao clicar em Tentar novamente aparecia a mensagem Erro PIN-Pad 10.
+- Correção: Estavam ocorrendo alguns travamento ao cancelar uma transação de cancelamento. Além disso, aparecia rapidamente o menu para seleção de adquirente antes da mensagem de operação cancelada.
+- Correção: Problemas de permissão no Android 14.
+- Correção: Removido TaskAffinity do Manifest para evitar que sejam abertas duas instâncias do PG Integrado.
+- Correção: Inserido configs para os flavors gertec, sunmi, geral e newland.
+
+ >>> Módulo PGWebLib (v4.1.50) <<<
+- Nova Implementação: Adicionado PWINFO_ORIGECVID
+
+ >>> Módulo Android <<<
+- Nova funcionalidade: Implementada a criação do arquivo "tombstone" para capturar possíveis crashes.
+- Nova funcionalidade: Logs de crash passam a ser enviados automaticamente para o Kibana.
+- Melhoria: Adicionado método para indicar que não há mais logs de crash a serem enviados ao Kibana.
+- Correção: Ajustado o método de validação da conexão do equipamento.
+- Correção: O envio automático de logs de crash agora é tentado apenas uma vez, caso falhe, a tentativa será feita novamente na reinicialização do terminal.
+
+      > Newland (N910)
+      * bcnewland-release: v2.25 - a5
+      * kernel: 3.10.49 / build: V2.3.63
+      * PPComp Newland: v2.07
+
+      > Gertec GPOS780
+      * gedi: 1.16.17
+      * gandi: 1.2.15
+      * ppcomp:1.32-240506-gpos780
+      * PPComp GERTEC: v2.03
+      * Hcl: 1.0.8-gpos780
+      * Kernel: A01.00_S2_83_230602
+      * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+      > Sunmi (P3)
+      * ppcomp-sunmi: 1.66
+      * paylib: 1.4.109
+      * Versão OS: P3H-B_user_3.0.8T3_67_20250428
+      * Versão FW: V6.1.0
+      * Versão SV: 7.1.7T28
+
+
+v4.1.50.2 -  06/05/2025
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Correção: Removida flag do Manifest que estava causando crash no flavor geral.
+
+>>> Módulo PGWebLib (v4.1.50) <<<
+- Correção: Zera a data de exportação dos logs quando for Android para evitar novas tentativas,
+ mesmo em caso de erro na exportação.
+
+>>> Módulo Android <<<
+- Correção: Em caso de Android 14, não é possível obter o SN, então não sobe os logs se o pdc não
+estiver instalado.
+
+    > Newland (N910)
+    * bcnewland-release: v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.63
+    * PPComp Newland: v2.07
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.32-240506-gpos780
+    * PPComp GERTEC: v2.03
+    * Hcl: 1.0.8-gpos780
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+    > Sunmi (P3)
+    * ppcomp-sunmi: 1.66
+    * paylib: 1.4.109
+    * Versão OS: P3H-B_user_3.0.8T3_67_20250428
+    * Versão FW: V6.1.0
+    * Versão SV: 7.1.7T28
+
+
+
+
+v4.1.50.3 -  16/05/2025
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLib Android e BC Sunmi.
+- Nova funcionalidade: agora é possível identificar se a bateria está sendo carregada e qual o meio de carregamento utilizado.
+- Nova Implementação: passa a salvar os logs de crash em arquivo.
+- Nova Implementação: passa a validar o modo root sem dependências externas.
+- Melhoria: Adicionados ao log comms os dados da chamada via automação.
+- Correção: botões do menu lateral estavam desabilitados.
+- Correção: remoção do firebase do projeto.
+- Correção: Realiza o abort da transação no PINPad.
+- Correção: O retorno da transação via URI não estava funcionando no caso de duas ou mais automações.
+- Correção: Removida validação de permissão READ_EXTERNAL_STORAGE Android 13.
+
+>>> Módulo PGWebLib (v4.1.50) <<<
+- Não houve alterações neste módulo.
+
+
+>>> Módulo Android <<<
+- Nova funcionalidade: agora é possível identificar se a bateria está sendo carregada e qual o meio de carregamento utilizado.
+- Correção: ajustada a versão máxima do Android para Tiramisu, permitindo a obtenção do número de série do equipamento.
+- Correção: inclusão de dados adicionais da bateria enviados ao Muxx durante a transação.
+- Correção: implementado tratamento para desconexões do pinpad USB fora de uso.
+
+    > Newland (N910)
+    * bcnewland-release: v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.63
+    * PPComp Newland: v2.07
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.32-240506-gpos780
+    * PPComp GERTEC: v2.03
+    * Hcl: 1.0.8-gpos780
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+    > Sunmi (P3)
+    * ppcomp-sunmi: 1.66
+    * paylib: 1.4.109
+    * Versão OS: P3H-B_user_3.0.8T3_67_20250428
+    * Versão FW: V6.1.0
+    * Versão SV: 7.1.7T28
+
+
+
+
+v4.1.50.4 -  30/05/2025
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLib Android.
+- Nova Implementação: Adicionada lógica nos arquivos build.gradle para permitir a sincronização e build apenas do flavor desejado.
+- Nova Implementação: Teste de Hardware - SimCard.
+- Correção: Corrigido delay ao pressionar a tecla "Limpar" no teclado PIN.
+- Correção: Header para comprovante gráfico PaygGo.
+- Correção: Inicialização do SDK do terminal Sunmi P3.
+- Correção: Corrigido método que valida a troca do modo de conexão.
+
+>>> Módulo PGWebLib (v4.1.50) <<<
+- Não houve alterações neste módulo.
+
+
+>>> Módulo Android <<<
+- Nova Implementação: novo clitype para GPOS780 Controlpay.
+- Nova Implementação: Teste de Hardware - SimCard.
+- Nova Implementação: Novo CliType para o GPOS790.
+- Correção: obtem dados da bateria durante e no termino das transações.
+- Correção: Corrigido erro na tela "Insira o cartão", onde o terminal travava ao inserir o cartão e tocar na tela para iniciar uma transação digitada.
+
+
+    > Newland (N910)
+    * bcnewland-release: v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.63
+    * PPComp Newland: v2.07
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.32-240506-gpos780
+    * PPComp GERTEC: v2.03
+    * Hcl: 1.0.8-gpos780
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+    > Sunmi (P3)
+    * ppcomp-sunmi: 1.66
+    * paylib: 1.4.109
+    * Versão OS: P3H-B_user_3.0.8_64_20250421
+    * Versão FW: V6.1.0
+    * Versão SV: 7.1.7T28
+
+
+
+
+v4.1.50.5 -  04/06/2025
+----------------------------------------------------------------------
+*** APLICAÇÃO ***
+- Atualização: PGWebLib Android.
+- Nova Implementação: Teste de Hardware Teclado.
+- Correção: Passa a obter o mac wifi e o imsi do chip.
+- Correção: Validação aprimorada da conexão móvel com a APN atual.
+
+>>> Módulo PGWebLib (v4.1.50) <<<
+- Nova Implementação: Adicionada uma opção no menu administrativo para envio de dados de telemetria quando estiver no ambiente de certificação no Android.
+- Correção: Validação aprimorada da conexão móvel com a APN atual.
+
+
+>>> Módulo Android <<<
+- Nova Implementação: Criado um novo #define em java_inter para facilitar a criação de objetos jString com base em um charset.
+- Correção: Correção na montagem do objeto com as informações de telemetria a serem enviadas.
+- Correção: Ajuste na montagem da lista de opções do menu administrativo.
+
+
+    > Newland (N910)
+    * bcnewland-release: v2.25 - a5
+    * kernel: 3.10.49 / build: V2.3.63
+    * PPComp Newland: v2.07
+
+    > Gertec GPOS780
+    * gedi: 1.16.17
+    * gandi: 1.2.15
+    * ppcomp:1.32-240506-gpos780
+    * PPComp GERTEC: v2.03
+    * Hcl: 1.0.8-gpos780
+    * Kernel: A01.00_S2_83_230602
+    * Versão: GPOS780_Android11_V01.00_2306141428_international_userdebug_883
+
+    > Sunmi (P3)
+    * ppcomp-sunmi: 1.66
+    * paylib: 1.4.109
+    * Versão OS: P3H-B_user_3.0.8_64_20250421
+    * Versão FW: V6.1.0
+    * Versão SV: 7.1.7T28

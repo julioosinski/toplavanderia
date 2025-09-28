@@ -14,8 +14,8 @@
         <activity
             android:exported="true"
             android:launchMode="singleTask"
-            android:name="MainActivity"
-            android:theme="@style/AppTheme.NoActionBarLaunch">
+            android:name="app.lovable.toplavanderia.TotemActivity"
+            android:theme="@style/AppTheme">
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -36,6 +36,16 @@
                       android:resource="@xml/device_filter" />
 
         </activity>
+
+        <activity
+            android:exported="false"
+            android:name="app.lovable.toplavanderia.AdminActivity"
+            android:theme="@style/AppTheme" />
+
+        <activity
+            android:exported="false"
+            android:name="app.lovable.toplavanderia.SimpleMainActivity"
+            android:theme="@style/AppTheme" />
 
         <!-- Provider required for Capacitor and file sharing -->
         <provider
