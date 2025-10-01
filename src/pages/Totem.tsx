@@ -13,7 +13,7 @@ import { useTEFIntegration } from "@/hooks/useTEFIntegration";
 import { useCapacitorIntegration } from "@/hooks/useCapacitorIntegration";
 import { SimplePayGOWidget } from '@/components/payment/SimplePayGOWidget';
 import { UniversalPaymentWidget } from '@/components/payment/UniversalPaymentWidget';
-import { usePayGOIntegration, PayGOConfig } from '@/hooks/usePayGOIntegration';
+import { useRealPayGOIntegration, RealPayGOConfig } from '@/hooks/useRealPayGOIntegration';
 import { usePixPayment } from '@/hooks/usePixPayment';
 import { PixQRDisplay } from '@/components/payment/PixQRDisplay';
 import { DEFAULT_PAYGO_CONFIG } from '@/lib/paygoUtils';
@@ -34,7 +34,13 @@ const Totem = () => {
   const [paymentStep, setPaymentStep] = useState<"select" | "payment" | "processing" | "success" | "error" | "pix_qr">("select");
   const [currentTime, setCurrentTime] = useState(new Date());
   const [tefConfig, setTefConfig] = useState(TEF_CONFIG);
-  const [paygoConfig, setPaygoConfig] = useState<PayGOConfig>({ ...DEFAULT_PAYGO_CONFIG, cnpjCpf: '12.345.678/0001-00' });
+  const [paygoConfig, setPaygoConfig] = useState<RealPayGOConfig>({
+    host: 'localhost',
+    port: 8080,
+    automationKey: '',
+    timeout: 30000,
+    retryAttempts: 3
+  });
   const [paymentSystem, setPaymentSystem] = useState<'TEF' | 'PAYGO' | 'PIX'>('PAYGO');
   const [showConfig, setShowConfig] = useState(false);
   const [transactionData, setTransactionData] = useState<any>(null);
@@ -77,14 +83,15 @@ const Totem = () => {
   } = useTEFIntegration(tefConfig);
 
   const {
-    status: paygoStatus,
+    isInitialized: paygoInitialized,
+    isConnected: paygoConnected,
     isProcessing: paygoProcessing,
-    processPayGOPayment,
-    processPixPayment,
-    checkPixPaymentStatus,
+    systemStatus: paygoStatus,
+    processPayment: processPayGOPayment,
     cancelTransaction: cancelPayGOTransaction,
-    testConnection: testPayGOConnection
-  } = usePayGOIntegration(paygoConfig);
+    testConnection: testPayGOConnection,
+    detectPinpad
+  } = useRealPayGOIntegration(paygoConfig);
 
   const {
     generatePixQR,
@@ -252,7 +259,7 @@ const Totem = () => {
       // Preparar dados da transação PayGO
       const transactionData = {
         amount: selectedMachine.price, // PayGO usa valor em reais
-        paymentType: 'CREDIT' as const,
+        paymentType: 'credit' as const,
         orderId: generateReceiptNumber()
       };
 

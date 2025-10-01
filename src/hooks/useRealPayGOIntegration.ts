@@ -6,12 +6,13 @@ export interface RealPayGOConfig {
   host: string;
   port: number;
   automationKey: string;
-  timeout?: number;
+  timeout: number;
   retryAttempts?: number;
 }
 
 export interface PayGOSystemStatus {
   initialized: boolean;
+  online: boolean;
   host?: string;
   port?: number;
   clientConnected: boolean;
@@ -41,6 +42,7 @@ export interface PayGOPaymentResult {
   transactionId?: string;
   timestamp?: number;
   message: string;
+  resultMessage?: string;
   status: 'approved' | 'denied' | 'pending' | 'error';
   nsu?: string;
   authorizationCode?: string;
@@ -102,9 +104,13 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
   const getSystemStatus = useCallback(async (): Promise<PayGOSystemStatus | null> => {
     try {
       const status = await PayGO.getSystemStatus();
-      setSystemStatus(status);
-      setIsConnected(status.clientConnected && status.usbDeviceDetected);
-      return status;
+      const enhancedStatus = {
+        ...status,
+        online: status.clientConnected && status.usbDeviceDetected
+      };
+      setSystemStatus(enhancedStatus);
+      setIsConnected(enhancedStatus.online);
+      return enhancedStatus;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       setLastError(errorMessage);
