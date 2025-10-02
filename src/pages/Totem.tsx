@@ -674,13 +674,13 @@ const Totem = () => {
           <div className="flex items-center space-x-2">
             {/* Indicador PayGO */}
             <div className={`flex items-center space-x-1 rounded px-2 py-1 ${
-              paygoStatus.online 
+              paygoStatus?.online 
                 ? 'text-green-700 bg-green-100/90' 
                 : 'text-red-700 bg-red-100/90'
             }`}>
               <CreditCard size={12} />
               <span className="text-xs font-medium">
-                {paygoStatus.online ? 'Online' : 'Offline'}
+                {paygoStatus?.online ? 'Online' : 'Offline'}
               </span>
             </div>
 

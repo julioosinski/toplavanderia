@@ -53,7 +53,13 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [systemStatus, setSystemStatus] = useState<PayGOSystemStatus | null>(null);
+  const [systemStatus, setSystemStatus] = useState<PayGOSystemStatus>({
+    initialized: false,
+    online: false,
+    clientConnected: false,
+    usbDeviceDetected: false,
+    timestamp: Date.now()
+  });
   const [lastError, setLastError] = useState<string | null>(null);
 
   // Validate config on mount
