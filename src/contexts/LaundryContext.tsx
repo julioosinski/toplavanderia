@@ -26,7 +26,6 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
   const [laundries, setLaundries] = useState<Laundry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [initialized, setInitialized] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -135,7 +134,6 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         console.log('[LaundryContext] Nenhum usuário autenticado');
         setLoading(false);
         setError(null);
-        setInitialized(true);
         return;
       }
 
@@ -189,13 +187,11 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
 
       console.log('[LaundryContext] Inicialização concluída com sucesso');
       setLoading(false);
-      setInitialized(true);
     } catch (err) {
       console.error('[LaundryContext] Erro na inicialização:', err);
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido ao carregar dados';
       setError(errorMessage);
       setLoading(false);
-      setInitialized(true);
       toast({
         title: "Erro ao carregar dados",
         description: errorMessage,
@@ -211,31 +207,6 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
   const retry = () => {
     initializeLaundryContext();
   };
-
-  // Não renderizar filhos até que o contexto esteja inicializado
-  if (!initialized) {
-    return (
-      <LaundryContext.Provider
-        value={{
-          currentLaundry: null,
-          userRole: null,
-          isSuperAdmin: false,
-          isAdmin: false,
-          isOperator: false,
-          laundries: [],
-          loading: true,
-          error: null,
-          switchLaundry: async () => {},
-          refreshLaundries: async () => {},
-          retry: () => {},
-        }}
-      >
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
-        </div>
-      </LaundryContext.Provider>
-    );
-  }
 
   return (
     <LaundryContext.Provider
