@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
 
 export default function Auth() {
   const [email, setEmail] = useState("");
@@ -124,11 +124,18 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/20 to-secondary/20 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">Top Lavanderia</CardTitle>
-          <CardDescription>Sistema de Gerenciamento</CardDescription>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/20 via-background to-accent/20 p-4 animate-fade-in">
+      <Card className="w-full max-w-md shadow-glow animate-scale-in">
+        <CardHeader className="text-center space-y-2">
+          <div className="mx-auto w-16 h-16 bg-gradient-primary rounded-full flex items-center justify-center mb-2">
+            <Sparkles className="text-primary-foreground" size={28} />
+          </div>
+          <CardTitle className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+            Top Lavanderia
+          </CardTitle>
+          <CardDescription className="text-base">
+            Sistema de Gerenciamento Profissional
+          </CardDescription>
         </CardHeader>
         
         <Tabs defaultValue="login" className="w-full">
