@@ -39,7 +39,7 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       .from('user_roles')
       .select('role, laundry_id')
       .eq('user_id', userId)
-      .order('role', { ascending: true }) // super_admin vem antes
+      .order('role', { ascending: false }) // super_admin vem primeiro (DESC)
       .limit(1);
 
     if (error) {
@@ -95,6 +95,10 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
     if (laundry) {
       setCurrentLaundry(laundry);
       localStorage.setItem('selectedLaundryId', laundryId);
+      
+      // Invalidar todas as queries para forçar reload dos dados
+      queryClient.invalidateQueries();
+      
       toast({
         title: "Lavanderia alterada",
         description: `Agora você está gerenciando: ${laundry.name}`,
