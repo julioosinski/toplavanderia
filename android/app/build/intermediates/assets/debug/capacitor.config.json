@@ -1,10 +1,9 @@
 {
-	"appId": "app.lovable.1d41a6b983a647d299a8147b204a13ef",
-	"appName": "toplavanderia",
+	"appId": "com.toplavanderia.app",
+	"appName": "Top Lavanderia",
 	"webDir": "dist",
 	"server": {
-		"url": "https://1d41a6b9-83a6-47d2-99a8-147b204a13ef.lovableproject.com?forceHideBadge=true",
-		"cleartext": true
+		"androidScheme": "https"
 	},
 	"plugins": {
 		"CapacitorHttp": {
@@ -29,11 +28,11 @@
 		}
 	},
 	"android": {
-		"allowMixedContent": true,
+		"allowMixedContent": false,
 		"captureInput": true,
-		"webContentsDebuggingEnabled": true,
-		"appendUserAgent": "TotemLavanderia/1.0.0",
-		"loggingBehavior": "debug",
+		"webContentsDebuggingEnabled": false,
+		"appendUserAgent": "TopLavanderia/1.0.0",
+		"loggingBehavior": "none",
 		"useLegacyBridge": false,
 		"flavor": "main"
 	},

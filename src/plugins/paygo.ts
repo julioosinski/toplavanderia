@@ -1,65 +1,79 @@
 import { registerPlugin } from '@capacitor/core';
 
 export interface PayGOPlugin {
-  initialize(options: {
-    host: string;
-    port: number;
-    automationKey: string;
-  }): Promise<{ success: boolean; message: string }>;
+  /**
+   * Inicializar PayGo
+   */
+  initialize(): Promise<PayGOResult>;
+  
+  /**
+   * Verificar status do PayGo
+   */
+  checkStatus(): Promise<PayGOStatus>;
+  
+  /**
+   * Processar pagamento
+   */
+  processPayment(options: PaymentOptions): Promise<PayGOResult>;
+  
+  /**
+   * Cancelar pagamento
+   */
+  cancelPayment(): Promise<PayGOResult>;
+  
+  /**
+   * Testar PayGo
+   */
+  testPayGo(): Promise<PayGOResult>;
+  
+  /**
+   * Detectar pinpad PPC930
+   */
+  detectPinpad(): Promise<PinpadDetection>;
+  
+  /**
+   * Adicionar listener para eventos de pagamento
+   */
+  addListener(eventName: 'paymentSuccess' | 'paymentError' | 'paymentProcessing', listenerFunc: (event: PayGOEvent) => void): Promise<{ remove: () => void }>;
+}
 
-  checkStatus(): Promise<{ connected: boolean; status: string }>;
+export interface PayGOResult {
+  success: boolean;
+  message: string;
+  authorizationCode?: string;
+  transactionId?: string;
+  orderId?: string;
+  error?: string;
+}
 
-  processPayment(options: {
-    paymentType: 'credit' | 'debit' | 'pix';
-    amount: number;
-    orderId: string;
-  }): Promise<{
-    success: boolean;
-    paymentType: string;
-    amount: number;
-    orderId: string;
-    transactionId?: string;
-    timestamp?: number;
-    message: string;
-    status: 'approved' | 'denied' | 'pending';
-  }>;
+export interface PayGOStatus {
+  initialized: boolean;
+  processing: boolean;
+  status: 'ready' | 'not_initialized' | 'processing' | 'error';
+}
 
-  cancelTransaction(): Promise<{ success: boolean; message: string }>;
+export interface PaymentOptions {
+  amount: number;
+  description?: string;
+  orderId?: string;
+  paymentType?: 'credit' | 'debit' | 'pix';
+}
 
-  detectPinpad(): Promise<{
-    detected: boolean;
-    deviceName: string;
-    vendorId?: number;
-    productId?: number;
-    deviceId?: number;
-    serialNumber?: string;
-    error?: string;
-  }>;
+export interface PinpadDetection {
+  detected: boolean;
+  deviceName?: string;
+  vendorId?: string;
+  productId?: string;
+  message: string;
+}
 
-  getSystemStatus(): Promise<{
-    initialized: boolean;
-    host?: string;
-    port?: number;
-    clientConnected: boolean;
-    libraryVersion?: string;
-    usbDeviceDetected: boolean;
-    deviceInfo?: {
-      vendorId: number;
-      productId: number;
-      deviceName: string;
-      serialNumber: string;
-    };
-    timestamp: number;
-    error?: string;
-  }>;
-
-  testConnection(): Promise<{
-    success: boolean;
-    usbConnection: boolean;
-    clientStatus: string;
-    message: string;
-    timestamp: number;
-  }>;
+export interface PayGOEvent {
+  success?: boolean;
+  authorizationCode?: string;
+  transactionId?: string;
+  error?: string;
+  message: string;
+  processing?: boolean;
 }
 
 const PayGO = registerPlugin<PayGOPlugin>('PayGO');

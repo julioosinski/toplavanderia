@@ -34,19 +34,31 @@ export const useMachines = () => {
       setLoading(true);
       setError(null);
 
+      console.log('🔍 Buscando máquinas do Supabase...');
+      
       const { data: machinesData, error: machinesError } = await supabase
         .from('machines')
         .select('*')
         .order('name');
 
       if (machinesError) {
+        console.error('❌ Erro ao buscar máquinas:', machinesError);
         throw machinesError;
       }
 
+      console.log('✅ Máquinas carregadas:', machinesData?.length || 0);
+
       // Buscar status dos ESP32s para determinar IPs
-      const { data: esp32Data } = await supabase
+      console.log('🔍 Buscando status ESP32...');
+      const { data: esp32Data, error: esp32Error } = await supabase
         .from('esp32_status')
         .select('esp32_id, ip_address, is_online');
+
+      if (esp32Error) {
+        console.warn('⚠️ Erro ao buscar ESP32 status:', esp32Error);
+      } else {
+        console.log('✅ ESP32 status carregado:', esp32Data?.length || 0);
+      }
 
       const esp32Map = new Map(
         esp32Data?.map(esp32 => [esp32.esp32_id, esp32]) || []

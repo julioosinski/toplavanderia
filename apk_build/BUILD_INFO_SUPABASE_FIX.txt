@@ -1,0 +1,15 @@
+﻿TopLavanderia APK - Supabase Fix
+================================
+
+Data: 2025-10-02 15:44:06
+Versao: 1.0.1
+Tipo: Debug
+
+Correcoes aplicadas:
+- Configuracao de rede HTTPS para Supabase
+- Permissoes de rede atualizadas
+- Configuracao do Capacitor otimizada
+- Ferramentas de debug adicionadas
+- Logs melhorados para diagnostico
+
+Arquivo: apk_build/TopLavanderia_v1.0.1_Supabase_Fixed.apk

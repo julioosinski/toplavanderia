@@ -15,6 +15,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+
 import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -49,6 +50,16 @@ public class TotemActivity extends Activity {
         
         // Inicializar componentes
         supabaseHelper = new SupabaseHelper(this);
+        supabaseHelper.setOnMachinesLoadedListener(new SupabaseHelper.OnMachinesLoadedListener() {
+            @Override
+            public void onMachinesLoaded(List<SupabaseHelper.Machine> loadedMachines) {
+                runOnUiThread(() -> {
+                    Log.d(TAG, "Dados reais do Supabase recebidos, atualizando interface...");
+                    machines = loadedMachines;
+                    displayMachines();
+                });
+            }
+        });
         payGoManager = new RealPayGoManager(this);
         payGoManager.setCallback(new RealPayGoManager.PayGoCallback() {
             @Override
@@ -80,164 +91,56 @@ public class TotemActivity extends Activity {
     }
     
     private void createTotemInterface() {
-        // Layout principal
+        // Layout principal com ScrollView para evitar overflow
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setFillViewport(true);
+        scrollView.setBackgroundColor(Color.parseColor("#0D1117"));
+        
         LinearLayout mainLayout = new LinearLayout(this);
         mainLayout.setOrientation(LinearLayout.VERTICAL);
-        mainLayout.setBackgroundColor(Color.parseColor("#f0f0f0"));
-        mainLayout.setPadding(20, 20, 20, 20);
+        mainLayout.setBackgroundColor(Color.parseColor("#0D1117"));
+        mainLayout.setPadding(20, 30, 20, 30);
         
-        // Cabeçalho
-        createHeader(mainLayout);
+        // Título da lavanderia com tamanho responsivo
+        TextView titleText = new TextView(this);
+        titleText.setText("🧺 TOP LAVANDERIA");
+        titleText.setTextSize(28); // Reduzido de 42 para 28
+        titleText.setTextColor(Color.WHITE);
+        titleText.setGravity(android.view.Gravity.CENTER);
+        titleText.setPadding(0, 0, 0, 40); // Reduzido de 80 para 40
+        titleText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        mainLayout.addView(titleText);
         
-        // Status e tempo
-        createStatusBar(mainLayout);
+        // Status de conectividade (oculto)
+        statusText = new TextView(this);
+        statusText.setVisibility(android.view.View.GONE);
+        mainLayout.addView(statusText);
         
         // Container de máquinas
-        createMachinesContainer(mainLayout);
-        
-        // Botões de ação
-        createActionButtons(mainLayout);
-        
-        // Rodapé
-        createFooter(mainLayout);
-        
-        setContentView(mainLayout);
-    }
-    
-    private void createHeader(LinearLayout parent) {
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.VERTICAL);
-        header.setPadding(30, 30, 30, 30);
-        header.setBackgroundColor(Color.parseColor("#2196F3"));
-        
-        // Título principal
-        TextView title = new TextView(this);
-        title.setText("🏪 TOP LAVANDERIA");
-        title.setTextSize(32);
-        title.setTextColor(Color.WHITE);
-        title.setGravity(android.view.Gravity.CENTER);
-        title.setPadding(0, 0, 0, 10);
-        header.addView(title);
-        
-        // Subtítulo
-        TextView subtitle = new TextView(this);
-        subtitle.setText("TOTEM DE AUTOSERVIÇO");
-        subtitle.setTextSize(18);
-        subtitle.setTextColor(Color.parseColor("#E3F2FD"));
-        subtitle.setGravity(android.view.Gravity.CENTER);
-        subtitle.setPadding(0, 0, 0, 20);
-        header.addView(subtitle);
-        
-        // Instruções
-        TextView instructions = new TextView(this);
-        instructions.setText("👤 CLIENTE: Escolha uma máquina disponível\n" +
-                           "💳 PAGAMENTO: Processado na PPC930\n" +
-                           "🔓 LIBERAÇÃO: Automática após pagamento");
-        instructions.setTextSize(14);
-        instructions.setTextColor(Color.WHITE);
-        instructions.setGravity(android.view.Gravity.CENTER);
-        instructions.setPadding(20, 20, 20, 0);
-        instructions.setBackgroundColor(Color.parseColor("#1976D2"));
-        header.addView(instructions);
-        
-        parent.addView(header);
-    }
-    
-    private void createStatusBar(LinearLayout parent) {
-        LinearLayout statusBar = new LinearLayout(this);
-        statusBar.setOrientation(LinearLayout.HORIZONTAL);
-        statusBar.setPadding(20, 20, 20, 20);
-        statusBar.setBackgroundColor(Color.WHITE);
-        
-        // Status do sistema
-        statusText = new TextView(this);
-        statusText.setText("✅ Sistema: Online | PayGo: Conectado | PPC930: Ativa");
-        statusText.setTextSize(14);
-        statusText.setTextColor(Color.parseColor("#4CAF50"));
-        statusText.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
-        statusBar.addView(statusText);
-        
-        // Tempo atual
-        timeText = new TextView(this);
-        timeText.setText(getCurrentTime());
-        timeText.setTextSize(14);
-        timeText.setTextColor(Color.parseColor("#666666"));
-        timeText.setGravity(android.view.Gravity.END);
-        statusBar.addView(timeText);
-        
-        parent.addView(statusBar);
-    }
-    
-    private void createMachinesContainer(LinearLayout parent) {
-        // Título das máquinas
-        TextView machinesTitle = new TextView(this);
-        machinesTitle.setText("🎯 ESCOLHA SUA MÁQUINA:");
-        machinesTitle.setTextSize(24);
-        machinesTitle.setTextColor(Color.parseColor("#333333"));
-        machinesTitle.setGravity(android.view.Gravity.CENTER);
-        machinesTitle.setPadding(0, 30, 0, 20);
-        parent.addView(machinesTitle);
-        
-        // Container scrollável para máquinas
-        ScrollView scrollView = new ScrollView(this);
         machinesContainer = new LinearLayout(this);
         machinesContainer.setOrientation(LinearLayout.VERTICAL);
-        machinesContainer.setPadding(0, 0, 0, 20);
-        scrollView.addView(machinesContainer);
-        parent.addView(scrollView);
+        machinesContainer.setPadding(0, 10, 0, 0);
+        mainLayout.addView(machinesContainer);
+        
+        scrollView.addView(mainLayout);
+        setContentView(scrollView);
     }
     
-    private void createActionButtons(LinearLayout parent) {
-        LinearLayout buttonRow = new LinearLayout(this);
-        buttonRow.setOrientation(LinearLayout.HORIZONTAL);
-        buttonRow.setPadding(20, 20, 20, 20);
-        
-        // Botão de atualizar
-        refreshButton = new Button(this);
-        refreshButton.setText("🔄 ATUALIZAR");
-        refreshButton.setTextSize(16);
-        refreshButton.setPadding(20, 15, 20, 15);
-        refreshButton.setBackgroundColor(Color.parseColor("#FF9800"));
-        refreshButton.setTextColor(Color.WHITE);
-        refreshButton.setOnClickListener(v -> refreshMachines());
-        buttonRow.addView(refreshButton);
-        
-        // Botão de administração
-        adminButton = new Button(this);
-        adminButton.setText("⚙️ ADMIN");
-        adminButton.setTextSize(16);
-        adminButton.setPadding(20, 15, 20, 15);
-        adminButton.setBackgroundColor(Color.parseColor("#9E9E9E"));
-        adminButton.setTextColor(Color.WHITE);
-        adminButton.setOnClickListener(v -> openAdminPanel());
-        buttonRow.addView(adminButton);
-        
-        parent.addView(buttonRow);
-    }
-    
-    private void createFooter(LinearLayout parent) {
-        LinearLayout footer = new LinearLayout(this);
-        footer.setOrientation(LinearLayout.VERTICAL);
-        footer.setPadding(20, 20, 20, 20);
-        footer.setBackgroundColor(Color.parseColor("#333333"));
-        
-        TextView footerText = new TextView(this);
-        footerText.setText("💡 Dica: Mantenha seu cartão por perto\n" +
-                         "📞 Suporte: (11) 99999-9999\n" +
-                         "🌐 www.toplavanderia.com");
-        footerText.setTextSize(12);
-        footerText.setTextColor(Color.WHITE);
-        footerText.setGravity(android.view.Gravity.CENTER);
-        footer.addView(footerText);
-        
-        parent.addView(footer);
-    }
     
     private void loadMachines() {
         Log.d(TAG, "Carregando máquinas do Supabase...");
         
         machines = supabaseHelper.getAllMachines();
+        displayMachines();
+        
+        Log.d(TAG, "Interface inicial carregada, aguardando dados reais do Supabase...");
+    }
+    
+    private void displayMachines() {
         machinesContainer.removeAllViews();
+        
+        Log.d(TAG, "=== EXIBINDO MÁQUINAS ===");
+        Log.d(TAG, "Total de máquinas: " + machines.size());
         
         // Separar máquinas por tipo
         List<SupabaseHelper.Machine> lavadoras = new ArrayList<>();
@@ -251,75 +154,119 @@ public class TotemActivity extends Activity {
             }
         }
         
-        // Seção de lavadoras
+        // Linha de lavadoras (parte superior)
         if (!lavadoras.isEmpty()) {
-            createMachineSection("🧺 MÁQUINAS DE LAVAR", lavadoras);
+            createMachineRow("🧺 LAVADORAS", lavadoras);
         }
         
-        // Seção de secadoras
+        // Linha de secadoras (parte inferior)
         if (!secadoras.isEmpty()) {
-            createMachineSection("🌪️ MÁQUINAS DE SECAR", secadoras);
+            createMachineRow("🌪️ SECADORAS", secadoras);
         }
         
-        // Atualizar status de conectividade
-        updateConnectivityStatus();
-        
-        Log.d(TAG, "Máquinas carregadas: " + machines.size());
+        Log.d(TAG, "Interface atualizada - Lavadoras: " + lavadoras.size() + ", Secadoras: " + secadoras.size());
     }
     
-    private void createMachineSection(String title, List<SupabaseHelper.Machine> machines) {
-        // Título da seção
+    private void createMachineRow(String title, List<SupabaseHelper.Machine> machines) {
+        // Título da seção com estilo moderno
         TextView sectionTitle = new TextView(this);
         sectionTitle.setText(title);
-        sectionTitle.setTextSize(20);
-        sectionTitle.setTextColor(Color.parseColor("#2196F3"));
-        sectionTitle.setPadding(0, 20, 0, 15);
+        sectionTitle.setTextSize(20); // Reduzido de 24 para 20
+        sectionTitle.setTextColor(Color.parseColor("#58A6FF")); // Azul claro
+        sectionTitle.setGravity(android.view.Gravity.CENTER);
+        sectionTitle.setPadding(0, 20, 0, 15); // Reduzido padding
+        sectionTitle.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         machinesContainer.addView(sectionTitle);
         
-        // Grid de máquinas
-        GridLayout grid = new GridLayout(this);
-        grid.setColumnCount(2);
-        grid.setPadding(0, 0, 0, 30);
+        // Linha de máquinas com espaçamento
+        LinearLayout machineRow = new LinearLayout(this);
+        machineRow.setOrientation(LinearLayout.HORIZONTAL);
+        machineRow.setGravity(android.view.Gravity.CENTER);
+        machineRow.setPadding(0, 0, 0, 30); // Reduzido de 50 para 30
         
         for (SupabaseHelper.Machine machine : machines) {
             Button machineButton = createMachineButton(machine);
-            grid.addView(machineButton);
+            machineRow.addView(machineButton);
         }
         
-        machinesContainer.addView(grid);
+        machinesContainer.addView(machineRow);
     }
+    
     
     private Button createMachineButton(SupabaseHelper.Machine machine) {
         Button button = new Button(this);
         
-        // Configurar texto do botão
-        String buttonText = machine.getName() + "\n" +
-                          "R$ " + new DecimalFormat("0.00").format(machine.getPrice()) + "\n" +
-                          machine.getStatusDisplay() + "\n" +
-                          "⏱️ " + machine.getDuration() + " min";
+        // Verificar disponibilidade baseada no ESP32 e status da máquina
+        String status = machine.getStatus();
+        boolean isOnline = isMachineOnline(machine);
+        boolean isAvailable = isOnline && "LIVRE".equals(status);
         
-        button.setText(buttonText);
-        button.setTextSize(14);
-        button.setPadding(15, 20, 15, 20);
-        button.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        Log.d(TAG, "Criando botão para " + machine.getName() + " - Status: " + status + ", ESP32 Online: " + isOnline + ", Disponível: " + isAvailable);
         
-        // Configurar cor baseada no status
-        if (machine.isAvailable()) {
-            button.setBackgroundColor(Color.parseColor("#4CAF50"));
+        if (isAvailable) {
+            button.setText(machine.getName() + "\n🟢 ONLINE\nDISPONÍVEL");
+            button.setBackgroundColor(Color.parseColor("#238636")); // Verde GitHub
             button.setTextColor(Color.WHITE);
             button.setEnabled(true);
-        } else {
-            button.setBackgroundColor(Color.parseColor("#E0E0E0"));
-            button.setTextColor(Color.parseColor("#9E9E9E"));
+            button.setElevation(12);
+        } else if (isOnline && "OCUPADA".equals(status)) {
+            button.setText(machine.getName() + "\n🟡 ONLINE\nOCUPADA");
+            button.setBackgroundColor(Color.parseColor("#D29922")); // Amarelo
+            button.setTextColor(Color.WHITE);
             button.setEnabled(false);
+            button.setElevation(6);
+        } else if (isOnline && "MANUTENCAO".equals(status)) {
+            button.setText(machine.getName() + "\n🟡 ONLINE\nMANUTENÇÃO");
+            button.setBackgroundColor(Color.parseColor("#FF9800")); // Laranja
+            button.setTextColor(Color.WHITE);
+            button.setEnabled(false);
+            button.setElevation(6);
+        } else if (!isOnline) {
+            button.setText(machine.getName() + "\n🔴 OFFLINE\nINDISPONÍVEL");
+            button.setBackgroundColor(Color.parseColor("#21262D")); // Cinza escuro
+            button.setTextColor(Color.parseColor("#7D8590"));
+            button.setEnabled(false);
+            button.setElevation(2);
+        } else {
+            // ESP32 online mas status desconhecido
+            button.setText(machine.getName() + "\n🟡 ONLINE\n" + status);
+            button.setBackgroundColor(Color.parseColor("#D29922")); // Amarelo
+            button.setTextColor(Color.WHITE);
+            button.setEnabled(false);
+            button.setElevation(6);
         }
         
-        // Configurar clique
-        if (machine.isAvailable()) {
-            button.setOnClickListener(v -> selectMachine(machine));
+        button.setTextSize(14); // Reduzido de 16 para 14
+        button.setPadding(15, 20, 15, 20); // Reduzido padding
+        button.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        
+        // Layout params responsivos
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.setMargins(10, 5, 10, 5); // Reduzido margens
+        params.width = 180; // Reduzido de 220 para 180
+        params.height = 120; // Reduzido de 140 para 120
+        button.setLayoutParams(params);
+        
+        // Click listener apenas para máquinas disponíveis
+        if (isAvailable) {
+            button.setOnClickListener(v -> {
+                Log.d(TAG, "Máquina selecionada: " + machine.getName());
+                selectMachine(machine);
+            });
         }
         
+        Log.d(TAG, "Botão criado para: " + machine.getName() + " - " + status + " (Online: " + isOnline + ", Disponível: " + isAvailable + ")");
         return button;
+    }
+    
+    private boolean isMachineOnline(SupabaseHelper.Machine machine) {
+        // Verificar status real do ESP32
+        boolean isOnline = machine.isEsp32Online();
+        Log.d(TAG, "Verificando ESP32 para " + machine.getName() + ": " + isOnline + " (Status: " + machine.getStatus() + ")");
+        return isOnline;
     }
     
     private void selectMachine(SupabaseHelper.Machine machine) {
@@ -463,8 +410,8 @@ public class TotemActivity extends Activity {
                 transactionId
             );
             
-            // Atualizar status da máquina
-            boolean statusUpdated = supabaseHelper.updateMachineStatus(selectedMachine.getId(), "OCUPADA");
+            // Iniciar uso da máquina com tempo de duração
+            boolean statusUpdated = supabaseHelper.startMachineUsage(selectedMachine.getId(), selectedMachine.getDuration());
             
             // Mostrar tela de sucesso
             showPaymentSuccess(authorizationCode, transactionId);
@@ -589,13 +536,13 @@ public class TotemActivity extends Activity {
     
     private void updateConnectivityStatus() {
         if (statusText != null) {
-            boolean isOnline = supabaseHelper.isConnected();
-            String connectivityStatus = isOnline ? "Online" : "Offline";
-            String paygoStatus = "Conectado";
-            String ppc930Status = "Ativa";
-            
-            statusText.setText("📊 Sistema: " + connectivityStatus + " | PayGo: " + paygoStatus + " | PPC930: " + ppc930Status);
-            statusText.setTextColor(isOnline ? Color.parseColor("#4CAF50") : Color.parseColor("#FF9800"));
+            if (supabaseHelper.isOnline()) {
+                statusText.setText("✅ " + machines.size() + " máquinas carregadas");
+                statusText.setTextColor(Color.parseColor("#4CAF50"));
+            } else {
+                statusText.setText("🔄 Carregando máquinas...");
+                statusText.setTextColor(Color.parseColor("#FF9800"));
+            }
         }
     }
     

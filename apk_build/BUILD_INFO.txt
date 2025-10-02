@@ -1,0 +1,35 @@
+Top Lavanderia - APK com Integração PayGo
+========================================
+
+Versão: 1.0.0
+Data de Build: 2025-01-02 14:40:00
+Tamanho do APK: 6.4 MB
+
+Componentes Incluídos:
+- Top Lavanderia App: 1.0.0
+- PayGo Integration: v2.1.0.6
+- Android Target: API 22+
+- Capacitor: 7.4.2
+
+Funcionalidades:
+- ✅ Integração PayGo real
+- ✅ Comunicação com PPC930
+- ✅ Processamento de pagamentos
+- ✅ Interface de totem
+- ✅ Gerenciamento de máquinas
+- ✅ Modo kiosk
+
+Requisitos:
+- Android 5.1+ (API 22+)
+- PPC930 conectado via USB
+- PayGo Integrado instalado
+- Conexão de rede
+
+Instalação:
+1. Instalar PayGo Integrado (CERT ou PROD)
+2. Instalar este APK
+3. Configurar conexão PayGo
+4. Testar com PPC930
+
+Arquivo: TopLavanderia_v1.0.0_PayGo_Integrated.apk
+

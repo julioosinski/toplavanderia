@@ -36,6 +36,7 @@ import { DEFAULT_PAYGO_CONFIG } from "@/lib/paygoUtils";
 import { useTransactionNFSe } from '@/hooks/useTransactionNFSe';
 import { TEFPositivoL4Config } from "@/components/admin/TEFPositivoL4Config";
 import { USBDiagnosticsTab } from "@/components/admin/USBDiagnosticsTab";
+import { SupabaseDebug } from "@/components/debug/SupabaseDebug";
 
 interface Machine {
   id: string;
@@ -435,7 +436,7 @@ const Admin = () => {
       {/* Main Content */}
       <div className="container mx-auto">
         <Tabs defaultValue="machines" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-9">
+          <TabsList className="grid w-full grid-cols-10">
             <TabsTrigger value="machines">Máquinas</TabsTrigger>
             <TabsTrigger value="analytics">Relatórios</TabsTrigger>
             <TabsTrigger value="maintenance">Manutenção</TabsTrigger>
@@ -444,6 +445,7 @@ const Admin = () => {
             <TabsTrigger value="paygo">PayGO</TabsTrigger>
             <TabsTrigger value="tef">TEF L4</TabsTrigger>
             <TabsTrigger value="usb">USB</TabsTrigger>
+            <TabsTrigger value="debug">Debug</TabsTrigger>
             <TabsTrigger value="settings">Configurações</TabsTrigger>
           </TabsList>
 
@@ -642,6 +644,16 @@ const Admin = () => {
           {/* USB Diagnostics Tab */}
           <TabsContent value="usb">
             <USBDiagnosticsTab />
+          </TabsContent>
+
+          {/* Debug Tab */}
+          <TabsContent value="debug">
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold">Debug Supabase</h2>
+              </div>
+              <SupabaseDebug />
+            </div>
           </TabsContent>
 
           {/* Settings Tab */}

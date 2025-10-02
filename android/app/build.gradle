@@ -7,11 +7,11 @@ android {
     compileSdk 34
 
     defaultConfig {
-        applicationId "app.lovable.toplavanderia"
+        applicationId "com.toplavanderia.app"
         minSdk 22
         targetSdk 34
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -112,9 +112,10 @@ dependencies {
     implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
     implementation 'com.google.android.material:material:1.9.0'
     
-        // PayGO Library - REATIVADO PARA INTEGRAÇÃO REAL
+        // PayGO Library - INTEGRAÇÃO REAL
         implementation(name: 'InterfaceAutomacao-v2.1.0.6', ext: 'aar')
         implementation 'org.apache.commons:commons-lang3:3.9'
+        implementation 'com.google.code.gson:gson:2.10.1'
     
     // Capacitor - Comentado temporariamente para build básico
     // implementation project(':capacitor-android')

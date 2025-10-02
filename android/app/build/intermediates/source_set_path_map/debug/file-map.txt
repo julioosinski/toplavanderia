@@ -28,10 +28,10 @@ app.lovable.toplavanderia.app-jetified-activity-1.7.2-26 C:\Users\ideapad GAMING
 app.lovable.toplavanderia.app-jetified-appcompat-resources-1.6.1-27 C:\Users\ideapad GAMING\.gradle\caches\transforms-3\e894b739396106661ea59e3d9bfc02bc\transformed\jetified-appcompat-resources-1.6.1\res
 app.lovable.toplavanderia.app-swiperefreshlayout-1.1.0-28 C:\Users\ideapad GAMING\.gradle\caches\transforms-3\f1bcf264281369d5bb020294dbb5ce04\transformed\swiperefreshlayout-1.1.0\res
 app.lovable.toplavanderia.app-cardview-1.0.0-29 C:\Users\ideapad GAMING\.gradle\caches\transforms-3\f584116c6294478e6d326a2caef4c983\transformed\cardview-1.0.0\res
-app.lovable.toplavanderia.app-pngs-30 C:\Users\ideapad GAMING\lavanderia totem\toplavanderia\android\app\build\generated\res\pngs\debug
-app.lovable.toplavanderia.app-resValues-31 C:\Users\ideapad GAMING\lavanderia totem\toplavanderia\android\app\build\generated\res\resValues\debug
-app.lovable.toplavanderia.app-packageDebugResources-32 C:\Users\ideapad GAMING\lavanderia totem\toplavanderia\android\app\build\intermediates\incremental\debug\packageDebugResources\merged.dir
-app.lovable.toplavanderia.app-packageDebugResources-33 C:\Users\ideapad GAMING\lavanderia totem\toplavanderia\android\app\build\intermediates\incremental\debug\packageDebugResources\stripped.dir
-app.lovable.toplavanderia.app-merged_res-34 C:\Users\ideapad GAMING\lavanderia totem\toplavanderia\android\app\build\intermediates\merged_res\debug
-app.lovable.toplavanderia.app-debug-35 C:\Users\ideapad GAMING\lavanderia totem\toplavanderia\android\app\src\debug\res
-app.lovable.toplavanderia.app-main-36 C:\Users\ideapad GAMING\lavanderia totem\toplavanderia\android\app\src\main\res
+app.lovable.toplavanderia.app-pngs-30 C:\Users\ideapad GAMING\toplav\toplavanderia\android\app\build\generated\res\pngs\debug
+app.lovable.toplavanderia.app-resValues-31 C:\Users\ideapad GAMING\toplav\toplavanderia\android\app\build\generated\res\resValues\debug
+app.lovable.toplavanderia.app-packageDebugResources-32 C:\Users\ideapad GAMING\toplav\toplavanderia\android\app\build\intermediates\incremental\debug\packageDebugResources\merged.dir
+app.lovable.toplavanderia.app-packageDebugResources-33 C:\Users\ideapad GAMING\toplav\toplavanderia\android\app\build\intermediates\incremental\debug\packageDebugResources\stripped.dir
+app.lovable.toplavanderia.app-merged_res-34 C:\Users\ideapad GAMING\toplav\toplavanderia\android\app\build\intermediates\merged_res\debug
+app.lovable.toplavanderia.app-debug-35 C:\Users\ideapad GAMING\toplav\toplavanderia\android\app\src\debug\res
+app.lovable.toplavanderia.app-main-36 C:\Users\ideapad GAMING\toplav\toplavanderia\android\app\src\main\res

@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
+    <!-- Configuração específica para Supabase (HTTPS) -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">rkdybjzwiwwqqzjfmerm.supabase.co</domain>
+        <domain includeSubdomains="true">supabase.co</domain>
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </domain-config>
+    
+    <!-- Configuração para serviços locais (HTTP) -->
     <domain-config cleartextTrafficPermitted="true">
         <!-- PayGO local services -->
         <domain includeSubdomains="false">localhost</domain>
@@ -14,8 +24,8 @@
         <domain includeSubdomains="true">169.254.0.0</domain>
     </domain-config>
     
-    <!-- Allow all HTTP traffic for local payment processing -->
-    <base-config cleartextTrafficPermitted="true">
+    <!-- Configuração base para HTTPS -->
+    <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system"/>
         </trust-anchors>

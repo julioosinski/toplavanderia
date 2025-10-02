@@ -27,37 +27,83 @@ public class SupabaseHelper {
     
     private Context context;
     private boolean isOnline;
+    private List<Machine> realMachines;
+    private boolean realMachinesLoaded;
+    private OnMachinesLoadedListener listener;
+    
+    public interface OnMachinesLoadedListener {
+        void onMachinesLoaded(List<Machine> machines);
+    }
     
     public SupabaseHelper(Context context) {
         this.context = context;
         this.isOnline = false;
+        this.realMachines = null;
+        this.realMachinesLoaded = false;
+        this.listener = null;
+    }
+    
+    public void setOnMachinesLoadedListener(OnMachinesLoadedListener listener) {
+        this.listener = listener;
     }
     
     // ===== MÉTODOS PARA MÁQUINAS =====
     
     public List<Machine> getAllMachines() {
-        List<Machine> machines = new ArrayList<>();
+        Log.d(TAG, "=== CARREGANDO MÁQUINAS ===");
         
-        try {
-            Log.d(TAG, "=== CARREGANDO MÁQUINAS ===");
-            Log.d(TAG, "Verificando conectividade...");
-            
-            if (isOnline()) {
-                Log.d(TAG, "✅ Online - Buscando do Supabase");
-                machines = fetchMachinesFromSupabase();
-            } else {
-                Log.d(TAG, "❌ Offline - Usando dados padrão");
-                machines = getDefaultMachines();
-            }
-            
-            Log.d(TAG, "Máquinas carregadas: " + machines.size());
-            for (Machine machine : machines) {
-                Log.d(TAG, "  - " + machine.getName() + " (" + machine.getType() + ") - " + machine.getStatus());
-            }
-            
-        } catch (Exception e) {
-            Log.e(TAG, "Erro ao carregar máquinas", e);
-            machines = getDefaultMachines();
+        // Se já temos dados reais carregados, retornar eles
+        if (realMachinesLoaded && realMachines != null && !realMachines.isEmpty()) {
+            Log.d(TAG, "Retornando dados reais do Supabase: " + realMachines.size());
+            return realMachines;
+        }
+        
+        // Retornar dados padrão se ainda não temos dados reais
+        List<Machine> machines = getDefaultMachines();
+        
+        // Carregar dados do Supabase em background se ainda não carregamos
+        if (!realMachinesLoaded) {
+            new Thread(() -> {
+                try {
+                    Log.d(TAG, "Tentando carregar dados reais do Supabase...");
+                    
+                    // Tentar carregar dados do Supabase diretamente
+                    List<Machine> supabaseMachines = fetchMachinesFromSupabase();
+                    
+                    if (supabaseMachines != null && !supabaseMachines.isEmpty()) {
+                        Log.d(TAG, "✅ Dados reais do Supabase carregados: " + supabaseMachines.size());
+                        
+                        // Carregar status dos ESP32s para determinar disponibilidade real
+                        loadEsp32Status(supabaseMachines);
+                        
+                        for (Machine machine : supabaseMachines) {
+                            Log.d(TAG, "  - " + machine.getName() + " (" + machine.getType() + ") - " + machine.getStatus() + " (ESP32: " + machine.isEsp32Online() + ")");
+                        }
+                        
+                        // Armazenar dados reais
+                        realMachines = supabaseMachines;
+                        realMachinesLoaded = true;
+                        isOnline = true;
+                        
+                        Log.d(TAG, "Dados reais do Supabase prontos para exibição");
+                        
+                        // Notificar que os dados reais foram carregados
+                        if (listener != null) {
+                            listener.onMachinesLoaded(realMachines);
+                        }
+                    } else {
+                        Log.d(TAG, "❌ Falha ao carregar dados do Supabase - usando dados padrão");
+                    }
+                    
+                } catch (Exception e) {
+                    Log.e(TAG, "Erro ao carregar máquinas do Supabase", e);
+                }
+            }).start();
+        }
+        
+        Log.d(TAG, "Máquinas carregadas: " + machines.size());
+        for (Machine machine : machines) {
+            Log.d(TAG, "  - " + machine.getName() + " (" + machine.getType() + ") - " + machine.getStatus());
         }
         
         return machines;
@@ -101,6 +147,7 @@ public class SupabaseHelper {
                     machine.setLocation(machineJson.optString("location", "Conjunto A"));
                     machine.setEsp32Id(machineJson.optString("esp32_id", "main"));
                     machine.setRelayPin(machineJson.optInt("relay_pin", 1));
+                    machine.setEsp32Online(true); // Será atualizado pelo loadEsp32Status
                     
                     machines.add(machine);
                 }
@@ -119,6 +166,72 @@ public class SupabaseHelper {
         }
         
         return machines;
+    }
+    
+    private void loadEsp32Status(List<Machine> machines) {
+        try {
+            Log.d(TAG, "=== CARREGANDO STATUS DOS ESP32s ===");
+            
+            String url = SUPABASE_URL + "/rest/v1/esp32_status?select=esp32_id,status_da_rede,last_seen";
+            
+            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setRequestMethod("GET");
+            connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
+            connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
+            connection.setRequestProperty("Content-Type", "application/json");
+            
+            int responseCode = connection.getResponseCode();
+            if (responseCode == 200) {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+                StringBuilder response = new StringBuilder();
+                String line;
+                
+                while ((line = reader.readLine()) != null) {
+                    response.append(line);
+                }
+                reader.close();
+                
+                JSONArray esp32Array = new JSONArray(response.toString());
+                
+                // Criar mapa de status dos ESP32s baseado no status_da_rede
+                java.util.Map<String, String> esp32StatusMap = new java.util.HashMap<>();
+                for (int i = 0; i < esp32Array.length(); i++) {
+                    JSONObject esp32Json = esp32Array.getJSONObject(i);
+                    String esp32Id = esp32Json.getString("esp32_id");
+                    String statusRede = esp32Json.optString("status_da_rede", "offline");
+                    esp32StatusMap.put(esp32Id, statusRede);
+                    
+                    Log.d(TAG, "ESP32 " + esp32Id + ": " + statusRede);
+                }
+                
+                // Atualizar status das máquinas baseado no status_da_rede do ESP32
+                for (Machine machine : machines) {
+                    String esp32Id = machine.getEsp32Id();
+                    String esp32Status = esp32StatusMap.getOrDefault(esp32Id, "offline");
+                    boolean esp32Online = "online".equalsIgnoreCase(esp32Status) || "conectado".equalsIgnoreCase(esp32Status);
+                    machine.setEsp32Online(esp32Online);
+                    
+                    Log.d(TAG, "Máquina " + machine.getName() + " - ESP32 " + esp32Id + " status: " + esp32Status + " (Online: " + esp32Online + ")");
+                }
+                
+                Log.d(TAG, "Status dos ESP32s carregado: " + esp32StatusMap.size() + " dispositivos");
+            } else {
+                Log.w(TAG, "Erro ao buscar status dos ESP32s: " + responseCode);
+                // Se não conseguir carregar status, assumir que todos estão online
+                for (Machine machine : machines) {
+                    machine.setEsp32Online(true);
+                }
+            }
+            
+            connection.disconnect();
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao carregar status dos ESP32s", e);
+            // Se houver erro, assumir que todos estão online
+            for (Machine machine : machines) {
+                machine.setEsp32Online(true);
+            }
+        }
     }
     
     private List<Machine> getDefaultMachines() {
@@ -149,6 +262,7 @@ public class SupabaseHelper {
         machine.setLocation(location);
         machine.setEsp32Id(esp32Id);
         machine.setRelayPin(relayPin);
+        machine.setEsp32Online(true); // Por padrão, assumir que está online
         return machine;
     }
     
@@ -260,6 +374,46 @@ public class SupabaseHelper {
         }
     }
     
+    public boolean startMachineUsage(String machineId, int durationMinutes) {
+        try {
+            Log.d(TAG, "Iniciando uso da máquina " + machineId + " por " + durationMinutes + " minutos");
+            
+            // Marcar máquina como ocupada
+            boolean statusUpdated = updateMachineStatus(machineId, "OCUPADA");
+            
+            if (statusUpdated) {
+                // Agendar liberação da máquina após o tempo de uso
+                scheduleMachineRelease(machineId, durationMinutes);
+                return true;
+            }
+            
+            return false;
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao iniciar uso da máquina", e);
+            return false;
+        }
+    }
+    
+    private void scheduleMachineRelease(String machineId, int durationMinutes) {
+        // Em uma implementação real, isso seria feito com um timer ou job scheduler
+        // Por enquanto, vamos simular com um delay
+        new Thread(() -> {
+            try {
+                Log.d(TAG, "Agendando liberação da máquina " + machineId + " em " + durationMinutes + " minutos");
+                
+                // Aguardar o tempo de uso (em milissegundos)
+                Thread.sleep(durationMinutes * 60 * 1000);
+                
+                // Liberar a máquina
+                Log.d(TAG, "Liberando máquina " + machineId + " após " + durationMinutes + " minutos");
+                updateMachineStatus(machineId, "LIVRE");
+                
+            } catch (InterruptedException e) {
+                Log.e(TAG, "Timer de liberação da máquina interrompido", e);
+            }
+        }).start();
+    }
+    
     private boolean updateMachineStatusInSupabase(String machineId, String status) {
         try {
             String url = SUPABASE_URL + "/rest/v1/machines?id=eq." + machineId;
@@ -321,39 +475,47 @@ public class SupabaseHelper {
     // ===== MÉTODOS DE CONECTIVIDADE =====
     
     public boolean isOnline() {
-        try {
-            Log.d(TAG, "=== VERIFICANDO CONECTIVIDADE ===");
-            Log.d(TAG, "URL: " + SUPABASE_URL);
-            
-            // Testar conectividade com Supabase
-            String url = SUPABASE_URL + "/rest/v1/machines?select=id&limit=1";
-            
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
-            connection.setRequestMethod("GET");
-            connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
-            connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
-            connection.setRequestProperty("Content-Type", "application/json");
-            connection.setConnectTimeout(10000); // 10 segundos
-            connection.setReadTimeout(10000); // 10 segundos
-            
-            int responseCode = connection.getResponseCode();
-            String responseMessage = connection.getResponseMessage();
-            
-            Log.d(TAG, "Response Code: " + responseCode);
-            Log.d(TAG, "Response Message: " + responseMessage);
-            
-            connection.disconnect();
-            
-            isOnline = (responseCode == 200);
-            Log.d(TAG, "Status de conectividade: " + (isOnline ? "✅ Online" : "❌ Offline"));
-            
-            return isOnline;
-            
-        } catch (Exception e) {
-            Log.e(TAG, "❌ Erro ao verificar conectividade", e);
-            isOnline = false;
-            return false;
+        // Verificar se já temos um status válido recente
+        if (isOnline) {
+            return true;
         }
+        
+        // Para evitar NetworkOnMainThreadException, retornar false por padrão
+        // A verificação real será feita em background
+        Log.d(TAG, "=== VERIFICANDO CONECTIVIDADE (Background) ===");
+        Log.d(TAG, "URL: " + SUPABASE_URL);
+        
+        // Iniciar verificação em background
+        new Thread(() -> {
+            try {
+                String url = SUPABASE_URL + "/rest/v1/machines?select=id&limit=1";
+                
+                HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+                connection.setRequestMethod("GET");
+                connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
+                connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
+                connection.setRequestProperty("Content-Type", "application/json");
+                connection.setConnectTimeout(10000); // 10 segundos
+                connection.setReadTimeout(10000); // 10 segundos
+                
+                int responseCode = connection.getResponseCode();
+                String responseMessage = connection.getResponseMessage();
+                
+                Log.d(TAG, "Response Code: " + responseCode);
+                Log.d(TAG, "Response Message: " + responseMessage);
+                
+                connection.disconnect();
+                
+                isOnline = (responseCode == 200);
+                Log.d(TAG, "Status de conectividade: " + (isOnline ? "✅ Online" : "❌ Offline"));
+                
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Erro ao verificar conectividade", e);
+                isOnline = false;
+            }
+        }).start();
+        
+        return false; // Retornar false por padrão, será atualizado em background
     }
     
     public boolean isConnected() {
@@ -372,6 +534,7 @@ public class SupabaseHelper {
         private String location;
         private String esp32Id;
         private int relayPin;
+        private boolean esp32Online;
         
         // Getters e Setters
         public String getId() { return id; }
@@ -401,8 +564,15 @@ public class SupabaseHelper {
         public int getRelayPin() { return relayPin; }
         public void setRelayPin(int relayPin) { this.relayPin = relayPin; }
         
+        public boolean isEsp32Online() { return esp32Online; }
+        public void setEsp32Online(boolean esp32Online) { this.esp32Online = esp32Online; }
+        
         public boolean isAvailable() {
-            return "LIVRE".equals(status);
+            return "LIVRE".equals(status) && esp32Online;
+        }
+        
+        public boolean isOnline() {
+            return esp32Online;
         }
         
         public String getStatusDisplay() {
