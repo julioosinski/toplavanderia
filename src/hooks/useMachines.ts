@@ -48,11 +48,11 @@ export const useMachines = () => {
 
       console.log('✅ Máquinas carregadas:', machinesData?.length || 0);
 
-      // Buscar status dos ESP32s para determinar IPs
+      // Buscar status dos ESP32s para determinar IPs e status de relés
       console.log('🔍 Buscando status ESP32...');
       const { data: esp32Data, error: esp32Error } = await supabase
         .from('esp32_status')
-        .select('esp32_id, ip_address, is_online');
+        .select('esp32_id, ip_address, is_online, relay_status');
 
       if (esp32Error) {
         console.warn('⚠️ Erro ao buscar ESP32 status:', esp32Error);
@@ -81,20 +81,42 @@ export const useMachines = () => {
         // Determinar status inteligente baseado em ESP32 e status da máquina
         let machineStatus = machine.status as any;
         
-        // Se ESP32 está offline, marcar máquina como offline apenas se não estiver em uso
-        if (esp32?.is_online === false && machine.status !== 'running') {
-          machineStatus = 'offline';
+        // Verificar status do ESP32
+        if (machine.esp32_id) {
+          const esp32Status = esp32Map.get(machine.esp32_id);
+          
+          // Se ESP32 está offline ou não existe, marcar máquina como offline
+          if (!esp32Status || !esp32Status.is_online) {
+            machineStatus = 'offline';
+          } else {
+            // ESP32 está online, verificar status do relé
+            if (esp32Status.relay_status && typeof esp32Status.relay_status === 'object') {
+              const relayKey = `relay_${machine.relay_pin || 1}`;
+              const relayStatus = (esp32Status.relay_status as any)[relayKey];
+              
+              // Se relé está ativo, máquina está rodando
+              if (relayStatus === 'on' || relayStatus === true || relayStatus === 1) {
+                machineStatus = 'running';
+              } else if (machine.status !== 'running' && machine.status !== 'maintenance') {
+                // Se relé está desligado e não está em manutenção, está disponível
+                machineStatus = 'available';
+              }
+            } else if (machine.status !== 'running' && machine.status !== 'maintenance') {
+              // Se não há dados de relé mas ESP32 está online, considerar disponível
+              machineStatus = 'available';
+            }
+          }
         }
         
         // Se máquina está "running", verificar se passou do tempo esperado
-        if (machine.status === 'running' && machine.updated_at) {
+        if (machineStatus === 'running' && machine.updated_at) {
           const lastUpdate = new Date(machine.updated_at);
           const now = new Date();
           const minutesSinceUpdate = (now.getTime() - lastUpdate.getTime()) / (1000 * 60);
           const cycleTime = machine.cycle_time_minutes || 40;
           
-          // Se passou mais tempo que o ciclo + 5 minutos de margem, marcar como disponível
-          if (minutesSinceUpdate > cycleTime + 5) {
+          // Se passou mais tempo que o ciclo + 10 minutos de margem, marcar como disponível
+          if (minutesSinceUpdate > cycleTime + 10) {
             machineStatus = 'available';
           }
         }
