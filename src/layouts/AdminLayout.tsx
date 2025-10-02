@@ -3,6 +3,7 @@ import { Outlet, Link, useNavigate, useLocation } from "react-router-dom";
 import { useLaundry } from "@/contexts/LaundryContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   LayoutDashboard,
   WashingMachine,
@@ -13,7 +14,6 @@ import {
   Shield,
   Settings,
   LogOut,
-  ChevronLeft,
   ChevronRight,
   Moon,
   Sun,
@@ -29,7 +29,6 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarTrigger,
-  useSidebar,
 } from "@/components/ui/sidebar";
 import {
   DropdownMenu,
@@ -98,10 +97,40 @@ function AdminSidebar() {
 
 export default function AdminLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
-  const { currentLaundry, loading } = useLaundry();
+  const { currentLaundry, loading, userRole, isSuperAdmin } = useLaundry();
   const [user, setUser] = useState<any>(null);
   const { theme, setTheme } = useTheme();
+
+  const getRoleLabel = () => {
+    if (userRole === 'super_admin') return 'Super Admin';
+    if (userRole === 'admin') return 'Administrador';
+    if (userRole === 'operator') return 'Operador';
+    return 'Usuário';
+  };
+
+  const getRoleBadgeVariant = () => {
+    if (userRole === 'super_admin') return 'default';
+    if (userRole === 'admin') return 'secondary';
+    return 'outline';
+  };
+
+  const getBreadcrumbs = () => {
+    const paths = location.pathname.split('/').filter(Boolean);
+    const labels: Record<string, string> = {
+      admin: 'Admin',
+      dashboard: 'Dashboard',
+      machines: 'Máquinas',
+      transactions: 'Transações',
+      users: 'Usuários',
+      laundries: 'Lavanderias',
+      reports: 'Relatórios',
+      security: 'Segurança',
+      settings: 'Configurações',
+    };
+    return paths.map(path => labels[path] || path);
+  };
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -148,11 +177,24 @@ export default function AdminLayout() {
             <div className="flex h-16 items-center gap-4 px-6">
               <SidebarTrigger />
               
-              <div className="flex-1 flex items-center gap-4">
-                <div className="text-sm text-muted-foreground">
-                  {currentLaundry?.name || "Selecione uma lavanderia"}
-                </div>
+              {/* Breadcrumbs */}
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                {getBreadcrumbs().map((crumb, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    {index > 0 && <ChevronRight className="h-4 w-4" />}
+                    <span className={index === getBreadcrumbs().length - 1 ? "text-foreground font-medium" : ""}>
+                      {crumb}
+                    </span>
+                  </div>
+                ))}
               </div>
+
+              <div className="flex-1" />
+              
+              {/* Role Badge */}
+              <Badge variant={getRoleBadgeVariant() as any} className="hidden md:flex">
+                {getRoleLabel()}
+              </Badge>
 
               <div className="flex items-center gap-3">
                 <LaundrySelector />

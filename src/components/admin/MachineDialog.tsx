@@ -6,38 +6,53 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { useLaundry } from "@/contexts/LaundryContext";
 import { Plus, Edit } from "lucide-react";
 
 interface Machine {
   id?: string;
   name: string;
-  type: 'washing' | 'drying';
+  type: 'washer' | 'dryer';
   location?: string;
   capacity_kg: number;
   price_per_kg: number;
   cycle_time_minutes?: number;
   temperature?: number;
+  laundry_id?: string;
 }
 
-interface MachineDialogProps {
-  machine?: Machine;
-  onSuccess: () => void;
+export interface MachineDialogProps {
+  machine?: Machine | null;
+  onSuccess?: () => void;
   trigger?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export const MachineDialog = ({ machine, onSuccess, trigger }: MachineDialogProps) => {
-  const [open, setOpen] = useState(false);
+export const MachineDialog = ({ 
+  machine, 
+  onSuccess, 
+  trigger,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange 
+}: MachineDialogProps) => {
+  const { currentLaundry } = useLaundry();
+  const { toast } = useToast();
+  const [internalOpen, setInternalOpen] = useState(false);
+  
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setOpen = controlledOnOpenChange || setInternalOpen;
+
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<Machine>({
     name: "",
-    type: "washing",
+    type: "washer",
     location: "",
     capacity_kg: 10,
     price_per_kg: 5.00,
     cycle_time_minutes: 40,
     temperature: 0
   });
-  const { toast } = useToast();
 
   useEffect(() => {
     if (machine) {
@@ -45,34 +60,50 @@ export const MachineDialog = ({ machine, onSuccess, trigger }: MachineDialogProp
         ...machine,
         cycle_time_minutes: machine.cycle_time_minutes || 40
       });
+    } else {
+      // Reset form quando não há máquina
+      setFormData({
+        name: "",
+        type: "washer",
+        location: "",
+        capacity_kg: 10,
+        price_per_kg: 5.00,
+        cycle_time_minutes: 40,
+        temperature: 0
+      });
     }
-  }, [machine]);
+  }, [machine, open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!currentLaundry) {
+      toast({
+        title: "Erro",
+        description: "Nenhuma lavanderia selecionada",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setLoading(true);
 
-    console.log('=== MACHINE DIALOG DEBUG ===');
-    console.log('Form data:', formData);
-    console.log('Machine prop:', machine);
-    console.log('Is update:', !!machine?.id);
-
     try {
+      const dataToSave = {
+        ...formData,
+        laundry_id: currentLaundry.id,
+      };
+
       if (machine?.id) {
         // Update existing machine
-        console.log('Updating machine with ID:', machine.id);
-        console.log('Update data:', { ...formData, updated_at: new Date().toISOString() });
-        
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from('machines')
           .update({
-            ...formData,
+            ...dataToSave,
             updated_at: new Date().toISOString()
           })
-          .eq('id', machine.id)
-          .select();
+          .eq('id', machine.id);
 
-        console.log('Update response:', { data, error });
         if (error) throw error;
 
         toast({
@@ -81,25 +112,15 @@ export const MachineDialog = ({ machine, onSuccess, trigger }: MachineDialogProp
         });
       } else {
         // Create new machine
-        console.log('Creating new machine');
-        console.log('Insert data:', {
-          ...formData,
-          status: 'available',
-          total_uses: 0,
-          total_revenue: 0
-        });
-
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from('machines')
           .insert([{
-            ...formData,
+            ...dataToSave,
             status: 'available',
             total_uses: 0,
             total_revenue: 0
-          }])
-          .select();
+          }]);
 
-        console.log('Insert response:', { data, error });
         if (error) throw error;
 
         toast({
@@ -109,20 +130,7 @@ export const MachineDialog = ({ machine, onSuccess, trigger }: MachineDialogProp
       }
 
       setOpen(false);
-      onSuccess();
-      
-      // Reset form if creating new machine
-      if (!machine) {
-        setFormData({
-          name: "",
-          type: "washing",
-          location: "",
-          capacity_kg: 10,
-          price_per_kg: 5.00,
-          cycle_time_minutes: 40,
-          temperature: 0
-        });
-      }
+      if (onSuccess) onSuccess();
     } catch (error) {
       console.error('Error saving machine:', error);
       toast({
@@ -149,9 +157,11 @@ export const MachineDialog = ({ machine, onSuccess, trigger }: MachineDialogProp
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger || defaultTrigger}
-      </DialogTrigger>
+      {trigger !== undefined && (
+        <DialogTrigger asChild>
+          {trigger || defaultTrigger}
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>
@@ -177,14 +187,14 @@ export const MachineDialog = ({ machine, onSuccess, trigger }: MachineDialogProp
               <Label htmlFor="type">Tipo</Label>
               <Select 
                 value={formData.type} 
-                onValueChange={(value: 'washing' | 'drying') => setFormData({ ...formData, type: value })}
+                onValueChange={(value: 'washer' | 'dryer') => setFormData({ ...formData, type: value })}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="washing">Lavadora</SelectItem>
-                  <SelectItem value="drying">Secadora</SelectItem>
+                  <SelectItem value="washer">Lavadora</SelectItem>
+                  <SelectItem value="dryer">Secadora</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -239,7 +249,7 @@ export const MachineDialog = ({ machine, onSuccess, trigger }: MachineDialogProp
             </div>
           </div>
 
-          {formData.type === 'washing' && (
+          {formData.type === 'washer' && (
             <div className="space-y-2">
               <Label htmlFor="temperature">Temperatura (°C)</Label>
               <Input
