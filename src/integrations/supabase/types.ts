@@ -85,6 +85,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           last_seen: string | null
+          laundry_id: string | null
           location: string | null
           updated_at: string | null
         }
@@ -95,6 +96,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           last_seen?: string | null
+          laundry_id?: string | null
           location?: string | null
           updated_at?: string | null
         }
@@ -105,10 +107,19 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           last_seen?: string | null
+          laundry_id?: string | null
           location?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "authorized_devices_laundry_id_fkey"
+            columns: ["laundry_id"]
+            isOneToOne: false
+            referencedRelation: "laundries"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       esp32_status: {
         Row: {
@@ -119,6 +130,7 @@ export type Database = {
           ip_address: string | null
           is_online: boolean | null
           last_heartbeat: string | null
+          laundry_id: string | null
           location: string | null
           machine_count: number | null
           network_status: string | null
@@ -135,6 +147,7 @@ export type Database = {
           ip_address?: string | null
           is_online?: boolean | null
           last_heartbeat?: string | null
+          laundry_id?: string | null
           location?: string | null
           machine_count?: number | null
           network_status?: string | null
@@ -151,6 +164,7 @@ export type Database = {
           ip_address?: string | null
           is_online?: boolean | null
           last_heartbeat?: string | null
+          laundry_id?: string | null
           location?: string | null
           machine_count?: number | null
           network_status?: string | null
@@ -158,6 +172,62 @@ export type Database = {
           signal_strength?: number | null
           updated_at?: string
           uptime_seconds?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "esp32_status_laundry_id_fkey"
+            columns: ["laundry_id"]
+            isOneToOne: false
+            referencedRelation: "laundries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      laundries: {
+        Row: {
+          address: string | null
+          city: string | null
+          cnpj: string
+          created_at: string | null
+          email: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          owner_id: string | null
+          phone: string | null
+          settings: Json | null
+          state: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          address?: string | null
+          city?: string | null
+          cnpj: string
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          owner_id?: string | null
+          phone?: string | null
+          settings?: Json | null
+          state?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          address?: string | null
+          city?: string | null
+          cnpj?: string
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          owner_id?: string | null
+          phone?: string | null
+          settings?: Json | null
+          state?: string | null
+          updated_at?: string | null
         }
         Relationships: []
       }
@@ -169,6 +239,7 @@ export type Database = {
           esp32_id: string | null
           id: string
           last_maintenance: string | null
+          laundry_id: string | null
           location: string | null
           name: string
           price_per_kg: number
@@ -187,6 +258,7 @@ export type Database = {
           esp32_id?: string | null
           id?: string
           last_maintenance?: string | null
+          laundry_id?: string | null
           location?: string | null
           name: string
           price_per_kg?: number
@@ -205,6 +277,7 @@ export type Database = {
           esp32_id?: string | null
           id?: string
           last_maintenance?: string | null
+          laundry_id?: string | null
           location?: string | null
           name?: string
           price_per_kg?: number
@@ -216,7 +289,15 @@ export type Database = {
           type?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "machines_laundry_id_fkey"
+            columns: ["laundry_id"]
+            isOneToOne: false
+            referencedRelation: "laundries"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -308,6 +389,7 @@ export type Database = {
           esp32_port: number | null
           heartbeat_interval_seconds: number | null
           id: string
+          laundry_id: string | null
           max_offline_duration_minutes: number | null
           nfse_enabled: boolean | null
           notifications_enabled: boolean | null
@@ -341,6 +423,7 @@ export type Database = {
           esp32_port?: number | null
           heartbeat_interval_seconds?: number | null
           id?: string
+          laundry_id?: string | null
           max_offline_duration_minutes?: number | null
           nfse_enabled?: boolean | null
           notifications_enabled?: boolean | null
@@ -374,6 +457,7 @@ export type Database = {
           esp32_port?: number | null
           heartbeat_interval_seconds?: number | null
           id?: string
+          laundry_id?: string | null
           max_offline_duration_minutes?: number | null
           nfse_enabled?: boolean | null
           notifications_enabled?: boolean | null
@@ -393,7 +477,15 @@ export type Database = {
           wifi_ssid?: string | null
           zapier_webhook_url?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "system_settings_laundry_id_fkey"
+            columns: ["laundry_id"]
+            isOneToOne: false
+            referencedRelation: "laundries"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       transactions: {
         Row: {
@@ -401,6 +493,7 @@ export type Database = {
           created_at: string
           duration_minutes: number | null
           id: string
+          laundry_id: string | null
           machine_id: string
           payment_method: string | null
           started_at: string | null
@@ -415,6 +508,7 @@ export type Database = {
           created_at?: string
           duration_minutes?: number | null
           id?: string
+          laundry_id?: string | null
           machine_id: string
           payment_method?: string | null
           started_at?: string | null
@@ -429,6 +523,7 @@ export type Database = {
           created_at?: string
           duration_minutes?: number | null
           id?: string
+          laundry_id?: string | null
           machine_id?: string
           payment_method?: string | null
           started_at?: string | null
@@ -439,6 +534,13 @@ export type Database = {
           weight_kg?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "transactions_laundry_id_fkey"
+            columns: ["laundry_id"]
+            isOneToOne: false
+            referencedRelation: "laundries"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "transactions_machine_id_fkey"
             columns: ["machine_id"]
@@ -461,6 +563,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          laundry_id: string | null
           transaction_id: string | null
           transaction_type: string
           user_id: string
@@ -470,6 +573,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          laundry_id?: string | null
           transaction_id?: string | null
           transaction_type: string
           user_id: string
@@ -479,11 +583,19 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          laundry_id?: string | null
           transaction_id?: string | null
           transaction_type?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "user_credits_laundry_id_fkey"
+            columns: ["laundry_id"]
+            isOneToOne: false
+            referencedRelation: "laundries"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "user_credits_transaction_id_fkey"
             columns: ["transaction_id"]
@@ -497,22 +609,33 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          laundry_id: string | null
           role: Database["public"]["Enums"]["app_role"]
           user_id: string
         }
         Insert: {
           created_at?: string | null
           id?: string
+          laundry_id?: string | null
           role: Database["public"]["Enums"]["app_role"]
           user_id: string
         }
         Update: {
           created_at?: string | null
           id?: string
+          laundry_id?: string | null
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_roles_laundry_id_fkey"
+            columns: ["laundry_id"]
+            isOneToOne: false
+            referencedRelation: "laundries"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
@@ -564,11 +687,20 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
+      get_user_laundry_id: {
+        Args: { _user_id: string }
+        Returns: string
+      }
       has_role: {
         Args: {
+          _laundry_id?: string
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
+        Returns: boolean
+      }
+      is_super_admin: {
+        Args: { _user_id: string }
         Returns: boolean
       }
       log_security_event: {
