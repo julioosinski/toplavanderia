@@ -14,6 +14,60 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_config: {
+        Row: {
+          id: string
+          last_updated: string | null
+          pin_hash: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          last_updated?: string | null
+          pin_hash: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          last_updated?: string | null
+          pin_hash?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      authorized_devices: {
+        Row: {
+          created_at: string | null
+          device_name: string
+          device_uuid: string
+          id: string
+          is_active: boolean | null
+          last_seen: string | null
+          location: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          device_name: string
+          device_uuid: string
+          id?: string
+          is_active?: boolean | null
+          last_seen?: string | null
+          location?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          device_name?: string
+          device_uuid?: string
+          id?: string
+          is_active?: boolean | null
+          last_seen?: string | null
+          location?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       esp32_status: {
         Row: {
           created_at: string
@@ -302,6 +356,13 @@ export type Database = {
             referencedRelation: "machines"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "transactions_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "public_machines"
+            referencedColumns: ["id"]
+          },
         ]
       }
       user_credits: {
@@ -342,15 +403,87 @@ export type Database = {
           },
         ]
       }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
-      [_ in never]: never
+      public_machines: {
+        Row: {
+          capacity_kg: number | null
+          cycle_time_minutes: number | null
+          esp32_id: string | null
+          id: string | null
+          last_maintenance: string | null
+          location: string | null
+          name: string | null
+          price_per_kg: number | null
+          status: string | null
+          temperature: number | null
+          type: string | null
+        }
+        Insert: {
+          capacity_kg?: number | null
+          cycle_time_minutes?: number | null
+          esp32_id?: string | null
+          id?: string | null
+          last_maintenance?: string | null
+          location?: string | null
+          name?: string | null
+          price_per_kg?: number | null
+          status?: string | null
+          temperature?: number | null
+          type?: string | null
+        }
+        Update: {
+          capacity_kg?: number | null
+          cycle_time_minutes?: number | null
+          esp32_id?: string | null
+          id?: string | null
+          last_maintenance?: string | null
+          location?: string | null
+          name?: string | null
+          price_per_kg?: number | null
+          status?: string | null
+          temperature?: number | null
+          type?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      validate_admin_pin: {
+        Args: { _pin: string }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "operator" | "user" | "totem_device"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -477,6 +610,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "operator", "user", "totem_device"],
+    },
   },
 } as const
