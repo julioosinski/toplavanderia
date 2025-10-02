@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLaundry } from "@/contexts/LaundryContext";
 import { supabase } from "@/integrations/supabase/client";
+import { LaundryGuard } from "@/components/admin/LaundryGuard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
 import { ColumnDef } from "@tanstack/react-table";
@@ -106,30 +107,32 @@ export default function Transactions() {
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Transações</h1>
-        <p className="text-muted-foreground">
-          Histórico completo de transações
-        </p>
-      </div>
+    <LaundryGuard>
+      <div className="space-y-6 animate-in fade-in duration-500">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Transações</h1>
+          <p className="text-muted-foreground">
+            Histórico completo de transações
+          </p>
+        </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Todas as Transações</CardTitle>
-          <CardDescription>
-            Últimas 100 transações realizadas
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <DataTable
-            columns={columns}
-            data={transactions}
-            searchKey="status"
-            searchPlaceholder="Filtrar por status..."
-          />
-        </CardContent>
-      </Card>
-    </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Todas as Transações</CardTitle>
+            <CardDescription>
+              Últimas 100 transações realizadas
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DataTable
+              columns={columns}
+              data={transactions}
+              searchKey="status"
+              searchPlaceholder="Filtrar por status..."
+            />
+          </CardContent>
+        </Card>
+      </div>
+    </LaundryGuard>
   );
 }

@@ -103,6 +103,7 @@ export default function AdminLayout() {
   const { currentLaundry, loading, error, retry, userRole, isSuperAdmin } = useLaundry();
   const [user, setUser] = useState<any>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
   const { theme, setTheme } = useTheme();
 
   const getRoleLabel = () => {
@@ -143,6 +144,13 @@ export default function AdminLayout() {
           navigate("/auth", { replace: true });
         } else {
           setUser(user);
+          
+          // Verificar se é a primeira visita do super admin
+          const hasSeenWelcome = localStorage.getItem('hasSeenAdminWelcome');
+          if (!hasSeenWelcome) {
+            setShowWelcome(true);
+            localStorage.setItem('hasSeenAdminWelcome', 'true');
+          }
         }
       } catch (err) {
         console.error('Auth check error:', err);
@@ -153,6 +161,19 @@ export default function AdminLayout() {
     };
     checkAuth();
   }, [navigate]);
+  
+  // Toast de boas-vindas para super admins
+  useEffect(() => {
+    if (showWelcome && user) {
+      setTimeout(() => {
+        toast({
+          title: "Bem-vindo ao painel administrativo! 👋",
+          description: "Use o seletor de lavanderia no header para alternar entre as lavanderias. Todas as páginas mostrarão dados da lavanderia selecionada.",
+          duration: 8000,
+        });
+      }, 1000);
+    }
+  }, [showWelcome, user]);
 
   // Aguardar verificação de autenticação
   if (!authChecked) {

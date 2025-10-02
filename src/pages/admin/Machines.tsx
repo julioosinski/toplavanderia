@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLaundry } from "@/contexts/LaundryContext";
 import { supabase } from "@/integrations/supabase/client";
+import { LaundryGuard } from "@/components/admin/LaundryGuard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Trash2, MoreVertical } from "lucide-react";
@@ -215,46 +216,48 @@ export default function Machines() {
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Máquinas</h1>
-          <p className="text-muted-foreground">
-            Gerencie todas as máquinas de lavar e secar
-          </p>
+    <LaundryGuard>
+      <div className="space-y-6 animate-in fade-in duration-500">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Máquinas</h1>
+            <p className="text-muted-foreground">
+              Gerencie todas as máquinas de lavar e secar
+            </p>
+          </div>
+          <Button onClick={() => {
+            setEditingMachine(null);
+            setDialogOpen(true);
+          }}>
+            <Plus className="mr-2 h-4 w-4" />
+            Nova Máquina
+          </Button>
         </div>
-        <Button onClick={() => {
-          setEditingMachine(null);
-          setDialogOpen(true);
-        }}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nova Máquina
-        </Button>
+
+        <MachineDialog 
+          machine={editingMachine}
+          onSuccess={handleSuccess}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+        />
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Todas as Máquinas</CardTitle>
+            <CardDescription>
+              Lista completa de máquinas cadastradas
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DataTable
+              columns={columns}
+              data={machines}
+              searchKey="name"
+              searchPlaceholder="Buscar por nome..."
+            />
+          </CardContent>
+        </Card>
       </div>
-
-      <MachineDialog 
-        machine={editingMachine}
-        onSuccess={handleSuccess}
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-      />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Todas as Máquinas</CardTitle>
-          <CardDescription>
-            Lista completa de máquinas cadastradas
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <DataTable
-            columns={columns}
-            data={machines}
-            searchKey="name"
-            searchPlaceholder="Buscar por nome..."
-          />
-        </CardContent>
-      </Card>
-    </div>
+    </LaundryGuard>
   );
 }

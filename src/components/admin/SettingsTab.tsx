@@ -75,6 +75,9 @@ export const SettingsTab = () => {
   useEffect(() => {
     loadSettings();
   }, []);
+  
+  // Note: Settings are currently global, not per-laundry
+  // Future enhancement: filter by laundry_id if needed
 
   const loadSettings = async () => {
     setLoading(true);
