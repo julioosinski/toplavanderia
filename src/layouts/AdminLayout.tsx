@@ -164,16 +164,6 @@ export default function AdminLayout() {
     checkAuth();
   }, [navigate]);
 
-  // Auto-redirecionar usuários sem permissão
-  useEffect(() => {
-    if (error && error.includes('permissão')) {
-      const timeout = setTimeout(() => {
-        handleSignOut();
-      }, 3000);
-      return () => clearTimeout(timeout);
-    }
-  }, [error]);
-
   // Aguardar verificação de autenticação
   if (!authChecked) {
     return (
@@ -212,11 +202,6 @@ export default function AdminLayout() {
           <Button onClick={retry}>Tentar Novamente</Button>
           <Button variant="outline" onClick={handleSignOut}>Sair</Button>
         </div>
-        {error.includes('permissão') && (
-          <p className="text-sm text-muted-foreground mt-2">
-            Redirecionando para login em 3 segundos...
-          </p>
-        )}
       </div>
     );
   }
