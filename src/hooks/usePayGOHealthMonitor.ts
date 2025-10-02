@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useToast } from '@/hooks/use-toast';
-import { PayGOConfig } from './usePayGOIntegration';
+import { toast } from 'sonner';
+import { RealPayGOConfig } from './useRealPayGOIntegration';
 
 interface PayGOHealthMetrics {
   latency: number;
@@ -11,7 +11,7 @@ interface PayGOHealthMetrics {
   status: 'healthy' | 'degraded' | 'unhealthy';
 }
 
-export const usePayGOHealthMonitor = (config: PayGOConfig, enabled: boolean = true) => {
+export const usePayGOHealthMonitor = (config: RealPayGOConfig, enabled: boolean = true) => {
   const [metrics, setMetrics] = useState<PayGOHealthMetrics>({
     latency: 0,
     uptime: 0,
@@ -21,7 +21,6 @@ export const usePayGOHealthMonitor = (config: PayGOConfig, enabled: boolean = tr
     status: 'unhealthy',
   });
   const [isMonitoring, setIsMonitoring] = useState(false);
-  const { toast } = useToast();
 
   const performHealthCheck = useCallback(async (): Promise<{
     success: boolean;
@@ -78,16 +77,9 @@ export const usePayGOHealthMonitor = (config: PayGOConfig, enabled: boolean = tr
       // Alert on status changes
       if (prev.status !== newStatus) {
         if (newStatus === 'unhealthy') {
-          toast({
-            title: "PayGO Sistema Instável",
-            description: "O sistema PayGO está com problemas de conectividade",
-            variant: "destructive",
-          });
+          toast.error("PayGO Sistema Instável: O sistema está com problemas de conectividade");
         } else if (newStatus === 'healthy' && prev.status === 'unhealthy') {
-          toast({
-            title: "PayGO Recuperado",
-            description: "O sistema PayGO voltou ao normal",
-          });
+          toast.success("PayGO Recuperado: O sistema voltou ao normal");
         }
       }
 
@@ -100,7 +92,7 @@ export const usePayGOHealthMonitor = (config: PayGOConfig, enabled: boolean = tr
         status: newStatus,
       };
     });
-  }, [toast]);
+  }, []);
 
   const runHealthCheck = useCallback(async () => {
     if (!enabled) return;
@@ -132,10 +124,7 @@ export const usePayGOHealthMonitor = (config: PayGOConfig, enabled: boolean = tr
       });
 
       if (response.ok) {
-        toast({
-          title: "PayGO Reiniciado",
-          description: "Sistema PayGO foi reiniciado com sucesso",
-        });
+        toast.success("PayGO Reiniciado: Sistema foi reiniciado com sucesso");
         
         // Wait a bit before checking status again
         setTimeout(runHealthCheck, 5000);
@@ -147,13 +136,14 @@ export const usePayGOHealthMonitor = (config: PayGOConfig, enabled: boolean = tr
       console.error('PayGO recovery failed:', error);
       return false;
     }
-  }, [config, toast, runHealthCheck]);
+  }, [config, runHealthCheck]);
 
   useEffect(() => {
     if (metrics.consecutiveFailures >= 5) {
       attemptRecovery();
     }
-  }, [metrics.consecutiveFailures, attemptRecovery]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metrics.consecutiveFailures]);
 
   return {
     metrics,

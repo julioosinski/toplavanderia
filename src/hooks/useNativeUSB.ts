@@ -144,7 +144,8 @@ export const useNativeUSB = () => {
       scanDevices();
       detectPinpads();
     }
-  }, [isNative, scanDevices, detectPinpads]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNative]);
 
   return {
     isNative,

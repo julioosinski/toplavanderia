@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import PayGO from '@/plugins/paygo';
 import { toast } from 'sonner';
+import { handlePayGOError, formatCurrency, validatePayGOConfig } from '@/utils/paygoHelpers';
 
 export interface RealPayGOConfig {
   host: string;
@@ -55,8 +56,15 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
   const [systemStatus, setSystemStatus] = useState<PayGOSystemStatus | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
 
+  // Validate config on mount
+  const isConfigValid = useMemo(() => {
+    return validatePayGOConfig(config);
+  }, [config]);
+
   // Initialize PayGO
   const initialize = useCallback(async (): Promise<boolean> => {
+    if (!isConfigValid) return false;
+
     try {
       setLastError(null);
       
@@ -68,23 +76,21 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
 
       if (result.success) {
         setIsInitialized(true);
-        toast.success('PayGO initialized successfully');
-        
-        // Get initial system status
+        toast.success('PayGO inicializado com sucesso');
         await getSystemStatus();
         return true;
       } else {
-        setLastError(result.message);
-        toast.error(`PayGO initialization failed: ${result.message}`);
+        const errorMsg = result.message;
+        setLastError(errorMsg);
+        toast.error(`Falha ao inicializar PayGO: ${errorMsg}`);
         return false;
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      setLastError(errorMessage);
-      toast.error(`PayGO initialization error: ${errorMessage}`);
+      const errorMsg = handlePayGOError(error, 'Erro ao inicializar PayGO');
+      setLastError(errorMsg);
       return false;
     }
-  }, [config]);
+  }, [config, isConfigValid]);
 
   // Check connection status
   const checkStatus = useCallback(async (): Promise<boolean> => {
@@ -93,8 +99,8 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
       setIsConnected(result.connected);
       return result.connected;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      setLastError(errorMessage);
+      const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+      setLastError(errorMsg);
       setIsConnected(false);
       return false;
     }
@@ -112,8 +118,8 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
       setIsConnected(enhancedStatus.online);
       return enhancedStatus;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      setLastError(errorMessage);
+      const errorMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+      setLastError(errorMsg);
       return null;
     }
   }, []);
@@ -125,16 +131,14 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
       setIsConnected(result.success);
       
       if (result.success) {
-        toast.success('PayGO connection test successful');
+        toast.success('Teste de conexão PayGO bem-sucedido');
       } else {
-        toast.error(`Connection test failed: ${result.message}`);
+        toast.error(`Falha no teste: ${result.message}`);
       }
       
       return result.success;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      setLastError(errorMessage);
-      toast.error(`Connection test error: ${errorMessage}`);
+      handlePayGOError(error, 'Erro no teste de conexão');
       return false;
     }
   }, []);
@@ -160,9 +164,9 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
       });
 
       if (result.success && result.status === 'approved') {
-        toast.success(`Payment approved: R$ ${result.amount.toFixed(2)}`);
+        toast.success(`Pagamento aprovado: ${formatCurrency(result.amount)}`);
       } else {
-        toast.error(`Payment failed: ${result.message}`);
+        toast.error(`Pagamento falhou: ${result.message}`);
       }
 
       return {
@@ -171,16 +175,14 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
       };
 
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      setLastError(errorMessage);
-      toast.error(`Payment error: ${errorMessage}`);
+      const errorMsg = handlePayGOError(error, 'Erro no pagamento');
       
       return {
         success: false,
         paymentType: transaction.paymentType,
         amount: transaction.amount,
         orderId: transaction.orderId,
-        message: errorMessage,
+        message: errorMsg,
         status: 'error'
       };
     } finally {
@@ -194,16 +196,14 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
       const result = await PayGO.cancelTransaction();
       
       if (result.success) {
-        toast.success('Transaction cancelled');
+        toast.success('Transação cancelada');
       } else {
-        toast.error(`Failed to cancel: ${result.message}`);
+        toast.error(`Falha ao cancelar: ${result.message}`);
       }
       
       return result.success;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      setLastError(errorMessage);
-      toast.error(`Cancel error: ${errorMessage}`);
+      handlePayGOError(error, 'Erro ao cancelar');
       return false;
     }
   }, []);
@@ -214,30 +214,29 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
       const result = await PayGO.detectPinpad();
       
       if (result.detected) {
-        toast.success(`PPC930 detected: ${result.deviceName}`);
+        toast.success(`PPC930 detectado: ${result.deviceName}`);
       } else {
-        toast.warning('PPC930 device not detected');
+        toast.warning('Dispositivo PPC930 não detectado');
       }
       
       return result;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      setLastError(errorMessage);
-      toast.error(`Detection error: ${errorMessage}`);
+      const errorMsg = handlePayGOError(error, 'Erro ao detectar pinpad');
       return {
         detected: false,
         deviceName: 'Error',
-        error: errorMessage
+        error: errorMsg
       };
     }
   }, []);
 
   // Auto-initialize on mount
   useEffect(() => {
-    if (config.host && config.port && config.automationKey) {
+    if (isConfigValid) {
       initialize();
     }
-  }, [initialize, config.host, config.port, config.automationKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConfigValid]);
 
   // Periodic status check
   useEffect(() => {
