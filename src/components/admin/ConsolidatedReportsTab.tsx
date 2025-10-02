@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { RefreshCw, TrendingUp, DollarSign, Activity, Building2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -20,18 +22,23 @@ export const ConsolidatedReportsTab = () => {
   const { toast } = useToast();
   const [stats, setStats] = useState<LaundryStats[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedLaundryId, setSelectedLaundryId] = useState<string>("all");
 
   useEffect(() => {
     if (isSuperAdmin) {
       loadConsolidatedStats();
     }
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin, selectedLaundryId]);
 
   const loadConsolidatedStats = async () => {
     try {
       setLoading(true);
       
-      const statsPromises = laundries.map(async (laundry) => {
+      const laundriesFilter = selectedLaundryId === "all" 
+        ? laundries 
+        : laundries.filter(l => l.id === selectedLaundryId);
+      
+      const statsPromises = laundriesFilter.map(async (laundry) => {
         // Buscar máquinas
         const { data: machines, error: machinesError } = await supabase
           .from('machines')
@@ -97,6 +104,33 @@ export const ConsolidatedReportsTab = () => {
 
   return (
     <div className="space-y-6">
+      {/* Filtro de Lavanderia */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center gap-4">
+            <Building2 className="h-5 w-5 text-muted-foreground" />
+            <div className="flex-1">
+              <Label htmlFor="laundry-filter" className="text-sm font-medium">
+                Filtrar por Lavanderia
+              </Label>
+              <Select value={selectedLaundryId} onValueChange={setSelectedLaundryId}>
+                <SelectTrigger id="laundry-filter" className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as Lavanderias</SelectItem>
+                  {laundries.map(laundry => (
+                    <SelectItem key={laundry.id} value={laundry.id}>
+                      {laundry.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Estatísticas Consolidadas */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>

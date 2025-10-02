@@ -63,5 +63,11 @@ verify_jwt = true
 [functions.esp32-network-test]
 verify_jwt = true
 
+[functions.esp32-health-check]
+verify_jwt = true
+
+[functions.transaction-webhook]
+verify_jwt = false
+
 [edge_runtime]
 policy = "per_worker"

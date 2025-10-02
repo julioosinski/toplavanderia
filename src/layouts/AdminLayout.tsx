@@ -42,6 +42,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { LaundrySelector } from "@/components/admin/LaundrySelector";
 import { NotificationsWidget } from "@/components/admin/NotificationsWidget";
+import { PasswordChangeDialog } from "@/components/admin/PasswordChangeDialog";
 import { useTheme } from "next-themes";
 
 const menuItems = [
@@ -242,6 +243,9 @@ export default function AdminLayout() {
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <PasswordChangeDialog />
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => navigate("/admin/settings")}>
                       <Settings className="mr-2 h-4 w-4" />
                       Configurações

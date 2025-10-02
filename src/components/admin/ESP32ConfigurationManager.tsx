@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Plus, Edit2, Trash2, Wifi, MapPin, Cpu } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { ESP32ConnectionTest } from '@/components/settings/ESP32ConnectionTest';
 
 interface ESP32Config {
   id: string;
@@ -254,6 +255,16 @@ const ESP32ConfigurationManager: React.FC<ESP32ConfigurationManagerProps> = ({
                     </div>
                   )}
                 </div>
+                
+                {/* Teste de Conexão */}
+                <div className="pt-2">
+                  <ESP32ConnectionTest 
+                    host={config.host} 
+                    port={config.port} 
+                    esp32Id={config.id} 
+                  />
+                </div>
+                
                 {config.machines.length > 0 && (
                   <div>
                     <div className="flex items-center text-sm text-muted-foreground mb-1">
