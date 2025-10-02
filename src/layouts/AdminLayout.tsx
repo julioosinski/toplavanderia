@@ -102,6 +102,7 @@ export default function AdminLayout() {
   const { toast } = useToast();
   const { currentLaundry, loading, error, retry, userRole, isSuperAdmin } = useLaundry();
   const [user, setUser] = useState<any>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const { theme, setTheme } = useTheme();
 
   const getRoleLabel = () => {
@@ -129,6 +130,7 @@ export default function AdminLayout() {
       reports: 'Relatórios',
       security: 'Segurança',
       settings: 'Configurações',
+      profile: 'Perfil',
     };
     return paths.map(path => labels[path] || path);
   };
@@ -137,13 +139,23 @@ export default function AdminLayout() {
     const checkAuth = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        navigate("/auth");
+        navigate("/auth", { replace: true });
       } else {
         setUser(user);
+        setAuthChecked(true);
       }
     };
     checkAuth();
   }, [navigate]);
+
+  // Não renderizar nada até verificar autenticação
+  if (!authChecked || !user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();

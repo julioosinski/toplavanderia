@@ -108,13 +108,10 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       console.log('[LaundryContext] Usuário obtido:', user?.id);
       
-      if (authError) {
-        throw new Error(`Erro de autenticação: ${authError.message}`);
-      }
-      
-      if (!user) {
+      if (authError || !user) {
         console.log('[LaundryContext] Nenhum usuário autenticado');
         setLoading(false);
+        setError(null); // Não é erro, apenas não autenticado
         return;
       }
 
