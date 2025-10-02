@@ -136,6 +136,15 @@ export default function AdminLayout() {
     return paths.map(path => labels[path] || path);
   };
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    toast({
+      title: "Logout realizado",
+      description: "Você saiu do sistema com sucesso.",
+    });
+    navigate("/auth");
+  };
+
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -155,6 +164,16 @@ export default function AdminLayout() {
     checkAuth();
   }, [navigate]);
 
+  // Auto-redirecionar usuários sem permissão
+  useEffect(() => {
+    if (error && error.includes('permissão')) {
+      const timeout = setTimeout(() => {
+        handleSignOut();
+      }, 3000);
+      return () => clearTimeout(timeout);
+    }
+  }, [error]);
+
   // Aguardar verificação de autenticação
   if (!authChecked) {
     return (
@@ -168,15 +187,6 @@ export default function AdminLayout() {
   if (!user) {
     return null;
   }
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    toast({
-      title: "Logout realizado",
-      description: "Você saiu do sistema com sucesso.",
-    });
-    navigate("/auth");
-  };
 
   const getUserInitials = () => {
     if (!user?.email) return "U";
@@ -202,6 +212,11 @@ export default function AdminLayout() {
           <Button onClick={retry}>Tentar Novamente</Button>
           <Button variant="outline" onClick={handleSignOut}>Sair</Button>
         </div>
+        {error.includes('permissão') && (
+          <p className="text-sm text-muted-foreground mt-2">
+            Redirecionando para login em 3 segundos...
+          </p>
+        )}
       </div>
     );
   }

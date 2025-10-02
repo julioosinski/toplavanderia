@@ -143,7 +143,10 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       console.log('[LaundryContext] Role encontrada:', roleData);
       
       if (!roleData) {
-        throw new Error('Você não tem permissão para acessar o sistema. Entre em contato com o administrador.');
+        console.log('[LaundryContext] Usuário sem role - redirecionando para auth');
+        setLoading(false);
+        setError('Você não tem permissão para acessar o painel administrativo. Entre em contato com o administrador.');
+        return;
       }
 
       setUserRole(roleData.role);
