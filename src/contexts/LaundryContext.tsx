@@ -33,14 +33,15 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       .from('user_roles')
       .select('role, laundry_id')
       .eq('user_id', userId)
-      .single();
+      .order('role', { ascending: true }) // super_admin vem antes
+      .limit(1);
 
     if (error) {
       console.error('Error fetching user role:', error);
       return null;
     }
 
-    return data;
+    return data && data.length > 0 ? data[0] : null;
   };
 
   const fetchLaundries = async () => {
