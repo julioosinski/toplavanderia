@@ -137,24 +137,35 @@ export default function AdminLayout() {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (error || !user) {
+          navigate("/auth", { replace: true });
+        } else {
+          setUser(user);
+        }
+      } catch (err) {
+        console.error('Auth check error:', err);
         navigate("/auth", { replace: true });
-      } else {
-        setUser(user);
+      } finally {
         setAuthChecked(true);
       }
     };
     checkAuth();
   }, [navigate]);
 
-  // Não renderizar nada até verificar autenticação
-  if (!authChecked || !user) {
+  // Aguardar verificação de autenticação
+  if (!authChecked) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
       </div>
     );
+  }
+
+  // Redirecionar se não autenticado
+  if (!user) {
+    return null;
   }
 
   const handleSignOut = async () => {

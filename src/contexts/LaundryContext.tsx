@@ -180,17 +180,6 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     initializeLaundryContext();
-
-    // Timeout de segurança
-    const timeout = setTimeout(() => {
-      if (loading) {
-        console.error('[LaundryContext] Timeout - inicialização demorou mais de 10 segundos');
-        setError('O carregamento está demorando muito. Verifique sua conexão.');
-        setLoading(false);
-      }
-    }, 10000);
-
-    return () => clearTimeout(timeout);
   }, []);
 
   const retry = () => {
