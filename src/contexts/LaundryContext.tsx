@@ -205,6 +205,24 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     initializeLaundryContext();
+
+    // Escutar mudanças de autenticação
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[LaundryContext] Auth state changed:', event);
+      if (event === 'SIGNED_IN' && session) {
+        initializeLaundryContext();
+      } else if (event === 'SIGNED_OUT') {
+        setCurrentLaundry(null);
+        setUserRole(null);
+        setLaundries([]);
+        setLoading(false);
+        setError(null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const retry = () => {
