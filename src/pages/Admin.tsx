@@ -9,6 +9,10 @@ import { useLaundry } from "@/contexts/LaundryContext";
 import { LaundrySelector } from "@/components/admin/LaundrySelector";
 import { LaundryManagement } from "@/components/admin/LaundryManagement";
 import { UserManagement } from "@/components/admin/UserManagement";
+import { AuditLogsTab } from "@/components/admin/AuditLogsTab";
+import { SecurityEventsTab } from "@/components/admin/SecurityEventsTab";
+import { ConsolidatedReportsTab } from "@/components/admin/ConsolidatedReportsTab";
+import { NotificationsWidget } from "@/components/admin/NotificationsWidget";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { 
   Settings, 
@@ -399,6 +403,7 @@ const Admin = () => {
             </div>
           </div>
           <div className="flex items-center space-x-4">
+            <NotificationsWidget />
             <LaundrySelector />
             <div className="text-right">
               <div className="text-sm text-muted-foreground">
@@ -480,10 +485,13 @@ const Admin = () => {
       {/* Main Content */}
       <div className="container mx-auto">
         <Tabs defaultValue="machines" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-12">
+          <TabsList className="grid w-full grid-cols-12 lg:grid-cols-15">
             <TabsTrigger value="machines">Máquinas</TabsTrigger>
             <TabsTrigger value="analytics">Relatórios</TabsTrigger>
+            {isSuperAdmin && <TabsTrigger value="consolidated">Consolidado</TabsTrigger>}
             <TabsTrigger value="maintenance">Manutenção</TabsTrigger>
+            <TabsTrigger value="audit">Auditoria</TabsTrigger>
+            <TabsTrigger value="security">Segurança</TabsTrigger>
             <TabsTrigger value="esp32">ESP32</TabsTrigger>
             <TabsTrigger value="failover">Failover</TabsTrigger>
             <TabsTrigger value="paygo">PayGO</TabsTrigger>
@@ -621,9 +629,26 @@ const Admin = () => {
             <ReportsTab />
           </TabsContent>
 
+          {/* Consolidated Reports Tab - Only for Super Admin */}
+          {isSuperAdmin && (
+            <TabsContent value="consolidated">
+              <ConsolidatedReportsTab />
+            </TabsContent>
+          )}
+
           {/* Maintenance Tab */}
           <TabsContent value="maintenance">
             <MaintenanceTab />
+          </TabsContent>
+
+          {/* Audit Logs Tab */}
+          <TabsContent value="audit">
+            <AuditLogsTab />
+          </TabsContent>
+
+          {/* Security Events Tab */}
+          <TabsContent value="security">
+            <SecurityEventsTab />
           </TabsContent>
 
           {/* ESP32 Tab */}
