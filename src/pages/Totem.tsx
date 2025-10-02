@@ -514,7 +514,7 @@ const Totem = () => {
             <Progress value={50} className="w-full" />
             <div className="flex space-x-2">
               <Button 
-                onClick={paymentSystem === 'TEF' ? cancelTEFTransaction : cancelPayGOTransaction} 
+                onClick={() => paymentSystem === 'TEF' ? cancelTEFTransaction() : cancelPayGOTransaction()} 
                 variant="outline" 
                 className="flex-1"
               >

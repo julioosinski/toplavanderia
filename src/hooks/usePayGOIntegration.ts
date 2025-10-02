@@ -251,11 +251,11 @@ export const usePayGOIntegration = (config: PayGOConfig) => {
     }
   }, [config, toast]);
 
-  const cancelTransaction = useCallback(async (): Promise<boolean> => {
+  const cancelTransaction = useCallback(async (transactionId?: string): Promise<boolean> => {
     try {
       // Use native plugin on mobile, fallback to HTTP on web
       if (Capacitor.isNativePlatform()) {
-        const result = await PayGO.cancelTransaction();
+        const result = await PayGO.cancelTransaction(transactionId || '');
         setIsProcessing(false);
         return result.success;
       } else {

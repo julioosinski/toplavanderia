@@ -278,7 +278,7 @@ export const RealPayGODiagnostics: React.FC<RealPayGODiagnosticsProps> = ({
             </Button>
             
             <Button 
-              onClick={cancelTransaction}
+              onClick={() => cancelTransaction()}
               disabled={!isProcessing}
               variant="destructive"
             >

@@ -2,9 +2,9 @@ import { registerPlugin } from '@capacitor/core';
 
 export interface PayGOPlugin {
   /**
-   * Inicializar PayGo
+   * Inicializar PayGo com configurações
    */
-  initialize(): Promise<PayGOResult>;
+  initialize(config?: { host: string; port: number; automationKey: string }): Promise<PayGOResult>;
   
   /**
    * Verificar status do PayGo
@@ -22,9 +22,24 @@ export interface PayGOPlugin {
   cancelPayment(): Promise<PayGOResult>;
   
   /**
+   * Cancelar transação específica
+   */
+  cancelTransaction(transactionId: string): Promise<PayGOResult>;
+  
+  /**
    * Testar PayGo
    */
   testPayGo(): Promise<PayGOResult>;
+  
+  /**
+   * Obter status do sistema
+   */
+  getSystemStatus(): Promise<PayGOSystemStatus>;
+  
+  /**
+   * Testar conexão
+   */
+  testConnection(): Promise<PayGOResult>;
   
   /**
    * Detectar pinpad PPC930
@@ -44,12 +59,35 @@ export interface PayGOResult {
   transactionId?: string;
   orderId?: string;
   error?: string;
+  status?: 'approved' | 'denied' | 'pending' | 'error';
+  amount?: number;
+  paymentType?: string;
 }
 
 export interface PayGOStatus {
   initialized: boolean;
   processing: boolean;
+  connected: boolean;
+  online?: boolean;
   status: 'ready' | 'not_initialized' | 'processing' | 'error';
+}
+
+export interface PayGOSystemStatus {
+  initialized: boolean;
+  online: boolean;
+  host?: string;
+  port?: number;
+  clientConnected: boolean;
+  libraryVersion?: string;
+  usbDeviceDetected: boolean;
+  deviceInfo?: {
+    vendorId: number;
+    productId: number;
+    deviceName: string;
+    serialNumber: string;
+  };
+  timestamp: number;
+  error?: string;
 }
 
 export interface PaymentOptions {

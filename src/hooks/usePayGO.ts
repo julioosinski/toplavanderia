@@ -25,6 +25,7 @@ export const usePayGO = (): UsePayGOReturn => {
   const [status, setStatus] = useState<PayGOStatus>({
     initialized: false,
     processing: false,
+    connected: false,
     status: 'not_initialized'
   });
   

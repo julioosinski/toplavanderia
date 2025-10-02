@@ -164,14 +164,22 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
       });
 
       if (result.success && result.status === 'approved') {
-        toast.success(`Pagamento aprovado: ${formatCurrency(result.amount)}`);
+        toast.success(`Pagamento aprovado: ${formatCurrency(result.amount || transaction.amount)}`);
       } else {
         toast.error(`Pagamento falhou: ${result.message}`);
       }
 
       return {
-        ...result,
-        status: result.status as 'approved' | 'denied' | 'pending' | 'error'
+        success: result.success,
+        paymentType: result.paymentType || transaction.paymentType,
+        amount: result.amount || transaction.amount,
+        orderId: result.orderId || transaction.orderId,
+        transactionId: result.transactionId,
+        timestamp: Date.now(),
+        message: result.message,
+        status: (result.status || 'error') as 'approved' | 'denied' | 'pending' | 'error',
+        nsu: result.authorizationCode,
+        authorizationCode: result.authorizationCode
       };
 
     } catch (error) {
@@ -191,9 +199,9 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
   }, [isInitialized, isConnected]);
 
   // Cancel transaction
-  const cancelTransaction = useCallback(async (): Promise<boolean> => {
+  const cancelTransaction = useCallback(async (transactionId?: string): Promise<boolean> => {
     try {
-      const result = await PayGO.cancelTransaction();
+      const result = await PayGO.cancelTransaction(transactionId || '');
       
       if (result.success) {
         toast.success('Transação cancelada');
