@@ -121,8 +121,11 @@ export const SettingsTab = () => {
 
       toast({
         title: "Configurações salvas",
-        description: "As configurações foram atualizadas com sucesso",
+        description: "As configurações foram atualizadas com sucesso. O Totem irá usar as novas configurações automaticamente.",
       });
+      
+      // Recarregar configurações
+      await loadSettings();
     } catch (error) {
       console.error('Error saving settings:', error);
       toast({

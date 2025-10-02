@@ -20,36 +20,40 @@ import { DEFAULT_PAYGO_CONFIG } from '@/lib/paygoUtils';
 import { SecureTEFConfig } from "@/components/admin/SecureTEFConfig";
 import { AdminPinDialog } from "@/components/admin/AdminPinDialog";
 import { supabase } from "@/integrations/supabase/client";
+import { useSystemSettings } from "@/hooks/useSystemSettings";
 
-// Configuração do TEF Elgin com melhorias
-const TEF_CONFIG = {
-  host: "127.0.0.1",
-  port: "4321",
-  timeout: 60000, // Timeout de 60 segundos
-  retryAttempts: 3, // Número de tentativas
-  retryDelay: 2000 // Delay entre tentativas (2s)
-};
 const Totem = () => {
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
   const [paymentStep, setPaymentStep] = useState<"select" | "payment" | "processing" | "success" | "error" | "pix_qr">("select");
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [tefConfig, setTefConfig] = useState(TEF_CONFIG);
-  const [paygoConfig, setPaygoConfig] = useState<RealPayGOConfig>({
-    host: 'localhost',
-    port: 8080,
-    automationKey: '',
-    timeout: 30000,
-    retryAttempts: 3
-  });
-  const [paymentSystem, setPaymentSystem] = useState<'TEF' | 'PAYGO' | 'PIX'>('PAYGO');
   const [showConfig, setShowConfig] = useState(false);
   const [transactionData, setTransactionData] = useState<any>(null);
   const [showAdminDialog, setShowAdminDialog] = useState(false);
   const [adminClickCount, setAdminClickCount] = useState(0);
   const [pixPaymentData, setPixPaymentData] = useState<any>(null);
-  const {
-    toast
-  } = useToast();
+  
+  // Carregar configurações do sistema
+  const { data: systemSettings, isLoading: settingsLoading } = useSystemSettings();
+  
+  // Configurações dinâmicas baseadas no sistema
+  const [tefConfig, setTefConfig] = useState({
+    host: systemSettings?.esp32_host || "127.0.0.1",
+    port: systemSettings?.tef_terminal_id || "4321",
+    timeout: 60000,
+    retryAttempts: 3,
+    retryDelay: 2000
+  });
+  
+  const [paygoConfig, setPaygoConfig] = useState<RealPayGOConfig>({
+    host: systemSettings?.paygo_host || 'localhost',
+    port: systemSettings?.paygo_port || 8080,
+    automationKey: systemSettings?.paygo_automation_key || '',
+    timeout: systemSettings?.paygo_timeout || 30000,
+    retryAttempts: systemSettings?.paygo_retry_attempts || 3
+  });
+  const [paymentSystem, setPaymentSystem] = useState<'TEF' | 'PAYGO' | 'PIX'>('PAYGO');
+  
+  const { toast } = useToast();
   const {
     isFullscreen,
     securityEnabled,
@@ -133,6 +137,28 @@ const Totem = () => {
       });
     }
   }, [isNative, deviceInfo, toast]);
+
+  // Atualizar configurações quando systemSettings mudar
+  useEffect(() => {
+    if (systemSettings) {
+      setTefConfig({
+        host: systemSettings.esp32_host || "127.0.0.1",
+        port: systemSettings.tef_terminal_id || "4321",
+        timeout: 60000,
+        retryAttempts: 3,
+        retryDelay: 2000
+      });
+      
+      setPaygoConfig({
+        host: systemSettings.paygo_host || 'localhost',
+        port: systemSettings.paygo_port || 8080,
+        automationKey: systemSettings.paygo_automation_key || '',
+        timeout: systemSettings.paygo_timeout || 30000,
+        retryAttempts: systemSettings.paygo_retry_attempts || 3
+      });
+    }
+  }, [systemSettings]);
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "available":
@@ -459,12 +485,14 @@ const Totem = () => {
     return <SecureTEFConfig config={tefConfig} onConfigChange={setTefConfig} onClose={() => setShowConfig(false)} />;
   }
 
-  // Mostrar loading enquanto carrega máquinas
-  if (loading) {
+  // Mostrar loading enquanto carrega máquinas ou configurações
+  if (loading || settingsLoading) {
     return <div className="min-h-screen bg-gradient-clean flex items-center justify-center">
         <div className="text-center space-y-4">
           <Loader2 className="mx-auto animate-spin text-primary" size={48} />
-          <h2 className="text-xl font-semibold">Carregando máquinas...</h2>
+          <h2 className="text-xl font-semibold">
+            {settingsLoading ? "Carregando configurações..." : "Carregando máquinas..."}
+          </h2>
           <p className="text-muted-foreground">Conectando com o sistema</p>
         </div>
       </div>;
