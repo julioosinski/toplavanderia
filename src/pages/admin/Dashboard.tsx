@@ -21,6 +21,7 @@ interface Stats {
 
 export default function Dashboard() {
   const { currentLaundry, isSuperAdmin, laundries } = useLaundry();
+  const { machines, loading: machinesLoading } = useMachines(currentLaundry?.id);
   const [stats, setStats] = useState<Stats>({
     totalRevenue: 0,
     activeMachines: 0,
@@ -34,8 +35,6 @@ export default function Dashboard() {
   const [machineData, setMachineData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [machinesByLaundry, setMachinesByLaundry] = useState<Record<string, { laundryName: string; machines: any[] }>>({});
-  
-  const { machines, loading: machinesLoading } = useMachines();
   
   const isViewingAll = localStorage.getItem('selectedLaundryId') === 'all' && isSuperAdmin;
 

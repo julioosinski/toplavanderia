@@ -39,15 +39,31 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       .from('user_roles')
       .select('role, laundry_id')
       .eq('user_id', userId)
-      .order('role', { ascending: false }) // super_admin vem primeiro (DESC)
-      .limit(1);
+      .order('role', { ascending: false });
 
     if (error) {
       console.error('Error fetching user role:', error);
       return null;
     }
 
-    return data && data.length > 0 ? data[0] : null;
+    if (!data || data.length === 0) return null;
+
+    // Se usuário tem apenas super_admin (sem laundry_id), é super_admin
+    const superAdminRole = data.find(r => r.role === 'super_admin' && !r.laundry_id);
+    const hasOnlySuperAdmin = data.length === 1 && superAdminRole;
+    
+    if (hasOnlySuperAdmin) {
+      return superAdminRole;
+    }
+
+    // Se tem outras roles além de super_admin, priorizar role com laundry_id
+    const roleWithLaundry = data.find(r => r.laundry_id !== null);
+    if (roleWithLaundry) {
+      return roleWithLaundry;
+    }
+
+    // Fallback para primeira role
+    return data[0];
   };
 
   const fetchLaundries = async () => {

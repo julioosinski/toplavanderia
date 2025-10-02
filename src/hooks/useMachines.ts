@@ -20,7 +20,7 @@ export interface Machine {
   ip_address?: string;
 }
 
-export const useMachines = () => {
+export const useMachines = (laundryId?: string | null) => {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,12 +34,18 @@ export const useMachines = () => {
       setLoading(true);
       setError(null);
 
-      console.log('🔍 Buscando máquinas do Supabase...');
+      console.log('🔍 Buscando máquinas do Supabase...', { laundryId });
       
-      const { data: machinesData, error: machinesError } = await supabase
+      let query = supabase
         .from('machines')
-        .select('*')
-        .order('name');
+        .select('*');
+      
+      // Filtrar por lavanderia se fornecido
+      if (laundryId) {
+        query = query.eq('laundry_id', laundryId);
+      }
+      
+      const { data: machinesData, error: machinesError } = await query.order('name');
 
       if (machinesError) {
         console.error('❌ Erro ao buscar máquinas:', machinesError);
@@ -209,13 +215,14 @@ export const useMachines = () => {
 
     // Configurar realtime para máquinas
     const machinesChannel = supabase
-      .channel('machines-changes')
+      .channel(`machines-changes-${laundryId || 'all'}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'machines'
+          table: 'machines',
+          filter: laundryId ? `laundry_id=eq.${laundryId}` : undefined
         },
         () => {
           fetchMachines();
@@ -243,7 +250,7 @@ export const useMachines = () => {
       supabase.removeChannel(machinesChannel);
       supabase.removeChannel(esp32Channel);
     };
-  }, []);
+  }, [laundryId]);
 
   return {
     machines,
