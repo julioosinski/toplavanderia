@@ -1,19 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Positivo L4 USB Pinpad -->
-    <usb-device vendor-id="1155" product-id="22336" />
+    <!-- Filter para pinpads conhecidos -->
     
-    <!-- PPC930 Pinpad (PayGO) -->
-    <usb-device vendor-id="8137" product-id="5169" />
-    <usb-device vendor-id="1027" product-id="24577" />
+    <!-- Positivo PPC930 -->
+    <usb-device
+        vendor-id="11257"
+        product-id="2352" />
     
-    <!-- Common TEF/POS USB devices -->
-    <usb-device vendor-id="1027" product-id="24577" />
-    <usb-device vendor-id="1105" product-id="32768" />
-    
-    <!-- Generic CDC/ACM devices (common for pinpads) -->
-    <usb-device class="2" subclass="2" protocol="1" />
-    
-    <!-- Serial devices -->
-    <usb-device class="255" subclass="0" protocol="0" />
+    <!-- Adicione outros pinpads aqui conforme necessário -->
+    <!-- Exemplo: -->
+    <!-- <usb-device vendor-id="XXXX" product-id="YYYY" /> -->
 </resources>

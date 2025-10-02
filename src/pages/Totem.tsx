@@ -33,7 +33,7 @@ const Totem = () => {
   const [pixPaymentData, setPixPaymentData] = useState<any>(null);
   
   // Carregar configurações do sistema
-  const { data: systemSettings, isLoading: settingsLoading } = useSystemSettings();
+  const { settings: systemSettings, isLoading: settingsLoading } = useSystemSettings();
   
   // Configurações dinâmicas baseadas no sistema
   const [tefConfig, setTefConfig] = useState({
