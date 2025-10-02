@@ -5,6 +5,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useLaundry } from "@/contexts/LaundryContext";
+import { LaundrySelector } from "@/components/admin/LaundrySelector";
+import { LaundryManagement } from "@/components/admin/LaundryManagement";
+import { UserManagement } from "@/components/admin/UserManagement";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { 
   Settings, 
@@ -64,6 +68,7 @@ interface Transaction {
 }
 
 const Admin = () => {
+  const { currentLaundry, isSuperAdmin, loading: laundryLoading } = useLaundry();
   const [machines, setMachines] = useState<Machine[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,6 +89,12 @@ const Admin = () => {
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (!laundryLoading && currentLaundry) {
+      loadData();
+    }
+  }, [currentLaundry, laundryLoading]);
+
   const checkAuth = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -94,21 +105,25 @@ const Admin = () => {
   };
 
   const loadData = async () => {
+    if (!currentLaundry) return;
+
     try {
       setLoading(true);
       
-      // Load machines
+      // Load machines filtradas por lavanderia
       const { data: machinesData, error: machinesError } = await supabase
         .from('machines')
         .select('*')
+        .eq('laundry_id', currentLaundry.id)
         .order('name');
       
       if (machinesError) throw machinesError;
       
-      // Load recent transactions
+      // Load recent transactions filtradas por lavanderia
       const { data: transactionsData, error: transactionsError } = await supabase
         .from('transactions')
         .select('*')
+        .eq('laundry_id', currentLaundry.id)
         .order('created_at', { ascending: false })
         .limit(50);
       
@@ -132,12 +147,15 @@ const Admin = () => {
   };
 
   const loadPaygoConfig = async () => {
+    if (!currentLaundry) return;
+
     try {
       const { data, error } = await supabase
         .from('system_settings')
         .select('paygo_host, paygo_port, paygo_automation_key, paygo_cnpj_cpf, paygo_timeout, paygo_retry_attempts, paygo_retry_delay, paygo_enabled')
+        .eq('laundry_id', currentLaundry.id)
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (error && error.code !== 'PGRST116') {
         throw error;
@@ -160,15 +178,19 @@ const Admin = () => {
   };
 
   const savePaygoConfig = async (newConfig: typeof paygoConfig) => {
+    if (!currentLaundry) return;
+
     try {
-      // Check if a row exists
+      // Check if a row exists for this laundry
       const { data: existing } = await supabase
         .from('system_settings')
         .select('id')
+        .eq('laundry_id', currentLaundry.id)
         .limit(1)
-        .single();
+        .maybeSingle();
 
       const paygoData = {
+        laundry_id: currentLaundry.id,
         paygo_host: newConfig.host,
         paygo_port: newConfig.port,
         paygo_automation_key: newConfig.automationKey,
@@ -325,13 +347,34 @@ const Admin = () => {
     }
   };
 
-  if (loading) {
+  if (loading || laundryLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4" />
           <p>Carregando dados...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (!currentLaundry) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Card className="w-96">
+          <CardHeader>
+            <CardTitle>Sem Acesso</CardTitle>
+            <CardDescription>
+              Você não possui acesso a nenhuma lavanderia. Entre em contato com o administrador.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={signOut} className="w-full">
+              <LogOut className="mr-2 h-4 w-4" />
+              Sair
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -352,10 +395,11 @@ const Admin = () => {
             </div>
             <div>
               <h1 className="text-3xl font-bold text-foreground">Painel Administrativo</h1>
-              <p className="text-muted-foreground">Top Lavanderia - Nova Arquitetura TEF</p>
+              <p className="text-muted-foreground">Top Lavanderia - Sistema Multi-Tenant</p>
             </div>
           </div>
           <div className="flex items-center space-x-4">
+            <LaundrySelector />
             <div className="text-right">
               <div className="text-sm text-muted-foreground">
                 {currentTime.toLocaleDateString('pt-BR')}
@@ -436,7 +480,7 @@ const Admin = () => {
       {/* Main Content */}
       <div className="container mx-auto">
         <Tabs defaultValue="machines" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-10">
+          <TabsList className="grid w-full grid-cols-12">
             <TabsTrigger value="machines">Máquinas</TabsTrigger>
             <TabsTrigger value="analytics">Relatórios</TabsTrigger>
             <TabsTrigger value="maintenance">Manutenção</TabsTrigger>
@@ -446,7 +490,9 @@ const Admin = () => {
             <TabsTrigger value="tef">TEF L4</TabsTrigger>
             <TabsTrigger value="usb">USB</TabsTrigger>
             <TabsTrigger value="debug">Debug</TabsTrigger>
-            <TabsTrigger value="settings">Configurações</TabsTrigger>
+            {isSuperAdmin && <TabsTrigger value="laundries">Lavanderias</TabsTrigger>}
+            {isSuperAdmin && <TabsTrigger value="users">Usuários</TabsTrigger>}
+            <TabsTrigger value="settings">Config</TabsTrigger>
           </TabsList>
 
           {/* Máquinas Tab */}
@@ -655,6 +701,20 @@ const Admin = () => {
               <SupabaseDebug />
             </div>
           </TabsContent>
+
+          {/* Laundries Tab - Only for Super Admin */}
+          {isSuperAdmin && (
+            <TabsContent value="laundries">
+              <LaundryManagement />
+            </TabsContent>
+          )}
+
+          {/* Users Tab - Only for Super Admin */}
+          {isSuperAdmin && (
+            <TabsContent value="users">
+              <UserManagement />
+            </TabsContent>
+          )}
 
           {/* Settings Tab */}
           <TabsContent value="settings">
