@@ -99,7 +99,7 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
-  const { currentLaundry, loading, userRole, isSuperAdmin } = useLaundry();
+  const { currentLaundry, loading, error, retry, userRole, isSuperAdmin } = useLaundry();
   const [user, setUser] = useState<any>(null);
   const { theme, setTheme } = useTheme();
 
@@ -160,8 +160,23 @@ export default function AdminLayout() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
+        <p className="text-muted-foreground">Carregando dados...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen gap-4 p-8 text-center">
+        <div className="text-destructive text-6xl">⚠️</div>
+        <h2 className="text-2xl font-bold">Erro ao Carregar</h2>
+        <p className="text-muted-foreground max-w-md">{error}</p>
+        <div className="flex gap-4 mt-4">
+          <Button onClick={retry}>Tentar Novamente</Button>
+          <Button variant="outline" onClick={handleSignOut}>Sair</Button>
+        </div>
       </div>
     );
   }

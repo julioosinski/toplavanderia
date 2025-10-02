@@ -11,8 +11,10 @@ interface LaundryContextType {
   isOperator: boolean;
   laundries: Laundry[];
   loading: boolean;
+  error: string | null;
   switchLaundry: (laundryId: string) => Promise<void>;
   refreshLaundries: () => Promise<void>;
+  retry: () => void;
 }
 
 const LaundryContext = createContext<LaundryContextType | undefined>(undefined);
@@ -22,6 +24,7 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
   const [userRole, setUserRole] = useState<AppRole | null>(null);
   const [laundries, setLaundries] = useState<Laundry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
   const isSuperAdmin = userRole === 'super_admin';
@@ -96,30 +99,46 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  useEffect(() => {
-    const initializeLaundryContext = async () => {
+  const initializeLaundryContext = async () => {
+    try {
+      console.log('[LaundryContext] Iniciando inicialização...');
       setLoading(true);
+      setError(null);
       
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      console.log('[LaundryContext] Usuário obtido:', user?.id);
+      
+      if (authError) {
+        throw new Error(`Erro de autenticação: ${authError.message}`);
+      }
       
       if (!user) {
+        console.log('[LaundryContext] Nenhum usuário autenticado');
         setLoading(false);
         return;
       }
 
       // Buscar role do usuário
+      console.log('[LaundryContext] Buscando role do usuário...');
       const roleData = await fetchUserRole(user.id);
+      console.log('[LaundryContext] Role encontrada:', roleData);
       
       if (!roleData) {
-        setLoading(false);
-        return;
+        throw new Error('Você não tem permissão para acessar o sistema. Entre em contato com o administrador.');
       }
 
       setUserRole(roleData.role);
 
       // Se super_admin, buscar todas as lavanderias
       if (roleData.role === 'super_admin') {
+        console.log('[LaundryContext] Super admin - buscando todas as lavanderias...');
         const laundriesList = await fetchLaundries();
+        console.log('[LaundryContext] Lavanderias encontradas:', laundriesList.length);
+        
+        if (laundriesList.length === 0) {
+          throw new Error('Nenhuma lavanderia cadastrada no sistema.');
+        }
+        
         setLaundries(laundriesList);
         
         // Tentar recuperar última lavanderia selecionada
@@ -133,18 +152,53 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       } 
       // Se admin/operator, buscar apenas sua lavanderia
       else if (roleData.laundry_id) {
+        console.log('[LaundryContext] Admin/Operator - buscando lavanderia específica...');
         const laundry = await fetchCurrentLaundry(roleData.laundry_id);
-        if (laundry) {
-          setCurrentLaundry(laundry);
-          setLaundries([laundry]);
+        console.log('[LaundryContext] Lavanderia encontrada:', laundry?.name);
+        
+        if (!laundry) {
+          throw new Error('Lavanderia não encontrada. Entre em contato com o administrador.');
         }
+        
+        setCurrentLaundry(laundry);
+        setLaundries([laundry]);
+      } else {
+        throw new Error('Seu perfil não está associado a nenhuma lavanderia. Entre em contato com o administrador.');
       }
 
+      console.log('[LaundryContext] Inicialização concluída com sucesso');
       setLoading(false);
-    };
+    } catch (err) {
+      console.error('[LaundryContext] Erro na inicialização:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido ao carregar dados';
+      setError(errorMessage);
+      setLoading(false);
+      toast({
+        title: "Erro ao carregar dados",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  };
 
+  useEffect(() => {
     initializeLaundryContext();
+
+    // Timeout de segurança
+    const timeout = setTimeout(() => {
+      if (loading) {
+        console.error('[LaundryContext] Timeout - inicialização demorou mais de 10 segundos');
+        setError('O carregamento está demorando muito. Verifique sua conexão.');
+        setLoading(false);
+      }
+    }, 10000);
+
+    return () => clearTimeout(timeout);
   }, []);
+
+  const retry = () => {
+    initializeLaundryContext();
+  };
 
   return (
     <LaundryContext.Provider
@@ -156,8 +210,10 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         isOperator,
         laundries,
         loading,
+        error,
         switchLaundry,
         refreshLaundries,
+        retry,
       }}
     >
       {children}
