@@ -50,6 +50,15 @@ public class TotemActivity extends Activity {
         
         // Inicializar componentes
         supabaseHelper = new SupabaseHelper(this);
+        
+        // Verificar se totem está configurado
+        if (!supabaseHelper.isConfigured()) {
+            Log.d(TAG, "Totem não configurado - exibindo tela de configuração");
+            showConfigurationScreen();
+            return;
+        }
+        
+        // Configurar listeners
         supabaseHelper.setOnMachinesLoadedListener(new SupabaseHelper.OnMachinesLoadedListener() {
             @Override
             public void onMachinesLoaded(List<SupabaseHelper.Machine> loadedMachines) {
@@ -60,6 +69,7 @@ public class TotemActivity extends Activity {
                 });
             }
         });
+        
         payGoManager = new RealPayGoManager(this);
         payGoManager.setCallback(new RealPayGoManager.PayGoCallback() {
             @Override
@@ -101,13 +111,14 @@ public class TotemActivity extends Activity {
         mainLayout.setBackgroundColor(Color.parseColor("#0D1117"));
         mainLayout.setPadding(20, 30, 20, 30);
         
-        // Título da lavanderia com tamanho responsivo
+        // Título da lavanderia dinâmico
         TextView titleText = new TextView(this);
-        titleText.setText("🧺 TOP LAVANDERIA");
-        titleText.setTextSize(28); // Reduzido de 42 para 28
+        String laundryName = supabaseHelper.getLaundryName();
+        titleText.setText("🧺 " + laundryName.toUpperCase());
+        titleText.setTextSize(28);
         titleText.setTextColor(Color.WHITE);
         titleText.setGravity(android.view.Gravity.CENTER);
-        titleText.setPadding(0, 0, 0, 40); // Reduzido de 80 para 40
+        titleText.setPadding(0, 0, 0, 40);
         titleText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         mainLayout.addView(titleText);
         
@@ -532,6 +543,115 @@ public class TotemActivity extends Activity {
     private String getCurrentTime() {
         SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault());
         return sdf.format(new Date());
+    }
+    
+    private void showConfigurationScreen() {
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setBackgroundColor(Color.parseColor("#0D1117"));
+        layout.setPadding(40, 40, 40, 40);
+        layout.setGravity(android.view.Gravity.CENTER);
+        
+        // Logo/Título
+        TextView titleText = new TextView(this);
+        titleText.setText("🧺 CONFIGURAÇÃO INICIAL\n\nTOP LAVANDERIA");
+        titleText.setTextSize(28);
+        titleText.setTextColor(Color.WHITE);
+        titleText.setGravity(android.view.Gravity.CENTER);
+        titleText.setPadding(0, 0, 0, 40);
+        titleText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        layout.addView(titleText);
+        
+        // Instruções
+        TextView instructionsText = new TextView(this);
+        instructionsText.setText("Digite o CNPJ da lavanderia\n(sem pontuação)");
+        instructionsText.setTextSize(16);
+        instructionsText.setTextColor(Color.parseColor("#7D8590"));
+        instructionsText.setGravity(android.view.Gravity.CENTER);
+        instructionsText.setPadding(0, 0, 0, 30);
+        layout.addView(instructionsText);
+        
+        // Campo de entrada do CNPJ
+        android.widget.EditText cnpjInput = new android.widget.EditText(this);
+        cnpjInput.setHint("00000000000000");
+        cnpjInput.setTextSize(18);
+        cnpjInput.setTextColor(Color.WHITE);
+        cnpjInput.setHintTextColor(Color.parseColor("#7D8590"));
+        cnpjInput.setBackgroundColor(Color.parseColor("#21262D"));
+        cnpjInput.setPadding(30, 30, 30, 30);
+        cnpjInput.setGravity(android.view.Gravity.CENTER);
+        cnpjInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        cnpjInput.setMaxLines(1);
+        
+        LinearLayout.LayoutParams inputParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        inputParams.setMargins(0, 0, 0, 40);
+        cnpjInput.setLayoutParams(inputParams);
+        layout.addView(cnpjInput);
+        
+        // Mensagem de status
+        TextView statusMessage = new TextView(this);
+        statusMessage.setText("");
+        statusMessage.setTextSize(14);
+        statusMessage.setGravity(android.view.Gravity.CENTER);
+        statusMessage.setPadding(20, 0, 20, 20);
+        statusMessage.setVisibility(View.GONE);
+        layout.addView(statusMessage);
+        
+        // Botão de confirmar
+        Button confirmButton = new Button(this);
+        confirmButton.setText("✅ CONFIGURAR");
+        confirmButton.setTextSize(18);
+        confirmButton.setPadding(40, 30, 40, 30);
+        confirmButton.setBackgroundColor(Color.parseColor("#238636"));
+        confirmButton.setTextColor(Color.WHITE);
+        confirmButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        
+        confirmButton.setOnClickListener(v -> {
+            String cnpj = cnpjInput.getText().toString().trim();
+            
+            if (cnpj.length() != 14) {
+                statusMessage.setText("❌ CNPJ deve ter 14 dígitos");
+                statusMessage.setTextColor(Color.parseColor("#F85149"));
+                statusMessage.setVisibility(View.VISIBLE);
+                return;
+            }
+            
+            // Desabilitar botão e mostrar loading
+            confirmButton.setEnabled(false);
+            confirmButton.setText("⏳ CONFIGURANDO...");
+            statusMessage.setText("🔄 Buscando lavanderia no sistema...");
+            statusMessage.setTextColor(Color.parseColor("#58A6FF"));
+            statusMessage.setVisibility(View.VISIBLE);
+            
+            // Configurar em background
+            new Thread(() -> {
+                boolean success = supabaseHelper.configureLaundryByCNPJ(cnpj);
+                
+                runOnUiThread(() -> {
+                    if (success) {
+                        statusMessage.setText("✅ Configurado: " + supabaseHelper.getLaundryName());
+                        statusMessage.setTextColor(Color.parseColor("#3FB950"));
+                        
+                        // Aguardar 2 segundos e reiniciar activity
+                        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                            recreate();
+                        }, 2000);
+                    } else {
+                        statusMessage.setText("❌ CNPJ não encontrado ou lavanderia inativa");
+                        statusMessage.setTextColor(Color.parseColor("#F85149"));
+                        confirmButton.setEnabled(true);
+                        confirmButton.setText("✅ CONFIGURAR");
+                    }
+                });
+            }).start();
+        });
+        
+        layout.addView(confirmButton);
+        
+        setContentView(layout);
     }
     
     private void updateConnectivityStatus() {

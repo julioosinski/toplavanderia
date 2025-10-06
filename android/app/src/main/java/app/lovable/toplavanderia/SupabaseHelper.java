@@ -25,11 +25,11 @@ public class SupabaseHelper {
     private static final String SUPABASE_URL = "https://rkdybjzwiwwqqzjfmerm.supabase.co";
     private static final String SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg";
     
-    // CONFIGURAÇÃO DO TOTEM - ID DA LAVANDERIA
-    // ALTERE ESTE VALOR PARA O ID DA SUA LAVANDERIA OU USE SharedPreferences
-    private static final String DEFAULT_LAUNDRY_ID = "567a7bb6-8d26-4d9c-bbe3-f8dcc28e7569";
+    // CONFIGURAÇÃO DO TOTEM - CNPJ DA LAVANDERIA
     private static final String PREFS_NAME = "totem_config";
+    private static final String PREF_LAUNDRY_CNPJ = "laundry_cnpj";
     private static final String PREF_LAUNDRY_ID = "laundry_id";
+    private static final String PREF_LAUNDRY_NAME = "laundry_name";
     
     private Context context;
     private boolean isOnline;
@@ -37,6 +37,8 @@ public class SupabaseHelper {
     private boolean realMachinesLoaded;
     private OnMachinesLoadedListener listener;
     private String currentLaundryId;
+    private String currentLaundryCNPJ;
+    private String currentLaundryName;
     
     public interface OnMachinesLoadedListener {
         void onMachinesLoaded(List<Machine> machines);
@@ -49,37 +51,85 @@ public class SupabaseHelper {
         this.realMachinesLoaded = false;
         this.listener = null;
         
-        // Carregar laundry_id das preferências ou usar padrão
+        // Carregar configurações das preferências
         android.content.SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        this.currentLaundryId = prefs.getString(PREF_LAUNDRY_ID, DEFAULT_LAUNDRY_ID);
+        this.currentLaundryCNPJ = prefs.getString(PREF_LAUNDRY_CNPJ, null);
+        this.currentLaundryId = prefs.getString(PREF_LAUNDRY_ID, null);
+        this.currentLaundryName = prefs.getString(PREF_LAUNDRY_NAME, "TOP LAVANDERIA");
         
         Log.d(TAG, "=== CONFIGURAÇÃO DO TOTEM ===");
+        Log.d(TAG, "CNPJ: " + currentLaundryCNPJ);
         Log.d(TAG, "Laundry ID: " + currentLaundryId);
+        Log.d(TAG, "Nome: " + currentLaundryName);
     }
     
     /**
-     * Define o ID da lavanderia para este totem
-     * Use este método para configurar o totem remotamente
+     * Configura a lavanderia usando o CNPJ
+     * Busca os dados da lavanderia no Supabase e salva localmente
      */
-    public void setLaundryId(String laundryId) {
-        this.currentLaundryId = laundryId;
+    public boolean configureLaundryByCNPJ(String cnpj) {
+        Log.d(TAG, "=== CONFIGURANDO LAVANDERIA POR CNPJ ===");
+        Log.d(TAG, "CNPJ: " + cnpj);
         
-        // Salvar nas preferências
-        android.content.SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        prefs.edit().putString(PREF_LAUNDRY_ID, laundryId).apply();
-        
-        Log.d(TAG, "Laundry ID atualizado para: " + laundryId);
-        
-        // Recarregar máquinas
-        realMachinesLoaded = false;
-        realMachines = null;
+        try {
+            Laundry laundry = fetchLaundryByCNPJ(cnpj);
+            
+            if (laundry != null) {
+                this.currentLaundryCNPJ = cnpj;
+                this.currentLaundryId = laundry.getId();
+                this.currentLaundryName = laundry.getName();
+                
+                // Salvar nas preferências
+                android.content.SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+                prefs.edit()
+                    .putString(PREF_LAUNDRY_CNPJ, cnpj)
+                    .putString(PREF_LAUNDRY_ID, laundry.getId())
+                    .putString(PREF_LAUNDRY_NAME, laundry.getName())
+                    .apply();
+                
+                // Recarregar máquinas
+                realMachinesLoaded = false;
+                realMachines = null;
+                
+                Log.d(TAG, "✅ Lavanderia configurada com sucesso: " + laundry.getName());
+                return true;
+            } else {
+                Log.e(TAG, "❌ Lavanderia não encontrada com CNPJ: " + cnpj);
+                return false;
+            }
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao configurar lavanderia", e);
+            return false;
+        }
     }
     
     /**
-     * Retorna o ID da lavanderia configurado
+     * Verifica se o totem está configurado
+     */
+    public boolean isConfigured() {
+        return currentLaundryId != null && currentLaundryCNPJ != null;
+    }
+    
+    /**
+     * Retorna o CNPJ da lavanderia configurada
+     */
+    public String getLaundryCNPJ() {
+        return currentLaundryCNPJ;
+    }
+    
+    /**
+     * Retorna o ID da lavanderia configurada
      */
     public String getLaundryId() {
         return currentLaundryId;
+    }
+    
+    /**
+     * Retorna o nome da lavanderia configurada
+     */
+    public String getLaundryName() {
+        return currentLaundryName != null ? currentLaundryName : "TOP LAVANDERIA";
     }
     
     public void setOnMachinesLoadedListener(OnMachinesLoadedListener listener) {
@@ -148,10 +198,72 @@ public class SupabaseHelper {
         return machines;
     }
     
+    /**
+     * Busca lavanderia pelo CNPJ no Supabase
+     */
+    private Laundry fetchLaundryByCNPJ(String cnpj) {
+        try {
+            String url = SUPABASE_URL + "/rest/v1/laundries?select=*&cnpj=eq." + cnpj + "&is_active=eq.true";
+            
+            Log.d(TAG, "Buscando lavanderia por CNPJ: " + cnpj);
+            Log.d(TAG, "URL: " + url);
+            
+            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setRequestMethod("GET");
+            connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
+            connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
+            connection.setRequestProperty("Content-Type", "application/json");
+            
+            int responseCode = connection.getResponseCode();
+            if (responseCode == 200) {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+                StringBuilder response = new StringBuilder();
+                String line;
+                
+                while ((line = reader.readLine()) != null) {
+                    response.append(line);
+                }
+                reader.close();
+                
+                JSONArray laundriesArray = new JSONArray(response.toString());
+                
+                if (laundriesArray.length() > 0) {
+                    JSONObject laundryJson = laundriesArray.getJSONObject(0);
+                    
+                    Laundry laundry = new Laundry();
+                    laundry.setId(laundryJson.getString("id"));
+                    laundry.setCnpj(laundryJson.getString("cnpj"));
+                    laundry.setName(laundryJson.getString("name"));
+                    laundry.setAddress(laundryJson.optString("address", ""));
+                    laundry.setCity(laundryJson.optString("city", ""));
+                    laundry.setState(laundryJson.optString("state", ""));
+                    
+                    Log.d(TAG, "✅ Lavanderia encontrada: " + laundry.getName());
+                    return laundry;
+                } else {
+                    Log.e(TAG, "❌ Nenhuma lavanderia ativa encontrada com CNPJ: " + cnpj);
+                    return null;
+                }
+            } else {
+                Log.e(TAG, "Erro ao buscar lavanderia: " + responseCode);
+                return null;
+            }
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao buscar lavanderia por CNPJ", e);
+            return null;
+        }
+    }
+    
     private List<Machine> fetchMachinesFromSupabase() {
         List<Machine> machines = new ArrayList<>();
         
         try {
+            if (currentLaundryId == null) {
+                Log.e(TAG, "❌ Lavanderia não configurada - não é possível buscar máquinas");
+                return getDefaultMachines();
+            }
+            
             // FILTRAR MÁQUINAS POR LAVANDERIA
             String url = SUPABASE_URL + "/rest/v1/machines?select=*&laundry_id=eq." + currentLaundryId + "&order=name";
             
@@ -563,6 +675,35 @@ public class SupabaseHelper {
     
     public boolean isConnected() {
         return isOnline;
+    }
+    
+    // ===== CLASSE LAUNDRY =====
+    
+    public static class Laundry {
+        private String id;
+        private String cnpj;
+        private String name;
+        private String address;
+        private String city;
+        private String state;
+        
+        public String getId() { return id; }
+        public void setId(String id) { this.id = id; }
+        
+        public String getCnpj() { return cnpj; }
+        public void setCnpj(String cnpj) { this.cnpj = cnpj; }
+        
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        
+        public String getAddress() { return address; }
+        public void setAddress(String address) { this.address = address; }
+        
+        public String getCity() { return city; }
+        public void setCity(String city) { this.city = city; }
+        
+        public String getState() { return state; }
+        public void setState(String state) { this.state = state; }
     }
     
     // ===== CLASSE MACHINE =====
