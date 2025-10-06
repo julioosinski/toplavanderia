@@ -6,6 +6,7 @@ import { useLaundry } from '@/contexts/LaundryContext';
 
 export interface SystemSettings {
   id: string;
+  
   // ESP32 Settings
   esp32_port: number;
   esp32_host: string | null;
