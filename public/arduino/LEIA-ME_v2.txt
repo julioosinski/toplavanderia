@@ -1,0 +1,133 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║                  ESP32 LAVADORA - GUIA DE INSTALAÇÃO                 ║
+║                         Versão 2.0.2 - CORRIGIDA                     ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+📋 RESUMO DAS CORREÇÕES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Problema identificado: Edge function exigia autenticação JWT
+✅ Solução implementada: Função configurada para aceitar requisições sem JWT
+✅ Código Arduino atualizado com header apikey correto
+✅ Heartbeat agora inclui laundry_id obrigatório
+
+
+🔧 PASSO 1: BAIXAR O CÓDIGO CORRIGIDO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📁 Arquivo: ESP32_Lavadora_Individual_CORRIGIDO_v2.ino
+📍 Localização no projeto: public/arduino/
+
+Para baixar:
+1. Acesse o modo Dev no Lovable
+2. Navegue até: public/arduino/
+3. Clique com botão direito no arquivo
+4. Selecione "Download"
+
+
+⚙️ PASSO 2: CONFIGURAR O CÓDIGO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Abra o arquivo no Arduino IDE e configure:
+
+1️⃣ WIFI (Linhas 23-24):
+   const char* ssid = "SEU_WIFI_AQUI";
+   const char* password = "SUA_SENHA_AQUI";
+
+2️⃣ IDs (Linhas 31-32):
+   #define LAUNDRY_ID "8ace0bcb-83a9-4555-a712-63ef5f52e709"
+   #define ESP32_ID "main"
+
+   ⚠️ IMPORTANTE: Use IDs únicos para cada ESP32:
+   - main (principal)
+   - secondary (secundário)
+   - esp32_cj01, esp32_cj02, etc.
+
+
+📤 PASSO 3: UPLOAD PARA O ESP32
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Conecte o ESP32 ao computador via USB
+2. No Arduino IDE:
+   - Selecione a placa: ESP32 Dev Module
+   - Selecione a porta COM correta
+3. Clique em "Upload" (→)
+4. Aguarde a compilação e upload
+
+
+✅ PASSO 4: VERIFICAR FUNCIONAMENTO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1️⃣ MONITOR SERIAL (Arduino IDE):
+   Você DEVE ver estas mensagens:
+   
+   ✅ WiFi conectado com sucesso!
+      IP: 192.168.0.XX
+      Sinal: -XX dBm
+   ✅ Servidor web iniciado na porta 80
+   📡 Enviando heartbeat...
+   ✅ Heartbeat enviado - HTTP 200
+
+   ❌ Se aparecer HTTP 401/403: Aguarde deploy automático
+   ❌ Se aparecer "WiFi desconectado": Verifique SSID/senha
+
+2️⃣ INTERFACE WEB DO ESP32:
+   - Abra o navegador
+   - Acesse: http://192.168.0.XX (IP mostrado no Serial)
+   - Você deve ver a interface de controle
+   - Teste os botões Iniciar/Parar
+
+3️⃣ SISTEMA ADMIN (Lovable):
+   - Acesse /admin/machines
+   - Após 30 segundos, a máquina deve aparecer ONLINE ✅
+   - Status do ESP32 deve mostrar sinal WiFi
+   - IP do ESP32 deve ser exibido
+
+
+🔍 TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+❌ Problema: "HTTP 401 Unauthorized"
+   ✅ Solução: Aguarde o deploy automático da edge function (1-2 minutos)
+   ✅ A função foi configurada para não exigir autenticação
+
+❌ Problema: "Máquina não aparece online no sistema"
+   ✅ Verifique se o laundry_id está correto
+   ✅ Verifique se o esp32_id é único
+   ✅ Aguarde até 60 segundos para o primeiro heartbeat
+
+❌ Problema: "WiFi não conecta"
+   ✅ Verifique SSID e senha (case sensitive)
+   ✅ Certifique-se que o WiFi é 2.4GHz (ESP32 não suporta 5GHz)
+   ✅ Verifique se há firewall bloqueando
+
+❌ Problema: "Compilação falha"
+   ✅ Instale a biblioteca ArduinoJson (Gerenciador de Bibliotecas)
+   ✅ Verifique se a placa ESP32 está instalada
+
+
+📊 DADOS TÉCNICOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+URL Edge Function: https://rkdybjzwiwwqqzjfmerm.supabase.co/functions/v1/esp32-monitor
+Endpoint Heartbeat: ?action=heartbeat
+Método: POST
+Headers: 
+  - Content-Type: application/json
+  - apikey: [INCLUÍDO NO CÓDIGO]
+
+Intervalo de Heartbeat: 30 segundos
+Timeout: Máquina offline após 5 minutos sem heartbeat
+
+
+🆘 SUPORTE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Se após seguir todos os passos ainda houver problemas:
+
+1. Envie o log completo do Monitor Serial
+2. Verifique os logs da edge function no Supabase
+3. Confirme que o deploy foi concluído
+
+Links úteis:
+- Logs Edge Function: https://supabase.com/dashboard/project/rkdybjzwiwwqqzjfmerm/functions/esp32-monitor/logs
+- Tabela ESP32 Status: https://supabase.com/dashboard/project/rkdybjzwiwwqqzjfmerm/editor
+
+
+═══════════════════════════════════════════════════════════════════════
+                    Última atualização: 2025-10-06
+═══════════════════════════════════════════════════════════════════════

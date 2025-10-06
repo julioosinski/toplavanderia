@@ -58,7 +58,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.esp32-monitor]
-verify_jwt = true
+verify_jwt = false
 
 [functions.esp32-load-balancer]
 verify_jwt = true
