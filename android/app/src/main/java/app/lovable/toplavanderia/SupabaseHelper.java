@@ -25,11 +25,18 @@ public class SupabaseHelper {
     private static final String SUPABASE_URL = "https://rkdybjzwiwwqqzjfmerm.supabase.co";
     private static final String SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg";
     
+    // CONFIGURAÇÃO DO TOTEM - ID DA LAVANDERIA
+    // ALTERE ESTE VALOR PARA O ID DA SUA LAVANDERIA OU USE SharedPreferences
+    private static final String DEFAULT_LAUNDRY_ID = "567a7bb6-8d26-4d9c-bbe3-f8dcc28e7569";
+    private static final String PREFS_NAME = "totem_config";
+    private static final String PREF_LAUNDRY_ID = "laundry_id";
+    
     private Context context;
     private boolean isOnline;
     private List<Machine> realMachines;
     private boolean realMachinesLoaded;
     private OnMachinesLoadedListener listener;
+    private String currentLaundryId;
     
     public interface OnMachinesLoadedListener {
         void onMachinesLoaded(List<Machine> machines);
@@ -41,6 +48,38 @@ public class SupabaseHelper {
         this.realMachines = null;
         this.realMachinesLoaded = false;
         this.listener = null;
+        
+        // Carregar laundry_id das preferências ou usar padrão
+        android.content.SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        this.currentLaundryId = prefs.getString(PREF_LAUNDRY_ID, DEFAULT_LAUNDRY_ID);
+        
+        Log.d(TAG, "=== CONFIGURAÇÃO DO TOTEM ===");
+        Log.d(TAG, "Laundry ID: " + currentLaundryId);
+    }
+    
+    /**
+     * Define o ID da lavanderia para este totem
+     * Use este método para configurar o totem remotamente
+     */
+    public void setLaundryId(String laundryId) {
+        this.currentLaundryId = laundryId;
+        
+        // Salvar nas preferências
+        android.content.SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        prefs.edit().putString(PREF_LAUNDRY_ID, laundryId).apply();
+        
+        Log.d(TAG, "Laundry ID atualizado para: " + laundryId);
+        
+        // Recarregar máquinas
+        realMachinesLoaded = false;
+        realMachines = null;
+    }
+    
+    /**
+     * Retorna o ID da lavanderia configurado
+     */
+    public String getLaundryId() {
+        return currentLaundryId;
     }
     
     public void setOnMachinesLoadedListener(OnMachinesLoadedListener listener) {
@@ -113,7 +152,11 @@ public class SupabaseHelper {
         List<Machine> machines = new ArrayList<>();
         
         try {
-            String url = SUPABASE_URL + "/rest/v1/machines?select=*&order=name";
+            // FILTRAR MÁQUINAS POR LAVANDERIA
+            String url = SUPABASE_URL + "/rest/v1/machines?select=*&laundry_id=eq." + currentLaundryId + "&order=name";
+            
+            Log.d(TAG, "Buscando máquinas da lavanderia: " + currentLaundryId);
+            Log.d(TAG, "URL: " + url);
             
             HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
             connection.setRequestMethod("GET");

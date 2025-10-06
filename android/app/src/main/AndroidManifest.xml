@@ -11,20 +11,25 @@
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security_config">
 
+        <!-- TOTEM ACTIVITY - PRINCIPAL LAUNCHER COM MODO KIOSK -->
         <activity
             android:exported="true"
             android:launchMode="singleTask"
             android:name="app.lovable.toplavanderia.TotemActivity"
-            android:theme="@style/AppTheme"
+            android:theme="@style/AppTheme.NoActionBar"
             android:screenOrientation="landscape"
+            android:keepScreenOn="true"
             android:configChanges="orientation|keyboardHidden|screenSize">
 
+            <!-- LAUNCHER PRINCIPAL + MODO KIOSK -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
-            <!-- USB Device Intent Filters for Pinpads -->
+            <!-- USB PINPAD PPC930 - DETECÇÃO AUTOMÁTICA -->
             <intent-filter>
                 <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
             </intent-filter>
@@ -33,9 +38,10 @@
                 <action android:name="android.hardware.usb.action.USB_DEVICE_DETACHED" />
             </intent-filter>
 
-            <!-- Meta-data for USB devices -->
-            <meta-data android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
-                      android:resource="@xml/device_filter" />
+            <!-- META-DATA PARA DISPOSITIVOS USB -->
+            <meta-data 
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/device_filter" />
 
         </activity>
 
