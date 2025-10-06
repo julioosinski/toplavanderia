@@ -22,7 +22,9 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundryFilter } from "@/hooks/useLaundryFilter";
 import { AppRole, Laundry } from "@/types/laundry";
+import { Badge } from "@/components/ui/badge";
 
 interface UserRole {
   id: string;
@@ -37,6 +39,7 @@ interface UserRole {
 
 export const UserManagement = () => {
   const { currentLaundry, laundries, isSuperAdmin } = useLaundry();
+  const { laundryId, laundryName, addFilter } = useLaundryFilter();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [users, setUsers] = useState<UserRole[]>([]);
@@ -56,16 +59,14 @@ export const UserManagement = () => {
     try {
       setLoading(true);
       
-      // Buscar user_roles
+      // Buscar user_roles com filtro pela lavanderia selecionada
       let rolesQuery = supabase
         .from('user_roles')
         .select('*')
         .order('created_at', { ascending: false });
 
-      // Se não é super admin, filtra apenas usuários da lavanderia atual
-      if (!isSuperAdmin && currentLaundry) {
-        rolesQuery = rolesQuery.eq('laundry_id', currentLaundry.id);
-      }
+      // Se há uma lavanderia selecionada, filtra por ela (super admin ou não)
+      rolesQuery = addFilter(rolesQuery);
 
       const { data: rolesData, error: rolesError } = await rolesQuery;
       if (rolesError) throw rolesError;
@@ -209,10 +210,19 @@ export const UserManagement = () => {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
-          <CardTitle>Gerenciar Usuários</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            Gerenciar Usuários
+            {users.length > 0 && (
+              <Badge variant="secondary">
+                {users.length}
+              </Badge>
+            )}
+          </CardTitle>
           <CardDescription>
             {isSuperAdmin 
-              ? "Adicione, edite ou remova usuários do sistema" 
+              ? currentLaundry
+                ? `Mostrando usuários de: ${currentLaundry.name}`
+                : "Mostrando todos os usuários do sistema"
               : "Adicione operadores e usuários da sua lavanderia"}
           </CardDescription>
         </div>
@@ -312,13 +322,22 @@ export const UserManagement = () => {
       <CardContent>
         <div className="space-y-4">
           {loading ? (
-            <p className="text-center text-muted-foreground py-8">
-              Carregando usuários...
-            </p>
+            <div className="text-center py-8">
+              <div className="animate-pulse space-y-3">
+                <div className="h-16 bg-muted rounded-lg"></div>
+                <div className="h-16 bg-muted rounded-lg"></div>
+                <div className="h-16 bg-muted rounded-lg"></div>
+              </div>
+            </div>
           ) : users.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">
-              Nenhum usuário cadastrado
-            </p>
+            <div className="text-center text-muted-foreground py-8">
+              <p className="font-medium">Nenhum usuário encontrado</p>
+              {currentLaundry && (
+                <p className="text-sm mt-1">
+                  Nenhum usuário cadastrado em {currentLaundry.name}
+                </p>
+              )}
+            </div>
           ) : (
             users.map((user) => (
               <div
