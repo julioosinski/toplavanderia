@@ -71,28 +71,42 @@ export default function Machines() {
       // Fetch ESP32 status separately
       const { data: esp32Data, error: esp32Error } = await supabase
         .from("esp32_status")
-        .select("*")
-        .eq("laundry_id", currentLaundry.id);
+        .select("esp32_id, ip_address, is_online, signal_strength, last_heartbeat, network_status, relay_status, laundry_id");
 
       if (esp32Error) throw esp32Error;
 
       // Merge machine data with ESP32 status
       const enrichedMachines = (machinesData || []).map((machine) => {
+        // Find ESP32 status matching this machine's esp32_id
         const esp32 = esp32Data?.find((esp) => esp.esp32_id === machine.esp32_id);
         
-        // Determine real status
+        // Determine real status based on ESP32 data
         let realStatus = machine.status;
+        let esp32Online = false;
+        
         if (esp32) {
           const lastHeartbeat = esp32.last_heartbeat ? new Date(esp32.last_heartbeat) : null;
           const now = new Date();
-          const isRecent = lastHeartbeat && (now.getTime() - lastHeartbeat.getTime()) < 5 * 60 * 1000;
+          const isRecent = lastHeartbeat && (now.getTime() - lastHeartbeat.getTime()) < 5 * 60 * 1000; // 5 minutes
           
-          if (!esp32.is_online || !isRecent) {
+          esp32Online = esp32.is_online && isRecent;
+          
+          if (!esp32Online) {
             realStatus = 'offline';
-          } else if (esp32.relay_status && typeof esp32.relay_status === 'object') {
-            const relayState = (esp32.relay_status as any)[`relay${machine.relay_pin}`];
-            if (relayState === 'on' || relayState === true) {
-              realStatus = 'in_use';
+          } else {
+            // Check relay status
+            const relayStatus = esp32.relay_status as any;
+            if (relayStatus) {
+              // Check if relay status is "on" or if there's a specific relay pin status
+              const relayOn = relayStatus === 'on' || 
+                             relayStatus.status === 'on' ||
+                             relayStatus[`relay${machine.relay_pin}`] === 'on';
+              
+              if (relayOn) {
+                realStatus = 'running';
+              } else {
+                realStatus = 'available';
+              }
             }
           }
         } else {
@@ -102,7 +116,7 @@ export default function Machines() {
         return {
           ...machine,
           realStatus,
-          esp32_online: esp32?.is_online || false,
+          esp32_online: esp32Online,
           signal_strength: esp32?.signal_strength || null,
           last_heartbeat: esp32?.last_heartbeat || null,
           network_status: esp32?.network_status || 'unknown',
