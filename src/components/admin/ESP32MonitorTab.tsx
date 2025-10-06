@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Wifi, WifiOff, Signal, Clock, AlertTriangle, CheckCircle, RefreshCw, Zap, TestTube, MapPin, Cpu } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useLaundry } from '@/contexts/LaundryContext';
 import type { Json } from '@/integrations/supabase/types';
 import ESP32NetworkTopology from './ESP32NetworkTopology';
 
@@ -28,6 +29,7 @@ interface ESP32Status {
 }
 
 const ESP32MonitorTab: React.FC = () => {
+  const { currentLaundry } = useLaundry();
   const [esp32Status, setEsp32Status] = useState<ESP32Status[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -118,16 +120,25 @@ const ESP32MonitorTab: React.FC = () => {
   };
 
   const simulateESP32Data = async () => {
+    if (!currentLaundry?.id) {
+      toast({
+        title: "Erro",
+        description: "Selecione uma lavanderia primeiro",
+        variant: "destructive"
+      });
+      return;
+    }
+
     try {
       const mockData = [
         {
           esp32_id: 'main',
+          laundry_id: currentLaundry.id,
           ip_address: '192.168.1.100',
           signal_strength: -45,
           network_status: 'connected',
           firmware_version: '1.2.3',
           uptime_seconds: 3600,
-          location: 'Conjunto A',
           machine_count: 2,
           relay_status: { relay_1: true, relay_2: false },
           is_online: true,
@@ -135,12 +146,12 @@ const ESP32MonitorTab: React.FC = () => {
         },
         {
           esp32_id: 'secondary',
+          laundry_id: currentLaundry.id,
           ip_address: '192.168.1.101',
           signal_strength: -55,
           network_status: 'connected',
           firmware_version: '1.2.3',
           uptime_seconds: 2400,
-          location: 'Conjunto B',
           machine_count: 2,
           relay_status: { relay_1: false, relay_2: true },
           is_online: true,
@@ -148,12 +159,12 @@ const ESP32MonitorTab: React.FC = () => {
         },
         {
           esp32_id: 'esp32-A',
+          laundry_id: currentLaundry.id,
           ip_address: '192.168.1.102',
           signal_strength: -62,
           network_status: 'connected',
           firmware_version: '1.2.4',
           uptime_seconds: 1800,
-          location: 'Conjunto C',
           machine_count: 3,
           relay_status: { relay_1: true, relay_2: true, relay_3: false },
           is_online: true,
@@ -161,12 +172,12 @@ const ESP32MonitorTab: React.FC = () => {
         },
         {
           esp32_id: 'esp32-B',
+          laundry_id: currentLaundry.id,
           ip_address: '192.168.1.103',
           signal_strength: -48,
           network_status: 'connected',
           firmware_version: '1.2.4',
           uptime_seconds: 5400,
-          location: 'Conjunto D',
           machine_count: 2,
           relay_status: { relay_1: false, relay_2: false },
           is_online: true,
@@ -174,12 +185,12 @@ const ESP32MonitorTab: React.FC = () => {
         },
         {
           esp32_id: 'esp32-C',
+          laundry_id: currentLaundry.id,
           ip_address: '192.168.1.104',
           signal_strength: -68,
           network_status: 'weak_signal',
           firmware_version: '1.2.3',
           uptime_seconds: 7200,
-          location: 'Conjunto E',
           machine_count: 2,
           relay_status: { relay_1: true, relay_2: true },
           is_online: Math.random() > 0.3,

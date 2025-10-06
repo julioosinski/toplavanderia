@@ -130,8 +130,7 @@ export type Database = {
           ip_address: string | null
           is_online: boolean | null
           last_heartbeat: string | null
-          laundry_id: string | null
-          location: string | null
+          laundry_id: string
           machine_count: number | null
           network_status: string | null
           relay_status: Json | null
@@ -147,8 +146,7 @@ export type Database = {
           ip_address?: string | null
           is_online?: boolean | null
           last_heartbeat?: string | null
-          laundry_id?: string | null
-          location?: string | null
+          laundry_id: string
           machine_count?: number | null
           network_status?: string | null
           relay_status?: Json | null
@@ -164,8 +162,7 @@ export type Database = {
           ip_address?: string | null
           is_online?: boolean | null
           last_heartbeat?: string | null
-          laundry_id?: string | null
-          location?: string | null
+          laundry_id?: string
           machine_count?: number | null
           network_status?: string | null
           relay_status?: Json | null

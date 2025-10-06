@@ -15,16 +15,14 @@
 
 // ================== CONFIGURAÇÕES WIFI ==================
 // ⚠️ IMPORTANTE: Configure aqui suas credenciais WiFi
-const char* ssid = "SEU_WIFI_AQUI";           // Trocar pelo nome da sua rede WiFi
-const char* password = "SUA_SENHA_AQUI";      // Trocar pela senha do seu WiFi
+const char* ssid = "2G Osinski";              // Nome da sua rede WiFi
+const char* password = "10203040";             // Senha do seu WiFi
 
 // ================== IDENTIFICAÇÃO ==================
 // ⚠️ IMPORTANTE: Configure aqui os IDs corretos
-#define MACHINE_ID "lavadora_01"               // ID da máquina (não mudar sem necessidade)
-#define MACHINE_NAME "Lavadora 01"             // Nome amigável da máquina
-#define MACHINE_TYPE "lavadora"                // Tipo: "lavadora" ou "secadora"
-#define LAUNDRY_ID "8ace0bcb-83a9-4555-a712-63ef5f52e709"  // ⚠️ ID DA SUA LAVANDERIA
+#define LAUNDRY_ID "567a7bb6-8d26-4d9c-bbe3-f8dcc28e7569"  // ⚠️ ID DA LAVANDERIA PRINCIPAL
 #define ESP32_ID "main"                        // ⚠️ ID único deste ESP32
+#define MACHINE_NAME "ESP32 Main"              // Nome amigável do ESP32
 
 // ================== CONFIGURAÇÕES SUPABASE ==================
 const char* supabaseUrl = "https://rkdybjzwiwwqqzjfmerm.supabase.co";
@@ -209,18 +207,19 @@ void sendHeartbeat() {
   Serial.println("\n📡 Enviando heartbeat...");
   Serial.println("URL: " + url);
   
-  // Preparar JSON
+  // Preparar JSON simplificado
   StaticJsonDocument<512> doc;
   doc["esp32_id"] = ESP32_ID;
   doc["laundry_id"] = LAUNDRY_ID;
-  doc["machine_type"] = MACHINE_TYPE;
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
   doc["network_status"] = "connected";
-  doc["firmware_version"] = "v2.0.2";
+  doc["firmware_version"] = "v2.0.3";
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
-  doc["relay_status"] = relayState ? "on" : "off";
+  
+  JsonObject relayStatusObj = doc.createNestedObject("relay_status");
+  relayStatusObj["status"] = relayState ? "on" : "off";
   
   String payload;
   serializeJson(doc, payload);

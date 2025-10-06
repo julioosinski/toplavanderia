@@ -256,9 +256,13 @@ export const MachineDialog = ({
                 id="esp32_id"
                 value={formData.esp32_id || ''}
                 onChange={(e) => setFormData({ ...formData, esp32_id: e.target.value })}
-                placeholder="Ex: Cj01, main, secondary"
+                placeholder="Ex: main, Cj01, Cj02"
                 required
+                className="font-mono"
               />
+              <p className="text-xs text-muted-foreground">
+                Use o mesmo ID configurado no ESP32
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -273,6 +277,9 @@ export const MachineDialog = ({
                 placeholder="1-8"
                 required
               />
+              <p className="text-xs text-muted-foreground">
+                Cada máquina precisa de um relay_pin único
+              </p>
             </div>
           </div>
 

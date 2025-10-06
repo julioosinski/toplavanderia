@@ -11,6 +11,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { MachineDialog } from "@/components/admin/MachineDialog";
+import { ESP32ConfigurationDialog } from "@/components/admin/ESP32ConfigurationDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -317,13 +318,16 @@ export default function Machines() {
               Gerencie todas as máquinas de lavar e secar
             </p>
           </div>
-          <Button onClick={() => {
-            setEditingMachine(null);
-            setDialogOpen(true);
-          }}>
-            <Plus className="mr-2 h-4 w-4" />
-            Nova Máquina
-          </Button>
+          <div className="flex gap-2">
+            <ESP32ConfigurationDialog />
+            <Button onClick={() => {
+              setEditingMachine(null);
+              setDialogOpen(true);
+            }}>
+              <Plus className="mr-2 h-4 w-4" />
+              Nova Máquina
+            </Button>
+          </div>
         </div>
 
         <MachineDialog 
