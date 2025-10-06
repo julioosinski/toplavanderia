@@ -45,6 +45,8 @@ export const LaundryManagement = () => {
     return null;
   }
 
+  const [uploading, setUploading] = useState(false);
+
   const resetForm = () => {
     setFormData({
       name: "",
@@ -220,6 +222,56 @@ export const LaundryManagement = () => {
     }
   };
 
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingLaundry) return;
+
+    try {
+      setUploading(true);
+
+      // Upload para o bucket
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${editingLaundry.id}-${Date.now()}.${fileExt}`;
+      const filePath = fileName;
+
+      const { error: uploadError } = await supabase.storage
+        .from('laundry-logos')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // Obter URL pública
+      const { data } = supabase.storage
+        .from('laundry-logos')
+        .getPublicUrl(filePath);
+
+      // Atualizar lavanderia com URL do logo
+      const { error: updateError } = await supabase
+        .from('laundries')
+        .update({ logo_url: data.publicUrl })
+        .eq('id', editingLaundry.id);
+
+      if (updateError) throw updateError;
+
+      setEditingLaundry({ ...editingLaundry, logo_url: data.publicUrl });
+
+      toast({
+        title: "Logo atualizado",
+        description: "O logo foi carregado com sucesso.",
+      });
+
+      await refreshLaundries();
+    } catch (error: any) {
+      toast({
+        title: "Erro ao fazer upload",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleDeleteAdmin = async (userId: string) => {
     if (!confirm("Tem certeza que deseja remover este administrador?")) return;
 
@@ -368,6 +420,26 @@ export const LaundryManagement = () => {
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="logo">Logo da Lavanderia</Label>
+                    {editingLaundry?.logo_url && (
+                      <div className="mb-2">
+                        <img 
+                          src={editingLaundry.logo_url} 
+                          alt="Logo atual" 
+                          className="h-20 w-auto object-contain rounded border"
+                        />
+                      </div>
+                    )}
+                    <Input
+                      id="logo"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoUpload}
+                      disabled={uploading}
+                    />
+                    {uploading && <p className="text-sm text-muted-foreground">Fazendo upload...</p>}
                   </div>
                   <div className="flex justify-end gap-2">
                     <Button

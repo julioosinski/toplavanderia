@@ -2,6 +2,8 @@ package app.lovable.toplavanderia;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
@@ -10,12 +12,16 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.GridLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -110,6 +116,38 @@ public class TotemActivity extends Activity {
         mainLayout.setOrientation(LinearLayout.VERTICAL);
         mainLayout.setBackgroundColor(Color.parseColor("#0D1117"));
         mainLayout.setPadding(20, 30, 20, 30);
+        
+        // Logo da lavanderia (se disponível)
+        String logoUrl = supabaseHelper.getLaundryLogo();
+        if (logoUrl != null && !logoUrl.isEmpty()) {
+            ImageView logoImage = new ImageView(this);
+            LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                200 // altura em pixels
+            );
+            logoParams.gravity = android.view.Gravity.CENTER;
+            logoParams.bottomMargin = 20;
+            logoImage.setLayoutParams(logoParams);
+            logoImage.setAdjustViewBounds(true);
+            logoImage.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            mainLayout.addView(logoImage);
+            
+            // Carregar logo em background
+            new Thread(() -> {
+                try {
+                    URL url = new URL(logoUrl);
+                    HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+                    connection.setDoInput(true);
+                    connection.connect();
+                    InputStream input = connection.getInputStream();
+                    Bitmap bitmap = BitmapFactory.decodeStream(input);
+                    
+                    runOnUiThread(() -> logoImage.setImageBitmap(bitmap));
+                } catch (Exception e) {
+                    Log.e(TAG, "Erro ao carregar logo", e);
+                }
+            }).start();
+        }
         
         // Título da lavanderia dinâmico
         TextView titleText = new TextView(this);

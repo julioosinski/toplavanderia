@@ -9,6 +9,7 @@ export interface Laundry {
   state?: string | null;
   phone?: string | null;
   email?: string | null;
+  logo_url?: string | null;
   is_active: boolean;
   owner_id?: string | null;
   settings?: Json;

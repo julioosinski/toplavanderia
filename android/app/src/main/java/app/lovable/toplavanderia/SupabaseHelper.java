@@ -30,6 +30,7 @@ public class SupabaseHelper {
     private static final String PREF_LAUNDRY_CNPJ = "laundry_cnpj";
     private static final String PREF_LAUNDRY_ID = "laundry_id";
     private static final String PREF_LAUNDRY_NAME = "laundry_name";
+    private static final String PREF_LAUNDRY_LOGO = "laundry_logo";
     
     private Context context;
     private boolean isOnline;
@@ -39,6 +40,7 @@ public class SupabaseHelper {
     private String currentLaundryId;
     private String currentLaundryCNPJ;
     private String currentLaundryName;
+    private String currentLaundryLogo;
     
     public interface OnMachinesLoadedListener {
         void onMachinesLoaded(List<Machine> machines);
@@ -56,6 +58,7 @@ public class SupabaseHelper {
         this.currentLaundryCNPJ = prefs.getString(PREF_LAUNDRY_CNPJ, null);
         this.currentLaundryId = prefs.getString(PREF_LAUNDRY_ID, null);
         this.currentLaundryName = prefs.getString(PREF_LAUNDRY_NAME, "TOP LAVANDERIA");
+        this.currentLaundryLogo = prefs.getString(PREF_LAUNDRY_LOGO, null);
         
         Log.d(TAG, "=== CONFIGURAÇÃO DO TOTEM ===");
         Log.d(TAG, "CNPJ: " + currentLaundryCNPJ);
@@ -85,6 +88,7 @@ public class SupabaseHelper {
                     .putString(PREF_LAUNDRY_CNPJ, cnpj)
                     .putString(PREF_LAUNDRY_ID, laundry.getId())
                     .putString(PREF_LAUNDRY_NAME, laundry.getName())
+                    .putString(PREF_LAUNDRY_LOGO, laundry.getLogoUrl())
                     .apply();
                 
                 // Recarregar máquinas
@@ -130,6 +134,13 @@ public class SupabaseHelper {
      */
     public String getLaundryName() {
         return currentLaundryName != null ? currentLaundryName : "TOP LAVANDERIA";
+    }
+    
+    /**
+     * Retorna a URL do logo da lavanderia configurada
+     */
+    public String getLaundryLogo() {
+        return currentLaundryLogo;
     }
     
     public void setOnMachinesLoadedListener(OnMachinesLoadedListener listener) {
@@ -237,8 +248,12 @@ public class SupabaseHelper {
                     laundry.setAddress(laundryJson.optString("address", ""));
                     laundry.setCity(laundryJson.optString("city", ""));
                     laundry.setState(laundryJson.optString("state", ""));
+                    laundry.setLogoUrl(laundryJson.optString("logo_url", null));
                     
                     Log.d(TAG, "✅ Lavanderia encontrada: " + laundry.getName());
+                    if (laundry.getLogoUrl() != null) {
+                        Log.d(TAG, "Logo URL: " + laundry.getLogoUrl());
+                    }
                     return laundry;
                 } else {
                     Log.e(TAG, "❌ Nenhuma lavanderia ativa encontrada com CNPJ: " + cnpj);
@@ -686,6 +701,7 @@ public class SupabaseHelper {
         private String address;
         private String city;
         private String state;
+        private String logoUrl;
         
         public String getId() { return id; }
         public void setId(String id) { this.id = id; }
@@ -704,6 +720,9 @@ public class SupabaseHelper {
         
         public String getState() { return state; }
         public void setState(String state) { this.state = state; }
+        
+        public String getLogoUrl() { return logoUrl; }
+        public void setLogoUrl(String logoUrl) { this.logoUrl = logoUrl; }
     }
     
     // ===== CLASSE MACHINE =====
