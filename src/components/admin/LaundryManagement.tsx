@@ -173,33 +173,31 @@ export const LaundryManagement = () => {
     }
 
     try {
-      // Criar usuário
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: adminData.email,
-        password: adminData.password,
-        options: {
-          data: {
-            full_name: adminData.fullName,
-          },
+      // Obter token de autenticação atual
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Sessão não encontrada");
+
+      // Chamar edge function para criar usuário admin (não causa logout)
+      const response = await fetch('https://rkdybjzwiwwqqzjfmerm.supabase.co/functions/v1/create-user', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          email: adminData.email,
+          password: adminData.password,
+          role: 'admin',
+          laundry_id: editingLaundry.id,
+          full_name: adminData.fullName,
+        }),
       });
 
-      if (authError) throw authError;
+      const result = await response.json();
 
-      if (!authData.user) {
-        throw new Error("Erro ao criar usuário");
+      if (!response.ok) {
+        throw new Error(result.error || 'Erro ao criar administrador');
       }
-
-      // Criar role de admin
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({
-          user_id: authData.user.id,
-          role: 'admin' as AppRole,
-          laundry_id: editingLaundry.id,
-        });
-
-      if (roleError) throw roleError;
 
       toast({
         title: "Administrador criado",
@@ -216,7 +214,7 @@ export const LaundryManagement = () => {
     } catch (error: any) {
       toast({
         title: "Erro",
-        description: error.message,
+        description: error.message || "Falha ao criar administrador",
         variant: "destructive",
       });
     }

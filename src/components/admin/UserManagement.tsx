@@ -106,39 +106,31 @@ export const UserManagement = () => {
     e.preventDefault();
 
     try {
-      // Criar usuário no Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            full_name: formData.email.split('@')[0],
-          }
-        }
+      // Obter token de autenticação atual
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Sessão não encontrada");
+
+      // Chamar edge function para criar usuário (não causa logout)
+      const response = await fetch('https://rkdybjzwiwwqqzjfmerm.supabase.co/functions/v1/create-user', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+          role: formData.role,
+          laundry_id: isSuperAdmin ? formData.laundry_id : currentLaundry?.id,
+          full_name: formData.email.split('@')[0],
+        }),
       });
 
-      if (authError) throw authError;
-      if (!authData.user) throw new Error("Usuário não foi criado");
+      const result = await response.json();
 
-      // Aguardar um pouco para o trigger criar o perfil
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Criar role do usuário
-      const roleData: any = {
-        user_id: authData.user.id,
-        role: formData.role,
-      };
-
-      // Se não for super_admin, adiciona laundry_id
-      if (formData.role !== 'super_admin') {
-        roleData.laundry_id = isSuperAdmin ? formData.laundry_id : currentLaundry?.id;
+      if (!response.ok) {
+        throw new Error(result.error || 'Erro ao criar usuário');
       }
-
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert([roleData]);
-
-      if (roleError) throw roleError;
 
       toast({
         title: "Usuário criado",
@@ -154,9 +146,10 @@ export const UserManagement = () => {
         laundry_id: "",
       });
     } catch (error: any) {
+      console.error('Error creating user:', error);
       toast({
         title: "Erro",
-        description: error.message,
+        description: error.message || "Falha ao criar usuário",
         variant: "destructive",
       });
     }
