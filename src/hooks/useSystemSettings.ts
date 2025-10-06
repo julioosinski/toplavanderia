@@ -13,6 +13,7 @@ export interface SystemSettings {
   heartbeat_interval_seconds: number;
   max_offline_duration_minutes: number;
   signal_threshold_warning: number;
+  esp32_configurations?: any[];
   
   // Machine Settings
   default_cycle_time: number;

@@ -392,7 +392,7 @@ export type Database = {
           esp32_port: number | null
           heartbeat_interval_seconds: number | null
           id: string
-          laundry_id: string | null
+          laundry_id: string
           max_offline_duration_minutes: number | null
           nfse_enabled: boolean | null
           notifications_enabled: boolean | null
@@ -426,7 +426,7 @@ export type Database = {
           esp32_port?: number | null
           heartbeat_interval_seconds?: number | null
           id?: string
-          laundry_id?: string | null
+          laundry_id: string
           max_offline_duration_minutes?: number | null
           nfse_enabled?: boolean | null
           notifications_enabled?: boolean | null
@@ -460,7 +460,7 @@ export type Database = {
           esp32_port?: number | null
           heartbeat_interval_seconds?: number | null
           id?: string
-          laundry_id?: string | null
+          laundry_id?: string
           max_offline_duration_minutes?: number | null
           nfse_enabled?: boolean | null
           notifications_enabled?: boolean | null
@@ -484,7 +484,7 @@ export type Database = {
           {
             foreignKeyName: "system_settings_laundry_id_fkey"
             columns: ["laundry_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "laundries"
             referencedColumns: ["id"]
           },
@@ -689,6 +689,10 @@ export type Database = {
       cleanup_old_logs: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      create_default_system_settings: {
+        Args: { _laundry_id: string }
+        Returns: string
       }
       get_user_laundry_id: {
         Args: { _user_id: string }
