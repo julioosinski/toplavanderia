@@ -20,7 +20,7 @@ import {
 type Machine = {
   id: string;
   name: string;
-  type: 'washer' | 'dryer';
+  type: 'washing' | 'drying';
   status: string;
   capacity_kg: number;
   price_per_kg: number;
@@ -120,7 +120,7 @@ export default function Machines() {
       header: "Tipo",
       cell: ({ row }) => (
         <span className="capitalize">
-          {row.getValue("type") === "washer" ? "Lavadora" : "Secadora"}
+          {row.getValue("type") === "washing" ? "Lavadora" : "Secadora"}
         </span>
       ),
     },
