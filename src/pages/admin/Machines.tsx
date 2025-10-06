@@ -4,7 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { LaundryGuard } from "@/components/admin/LaundryGuard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Pencil, Trash2, MoreVertical } from "lucide-react";
+import { Plus, Pencil, Trash2, MoreVertical, Circle } from "lucide-react";
+import { SignalIndicator } from "@/components/admin/SignalIndicator";
 import { DataTable } from "@/components/ui/data-table";
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +32,11 @@ type Machine = {
   relay_pin?: number | null;
   cycle_time_minutes?: number | null;
   temperature?: number | null;
+  realStatus?: string;
+  esp32_online?: boolean;
+  signal_strength?: number | null;
+  last_heartbeat?: string | null;
+  network_status?: string;
 };
 
 export default function Machines() {
@@ -52,15 +58,58 @@ export default function Machines() {
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      
+      // Fetch machines with ESP32 status
+      const { data: machinesData, error: machinesError } = await supabase
         .from("machines")
         .select("*")
         .eq("laundry_id", currentLaundry.id)
         .order("name");
 
-      if (error) throw error;
+      if (machinesError) throw machinesError;
 
-      setMachines((data || []) as Machine[]);
+      // Fetch ESP32 status separately
+      const { data: esp32Data, error: esp32Error } = await supabase
+        .from("esp32_status")
+        .select("*")
+        .eq("laundry_id", currentLaundry.id);
+
+      if (esp32Error) throw esp32Error;
+
+      // Merge machine data with ESP32 status
+      const enrichedMachines = (machinesData || []).map((machine) => {
+        const esp32 = esp32Data?.find((esp) => esp.esp32_id === machine.esp32_id);
+        
+        // Determine real status
+        let realStatus = machine.status;
+        if (esp32) {
+          const lastHeartbeat = esp32.last_heartbeat ? new Date(esp32.last_heartbeat) : null;
+          const now = new Date();
+          const isRecent = lastHeartbeat && (now.getTime() - lastHeartbeat.getTime()) < 5 * 60 * 1000;
+          
+          if (!esp32.is_online || !isRecent) {
+            realStatus = 'offline';
+          } else if (esp32.relay_status && typeof esp32.relay_status === 'object') {
+            const relayState = (esp32.relay_status as any)[`relay${machine.relay_pin}`];
+            if (relayState === 'on' || relayState === true) {
+              realStatus = 'in_use';
+            }
+          }
+        } else {
+          realStatus = 'offline';
+        }
+
+        return {
+          ...machine,
+          realStatus,
+          esp32_online: esp32?.is_online || false,
+          signal_strength: esp32?.signal_strength || null,
+          last_heartbeat: esp32?.last_heartbeat || null,
+          network_status: esp32?.network_status || 'unknown',
+        };
+      });
+
+      setMachines(enrichedMachines as Machine[]);
     } catch (error: any) {
       console.error("Error loading machines:", error);
       toast({
@@ -125,24 +174,53 @@ export default function Machines() {
       ),
     },
     {
-      accessorKey: "status",
-      header: "Status",
+      accessorKey: "realStatus",
+      header: "Status Real",
       cell: ({ row }) => {
-        const status = row.getValue("status") as string;
-        const variants = {
-          available: "default",
-          in_use: "secondary",
-          maintenance: "destructive",
+        const machine = row.original;
+        const status = machine.realStatus || machine.status;
+        
+        const getStatusConfig = (s: string) => {
+          if (s === 'offline') return { variant: "destructive" as const, label: "Offline", icon: "🔴" };
+          if (s === 'in_use' || s === 'running') return { variant: "secondary" as const, label: "Em Uso", icon: "🔵" };
+          if (s === 'maintenance') return { variant: "outline" as const, label: "Manutenção", icon: "🟡" };
+          return { variant: "default" as const, label: "Disponível", icon: "🟢" };
         };
-        const labels = {
-          available: "Disponível",
-          in_use: "Em uso",
-          maintenance: "Manutenção",
-        };
+        
+        const config = getStatusConfig(status);
         return (
-          <Badge variant={variants[status as keyof typeof variants] as any}>
-            {labels[status as keyof typeof labels] || status}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <span>{config.icon}</span>
+            <Badge variant={config.variant}>
+              {config.label}
+            </Badge>
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "esp32_id",
+      header: "ESP32 / Relé",
+      cell: ({ row }) => {
+        const machine = row.original;
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="text-sm font-mono">{machine.esp32_id || "N/A"}</span>
+            <span className="text-xs text-muted-foreground">Relé: {machine.relay_pin || "N/A"}</span>
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "signal_strength",
+      header: "Sinal WiFi",
+      cell: ({ row }) => {
+        const machine = row.original;
+        return (
+          <SignalIndicator 
+            signalStrength={machine.signal_strength || null}
+            isOnline={machine.esp32_online || false}
+          />
         );
       },
     },

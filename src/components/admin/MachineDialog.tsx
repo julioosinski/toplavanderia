@@ -19,6 +19,8 @@ interface Machine {
   cycle_time_minutes?: number;
   temperature?: number;
   laundry_id?: string;
+  esp32_id?: string;
+  relay_pin?: number;
 }
 
 export interface MachineDialogProps {
@@ -51,7 +53,9 @@ export const MachineDialog = ({
     capacity_kg: 10,
     price_per_kg: 5.00,
     cycle_time_minutes: 40,
-    temperature: 0
+    temperature: 0,
+    esp32_id: "",
+    relay_pin: 1
   });
 
   useEffect(() => {
@@ -69,7 +73,9 @@ export const MachineDialog = ({
         capacity_kg: 10,
         price_per_kg: 5.00,
         cycle_time_minutes: 40,
-        temperature: 0
+        temperature: 0,
+        esp32_id: "",
+        relay_pin: 1
       });
     }
   }, [machine, open]);
@@ -86,9 +92,42 @@ export const MachineDialog = ({
       return;
     }
 
+    // Validate esp32_id and relay_pin
+    if (!formData.esp32_id || !formData.relay_pin) {
+      toast({
+        title: "Erro",
+        description: "ESP32 ID e Pino do Relé são obrigatórios",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
+      // Check for conflicts (same esp32_id + relay_pin)
+      const { data: existingMachines, error: checkError } = await supabase
+        .from("machines")
+        .select("id, name, esp32_id, relay_pin")
+        .eq("laundry_id", currentLaundry.id)
+        .eq("esp32_id", formData.esp32_id)
+        .eq("relay_pin", formData.relay_pin);
+
+      if (checkError) throw checkError;
+
+      // Filter out current machine if editing
+      const conflicts = existingMachines?.filter(m => m.id !== machine?.id) || [];
+      
+      if (conflicts.length > 0) {
+        toast({
+          title: "Conflito de Configuração",
+          description: `A combinação ESP32 "${formData.esp32_id}" + Relé ${formData.relay_pin} já está em uso pela máquina "${conflicts[0].name}"`,
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
+
       const dataToSave = {
         ...formData,
         laundry_id: currentLaundry.id,
@@ -208,6 +247,33 @@ export const MachineDialog = ({
               onChange={(e) => setFormData({ ...formData, location: e.target.value })}
               placeholder="Ex: Térreo - Lado direito"
             />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="esp32_id">ESP32 ID *</Label>
+              <Input
+                id="esp32_id"
+                value={formData.esp32_id || ''}
+                onChange={(e) => setFormData({ ...formData, esp32_id: e.target.value })}
+                placeholder="Ex: Cj01, main, secondary"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="relay_pin">Pino Relé *</Label>
+              <Input
+                id="relay_pin"
+                type="number"
+                min="1"
+                max="8"
+                value={formData.relay_pin || 1}
+                onChange={(e) => setFormData({ ...formData, relay_pin: parseInt(e.target.value) || 1 })}
+                placeholder="1-8"
+                required
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
