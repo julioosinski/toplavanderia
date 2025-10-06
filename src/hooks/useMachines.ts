@@ -58,7 +58,7 @@ export const useMachines = (laundryId?: string | null) => {
       console.log('🔍 Buscando status ESP32...');
       const { data: esp32Data, error: esp32Error } = await supabase
         .from('esp32_status')
-        .select('esp32_id, ip_address, is_online, relay_status');
+        .select('esp32_id, ip_address, is_online, relay_status, last_heartbeat');
 
       if (esp32Error) {
         console.warn('⚠️ Erro ao buscar ESP32 status:', esp32Error);
@@ -87,15 +87,27 @@ export const useMachines = (laundryId?: string | null) => {
         // Determinar status inteligente baseado em ESP32 e status da máquina
         let machineStatus = machine.status as any;
         
-        // Verificar status do ESP32
+        // Verificar status do ESP32 com validação de timeout
         if (machine.esp32_id) {
           const esp32Status = esp32Map.get(machine.esp32_id);
           
-          // Se ESP32 está offline ou não existe, marcar máquina como offline
-          if (!esp32Status || !esp32Status.is_online) {
+          // Calcular tempo desde último heartbeat
+          const now = new Date();
+          const lastHeartbeat = esp32Status?.last_heartbeat ? new Date(esp32Status.last_heartbeat) : null;
+          const minutesSinceHeartbeat = lastHeartbeat 
+            ? (now.getTime() - lastHeartbeat.getTime()) / (1000 * 60) 
+            : 999999;
+          
+          const maxOfflineMinutes = 5;
+          
+          console.log(`[Machine ${machine.name}] ESP32: ${machine.esp32_id}, Online: ${esp32Status?.is_online}, Last Heartbeat: ${minutesSinceHeartbeat.toFixed(1)}min ago`);
+          
+          // Se ESP32 não existe, está marcado como offline OU último heartbeat > 5 minutos
+          if (!esp32Status || !esp32Status.is_online || minutesSinceHeartbeat > maxOfflineMinutes) {
             machineStatus = 'offline';
+            console.log(`[Machine ${machine.name}] Marked as OFFLINE (ESP32 unavailable or timeout)`);
           } else {
-            // ESP32 está online, verificar status do relé
+            // ESP32 está online E heartbeat é recente, verificar status do relé
             if (esp32Status.relay_status && typeof esp32Status.relay_status === 'object') {
               const relayKey = `relay_${machine.relay_pin || 1}`;
               const relayStatus = (esp32Status.relay_status as any)[relayKey];
@@ -103,9 +115,11 @@ export const useMachines = (laundryId?: string | null) => {
               // Se relé está ativo, máquina está rodando
               if (relayStatus === 'on' || relayStatus === true || relayStatus === 1) {
                 machineStatus = 'running';
+                console.log(`[Machine ${machine.name}] Marked as RUNNING (relay active)`);
               } else if (machine.status !== 'running' && machine.status !== 'maintenance') {
                 // Se relé está desligado e não está em manutenção, está disponível
                 machineStatus = 'available';
+                console.log(`[Machine ${machine.name}] Available (ESP32 online, relay inactive)`);
               }
             } else if (machine.status !== 'running' && machine.status !== 'maintenance') {
               // Se não há dados de relé mas ESP32 está online, considerar disponível

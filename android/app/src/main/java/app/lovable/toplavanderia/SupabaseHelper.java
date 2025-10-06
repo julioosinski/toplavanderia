@@ -342,7 +342,8 @@ public class SupabaseHelper {
         try {
             Log.d(TAG, "=== CARREGANDO STATUS DOS ESP32s ===");
             
-            String url = SUPABASE_URL + "/rest/v1/esp32_status?select=esp32_id,status_da_rede,last_seen";
+            // CORRIGIDO: Campos corretos e filtro por lavanderia
+            String url = SUPABASE_URL + "/rest/v1/esp32_status?select=esp32_id,is_online,network_status,last_heartbeat,relay_status&laundry_id=eq." + currentLaundryId;
             
             HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
             connection.setRequestMethod("GET");
@@ -363,33 +364,32 @@ public class SupabaseHelper {
                 
                 JSONArray esp32Array = new JSONArray(response.toString());
                 
-                // Criar mapa de status dos ESP32s baseado no status_da_rede
-                java.util.Map<String, String> esp32StatusMap = new java.util.HashMap<>();
+                // Criar mapa de status dos ESP32s com validação de timeout
+                java.util.Map<String, JSONObject> esp32StatusMap = new java.util.HashMap<>();
                 for (int i = 0; i < esp32Array.length(); i++) {
                     JSONObject esp32Json = esp32Array.getJSONObject(i);
                     String esp32Id = esp32Json.getString("esp32_id");
-                    String statusRede = esp32Json.optString("status_da_rede", "offline");
-                    esp32StatusMap.put(esp32Id, statusRede);
+                    esp32StatusMap.put(esp32Id, esp32Json);
                     
-                    Log.d(TAG, "ESP32 " + esp32Id + ": " + statusRede);
+                    Log.d(TAG, "ESP32 " + esp32Id + " loaded");
                 }
                 
-                // Atualizar status das máquinas baseado no status_da_rede do ESP32
+                // Atualizar status das máquinas com validação de heartbeat
                 for (Machine machine : machines) {
                     String esp32Id = machine.getEsp32Id();
-                    String esp32Status = esp32StatusMap.getOrDefault(esp32Id, "offline");
-                    boolean esp32Online = "online".equalsIgnoreCase(esp32Status) || "conectado".equalsIgnoreCase(esp32Status);
+                    JSONObject esp32Status = esp32StatusMap.get(esp32Id);
+                    boolean esp32Online = isEsp32ReallyOnline(esp32Status);
                     machine.setEsp32Online(esp32Online);
                     
-                    Log.d(TAG, "Máquina " + machine.getName() + " - ESP32 " + esp32Id + " status: " + esp32Status + " (Online: " + esp32Online + ")");
+                    Log.d(TAG, "Máquina " + machine.getName() + " - ESP32 " + esp32Id + " (Online: " + esp32Online + ")");
                 }
                 
-                Log.d(TAG, "Status dos ESP32s carregado: " + esp32StatusMap.size() + " dispositivos");
+                Log.d(TAG, "Status dos ESP32s carregado: " + esp32StatusMap.size() + " dispositivos para lavanderia " + currentLaundryId);
             } else {
                 Log.w(TAG, "Erro ao buscar status dos ESP32s: " + responseCode);
-                // Se não conseguir carregar status, assumir que todos estão online
+                // Se não conseguir carregar status, marcar todos como offline
                 for (Machine machine : machines) {
-                    machine.setEsp32Online(true);
+                    machine.setEsp32Online(false);
                 }
             }
             
@@ -397,10 +397,48 @@ public class SupabaseHelper {
             
         } catch (Exception e) {
             Log.e(TAG, "Erro ao carregar status dos ESP32s", e);
-            // Se houver erro, assumir que todos estão online
+            // Se houver erro, marcar todos como offline
             for (Machine machine : machines) {
-                machine.setEsp32Online(true);
+                machine.setEsp32Online(false);
             }
+        }
+    }
+    
+    /**
+     * Valida se ESP32 está realmente online (verifica timeout de heartbeat)
+     */
+    private boolean isEsp32ReallyOnline(JSONObject esp32Status) {
+        if (esp32Status == null) {
+            return false;
+        }
+        
+        try {
+            boolean isOnline = esp32Status.optBoolean("is_online", false);
+            String lastHeartbeat = esp32Status.optString("last_heartbeat", null);
+            
+            if (!isOnline || lastHeartbeat == null) {
+                return false;
+            }
+            
+            // Verificar se heartbeat é recente (menos de 5 minutos)
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US);
+            sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+            Date heartbeatDate = sdf.parse(lastHeartbeat.replace("Z", "").split("\\.")[0]);
+            
+            if (heartbeatDate == null) {
+                return false;
+            }
+            
+            long minutesSince = (System.currentTimeMillis() - heartbeatDate.getTime()) / (1000 * 60);
+            boolean isRecent = minutesSince <= 5;
+            
+            Log.d(TAG, "ESP32 " + esp32Status.getString("esp32_id") + 
+                  " - Heartbeat: " + minutesSince + " min ago, Online: " + isRecent);
+            
+            return isRecent;
+        } catch (Exception e) {
+            Log.e(TAG, "Error validating ESP32 heartbeat: " + e.getMessage());
+            return false;
         }
     }
     

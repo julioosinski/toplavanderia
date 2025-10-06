@@ -26,9 +26,37 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    console.log('[Health Check] Fetching ESP32 configurations...');
+    console.log('[Health Check] Starting health check process...');
 
-    // Buscar configurações dos ESP32s
+    // FASE 1: Limpar ESP32s com timeout (sem heartbeat há mais de 5 minutos)
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    
+    const { data: staleESP32s, error: staleError } = await supabase
+      .from('esp32_status')
+      .select('esp32_id, last_heartbeat')
+      .eq('is_online', true)
+      .lt('last_heartbeat', fiveMinutesAgo);
+
+    if (staleError) {
+      console.error('[Health Check] Error fetching stale ESP32s:', staleError);
+    } else if (staleESP32s && staleESP32s.length > 0) {
+      console.log(`[Health Check] Found ${staleESP32s.length} ESP32s with stale heartbeat, marking as offline...`);
+      
+      for (const esp32 of staleESP32s) {
+        await supabase
+          .from('esp32_status')
+          .update({
+            is_online: false,
+            network_status: 'timeout',
+            updated_at: new Date().toISOString()
+          })
+          .eq('esp32_id', esp32.esp32_id);
+        
+        console.log(`[Health Check] Marked ${esp32.esp32_id} as offline (timeout)`);
+      }
+    }
+
+    // FASE 2: Buscar configurações dos ESP32s
     const { data: settings, error: settingsError } = await supabase
       .from('system_settings')
       .select('esp32_configurations')
@@ -38,7 +66,7 @@ serve(async (req) => {
     if (settingsError) throw settingsError;
 
     const esp32Configs = settings?.esp32_configurations || [];
-    console.log(`[Health Check] Found ${esp32Configs.length} ESP32 configurations`);
+    console.log(`[Health Check] Found ${esp32Configs.length} ESP32 configurations to test`);
 
     // Testar cada ESP32
     const healthCheckPromises = esp32Configs.map(async (config: any): Promise<HealthCheckResult> => {

@@ -53,8 +53,8 @@ export const useMachineAutoStatus = () => {
       }
     };
 
-    // Verificar a cada 30 segundos
-    const interval = setInterval(checkMachineTimeouts, 30000);
+    // Verificar a cada 60 segundos (otimizado)
+    const interval = setInterval(checkMachineTimeouts, 60000);
 
     // Verificar imediatamente
     checkMachineTimeouts();
