@@ -106,9 +106,13 @@ export const UserManagement = () => {
     e.preventDefault();
 
     try {
+      console.log('🔵 Iniciando criação de usuário via edge function...');
+      
       // Obter token de autenticação atual
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Sessão não encontrada");
+
+      console.log('🔵 Sessão obtida, chamando edge function...');
 
       // Chamar edge function para criar usuário (não causa logout)
       const response = await fetch('https://rkdybjzwiwwqqzjfmerm.supabase.co/functions/v1/create-user', {
@@ -126,7 +130,10 @@ export const UserManagement = () => {
         }),
       });
 
+      console.log('🔵 Response status:', response.status);
+
       const result = await response.json();
+      console.log('🔵 Response data:', result);
 
       if (!response.ok) {
         throw new Error(result.error || 'Erro ao criar usuário');
@@ -146,7 +153,7 @@ export const UserManagement = () => {
         laundry_id: "",
       });
     } catch (error: any) {
-      console.error('Error creating user:', error);
+      console.error('🔴 Error creating user:', error);
       toast({
         title: "Erro",
         description: error.message || "Falha ao criar usuário",

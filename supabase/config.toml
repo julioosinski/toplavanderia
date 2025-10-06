@@ -51,6 +51,9 @@ file_size_limit = "50MiB"
 enabled = true
 port = 54327
 
+[functions.create-user]
+verify_jwt = true
+
 [functions.esp32-credit-release]
 verify_jwt = true
 
