@@ -21,7 +21,53 @@ serve(async (req) => {
     const url = new URL(req.url);
     const action = url.searchParams.get('action') || 'status';
 
-    // Buscar configurações do sistema
+    if (action === 'heartbeat') {
+      // Receber heartbeat do ESP32
+      const heartbeatData = await req.json();
+      
+      console.log('Received heartbeat:', heartbeatData);
+
+      // Atualizar status no banco
+      const { data, error } = await supabaseClient
+        .from('esp32_status')
+        .upsert({
+          esp32_id: heartbeatData.esp32_id || 'main',
+          laundry_id: heartbeatData.laundry_id,
+          ip_address: heartbeatData.ip_address,
+          signal_strength: heartbeatData.signal_strength,
+          network_status: heartbeatData.network_status || 'connected',
+          firmware_version: heartbeatData.firmware_version,
+          uptime_seconds: heartbeatData.uptime_seconds,
+          relay_status: heartbeatData.relay_status ? { status: heartbeatData.relay_status } : {},
+          is_online: true,
+          last_heartbeat: new Date().toISOString()
+        }, {
+          onConflict: 'esp32_id,laundry_id'
+        });
+
+      if (error) {
+        console.error('Error updating ESP32 status:', error);
+        return new Response(JSON.stringify({
+          success: false,
+          error: error.message
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      console.log('ESP32 status updated successfully:', data);
+
+      return new Response(JSON.stringify({
+        success: true,
+        message: 'Heartbeat received',
+        next_interval: 30
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Buscar configurações do sistema para ação 'status'
     const { data: settings } = await supabaseClient
       .from('system_settings')
       .select('*')
@@ -32,39 +78,6 @@ serve(async (req) => {
     }
 
     const esp32Configs = settings.esp32_configurations;
-
-    if (action === 'heartbeat') {
-      // Receber heartbeat do ESP32
-      const heartbeatData = await req.json();
-      
-      console.log('Received heartbeat:', heartbeatData);
-
-      // Atualizar status no banco
-      const { error } = await supabaseClient
-        .from('esp32_status')
-        .upsert({
-          esp32_id: heartbeatData.esp32_id || 'main',
-          ip_address: heartbeatData.ip_address,
-          signal_strength: heartbeatData.signal_strength,
-          network_status: heartbeatData.network_status || 'connected',
-          firmware_version: heartbeatData.firmware_version,
-          uptime_seconds: heartbeatData.uptime_seconds,
-          is_online: true,
-          last_heartbeat: new Date().toISOString()
-        });
-
-      if (error) {
-        console.error('Error updating ESP32 status:', error);
-      }
-
-      return new Response(JSON.stringify({
-        success: true,
-        message: 'Heartbeat received',
-        next_interval: settings.heartbeat_interval_seconds
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
 
     if (action === 'status') {
       // Verificar status de todos os ESP32s configurados
