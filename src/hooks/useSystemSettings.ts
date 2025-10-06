@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
 import { toast } from 'sonner';
+import { useLaundry } from '@/contexts/LaundryContext';
 
 export interface SystemSettings {
   id: string;
@@ -52,16 +53,20 @@ export interface SystemSettings {
 // Hook para buscar configurações do sistema
 export const useSystemSettings = () => {
   const queryClient = useQueryClient();
+  const { currentLaundry } = useLaundry();
 
-  // Query para buscar settings
+  // Query para buscar settings filtradas por lavanderia
   const { data: settings, isLoading, error, refetch } = useQuery({
-    queryKey: ['system-settings'],
+    queryKey: ['system-settings', currentLaundry?.id],
     queryFn: async () => {
+      if (!currentLaundry?.id) {
+        return null;
+      }
+
       const { data, error } = await supabase
         .from('system_settings')
         .select('*')
-        .order('created_at', { ascending: false })
-        .limit(1)
+        .eq('laundry_id', currentLaundry.id)
         .maybeSingle();
 
       if (error) {
@@ -69,10 +74,46 @@ export const useSystemSettings = () => {
         throw error;
       }
 
-      return data as SystemSettings | null;
+      // Se não existir configuração para esta lavanderia, criar uma padrão
+      if (!data) {
+        const defaultSettings = {
+          laundry_id: currentLaundry.id,
+          esp32_port: 80,
+          default_cycle_time: 40,
+          default_price: 5.00,
+          auto_mode: false,
+          notifications_enabled: true,
+          heartbeat_interval_seconds: 30,
+          max_offline_duration_minutes: 5,
+          signal_threshold_warning: -70,
+          enable_esp32_monitoring: true,
+          paygo_enabled: false,
+          paygo_port: 8080,
+          paygo_timeout: 30000,
+          paygo_retry_attempts: 3,
+          paygo_retry_delay: 2000,
+          nfse_enabled: false,
+        };
+
+        const { data: newSettings, error: createError } = await supabase
+          .from('system_settings')
+          .insert(defaultSettings)
+          .select()
+          .single();
+
+        if (createError) {
+          console.error('Error creating default settings:', createError);
+          throw createError;
+        }
+
+        return newSettings as SystemSettings;
+      }
+
+      return data as SystemSettings;
     },
     staleTime: 1000 * 60 * 5, // Cache por 5 minutos
     retry: 2,
+    enabled: !!currentLaundry?.id,
   });
 
   // Mutation para atualizar settings
@@ -107,6 +148,8 @@ export const useSystemSettings = () => {
 
   // Realtime updates via Supabase
   useEffect(() => {
+    if (!currentLaundry?.id) return;
+
     const channel = supabase
       .channel('system-settings-changes')
       .on(
@@ -115,10 +158,11 @@ export const useSystemSettings = () => {
           event: '*',
           schema: 'public',
           table: 'system_settings',
+          filter: `laundry_id=eq.${currentLaundry.id}`,
         },
         (payload) => {
           console.log('System settings updated:', payload);
-          queryClient.invalidateQueries({ queryKey: ['system-settings'] });
+          queryClient.invalidateQueries({ queryKey: ['system-settings', currentLaundry.id] });
         }
       )
       .subscribe();
@@ -126,7 +170,7 @@ export const useSystemSettings = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [queryClient]);
+  }, [queryClient, currentLaundry?.id]);
 
   return {
     settings,
