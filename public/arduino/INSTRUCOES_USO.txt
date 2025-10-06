@@ -1,0 +1,133 @@
+╔═══════════════════════════════════════════════════════════════╗
+║   ESP32 LAVADORA - CÓDIGO CORRIGIDO PARA SUPABASE            ║
+║   Versão: v2.0.1                                              ║
+╚═══════════════════════════════════════════════════════════════╝
+
+📋 INSTRUÇÕES DE USO
+═══════════════════════════════════════════════════════════════
+
+1️⃣ LOCALIZAÇÃO DO ARQUIVO
+───────────────────────────────────────────────────────────────
+O arquivo corrigido está em:
+📁 public/arduino/ESP32_Lavadora_Individual_CORRIGIDO.ino
+
+Para encontrá-lo no projeto Lovable:
+1. Clique no botão "Dev Mode" no canto superior esquerdo
+2. Navegue até a pasta "public" → "arduino"
+3. Clique com botão direito em "ESP32_Lavadora_Individual_CORRIGIDO.ino"
+4. Selecione "Download" para baixar o arquivo
+
+
+2️⃣ O QUE FOI CORRIGIDO
+───────────────────────────────────────────────────────────────
+✅ Adicionado: API Key do Supabase nos headers HTTP
+✅ Adicionado: laundry_id no payload do heartbeat
+✅ Corrigido: esp32_id agora usa "main" (constante ESP32_ID)
+✅ Adicionado: relay_status no payload
+✅ Melhorado: Logs mais detalhados no Serial Monitor
+
+
+3️⃣ CONFIGURAÇÕES NECESSÁRIAS
+───────────────────────────────────────────────────────────────
+Antes de fazer upload, EDITE estas linhas no arquivo:
+
+🔧 Linha 23-24: Configurar WiFi
+   const char* ssid = "SEU_WIFI";
+   const char* password = "SUA_SENHA";
+
+🔧 Linha 30: API Key do Supabase (já configurada)
+   const char* supabaseApiKey = "eyJhbGciOiJIUzI1NiI...";
+
+🔧 Linha 33: Laundry ID (já configurado)
+   const char* laundryId = "8ace0bcb-83a9-4555-a712-63ef5f52e709";
+
+🔧 Linha 39: ID do ESP32 (mantenha "main" para o principal)
+   #define ESP32_ID "main"
+
+
+4️⃣ COMO FAZER UPLOAD PARA O ESP32
+───────────────────────────────────────────────────────────────
+1. Abra o Arduino IDE
+2. Instale as bibliotecas necessárias:
+   - WiFi (já incluída no ESP32)
+   - WebServer (já incluída no ESP32)
+   - ArduinoJson (Ferramentas → Gerenciar Bibliotecas → buscar "ArduinoJson")
+   - HTTPClient (já incluída no ESP32)
+
+3. Configure a placa:
+   Ferramentas → Placa → ESP32 Arduino → ESP32 Dev Module
+
+4. Selecione a porta COM do seu ESP32:
+   Ferramentas → Porta → COMx (Windows) ou /dev/ttyUSBx (Linux)
+
+5. Clique em "Upload" (seta para direita)
+
+
+5️⃣ VERIFICAÇÃO APÓS UPLOAD
+───────────────────────────────────────────────────────────────
+1. Abra o Serial Monitor (Ctrl+Shift+M ou ícone de lupa)
+2. Configure para 115200 baud
+3. Você deve ver:
+   ✅ WiFi conectado com IP
+   ✅ Servidor web iniciado
+   ✅ "Heartbeat enviado com sucesso!" com código 200
+
+4. Acesse a interface web do ESP32:
+   - Abra o navegador
+   - Digite: http://192.168.0.84 (ou o IP que aparecer no Serial Monitor)
+   - Clique em "💓 Testar Heartbeat"
+
+
+6️⃣ VERIFICAR NO PAINEL ADMIN
+───────────────────────────────────────────────────────────────
+1. Acesse o painel admin do seu sistema
+2. Vá em Configurações → ESP32
+3. Verifique se "Habilitar Monitoramento ESP32" está ativo
+4. Vá em Status de Máquinas
+5. O ESP32 deve aparecer como 🟢 Online
+
+
+7️⃣ SOLUÇÃO DE PROBLEMAS
+───────────────────────────────────────────────────────────────
+❌ Se aparecer "Heartbeat enviado: 401"
+   → Verifique a API Key do Supabase na linha 30
+
+❌ Se aparecer "Erro no heartbeat: -1"
+   → Verifique a conexão WiFi e a URL do Supabase
+
+❌ Se o ESP32 não aparecer online no painel
+   → Verifique se o laundry_id está correto (linha 33)
+   → Verifique se o monitoramento está habilitado no admin
+
+❌ Se der erro de compilação
+   → Instale a biblioteca ArduinoJson (versão 6.x ou superior)
+
+
+8️⃣ LOGS IMPORTANTES
+───────────────────────────────────────────────────────────────
+No Serial Monitor, você deve ver:
+
+✅ BOM (funcionando):
+   📡 Enviando heartbeat...
+   ✅ Heartbeat enviado com sucesso!
+   Código: 200
+
+❌ RUIM (problema):
+   ❌ Erro no heartbeat!
+   Código: 401 (problema de autenticação)
+   Código: -1 (problema de rede/conexão)
+
+
+9️⃣ SUPORTE
+───────────────────────────────────────────────────────────────
+Se ainda tiver problemas:
+
+1. Copie os logs do Serial Monitor
+2. Tire print da tela de configurações do admin
+3. Informe qual erro está aparecendo
+4. Compartilhe o IP do ESP32
+
+
+═══════════════════════════════════════════════════════════════
+✅ Arquivo criado e salvo com sucesso!
+═══════════════════════════════════════════════════════════════
