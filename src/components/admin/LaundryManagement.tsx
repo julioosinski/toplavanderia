@@ -19,7 +19,7 @@ import { useLaundry } from "@/contexts/LaundryContext";
 import { Laundry, AppRole } from "@/types/laundry";
 
 export const LaundryManagement = () => {
-  const { laundries, refreshLaundries } = useLaundry();
+  const { laundries, refreshLaundries, isSuperAdmin } = useLaundry();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [editingLaundry, setEditingLaundry] = useState<Laundry | null>(null);
@@ -39,6 +39,11 @@ export const LaundryManagement = () => {
     fullName: "",
   });
   const [laundryAdmins, setLaundryAdmins] = useState<any[]>([]);
+
+  // Proteção: apenas super admins podem usar este componente
+  if (!isSuperAdmin) {
+    return null;
+  }
 
   const resetForm = () => {
     setFormData({

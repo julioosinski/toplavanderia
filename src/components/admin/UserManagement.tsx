@@ -213,10 +213,10 @@ export const UserManagement = () => {
           <CardDescription>
             {isSuperAdmin 
               ? "Adicione, edite ou remova usuários do sistema" 
-              : "Visualize os usuários da sua lavanderia"}
+              : "Adicione operadores e usuários da sua lavanderia"}
           </CardDescription>
         </div>
-        {isSuperAdmin && (
+        {(isSuperAdmin || currentLaundry) && (
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button>
@@ -264,10 +264,13 @@ export const UserManagement = () => {
                   </SelectTrigger>
                   <SelectContent>
                     {isSuperAdmin && (
-                      <SelectItem value="super_admin">Super Admin</SelectItem>
+                      <>
+                        <SelectItem value="super_admin">Super Admin</SelectItem>
+                        <SelectItem value="admin">Administrador</SelectItem>
+                      </>
                     )}
-                    <SelectItem value="admin">Administrador</SelectItem>
                     <SelectItem value="operator">Operador</SelectItem>
+                    <SelectItem value="user">Usuário</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -335,13 +338,15 @@ export const UserManagement = () => {
                     </p>
                   )}
                 </div>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => handleDelete(user.user_id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                {(isSuperAdmin || (currentLaundry && user.role !== 'admin' && user.role !== 'super_admin')) && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handleDelete(user.user_id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             ))
           )}
