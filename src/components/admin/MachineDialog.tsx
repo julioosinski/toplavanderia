@@ -160,8 +160,17 @@ export const MachineDialog = ({
         return;
       }
 
+      // ✅ Filtrar apenas campos válidos da tabela machines
       const dataToSave = {
-        ...formData,
+        name: formData.name,
+        type: formData.type,
+        location: formData.location,
+        capacity_kg: formData.capacity_kg,
+        price_per_kg: formData.price_per_kg,
+        cycle_time_minutes: formData.cycle_time_minutes,
+        temperature: formData.temperature,
+        esp32_id: formData.esp32_id,
+        relay_pin: formData.relay_pin,
         laundry_id: currentLaundry.id,
       };
 
