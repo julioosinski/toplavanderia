@@ -85,33 +85,60 @@ export default function Machines() {
         let realStatus = machine.status;
         let esp32Online = false;
         
+        console.log(`🔍 [Machines] Verificando ESP32 para máquina ${machine.name}:`, {
+          machine_esp32_id: machine.esp32_id,
+          esp32_found: !!esp32,
+          esp32_data: esp32
+        });
+
         if (esp32) {
           const lastHeartbeat = esp32.last_heartbeat ? new Date(esp32.last_heartbeat) : null;
           const now = new Date();
-          const isRecent = lastHeartbeat && (now.getTime() - lastHeartbeat.getTime()) < 5 * 60 * 1000; // 5 minutes
+          const minutesAgo = lastHeartbeat ? (now.getTime() - lastHeartbeat.getTime()) / 60000 : 999999;
+          const isRecent = lastHeartbeat && minutesAgo < 5; // 5 minutes
           
           esp32Online = esp32.is_online && isRecent;
           
+          console.log(`📡 [Machines] ${machine.name} - ESP32 Status:`, {
+            is_online: esp32.is_online,
+            last_heartbeat: esp32.last_heartbeat,
+            minutes_ago: minutesAgo.toFixed(1),
+            is_recent: isRecent,
+            esp32_online: esp32Online
+          });
+          
           if (!esp32Online) {
             realStatus = 'offline';
+            console.log(`❌ [Machines] ${machine.name} marcado como OFFLINE (heartbeat antigo ou ESP32 offline)`);
           } else {
             // Check relay status
             const relayStatus = esp32.relay_status as any;
             if (relayStatus) {
-              // Check if relay status is "on" or if there's a specific relay pin status
-              const relayOn = relayStatus === 'on' || 
-                             relayStatus.status === 'on' ||
-                             relayStatus[`relay${machine.relay_pin}`] === 'on';
+              let relayOn = false;
               
-              if (relayOn) {
-                realStatus = 'running';
-              } else {
-                realStatus = 'available';
+              // Formato novo: {relay_1: "on", relay_2: "off"}
+              if (relayStatus[`relay_${machine.relay_pin}`]) {
+                relayOn = relayStatus[`relay_${machine.relay_pin}`] === 'on';
+                console.log(`✅ [Machines] ${machine.name} - Formato NOVO: relay_${machine.relay_pin} = ${relayStatus[`relay_${machine.relay_pin}`]}`);
+              } 
+              // Formato antigo: {status: "on"}
+              else if (relayStatus.status) {
+                relayOn = relayStatus.status === 'on';
+                console.log(`⚠️ [Machines] ${machine.name} - Formato ANTIGO: status = ${relayStatus.status}`);
               }
+              // Formato legacy string: "on"
+              else if (typeof relayStatus === 'string') {
+                relayOn = relayStatus === 'on';
+                console.log(`⚠️ [Machines] ${machine.name} - Formato LEGACY string: ${relayStatus}`);
+              }
+              
+              realStatus = relayOn ? 'running' : 'available';
+              console.log(`📊 [Machines] ${machine.name} - Status final: ${realStatus}`);
             }
           }
         } else {
           realStatus = 'offline';
+          console.log(`❌ [Machines] ${machine.name} - ESP32 NÃO ENCONTRADO (esp32_id: ${machine.esp32_id})`);
         }
 
         return {
