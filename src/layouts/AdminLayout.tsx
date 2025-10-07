@@ -17,6 +17,7 @@ import {
   ChevronRight,
   Moon,
   Sun,
+  Activity,
 } from "lucide-react";
 import {
   Sidebar,
@@ -52,6 +53,7 @@ const menuItems = [
   { title: "Usuários", url: "/admin/users", icon: Users, adminOnly: true },
   { title: "Lavanderias", url: "/admin/laundries", icon: Store, superAdminOnly: true },
   { title: "Relatórios", url: "/admin/reports", icon: BarChart3 },
+  { title: "Diagnóstico ESP32", url: "/admin/esp32-diagnostics", icon: Activity, adminOnly: true },
   { title: "Segurança", url: "/admin/security", icon: Shield, adminOnly: true },
   { title: "Configurações", url: "/admin/settings", icon: Settings },
 ];

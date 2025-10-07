@@ -54,11 +54,18 @@ export const useMachines = (laundryId?: string | null) => {
 
       console.log('✅ Máquinas carregadas:', machinesData?.length || 0);
 
-      // Buscar status dos ESP32s para determinar IPs e status de relés
-      console.log('🔍 Buscando status ESP32...');
-      const { data: esp32Data, error: esp32Error } = await supabase
+      // Buscar status dos ESP32s FILTRADO pela lavanderia atual
+      console.log('🔍 Buscando status ESP32 para lavanderia:', laundryId);
+      let esp32Query = supabase
         .from('esp32_status')
-        .select('esp32_id, ip_address, is_online, relay_status, last_heartbeat');
+        .select('esp32_id, ip_address, is_online, relay_status, last_heartbeat, laundry_id');
+      
+      // Filtrar por lavanderia se fornecido
+      if (laundryId) {
+        esp32Query = esp32Query.eq('laundry_id', laundryId);
+      }
+      
+      const { data: esp32Data, error: esp32Error } = await esp32Query;
 
       if (esp32Error) {
         console.warn('⚠️ Erro ao buscar ESP32 status:', esp32Error);
@@ -109,21 +116,36 @@ export const useMachines = (laundryId?: string | null) => {
           } else {
             // ESP32 está online E heartbeat é recente, verificar status do relé
             if (esp32Status.relay_status && typeof esp32Status.relay_status === 'object') {
+              const relayObj = esp32Status.relay_status as any;
+              
+              // Suportar ambos formatos: {"status": "off"} e {"relay_1": "on", "relay_2": "off"}
+              let relayStatus: string | boolean | number | undefined;
+              
+              // Tentar formato específico primeiro (relay_1, relay_2, etc)
               const relayKey = `relay_${machine.relay_pin || 1}`;
-              const relayStatus = (esp32Status.relay_status as any)[relayKey];
+              if (relayObj[relayKey] !== undefined) {
+                relayStatus = relayObj[relayKey];
+                console.log(`[Machine ${machine.name}] Relay format: {${relayKey}: ${relayStatus}}`);
+              } 
+              // Fallback para formato simples {"status": "on/off"}
+              else if (relayObj.status !== undefined) {
+                relayStatus = relayObj.status;
+                console.log(`[Machine ${machine.name}] Relay format: {status: ${relayStatus}}`);
+              }
               
               // Se relé está ativo, máquina está rodando
               if (relayStatus === 'on' || relayStatus === true || relayStatus === 1) {
                 machineStatus = 'running';
-                console.log(`[Machine ${machine.name}] Marked as RUNNING (relay active)`);
+                console.log(`[Machine ${machine.name}] ✅ RUNNING (relay=${relayStatus})`);
               } else if (machine.status !== 'running' && machine.status !== 'maintenance') {
                 // Se relé está desligado e não está em manutenção, está disponível
                 machineStatus = 'available';
-                console.log(`[Machine ${machine.name}] Available (ESP32 online, relay inactive)`);
+                console.log(`[Machine ${machine.name}] ✅ AVAILABLE (relay=${relayStatus})`);
               }
             } else if (machine.status !== 'running' && machine.status !== 'maintenance') {
               // Se não há dados de relé mas ESP32 está online, considerar disponível
               machineStatus = 'available';
+              console.log(`[Machine ${machine.name}] ⚠️ AVAILABLE (no relay data)`);
             }
           }
         }

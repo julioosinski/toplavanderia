@@ -218,8 +218,10 @@ void sendHeartbeat() {
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
   
+  // Formato correto do relay_status: {"relay_1": "on/off", "relay_2": "on/off"}
   JsonObject relayStatusObj = doc.createNestedObject("relay_status");
-  relayStatusObj["status"] = relayState ? "on" : "off";
+  relayStatusObj["relay_1"] = relayState ? "on" : "off";
+  relayStatusObj["relay_2"] = "off";  // Adicione mais relés conforme necessário
   
   String payload;
   serializeJson(doc, payload);

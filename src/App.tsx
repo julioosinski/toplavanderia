@@ -18,6 +18,7 @@ import Reports from "./pages/admin/Reports";
 import Security from "./pages/admin/Security";
 import Settings from "./pages/admin/Settings";
 import Profile from "./pages/admin/Profile";
+import ESP32Diagnostics from "./pages/admin/ESP32Diagnostics";
 
 const queryClient = new QueryClient();
 
@@ -44,6 +45,7 @@ const App = () => (
                 <Route path="security" element={<Security />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="profile" element={<Profile />} />
+                <Route path="esp32-diagnostics" element={<ESP32Diagnostics />} />
               </Route>
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />

@@ -46,6 +46,7 @@ export const MachineDialog = ({
   const setOpen = controlledOnOpenChange || setInternalOpen;
 
   const [loading, setLoading] = useState(false);
+  const [availableRelayPins, setAvailableRelayPins] = useState<number[]>([]);
   const [formData, setFormData] = useState<Machine>({
     name: "",
     type: "washing",
@@ -57,6 +58,37 @@ export const MachineDialog = ({
     esp32_id: "",
     relay_pin: 1
   });
+
+  // Buscar relay_pins disponíveis quando esp32_id mudar
+  useEffect(() => {
+    const fetchAvailableRelayPins = async () => {
+      if (!currentLaundry || !formData.esp32_id) {
+        setAvailableRelayPins([1, 2, 3, 4, 5, 6, 7, 8]);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("machines")
+        .select("relay_pin, name")
+        .eq("laundry_id", currentLaundry.id)
+        .eq("esp32_id", formData.esp32_id);
+
+      if (error) {
+        console.error("Error fetching relay pins:", error);
+        return;
+      }
+
+      // Filtrar máquina atual se estiver editando
+      const usedPins = data
+        ?.filter(m => m.relay_pin && (!machine?.id || m.name !== machine.name))
+        .map(m => m.relay_pin) || [];
+
+      const available = [1, 2, 3, 4, 5, 6, 7, 8].filter(pin => !usedPins.includes(pin));
+      setAvailableRelayPins(available);
+    };
+
+    fetchAvailableRelayPins();
+  }, [formData.esp32_id, currentLaundry, machine]);
 
   useEffect(() => {
     if (machine) {
@@ -267,18 +299,31 @@ export const MachineDialog = ({
 
             <div className="space-y-2">
               <Label htmlFor="relay_pin">Pino Relé *</Label>
-              <Input
-                id="relay_pin"
-                type="number"
-                min="1"
-                max="8"
-                value={formData.relay_pin || 1}
-                onChange={(e) => setFormData({ ...formData, relay_pin: parseInt(e.target.value) || 1 })}
-                placeholder="1-8"
-                required
-              />
+              <Select
+                value={String(formData.relay_pin || 1)}
+                onValueChange={(value) => setFormData({ ...formData, relay_pin: parseInt(value) })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableRelayPins.map(pin => (
+                    <SelectItem key={pin} value={String(pin)}>
+                      Relay {pin}
+                    </SelectItem>
+                  ))}
+                  {/* Mostrar pin atual mesmo se usado (para edição) */}
+                  {formData.relay_pin && !availableRelayPins.includes(formData.relay_pin) && (
+                    <SelectItem value={String(formData.relay_pin)}>
+                      Relay {formData.relay_pin} (atual)
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
               <p className="text-xs text-muted-foreground">
-                Cada máquina precisa de um relay_pin único
+                {availableRelayPins.length > 0 
+                  ? `Disponíveis: ${availableRelayPins.join(', ')}`
+                  : '⚠️ Todos os relés deste ESP32 estão em uso'}
               </p>
             </div>
           </div>

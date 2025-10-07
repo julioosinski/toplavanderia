@@ -14,6 +14,8 @@ export const ESP32ConfigurationDialog = () => {
   const [open, setOpen] = useState(false);
   const [esp32Id, setEsp32Id] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copiedLaundryId, setCopiedLaundryId] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   const wifiSsid = "2G Osinski";
   const wifiPassword = "10203040";
@@ -119,7 +121,7 @@ void sendHeartbeat() {
   payload += "\\"firmware_version\\":\\"v2.0.3\\",";
   payload += "\\"uptime_seconds\\":" + String(millis() / 1000) + ",";
   payload += "\\"is_active\\":" + String(machineRunning ? "true" : "false") + ",";
-  payload += "\\"relay_status\\":{\\"status\\":\\"" + String(relayState ? "on" : "off") + "\\"}";
+  payload += "\\"relay_status\\":{\\"relay_1\\":\\"" + String(relayState ? "on" : "off") + "\\",\\"relay_2\\":\\"off\\"}";
   payload += "}";
 
   int httpCode = http.POST(payload);
@@ -167,6 +169,17 @@ void sendHeartbeat() {
     });
   };
 
+  const handleCopyLaundryId = () => {
+    navigator.clipboard.writeText(laundryId);
+    setCopiedLaundryId(true);
+    setTimeout(() => setCopiedLaundryId(false), 2000);
+    
+    toast({
+      title: "ID Copiado!",
+      description: "LAUNDRY_ID copiado para área de transferência"
+    });
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -195,9 +208,25 @@ void sendHeartbeat() {
                   <span className="text-muted-foreground">WiFi SSID:</span>
                   <span className="font-medium">{wifiSsid}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Laundry ID:</span>
-                  <span className="font-mono text-xs">{laundryId.substring(0, 8)}...</span>
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Laundry ID:</span>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-auto py-1 px-2"
+                      onClick={handleCopyLaundryId}
+                    >
+                      {copiedLaundryId ? (
+                        <CheckCircle className="h-3 w-3" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                    </Button>
+                  </div>
+                  <code className="block text-xs font-mono bg-background p-2 rounded border break-all">
+                    {laundryId}
+                  </code>
                 </div>
               </div>
             </CardContent>
@@ -219,17 +248,12 @@ void sendHeartbeat() {
 
           <div className="flex gap-2">
             <Button 
-              onClick={handleCopyConfig} 
+              onClick={() => setShowPreview(!showPreview)} 
               variant="outline" 
               className="flex-1"
               disabled={!esp32Id}
             >
-              {copied ? (
-                <CheckCircle className="mr-2 h-4 w-4" />
-              ) : (
-                <Copy className="mr-2 h-4 w-4" />
-              )}
-              {copied ? "Copiado!" : "Copiar Config"}
+              {showPreview ? "Ocultar" : "Ver"} Preview
             </Button>
             <Button 
               onClick={handleDownload}
@@ -237,15 +261,31 @@ void sendHeartbeat() {
               disabled={!esp32Id}
             >
               <Download className="mr-2 h-4 w-4" />
-              Baixar Código .ino
+              Baixar .ino
             </Button>
           </div>
 
-          <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-4">
+          {showPreview && esp32Id && (
+            <Card className="bg-muted/30">
+              <CardContent className="pt-4">
+                <pre className="text-xs overflow-x-auto p-2 bg-background rounded border max-h-64 overflow-y-auto">
+                  {generateArduinoCode().substring(0, 800)}...
+                </pre>
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-4 space-y-2">
             <p className="text-sm text-amber-600 dark:text-amber-400">
-              <strong>⚠️ Importante:</strong> Cada máquina precisa de um ESP32 dedicado com um relay_pin único. 
-              Configure o relay_pin no cadastro da máquina.
+              <strong>⚠️ Configuração Física:</strong>
             </p>
+            <ul className="text-xs text-amber-600 dark:text-amber-400 space-y-1 ml-4">
+              <li>• Um ESP32 pode controlar múltiplas máquinas</li>
+              <li>• Cada máquina usa um relay_pin diferente (1, 2, 3...)</li>
+              <li>• ESP32 → Relay 1 → Máquina 1</li>
+              <li>• ESP32 → Relay 2 → Máquina 2</li>
+              <li>• Nunca use o mesmo relay_pin para duas máquinas!</li>
+            </ul>
           </div>
         </div>
       </DialogContent>
