@@ -118,10 +118,18 @@ void sendHeartbeat() {
   payload += "\\"ip_address\\":\\"" + WiFi.localIP().toString() + "\\",";
   payload += "\\"signal_strength\\":" + String(WiFi.RSSI()) + ",";
   payload += "\\"network_status\\":\\"connected\\",";
-  payload += "\\"firmware_version\\":\\"v2.0.3\\",";
+  payload += "\\"firmware_version\\":\\"v3.0.0\\","; // ⬆️ Versão atualizada
   payload += "\\"uptime_seconds\\":" + String(millis() / 1000) + ",";
   payload += "\\"is_active\\":" + String(machineRunning ? "true" : "false") + ",";
-  payload += "\\"relay_status\\":{\\"relay_1\\":\\"" + String(relayState ? "on" : "off") + "\\",\\"relay_2\\":\\"off\\"}";
+  
+  // ✅ FORMATO CORRETO: relay_1, relay_2, relay_3...
+  // Cada relay_pin das máquinas corresponde a um relay_X
+  payload += "\\"relay_status\\":{";
+  payload += "\\"relay_1\\":\\"" + String(relayState ? "on" : "off") + "\\",";
+  payload += "\\"relay_2\\":\\"off\\""; // Adicione mais relés conforme necessário
+  // payload += ",\\"relay_3\\":\\"off\\""; // Descomente para adicionar relay 3
+  payload += "}";
+  
   payload += "}";
 
   int httpCode = http.POST(payload);

@@ -115,6 +115,13 @@ export default function ESP32Diagnostics() {
     return `${diffDays}d atrás`;
   };
 
+  const isOutdatedFirmware = (relayStatus?: any) => {
+    if (!relayStatus || typeof relayStatus !== 'object') return false;
+    // Formato antigo: {"status": "on/off"}
+    // Formato novo: {"relay_1": "on", "relay_2": "off"}
+    return relayStatus.hasOwnProperty('status') && !relayStatus.hasOwnProperty('relay_1');
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto p-6">
@@ -196,9 +203,10 @@ export default function ESP32Diagnostics() {
           const machines = getMachinesForESP32(esp32.esp32_id, esp32.laundry_id);
           const conflicts = getRelayConflicts(esp32.esp32_id, esp32.laundry_id);
           const hasConflicts = conflicts.length > 0;
+          const outdatedFirmware = isOutdatedFirmware(esp32.relay_status);
 
           return (
-            <Card key={`${esp32.esp32_id}-${esp32.laundry_id}`} className={hasConflicts ? "border-red-500" : ""}>
+            <Card key={`${esp32.esp32_id}-${esp32.laundry_id}`} className={hasConflicts ? "border-red-500" : outdatedFirmware ? "border-amber-500" : ""}>
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
@@ -214,6 +222,12 @@ export default function ESP32Diagnostics() {
                           Conflito!
                         </Badge>
                       )}
+                      {outdatedFirmware && (
+                        <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                          <AlertTriangle className="h-3 w-3" />
+                          Firmware Desatualizado
+                        </Badge>
+                      )}
                     </CardTitle>
                     <CardDescription className="flex items-center gap-4 text-xs">
                       {esp32.ip_address && <span>IP: {esp32.ip_address}</span>}
@@ -224,6 +238,20 @@ export default function ESP32Diagnostics() {
                 </div>
               </CardHeader>
               <CardContent>
+                {outdatedFirmware && (
+                  <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg space-y-2">
+                    <p className="text-sm text-amber-600 dark:text-amber-400 font-medium">
+                      ⚠️ Firmware desatualizado detectado!
+                    </p>
+                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                      Este ESP32 está usando o formato antigo de relay_status. Recomendamos atualizar para a versão mais recente para melhor compatibilidade com múltiplos relés.
+                    </p>
+                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                      💡 Gere um novo código .ino através do botão "Configurar ESP32" nas configurações e faça upload para o dispositivo.
+                    </p>
+                  </div>
+                )}
+                
                 {hasConflicts && (
                   <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
                     <p className="text-sm text-red-600 dark:text-red-400 font-medium">

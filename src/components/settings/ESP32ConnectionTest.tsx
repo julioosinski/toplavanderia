@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Wifi, WifiOff, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { CapacitorHttp } from "@capacitor/core";
 
 interface ESP32ConnectionTestProps {
   host: string;
@@ -22,19 +23,19 @@ export const ESP32ConnectionTest = ({ host, port, esp32Id }: ESP32ConnectionTest
     try {
       const url = `http://${host}:${port}/status`;
       
-      // Timeout de 5 segundos
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-      const response = await fetch(url, {
+      console.log(`🔍 Testando conexão ESP32: ${url}`);
+      
+      // Usar CapacitorHttp para resolver Mixed Content Error
+      const response = await CapacitorHttp.request({
+        url: url,
         method: "GET",
-        signal: controller.signal,
+        readTimeout: 5000,
+        connectTimeout: 5000,
       });
 
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
+      if (response.status === 200) {
         setStatus("success");
+        console.log(`✅ ESP32 ${esp32Id} respondeu:`, response.data);
         toast({
           title: "Conexão bem-sucedida",
           description: `ESP32 ${esp32Id} está online e respondendo.`,
@@ -44,9 +45,11 @@ export const ESP32ConnectionTest = ({ host, port, esp32Id }: ESP32ConnectionTest
       }
     } catch (error: any) {
       setStatus("error");
-      const errorMessage = error.name === "AbortError" 
+      console.error(`❌ Erro ao conectar ESP32 ${esp32Id}:`, error);
+      
+      const errorMessage = error.message?.includes("timeout") || error.message?.includes("timed out")
         ? "Timeout - ESP32 não respondeu em 5 segundos" 
-        : error.message;
+        : error.message || "Erro desconhecido";
       
       toast({
         title: "Falha na conexão",
