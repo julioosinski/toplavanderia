@@ -299,6 +299,73 @@ export type Database = {
           },
         ]
       }
+      pending_commands: {
+        Row: {
+          action: string
+          created_at: string | null
+          error_message: string | null
+          esp32_id: string
+          id: string
+          last_retry_at: string | null
+          machine_id: string
+          relay_pin: number
+          retry_count: number | null
+          status: string
+          transaction_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          error_message?: string | null
+          esp32_id: string
+          id?: string
+          last_retry_at?: string | null
+          machine_id: string
+          relay_pin: number
+          retry_count?: number | null
+          status?: string
+          transaction_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          error_message?: string | null
+          esp32_id?: string
+          id?: string
+          last_retry_at?: string | null
+          machine_id?: string
+          relay_pin?: number
+          retry_count?: number | null
+          status?: string
+          transaction_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_commands_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pending_commands_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "public_machines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pending_commands_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
