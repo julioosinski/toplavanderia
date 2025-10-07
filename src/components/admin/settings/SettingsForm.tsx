@@ -36,8 +36,47 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating }: SettingsFormPro
   };
 
   const handleESP32ConfigurationsUpdate = async (configs: any[]) => {
+    console.log('🔄 Salvando configurações ESP32:', configs);
+    
+    // Atualizar estado local
     updateSetting('esp32_configurations', configs);
-    onUpdate({ esp32_configurations: configs });
+    
+    // Salvar no Supabase imediatamente
+    try {
+      const { error } = await supabase
+        .from('system_settings')
+        .update({ 
+          esp32_configurations: configs,
+          updated_at: new Date().toISOString()
+        })
+        .eq('laundry_id', currentLaundry?.id);
+
+      if (error) {
+        console.error('❌ Erro ao salvar ESP32 configs:', error);
+        toast({
+          title: "Erro ao salvar",
+          description: "Não foi possível salvar as configurações ESP32",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      console.log('✅ Configurações ESP32 salvas com sucesso');
+      toast({
+        title: "Configurações Salvas",
+        description: "ESP32s configurados com sucesso",
+      });
+      
+      // Também chamar onUpdate para garantir que o hook seja atualizado
+      onUpdate({ esp32_configurations: configs });
+    } catch (error) {
+      console.error('❌ Erro inesperado ao salvar:', error);
+      toast({
+        title: "Erro",
+        description: "Erro inesperado ao salvar configurações",
+        variant: "destructive",
+      });
+    }
   };
 
   const addMockTransactions = async () => {

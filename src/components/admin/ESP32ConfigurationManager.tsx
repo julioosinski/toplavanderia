@@ -6,10 +6,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Plus, Edit2, Trash2, Wifi, MapPin, Cpu } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Plus, Edit2, Trash2, Wifi, MapPin, Cpu, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { ESP32ConnectionTest } from '@/components/settings/ESP32ConnectionTest';
+import { useESP32Status } from '@/hooks/useESP32Status';
+import { SignalIndicator } from '@/components/admin/SignalIndicator';
 
 interface ESP32Config {
   id: string;
@@ -40,6 +43,17 @@ const ESP32ConfigurationManager: React.FC<ESP32ConfigurationManagerProps> = ({
     machines: []
   });
   const { toast } = useToast();
+  const { esp32StatusList, loading: statusLoading, getStatus, isOnline } = useESP32Status();
+
+  // Detectar ESP32s online mas não configurados
+  const unconfiguredESP32s = esp32StatusList.filter(
+    status => !configurations.some(config => config.id === status.esp32_id)
+  );
+
+  // Detectar configurações sem ESP32 online
+  const offlineConfigs = configurations.filter(
+    config => !isOnline(config.id)
+  );
 
   const handleEdit = (config: ESP32Config) => {
     setEditingConfig(config);
@@ -113,8 +127,85 @@ const ESP32ConfigurationManager: React.FC<ESP32ConfigurationManagerProps> = ({
 
   return (
     <div className="space-y-4">
+      {/* Alertas de Status */}
+      {unconfiguredESP32s.length > 0 && (
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>{unconfiguredESP32s.length} ESP32(s) online não configurado(s):</strong>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {unconfiguredESP32s.map(status => (
+                <Badge key={status.esp32_id} variant="destructive">
+                  {status.esp32_id} ({status.ip_address})
+                </Badge>
+              ))}
+            </div>
+            <p className="text-sm mt-2">
+              Configure estes ESP32s para poder gerenciá-los corretamente.
+            </p>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {offlineConfigs.length > 0 && (
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>{offlineConfigs.length} ESP32(s) configurado(s) mas offline:</strong>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {offlineConfigs.map(config => (
+                <Badge key={config.id} variant="secondary">
+                  {config.name} ({config.id})
+                </Badge>
+              ))}
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Resumo de Status */}
+      <div className="grid grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total Configurados</p>
+                <p className="text-2xl font-bold">{configurations.length}</p>
+              </div>
+              <Cpu className="h-8 w-8 text-muted-foreground" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Online</p>
+                <p className="text-2xl font-bold text-green-600">
+                  {configurations.filter(c => isOnline(c.id)).length}
+                </p>
+              </div>
+              <CheckCircle2 className="h-8 w-8 text-green-600" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Offline</p>
+                <p className="text-2xl font-bold text-red-600">
+                  {offlineConfigs.length}
+                </p>
+              </div>
+              <XCircle className="h-8 w-8 text-red-600" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="flex justify-between items-center">
-        <h4 className="text-lg font-medium">Configurações dos ESP32s</h4>
+        <h4 className="text-lg font-medium">Dispositivos ESP32</h4>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button onClick={handleAdd} size="sm">
@@ -214,75 +305,116 @@ const ESP32ConfigurationManager: React.FC<ESP32ConfigurationManagerProps> = ({
             </CardContent>
           </Card>
         ) : (
-          configurations.map((config) => (
-            <Card key={config.id}>
-              <CardHeader className="pb-3">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <CardTitle className="text-base">{config.name}</CardTitle>
-                    <Badge variant="outline" className="mt-1">
-                      ID: {config.id}
-                    </Badge>
+          configurations.map((config) => {
+            const status = getStatus(config.id);
+            const online = isOnline(config.id);
+            
+            return (
+              <Card key={config.id} className={online ? 'border-green-500/50' : 'border-red-500/50'}>
+                <CardHeader className="pb-3">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="text-base">{config.name}</CardTitle>
+                        {online ? (
+                          <Badge variant="default" className="bg-green-600">
+                            <CheckCircle2 className="w-3 h-3 mr-1" />
+                            Online
+                          </Badge>
+                        ) : (
+                          <Badge variant="destructive">
+                            <XCircle className="w-3 h-3 mr-1" />
+                            Offline
+                          </Badge>
+                        )}
+                      </div>
+                      <Badge variant="outline" className="mt-1">
+                        ID: {config.id}
+                      </Badge>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEdit(config)}
+                      >
+                        <Edit2 className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDelete(config.id)}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleEdit(config)}
-                    >
-                      <Edit2 className="w-3 h-3" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDelete(config.id)}
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div className="flex items-center">
-                    <Wifi className="w-4 h-4 mr-2 text-muted-foreground" />
-                    <span>{config.host}:{config.port}</span>
-                  </div>
-                  {config.location && (
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
                     <div className="flex items-center">
-                      <MapPin className="w-4 h-4 mr-2 text-muted-foreground" />
-                      <span>{config.location}</span>
+                      <Wifi className="w-4 h-4 mr-2 text-muted-foreground" />
+                      <span>{config.host}:{config.port}</span>
+                    </div>
+                    {config.location && (
+                      <div className="flex items-center">
+                        <MapPin className="w-4 h-4 mr-2 text-muted-foreground" />
+                        <span>{config.location}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Status do ESP32 */}
+                  {status && (
+                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">IP Address</p>
+                        <p className="text-sm font-mono">{status.ip_address || 'N/A'}</p>
+                      </div>
+                      <SignalIndicator 
+                        signalStrength={status.signal_strength} 
+                        isOnline={online} 
+                      />
                     </div>
                   )}
-                </div>
-                
-                {/* Teste de Conexão */}
-                <div className="pt-2">
-                  <ESP32ConnectionTest 
-                    host={config.host} 
-                    port={config.port} 
-                    esp32Id={config.id} 
-                  />
-                </div>
-                
-                {config.machines.length > 0 && (
-                  <div>
-                    <div className="flex items-center text-sm text-muted-foreground mb-1">
-                      <Cpu className="w-4 h-4 mr-2" />
-                      Máquinas ({config.machines.length})
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {config.machines.map((machine, index) => (
-                        <Badge key={index} variant="secondary" className="text-xs">
-                          {machine}
-                        </Badge>
-                      ))}
-                    </div>
+
+                  {!status && (
+                    <Alert>
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription className="text-xs">
+                        ESP32 não enviou heartbeat ainda. Verifique se o código Arduino está correto e o dispositivo está conectado.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  
+                  {/* Teste de Conexão */}
+                  <div className="pt-2">
+                    <ESP32ConnectionTest 
+                      host={config.host} 
+                      port={config.port} 
+                      esp32Id={config.id} 
+                    />
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          ))
+                  
+                  {config.machines.length > 0 && (
+                    <div>
+                      <div className="flex items-center text-sm text-muted-foreground mb-1">
+                        <Cpu className="w-4 h-4 mr-2" />
+                        Máquinas ({config.machines.length})
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {config.machines.map((machine, index) => (
+                          <Badge key={index} variant="secondary" className="text-xs">
+                            {machine}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })
         )}
       </div>
     </div>
