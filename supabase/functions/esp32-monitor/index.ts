@@ -28,6 +28,99 @@ serve(async (req) => {
       console.log('Received heartbeat:', heartbeatData);
 
       // Atualizar status no banco
+      // Processar relay_status para salvar corretamente
+      let relayStatusToSave = {};
+      if (heartbeatData.relay_status) {
+        // Se já é objeto, usar direto
+        if (typeof heartbeatData.relay_status === 'object') {
+          relayStatusToSave = heartbeatData.relay_status;
+        } else {
+          // Se é string, converter para objeto simples
+          relayStatusToSave = { status: heartbeatData.relay_status };
+        }
+      }
+      
+      console.log('💾 Salvando relay_status:', relayStatusToSave);
+      
+      // Verificar mudança de status de relay para criar/finalizar transações
+      const { data: currentStatus } = await supabaseClient
+        .from('esp32_status')
+        .select('relay_status, laundry_id')
+        .eq('esp32_id', heartbeatData.esp32_id || 'main')
+        .eq('laundry_id', heartbeatData.laundry_id)
+        .single();
+      
+      // Processar cada relay para detectar mudanças ON/OFF
+      if (currentStatus && typeof relayStatusToSave === 'object') {
+        for (const [key, value] of Object.entries(relayStatusToSave)) {
+          const currentValue = currentStatus.relay_status?.[key];
+          
+          // Detectar mudança de OFF -> ON (iniciar transação)
+          if (currentValue === 'off' && value === 'on') {
+            console.log(`🟢 Relay ${key} ligado, criando transação...`);
+            
+            // Buscar máquina correspondente
+            const relayNumber = key.match(/\d+/)?.[0];
+            const { data: machine } = await supabaseClient
+              .from('machines')
+              .select('id, price_per_kg, capacity_kg, cycle_time_minutes')
+              .eq('esp32_id', heartbeatData.esp32_id || 'main')
+              .eq('relay_pin', relayNumber ? parseInt(relayNumber) : 1)
+              .eq('laundry_id', heartbeatData.laundry_id)
+              .single();
+            
+            if (machine) {
+              const estimatedWeight = machine.capacity_kg * 0.8; // 80% da capacidade
+              const totalAmount = estimatedWeight * machine.price_per_kg;
+              
+              await supabaseClient
+                .from('transactions')
+                .insert({
+                  machine_id: machine.id,
+                  laundry_id: heartbeatData.laundry_id,
+                  status: 'pending',
+                  weight_kg: estimatedWeight,
+                  duration_minutes: machine.cycle_time_minutes,
+                  total_amount: totalAmount,
+                  payment_method: 'credit',
+                  started_at: new Date().toISOString()
+                });
+              
+              console.log(`✅ Transação criada para máquina ${machine.id}`);
+            }
+          }
+          
+          // Detectar mudança de ON -> OFF (finalizar transação)
+          if (currentValue === 'on' && value === 'off') {
+            console.log(`🔴 Relay ${key} desligado, finalizando transação...`);
+            
+            const relayNumber = key.match(/\d+/)?.[0];
+            const { data: machine } = await supabaseClient
+              .from('machines')
+              .select('id')
+              .eq('esp32_id', heartbeatData.esp32_id || 'main')
+              .eq('relay_pin', relayNumber ? parseInt(relayNumber) : 1)
+              .eq('laundry_id', heartbeatData.laundry_id)
+              .single();
+            
+            if (machine) {
+              await supabaseClient
+                .from('transactions')
+                .update({
+                  status: 'completed',
+                  completed_at: new Date().toISOString()
+                })
+                .eq('machine_id', machine.id)
+                .eq('status', 'pending')
+                .order('started_at', { ascending: false })
+                .limit(1);
+              
+              console.log(`✅ Transação finalizada para máquina ${machine.id}`);
+            }
+          }
+        }
+      }
+      
       const { data, error } = await supabaseClient
         .from('esp32_status')
         .upsert({
@@ -38,7 +131,7 @@ serve(async (req) => {
           network_status: heartbeatData.network_status || 'connected',
           firmware_version: heartbeatData.firmware_version,
           uptime_seconds: heartbeatData.uptime_seconds,
-          relay_status: heartbeatData.relay_status ? { status: heartbeatData.relay_status } : {},
+          relay_status: relayStatusToSave,
           is_online: true,
           last_heartbeat: new Date().toISOString()
         }, {

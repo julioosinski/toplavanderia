@@ -115,25 +115,33 @@ export default function Machines() {
             const relayStatus = esp32.relay_status as any;
             if (relayStatus) {
               let relayOn = false;
+              const relayKey = `relay_${machine.relay_pin || 1}`;
               
-              // Formato novo: {relay_1: "on", relay_2: "off"}
-              if (relayStatus[`relay_${machine.relay_pin}`]) {
-                relayOn = relayStatus[`relay_${machine.relay_pin}`] === 'on';
-                console.log(`✅ [Machines] ${machine.name} - Formato NOVO: relay_${machine.relay_pin} = ${relayStatus[`relay_${machine.relay_pin}`]}`);
-              } 
-              // Formato antigo: {status: "on"}
-              else if (relayStatus.status) {
-                relayOn = relayStatus.status === 'on';
-                console.log(`⚠️ [Machines] ${machine.name} - Formato ANTIGO: status = ${relayStatus.status}`);
+              console.log(`🔍 [Machines] ${machine.name} relay_status:`, JSON.stringify(relayStatus));
+              
+              // Formato 1: {relay_1: "on", relay_2: "off"}
+              if (relayStatus[relayKey] !== undefined) {
+                relayOn = relayStatus[relayKey] === 'on';
+                console.log(`✅ [Machines] ${machine.name} - Formato direto: ${relayKey} = ${relayStatus[relayKey]}`);
               }
-              // Formato legacy string: "on"
+              // Formato 2: {status: {relay_1: "on"}} - formato incorreto do banco
+              else if (relayStatus.status && typeof relayStatus.status === 'object') {
+                relayOn = relayStatus.status[relayKey] === 'on';
+                console.log(`⚠️ [Machines] ${machine.name} - Formato embrulhado: status.${relayKey} = ${relayStatus.status[relayKey]}`);
+              }
+              // Formato 3: {status: "on"} - formato legado
+              else if (relayStatus.status !== undefined) {
+                relayOn = relayStatus.status === 'on';
+                console.log(`⚠️ [Machines] ${machine.name} - Formato legado: status = ${relayStatus.status}`);
+              }
+              // Formato 4: string "on"
               else if (typeof relayStatus === 'string') {
                 relayOn = relayStatus === 'on';
-                console.log(`⚠️ [Machines] ${machine.name} - Formato LEGACY string: ${relayStatus}`);
+                console.log(`⚠️ [Machines] ${machine.name} - Formato string: ${relayStatus}`);
               }
               
               realStatus = relayOn ? 'running' : 'available';
-              console.log(`📊 [Machines] ${machine.name} - Status final: ${realStatus}`);
+              console.log(`🎯 [Machines] ${machine.name} - Status final: ${realStatus} (relay=${relayOn})`);
             }
           }
         } else {
@@ -217,25 +225,50 @@ export default function Machines() {
     },
     {
       accessorKey: "realStatus",
-      header: "Status Real",
+      header: "Status",
       cell: ({ row }) => {
         const machine = row.original;
         const status = machine.realStatus || machine.status;
         
         const getStatusConfig = (s: string) => {
-          if (s === 'offline') return { variant: "destructive" as const, label: "Offline", icon: "🔴" };
-          if (s === 'in_use' || s === 'running') return { variant: "secondary" as const, label: "Em Uso", icon: "🔵" };
-          if (s === 'maintenance') return { variant: "outline" as const, label: "Manutenção", icon: "🟡" };
-          return { variant: "default" as const, label: "Disponível", icon: "🟢" };
+          if (s === 'offline') return { 
+            variant: "destructive" as const, 
+            label: "Offline", 
+            icon: <Circle className="h-3 w-3 fill-destructive" />,
+            description: "ESP32 desconectado"
+          };
+          if (s === 'in_use' || s === 'running') return { 
+            variant: "default" as const, 
+            label: "Em Serviço", 
+            icon: <Circle className="h-3 w-3 fill-primary animate-pulse" />,
+            description: "Máquina operando"
+          };
+          if (s === 'maintenance') return { 
+            variant: "outline" as const, 
+            label: "Manutenção", 
+            icon: <Circle className="h-3 w-3 fill-yellow-500" />,
+            description: "Em manutenção"
+          };
+          return { 
+            variant: "secondary" as const, 
+            label: "Disponível", 
+            icon: <Circle className="h-3 w-3 fill-green-500" />,
+            description: "Pronta para uso"
+          };
         };
         
         const config = getStatusConfig(status);
         return (
           <div className="flex items-center gap-2">
-            <span>{config.icon}</span>
-            <Badge variant={config.variant}>
-              {config.label}
-            </Badge>
+            {config.icon}
+            <div className="flex flex-col">
+              <Badge variant={config.variant} className="w-fit">
+                {config.label}
+              </Badge>
+              <span className="text-xs text-muted-foreground mt-1">
+                {config.description}
+              </span>
+            </div>
           </div>
         );
       },
