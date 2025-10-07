@@ -82,27 +82,34 @@ export const ESP32ConnectionTest = ({ host, port, esp32Id }: ESP32ConnectionTest
   };
 
   return (
-    <div className="flex items-center gap-2">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={testConnection}
-        disabled={testing}
-      >
-        {testing ? (
-          <>
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            Testando...
-          </>
-        ) : (
-          <>
-            <Wifi className="h-4 w-4 mr-2" />
-            Testar Conexão
-          </>
-        )}
-      </Button>
-      {getStatusBadge()}
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={testConnection}
+          disabled={testing}
+        >
+          {testing ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Testando...
+            </>
+          ) : (
+            <>
+              <Wifi className="h-4 w-4 mr-2" />
+              Testar Conexão
+            </>
+          )}
+        </Button>
+        {getStatusBadge()}
+      </div>
+      {typeof window !== 'undefined' && window.location.protocol === 'https:' && (
+        <p className="text-xs text-muted-foreground">
+          ⚠️ Teste de conexão só funciona no app mobile devido a restrições de segurança HTTPS/HTTP
+        </p>
+      )}
     </div>
   );
 };
