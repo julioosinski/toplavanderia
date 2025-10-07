@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Wifi, Cpu, CreditCard, Save, Microchip, Database, Receipt, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ESP32ConfigurationManager from "../ESP32ConfigurationManager";
+import { ESP32ConfigurationDialog } from "../ESP32ConfigurationDialog";
 import { NFSeTestWidget } from "../NFSeTestWidget";
 import { SystemSettings } from "@/hooks/useSystemSettings";
 import { supabase } from "@/integrations/supabase/client";
@@ -375,13 +376,18 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating }: SettingsFormPro
       {/* ESP32 Device Management */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Microchip className="text-primary" />
-            <span>Gerenciamento de Dispositivos ESP32</span>
-          </CardTitle>
-          <CardDescription>
-            Configure e gerencie múltiplos controladores ESP32 para diferentes conjuntos de máquinas
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center space-x-2">
+                <Microchip className="text-primary" />
+                <span>Gerenciamento de Dispositivos ESP32</span>
+              </CardTitle>
+              <CardDescription>
+                Configure e gerencie múltiplos controladores ESP32 para diferentes conjuntos de máquinas
+              </CardDescription>
+            </div>
+            <ESP32ConfigurationDialog />
+          </div>
         </CardHeader>
         <CardContent>
           <ESP32ConfigurationManager 
