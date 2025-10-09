@@ -112,12 +112,35 @@ Deno.serve(async (req) => {
         })
         .eq('id', machine_id);
 
+      // Atualizar relay_status no esp32_status
+      const relayKey = `relay_${relay_pin}`;
+      const { data: currentStatus } = await supabase
+        .from('esp32_status')
+        .select('relay_status, laundry_id')
+        .eq('esp32_id', esp32_id)
+        .single();
+
+      const updatedRelayStatus = {
+        ...(currentStatus?.relay_status || {}),
+        [relayKey]: action === 'on' ? 'on' : 'off'
+      };
+
+      await supabase
+        .from('esp32_status')
+        .update({ 
+          relay_status: updatedRelayStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('esp32_id', esp32_id);
+
+      console.log(`✅ Relay status atualizado: ${esp32_id} -> ${JSON.stringify(updatedRelayStatus)}`);
+
       // Registrar no audit log
       await supabase.from('audit_logs').insert({
         action: 'ESP32_CONTROL',
         table_name: 'machines',
         record_id: machine_id,
-        new_values: { esp32_id, relay_pin, action, transaction_id }
+        new_values: { esp32_id, relay_pin, action, transaction_id, relay_status: updatedRelayStatus }
       });
 
       return new Response(
