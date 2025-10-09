@@ -10,6 +10,7 @@ import { useKioskSecurity } from "@/hooks/useKioskSecurity";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
 import { useMachines, type Machine } from "@/hooks/useMachines";
 import { useTEFIntegration } from "@/hooks/useTEFIntegration";
+import { useLaundry } from "@/contexts/LaundryContext";
 import { useCapacitorIntegration } from "@/hooks/useCapacitorIntegration";
 import { SimplePayGOWidget } from '@/components/payment/SimplePayGOWidget';
 import { UniversalPaymentWidget } from '@/components/payment/UniversalPaymentWidget';
@@ -54,6 +55,7 @@ const Totem = () => {
   const [paymentSystem, setPaymentSystem] = useState<'TEF' | 'PAYGO' | 'PIX'>('PAYGO');
   
   const { toast } = useToast();
+  const { currentLaundry } = useLaundry();
   const {
     isFullscreen,
     securityEnabled,
@@ -68,7 +70,7 @@ const Totem = () => {
     loading,
     error,
     updateMachineStatus
-  } = useMachines();
+  } = useMachines(currentLaundry?.id);
   
   const {
     isNative,
@@ -420,6 +422,7 @@ const Totem = () => {
         duration_minutes: selectedMachine.duration,
         status: 'completed',
         payment_method: paymentMethod,
+        laundry_id: currentLaundry.id, // ✅ VINCULADO À LAVANDERIA
         started_at: new Date().toISOString(),
         completed_at: new Date().toISOString()
       });
@@ -483,6 +486,27 @@ const Totem = () => {
   // Tela de configuração TEF segura
   if (showConfig) {
     return <SecureTEFConfig config={tefConfig} onConfigChange={setTefConfig} onClose={() => setShowConfig(false)} />;
+  }
+
+  // Verificar se há lavanderia configurada
+  if (!currentLaundry) {
+    return (
+      <div className="min-h-screen bg-gradient-clean flex items-center justify-center">
+        <Card className="p-6 max-w-md">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <XCircle className="text-destructive" />
+              Lavanderia não configurada
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-muted-foreground">
+              Este totem precisa estar vinculado a uma lavanderia. Entre em contato com o administrador do sistema.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   // Mostrar loading enquanto carrega máquinas ou configurações
