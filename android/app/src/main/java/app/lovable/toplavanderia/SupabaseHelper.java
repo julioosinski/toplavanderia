@@ -622,6 +622,132 @@ public class SupabaseHelper {
         }).start();
     }
     
+    /**
+     * Aciona relé do ESP32 via Edge Function
+     * Envia comando HTTP para a Edge Function que controla os ESP32s
+     */
+    public boolean activateEsp32Relay(String esp32Id, int relayPin, String machineId, String transactionId, int durationMinutes) {
+        try {
+            Log.d(TAG, "=== ACIONANDO ESP32 ===");
+            Log.d(TAG, "ESP32: " + esp32Id);
+            Log.d(TAG, "Relay: " + relayPin);
+            Log.d(TAG, "Máquina: " + machineId);
+            
+            // URL da Edge Function
+            String url = SUPABASE_URL + "/functions/v1/esp32-control";
+            
+            // Payload JSON
+            JSONObject payload = new JSONObject();
+            payload.put("esp32_id", esp32Id);
+            payload.put("relay_pin", relayPin);
+            payload.put("action", "on");
+            payload.put("machine_id", machineId);
+            payload.put("transaction_id", transactionId);
+            
+            // Fazer requisição HTTP POST
+            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setRequestMethod("POST");
+            connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
+            connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
+            connection.setRequestProperty("Content-Type", "application/json");
+            connection.setDoOutput(true);
+            connection.setConnectTimeout(15000);
+            connection.setReadTimeout(15000);
+            
+            // Enviar dados
+            OutputStream os = connection.getOutputStream();
+            os.write(payload.toString().getBytes());
+            os.flush();
+            os.close();
+            
+            // Ler resposta
+            int responseCode = connection.getResponseCode();
+            
+            if (responseCode == 200) {
+                BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+                StringBuilder response = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) {
+                    response.append(line);
+                }
+                br.close();
+                
+                JSONObject result = new JSONObject(response.toString());
+                boolean success = result.optBoolean("success", false);
+                
+                Log.d(TAG, "✅ ESP32 acionado: " + success);
+                
+                // Atualizar status local da máquina
+                if (success) {
+                    updateMachineStatus(machineId, "OCUPADA");
+                    
+                    // Agendar desligamento automático
+                    scheduleEsp32TurnOff(esp32Id, relayPin, machineId, durationMinutes);
+                }
+                
+                connection.disconnect();
+                return success;
+                
+            } else {
+                Log.e(TAG, "❌ Erro ao acionar ESP32: HTTP " + responseCode);
+                connection.disconnect();
+                return false;
+            }
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao acionar ESP32", e);
+            return false;
+        }
+    }
+    
+    /**
+     * Agenda desligamento automático do relé após tempo de uso
+     */
+    private void scheduleEsp32TurnOff(String esp32Id, int relayPin, String machineId, int durationMinutes) {
+        new Thread(() -> {
+            try {
+                Log.d(TAG, "⏰ Agendando desligamento em " + durationMinutes + " minutos");
+                
+                // Aguardar tempo de uso
+                Thread.sleep(durationMinutes * 60 * 1000);
+                
+                // Desligar ESP32
+                Log.d(TAG, "🔌 Desligando ESP32 após uso");
+                
+                String url = SUPABASE_URL + "/functions/v1/esp32-control";
+                
+                JSONObject payload = new JSONObject();
+                payload.put("esp32_id", esp32Id);
+                payload.put("relay_pin", relayPin);
+                payload.put("action", "off");
+                payload.put("machine_id", machineId);
+                
+                HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+                connection.setRequestMethod("POST");
+                connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
+                connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
+                connection.setRequestProperty("Content-Type", "application/json");
+                connection.setDoOutput(true);
+                
+                OutputStream os = connection.getOutputStream();
+                os.write(payload.toString().getBytes());
+                os.flush();
+                os.close();
+                
+                int responseCode = connection.getResponseCode();
+                connection.disconnect();
+                
+                if (responseCode == 200) {
+                    Log.d(TAG, "✅ ESP32 desligado automaticamente");
+                    updateMachineStatus(machineId, "LIVRE");
+                }
+                
+            } catch (Exception e) {
+                Log.e(TAG, "Erro ao desligar ESP32", e);
+            }
+        }).start();
+    }
+    
     private boolean updateMachineStatusInSupabase(String machineId, String status) {
         try {
             String url = SUPABASE_URL + "/rest/v1/machines?id=eq." + machineId;

@@ -40,6 +40,7 @@ public class TotemActivity extends Activity {
     
     private SupabaseHelper supabaseHelper;
     private RealPayGoManager payGoManager;
+    private MachineStatusMonitor statusMonitor;
     private List<SupabaseHelper.Machine> machines;
     private SupabaseHelper.Machine selectedMachine;
     private long currentOperationId = -1;
@@ -94,6 +95,13 @@ public class TotemActivity extends Activity {
             }
         });
         
+        // Criar monitor de status em tempo real
+        statusMonitor = new MachineStatusMonitor(supabaseHelper);
+        statusMonitor.setListener(statuses -> {
+            // Atualizar UI com status real-time
+            runOnUiThread(() -> updateMachineStatuses(statuses));
+        });
+        
         // Criar interface
         createTotemInterface();
         
@@ -104,6 +112,56 @@ public class TotemActivity extends Activity {
         startTimeUpdater();
         
         Log.d(TAG, "TotemActivity criada com sucesso");
+    }
+    
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (statusMonitor != null) {
+            statusMonitor.startMonitoring();
+            Log.d(TAG, "Monitor de status iniciado");
+        }
+    }
+    
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (statusMonitor != null) {
+            statusMonitor.stopMonitoring();
+            Log.d(TAG, "Monitor de status pausado");
+        }
+    }
+    
+    private void updateMachineStatuses(List<MachineStatusMonitor.MachineStatus> statuses) {
+        if (machines == null || statuses == null) return;
+        
+        Log.d(TAG, "Atualizando status de " + statuses.size() + " máquinas");
+        
+        // Atualizar lista de máquinas com status real
+        for (MachineStatusMonitor.MachineStatus status : statuses) {
+            for (SupabaseHelper.Machine machine : machines) {
+                if (machine.getId().equals(status.machineId)) {
+                    // Atualizar status da máquina
+                    machine.setEsp32Online(status.esp32Online);
+                    
+                    // Mapear computed status para status da máquina
+                    if (status.isAvailable()) {
+                        machine.setStatus("LIVRE");
+                    } else if (status.isRunning()) {
+                        machine.setStatus("OCUPADA");
+                    } else if (status.isMaintenance()) {
+                        machine.setStatus("MANUTENCAO");
+                    } else {
+                        machine.setStatus("OFFLINE");
+                    }
+                    
+                    break;
+                }
+            }
+        }
+        
+        // Atualizar display das máquinas
+        displayMachines();
     }
     
     private void createTotemInterface() {
@@ -459,11 +517,28 @@ public class TotemActivity extends Activity {
                 transactionId
             );
             
-            // Iniciar uso da máquina com tempo de duração
-            boolean statusUpdated = supabaseHelper.startMachineUsage(selectedMachine.getId(), selectedMachine.getDuration());
+            // NOVO: Acionar ESP32 via Edge Function
+            Log.d(TAG, "Acionando ESP32 para máquina: " + selectedMachine.getName());
+            boolean esp32Activated = supabaseHelper.activateEsp32Relay(
+                selectedMachine.getEsp32Id(),      // ex: "lavadora_01"
+                selectedMachine.getRelayPin(),     // ex: 1
+                selectedMachine.getId(),           // UUID da máquina
+                transactionId,                     // ID da transação
+                selectedMachine.getDuration()      // Tempo em minutos
+            );
             
-            // Mostrar tela de sucesso
-            showPaymentSuccess(authorizationCode, transactionId);
+            if (esp32Activated) {
+                Log.d(TAG, "✅ ESP32 acionado com sucesso - máquina liberada");
+                
+                // Iniciar uso da máquina com tempo de duração
+                boolean statusUpdated = supabaseHelper.startMachineUsage(selectedMachine.getId(), selectedMachine.getDuration());
+                
+                // Mostrar tela de sucesso
+                showPaymentSuccess(authorizationCode, transactionId);
+            } else {
+                Log.e(TAG, "❌ Falha ao acionar ESP32");
+                handlePaymentError("Pagamento aprovado mas a máquina não pôde ser acionada. Entre em contato com a administração.");
+            }
             
         } catch (Exception e) {
             Log.e(TAG, "Erro ao processar sucesso do pagamento", e);
