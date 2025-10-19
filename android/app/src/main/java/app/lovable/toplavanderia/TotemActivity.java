@@ -19,7 +19,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 
+import java.io.BufferedReader;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.text.DecimalFormat;
@@ -28,6 +30,8 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 /**
  * ATIVIDADE PRINCIPAL DO TOTEM
@@ -395,13 +399,29 @@ public class TotemActivity extends Activity {
         title.setTextSize(24);
         title.setTextColor(Color.WHITE);
         title.setGravity(android.view.Gravity.CENTER);
-        title.setPadding(0, 0, 0, 30);
+        title.setPadding(0, 0, 0, 20);
         layout.addView(title);
+        
+        // Status do ESP32
+        TextView esp32StatusText = new TextView(this);
+        if (machine.isEsp32Online()) {
+            esp32StatusText.setText("🟢 ESP32 ONLINE - ID: " + machine.getEsp32Id());
+            esp32StatusText.setTextColor(Color.parseColor("#4CAF50"));
+        } else {
+            esp32StatusText.setText("🔴 ESP32 OFFLINE - ID: " + machine.getEsp32Id());
+            esp32StatusText.setTextColor(Color.parseColor("#F44336"));
+        }
+        esp32StatusText.setTextSize(14);
+        esp32StatusText.setGravity(android.view.Gravity.CENTER);
+        esp32StatusText.setPadding(10, 10, 10, 20);
+        esp32StatusText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        layout.addView(esp32StatusText);
         
         // Detalhes da máquina
         TextView details = new TextView(this);
         details.setText("Máquina: " + machine.getName() + "\n" +
                        "Tipo: " + machine.getTypeDisplay() + "\n" +
+                       "ESP32: " + machine.getEsp32Id() + " (Relay " + machine.getRelayPin() + ")\n" +
                        "Preço: R$ " + new DecimalFormat("0.00").format(machine.getPrice()) + "\n" +
                        "Duração: " + machine.getDuration() + " minutos\n\n" +
                        "💳 PAGAMENTO SERÁ PROCESSADO NA PPC930\n" +
@@ -449,8 +469,36 @@ public class TotemActivity extends Activity {
     private void processPayment(SupabaseHelper.Machine machine) {
         try {
             Log.d(TAG, "=== INICIANDO PROCESSAMENTO DE PAGAMENTO ===");
+            Log.d(TAG, "=== VALIDAÇÃO PRÉ-PAGAMENTO ===");
+            Log.d(TAG, "Máquina ID: " + machine.getId());
             Log.d(TAG, "Máquina: " + machine.getName());
+            Log.d(TAG, "ESP32 ID: " + machine.getEsp32Id());
+            Log.d(TAG, "Status Atual: " + machine.getStatus());
+            Log.d(TAG, "ESP32 Online (cache): " + machine.isEsp32Online());
             Log.d(TAG, "Valor: R$ " + machine.getPrice());
+            
+            // ✅ NOVA VALIDAÇÃO: Verificar disponibilidade em tempo real
+            Log.d(TAG, "🔍 Validando disponibilidade da máquina em tempo real...");
+            
+            boolean isStillAvailable = validateMachineAvailability(machine);
+            
+            Log.d(TAG, "=== RESULTADO DA VALIDAÇÃO ===");
+            Log.d(TAG, "Disponível: " + isStillAvailable);
+            
+            if (!isStillAvailable) {
+                Log.w(TAG, "⚠️ PAGAMENTO BLOQUEADO - Máquina não disponível");
+                Log.e(TAG, "❌ Máquina não está mais disponível!");
+                handlePaymentError("Máquina não está mais disponível. Por favor, selecione outra.");
+                
+                // Recarregar tela principal
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    createTotemInterface();
+                    loadMachines();
+                }, 3000);
+                return;
+            }
+            
+            Log.d(TAG, "✅ Máquina disponível - prosseguindo com pagamento");
             
             // Criar operação no Supabase
             currentOperationId = System.currentTimeMillis();
@@ -477,6 +525,146 @@ public class TotemActivity extends Activity {
         } catch (Exception e) {
             Log.e(TAG, "Erro ao processar pagamento", e);
             handlePaymentError("Erro ao processar pagamento: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Valida se a máquina ainda está disponível em tempo real
+     * Faz consulta direta ao Supabase para garantir dados atualizados
+     */
+    private boolean validateMachineAvailability(SupabaseHelper.Machine machine) {
+        final boolean[] result = {false};
+        final Object lock = new Object();
+        
+        new Thread(() -> {
+            try {
+                // Buscar status atual da máquina no Supabase
+                String url = "https://rkdybjzwiwwqqzjfmerm.supabase.co/rest/v1/machines" +
+                            "?id=eq." + machine.getId() +
+                            "&select=status,esp32_id";
+                
+                HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+                connection.setRequestMethod("GET");
+                connection.setRequestProperty("apikey", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg");
+                connection.setRequestProperty("Authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg");
+                connection.setConnectTimeout(5000);
+                connection.setReadTimeout(5000);
+                
+                int responseCode = connection.getResponseCode();
+                
+                if (responseCode == 200) {
+                    BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+                    StringBuilder response = new StringBuilder();
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        response.append(line);
+                    }
+                    br.close();
+                    
+                    JSONArray jsonArray = new JSONArray(response.toString());
+                    
+                    if (jsonArray.length() > 0) {
+                        JSONObject machineData = jsonArray.getJSONObject(0);
+                        String currentStatus = machineData.getString("status");
+                        String esp32Id = machineData.getString("esp32_id");
+                        
+                        // Verificar se ESP32 está online
+                        boolean esp32Online = checkEsp32Status(esp32Id);
+                        
+                        // Máquina disponível = status "available" + ESP32 online
+                        result[0] = "available".equals(currentStatus) && esp32Online;
+                        
+                        Log.d(TAG, "Status atual: " + currentStatus + ", ESP32 Online: " + esp32Online);
+                    }
+                }
+                
+                connection.disconnect();
+                
+            } catch (Exception e) {
+                Log.e(TAG, "Erro ao validar disponibilidade", e);
+                result[0] = false;
+            }
+            
+            synchronized (lock) {
+                lock.notify();
+            }
+        }).start();
+        
+        // Aguardar resultado (máximo 5 segundos)
+        synchronized (lock) {
+            try {
+                lock.wait(5000);
+            } catch (InterruptedException e) {
+                Log.e(TAG, "Timeout na validação", e);
+            }
+        }
+        
+        return result[0];
+    }
+    
+    /**
+     * Verifica se o ESP32 específico está online
+     */
+    private boolean checkEsp32Status(String esp32Id) {
+        try {
+            String url = "https://rkdybjzwiwwqqzjfmerm.supabase.co/rest/v1/esp32_status" +
+                        "?esp32_id=eq." + esp32Id +
+                        "&select=is_online,last_heartbeat";
+            
+            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setRequestMethod("GET");
+            connection.setRequestProperty("apikey", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg");
+            connection.setRequestProperty("Authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg");
+            connection.setConnectTimeout(3000);
+            connection.setReadTimeout(3000);
+            
+            int responseCode = connection.getResponseCode();
+            
+            if (responseCode == 200) {
+                BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+                StringBuilder response = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) {
+                    response.append(line);
+                }
+                br.close();
+                
+                JSONArray jsonArray = new JSONArray(response.toString());
+                
+                if (jsonArray.length() > 0) {
+                    JSONObject esp32Data = jsonArray.getJSONObject(0);
+                    boolean isOnline = esp32Data.getBoolean("is_online");
+                    String lastHeartbeat = esp32Data.optString("last_heartbeat", null);
+                    
+                    if (!isOnline || lastHeartbeat == null) {
+                        return false;
+                    }
+                    
+                    // Verificar se heartbeat não está muito antigo (máximo 2 minutos)
+                    long heartbeatTime = parseISODate(lastHeartbeat);
+                    long currentTime = System.currentTimeMillis();
+                    long diffMinutes = (currentTime - heartbeatTime) / (1000 * 60);
+                    
+                    return diffMinutes <= 2;
+                }
+            }
+            
+            connection.disconnect();
+            return false;
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao verificar ESP32", e);
+            return false;
+        }
+    }
+    
+    private long parseISODate(String isoDate) {
+        try {
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+            sdf.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+            return sdf.parse(isoDate.substring(0, 19)).getTime();
+        } catch (Exception e) {
+            return 0;
         }
     }
     
@@ -518,6 +706,9 @@ public class TotemActivity extends Activity {
             );
             
             // NOVO: Acionar ESP32 via Edge Function
+            Log.d(TAG, "=== ACIONANDO ESP32 ===");
+            Log.d(TAG, "Endpoint: /functions/v1/esp32-control");
+            Log.d(TAG, "Payload: {esp32_id: " + selectedMachine.getEsp32Id() + ", relay_pin: " + selectedMachine.getRelayPin() + "}");
             Log.d(TAG, "Acionando ESP32 para máquina: " + selectedMachine.getName());
             boolean esp32Activated = supabaseHelper.activateEsp32Relay(
                 selectedMachine.getEsp32Id(),      // ex: "lavadora_01"
