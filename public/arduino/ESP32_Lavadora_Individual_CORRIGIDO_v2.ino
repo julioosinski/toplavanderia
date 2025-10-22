@@ -131,8 +131,7 @@ void handleRoot() {
   html += "button:hover{background:#45a049}button.stop{background:#f44336}button.stop:hover{background:#da190b}</style></head><body>";
   html += "<div class='container'><h1>🔧 " + String(MACHINE_NAME) + "</h1>";
   html += "<div class='status'><span class='label'>ESP32 ID:</span><span class='value'>" + String(ESP32_ID) + "</span></div>";
-  html += "<div class='status'><span class='label'>Máquina:</span><span class='value'>" + String(MACHINE_ID) + "</span></div>";
-  html += "<div class='status'><span class='label'>Tipo:</span><span class='value'>" + String(MACHINE_TYPE) + "</span></div>";
+  html += "<div class='status'><span class='label'>Nome:</span><span class='value'>" + String(MACHINE_NAME) + "</span></div>";
   html += "<div class='status'><span class='label'>Lavanderia:</span><span class='value'>" + String(LAUNDRY_ID) + "</span></div>";
   html += "<div class='status'><span class='label'>IP:</span><span class='value'>" + WiFi.localIP().toString() + "</span></div>";
   html += "<div class='status'><span class='label'>Sinal WiFi:</span><span class='value'>" + String(WiFi.RSSI()) + " dBm</span></div>";
@@ -151,8 +150,7 @@ void handleRoot() {
 void handleStatus() {
   StaticJsonDocument<512> doc;
   doc["esp32_id"] = ESP32_ID;
-  doc["machine_id"] = MACHINE_ID;
-  doc["machine_type"] = MACHINE_TYPE;
+  doc["machine_name"] = MACHINE_NAME;
   doc["laundry_id"] = LAUNDRY_ID;
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
