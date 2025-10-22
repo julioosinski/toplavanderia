@@ -19,10 +19,15 @@ const char* ssid = "2G Osinski";              // Nome da sua rede WiFi
 const char* password = "10203040";             // Senha do seu WiFi
 
 // ================== IDENTIFICAÇÃO ==================
-// ⚠️ IMPORTANTE: Configure aqui os IDs corretos
-#define LAUNDRY_ID "567a7bb6-8d26-4d9c-bbe3-f8dcc28e7569"  // ⚠️ ID DA LAVANDERIA PRINCIPAL
-#define ESP32_ID "main"                        // ⚠️ ID único deste ESP32
-#define MACHINE_NAME "ESP32 Main"              // Nome amigável do ESP32
+// ⚠️ CRÍTICO: Configure os IDs corretos antes de fazer upload!
+// Para descobrir seu LAUNDRY_ID:
+// 1. Acesse o painel admin em https://sua-url.lovable.app/admin
+// 2. Vá em Configurações > Lavanderia
+// 3. Copie o ID da lavanderia
+
+#define LAUNDRY_ID "8ace0bcb-83a9-4555-a712-63ef5f52e709"  // ⚠️ ID DA SUA LAVANDERIA
+#define ESP32_ID "lavadora_01"                 // ⚠️ ID ÚNICO: lavadora_01, lavadora_02, secadora_01, etc
+#define MACHINE_NAME "Lavadora 01"             // Nome amigável (para logs)
 
 // ================== CONFIGURAÇÕES SUPABASE ==================
 const char* supabaseUrl = "https://rkdybjzwiwwqqzjfmerm.supabase.co";

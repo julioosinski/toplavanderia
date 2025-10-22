@@ -1,0 +1,68 @@
+🚀 CONFIGURAÇÃO RÁPIDA - ESP32 Top Lavanderia
+==============================================
+
+⚠️ ANTES DE FAZER UPLOAD, CONFIGURE ESTAS 5 LINHAS:
+
+1️⃣ LINHA 18 - WiFi SSID:
+   const char* ssid = "SUA_REDE_WIFI";
+
+2️⃣ LINHA 19 - WiFi Password:
+   const char* password = "SUA_SENHA_WIFI";
+
+3️⃣ LINHA 28 - Laundry ID (copiar do painel admin):
+   #define LAUNDRY_ID "8ace0bcb-83a9-4555-a712-63ef5f52e709"
+
+4️⃣ LINHA 29 - ESP32 ID (único para cada máquina):
+   #define ESP32_ID "lavadora_01"
+   
+   Exemplos:
+   - Primeira lavadora → "lavadora_01"
+   - Segunda lavadora → "lavadora_02"
+   - Primeira secadora → "secadora_01"
+   - Segunda secadora → "secadora_02"
+
+5️⃣ LINHA 30 - Machine Name (nome amigável):
+   #define MACHINE_NAME "Lavadora 01"
+
+==============================================
+
+✅ CHECKLIST PÓS-UPLOAD:
+
+1. Abra o Serial Monitor (115200 baud)
+2. Deve aparecer:
+   ✅ WiFi conectado!
+   ✅ Heartbeat enviado - HTTP 200
+
+3. No painel admin:
+   - Vá em: Admin → ESP32 Monitor
+   - Deve aparecer o ESP32 com status "ONLINE"
+
+4. Na lista de máquinas:
+   - A máquina deve aparecer como "DISPONÍVEL" (verde)
+
+==============================================
+
+❌ PROBLEMAS COMUNS:
+
+1. "WiFi não conecta"
+   → Verifique SSID e senha
+   → Use WiFi 2.4GHz (não funciona com 5GHz)
+
+2. "HTTP 401 Unauthorized"
+   → Verifique o supabaseApiKey na linha 29
+
+3. "ESP32 não aparece no painel"
+   → Verifique se LAUNDRY_ID está correto
+   → Verifique se ESP32_ID coincide com a máquina cadastrada
+
+4. "Heartbeat enviado mas máquina offline"
+   → Last heartbeat pode estar antigo (>2 minutos)
+   → Aguarde 30 segundos para próximo heartbeat
+
+==============================================
+
+📚 DOCUMENTAÇÃO COMPLETA:
+- Troubleshooting: public/arduino/TROUBLESHOOTING_ESP32.md
+- Estrutura do banco: docs/DATABASE_STRUCTURE.md
+
+==============================================
