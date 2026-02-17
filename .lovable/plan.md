@@ -1,104 +1,111 @@
 
-# Corrigir "Lavanderia não configurada" no Totem
+# Problema: Tablet com APK Desatualizado + Estratégia de Configuração Robusta
 
-## Diagnóstico
+## Diagnóstico Real
 
-O problema é arquitetural: o `LaundryContext` foi projetado para o painel administrativo e exige autenticação no Supabase. No tablet, o app abre sem sessão de login, então `currentLaundry` fica `null` e o totem exibe a mensagem de erro.
+O código já foi corrigido com a tela de configuração CNPJ (linha 327 do Totem.tsx) e a lógica de modo totem no LaundryContext. Porém o tablet continua mostrando "Lavanderia não configurada" porque está rodando um **APK antigo** — as alterações feitas no código web ainda não foram compiladas e instaladas no tablet.
 
-O fluxo atual:
+Adicionalmente, há um risco secundário: mesmo com o APK novo, se o tablet não conseguir conexão imediata com o Supabase ao inicializar, o fluxo pode falhar. Precisamos tornar o sistema mais robusto.
+
+## Solução em Duas Partes
+
+### Parte 1 — Tornar o fluxo do totem mais resiliente (código)
+
+Antes de recompilar o APK, vamos garantir que o código seja à prova de falhas para o ambiente tablet:
+
+**`src/contexts/LaundryContext.tsx`** — Melhorar o tratamento de erro no modo totem:
+- Adicionar `try/catch` mais defensivo em `supabase.auth.getUser()` — em redes instáveis, pode lançar erro de rede que hoje não é capturado corretamente
+- Se `getUser()` lançar exceção (não apenas retornar erro), o código atual **não entra no bloco do modo totem** e deixa o loading indefinido
+- Adicionar timeout de 5 segundos na chamada de autenticação para não bloquear o tablet indefinidamente
+
+**`src/pages/Totem.tsx`** — Adicionar fallback visual adicional:
+- Garantir que o campo CNPJ apareça mesmo se `laundryLoading` travar em `true` por mais de 8 segundos (timeout de segurança)
+
+### Parte 2 — Comandos para recompilar e instalar o APK
+
+O usuário precisa rodar estes comandos localmente após as correções:
+
 ```text
-App abre no tablet
-  → LaundryContext verifica auth.getUser()
-  → Sem usuário logado → retorna sem carregar lavanderia
-  → Totem.tsx: if (!currentLaundry) → "Lavanderia não configurada"
+# 1. Sincronizar código web com Android
+npm run build
+npx cap sync android
+
+# 2. Compilar APK
+cd android
+./gradlew assembleRelease
+
+# 3. Instalar no tablet via USB (ADB)
+adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
-A tabela `laundries` já tem a política `Allow public read access = true`, então é possível buscar os dados da lavanderia **sem autenticação**. O totem só precisa saber qual `laundry_id` usar.
+## Alterações Técnicas Detalhadas
 
-## Solução: Configuração do Totem por CNPJ (sem login)
+### `src/contexts/LaundryContext.tsx`
 
-Adicionar ao `LaundryContext` um fluxo alternativo especificamente para o totem:
-
-1. Se não houver usuário autenticado, verificar se há um `totem_laundry_id` salvo no `localStorage`
-2. Se houver, carregar a lavanderia diretamente do Supabase (acesso público)
-3. Se não houver, exibir uma tela de configuração inicial pedindo o CNPJ da lavanderia
-4. Ao digitar o CNPJ, buscar a lavanderia publicamente, salvar o ID no `localStorage` e carregar normalmente
-
-## Alterações Técnicas
-
-### 1. `src/contexts/LaundryContext.tsx`
-
-No método `initializeLaundryContext`, após verificar que não há usuário autenticado:
-
+Problema atual no código:
 ```text
+const { data: { user }, error: authError } = await supabase.auth.getUser();
+
 if (authError || !user) {
-  // NOVO: verificar se é modo totem (localStorage)
-  const totemLaundryId = localStorage.getItem('totem_laundry_id');
-  if (totemLaundryId) {
-    → buscar lavanderia publicamente por ID
-    → setar currentLaundry
-    → setar loading = false
-    → retornar
-  }
-  // sem configuração → loading = false, currentLaundry = null
+  // verifica totem_laundry_id
 }
 ```
 
-Adicionar função `configureTotemByCNPJ(cnpj: string)` no contexto:
-- Busca a lavanderia por CNPJ na tabela `laundries` (acesso público)
-- Salva o `id` no `localStorage` como `totem_laundry_id`
-- Recarrega o contexto
+Se `supabase.auth.getUser()` **lançar uma exceção** (timeout de rede, DNS failure), o código cai no bloco `catch` externo e define `setError(errorMessage)` — nunca chegando ao modo totem.
 
-Adicionar `configureTotemByCNPJ` ao tipo `LaundryContextType` e ao valor do provider.
-
-### 2. `src/pages/Totem.tsx`
-
-Substituir a tela de erro atual ("Lavanderia não configurada") por uma **tela de configuração inicial**:
-
-- Campo para digitar o CNPJ da lavanderia (14 dígitos)
-- Botão "Configurar Totem"
-- Validação: exatamente 14 dígitos numéricos
-- Loading enquanto busca no Supabase
-- Feedback de erro se CNPJ não encontrado
-- Ao encontrar: salva e recarrega automaticamente
-
-Isso substitui a mensagem de erro estática por um fluxo funcional idêntico ao descrito no `CHANGELOG_v2.1.md` do DEPLOYMENT_TOTEM.
-
-## Dados disponíveis no Supabase
-
-| CNPJ | Lavanderia |
-|------|------------|
-| 43652666000137 | TOP LAVANDERIA SINUELO |
-| 43652666000138 | Lavanderia Principal |
-
-O CNPJ correto para configurar o tablet é **43652666000137** (TOP LAVANDERIA SINUELO).
-
-## Fluxo após a correção
-
+Correção:
 ```text
-Primeira abertura:
-  → Não há usuário logado
-  → Não há totem_laundry_id no localStorage
-  → Exibe tela de configuração com campo CNPJ
-  → Usuário digita: 43652666000137
-  → Busca pública no Supabase → encontra TOP LAVANDERIA SINUELO
-  → Salva ID no localStorage
-  → Recarrega → totem funcional
+let user = null;
+try {
+  const { data, error } = await supabase.auth.getUser();
+  if (!error) user = data.user;
+} catch (networkError) {
+  console.warn('[LaundryContext] Auth check falhou (rede) - modo totem');
+}
 
-Aberturas seguintes:
-  → Não há usuário logado
-  → Encontra totem_laundry_id no localStorage
-  → Carrega lavanderia publicamente
-  → Totem funcional sem precisar digitar CNPJ novamente
+if (!user) {
+  // verifica totem_laundry_id → funciona mesmo sem internet
+}
 ```
 
-## Arquivos a modificar
+Adicionalmente, adicionar `Preferences` do Capacitor como storage alternativo ao `localStorage`, pois em alguns builds Android o WebView pode não persistir o localStorage entre reinicializações. Isso requer usar `@capacitor/preferences` que já está disponível via `@capacitor/core`.
 
-- `src/contexts/LaundryContext.tsx` — adicionar lógica de modo totem sem autenticação
-- `src/pages/Totem.tsx` — substituir tela de erro por tela de configuração por CNPJ
+### `src/pages/Totem.tsx`
 
-## Notas de Segurança
+Adicionar um timeout de segurança: se após 8 segundos `laundryLoading` ainda for `true`, forçar exibição da tela de configuração CNPJ.
 
-- O acesso público à tabela `laundries` já está habilitado via RLS (`Allow public read access`)
-- Não há exposição de dados sensíveis: apenas `id`, `name`, `cnpj`, `city`, `state`
-- O `totem_laundry_id` no `localStorage` é lido apenas quando não há usuário autenticado, sem conflito com o painel admin
+```text
+const [loadingTimeout, setLoadingTimeout] = useState(false);
+
+useEffect(() => {
+  const timer = setTimeout(() => {
+    if (laundryLoading) setLoadingTimeout(true);
+  }, 8000);
+  return () => clearTimeout(timer);
+}, [laundryLoading]);
+
+// Na renderização:
+if ((!laundryLoading && !currentLaundry) || loadingTimeout) {
+  return <tela de configuração CNPJ />
+}
+```
+
+## Arquivos a Modificar
+
+- `src/contexts/LaundryContext.tsx` — capturar exceções de rede no `getUser()` para não bloquear o modo totem
+- `src/pages/Totem.tsx` — adicionar timeout de segurança de 8s para exibir tela de configuração mesmo se loading travar
+
+## Resultado Esperado
+
+Após recompilar e instalar o APK novo:
+1. Tablet abre o app
+2. `getUser()` falha silenciosamente (sem usuário logado)
+3. Verifica `totem_laundry_id` no localStorage — não encontra (primeira vez)
+4. Exibe tela de configuração com campo CNPJ
+5. Usuário digita `43652666000137`
+6. Totem configurado e funcionando
+
+Em aberturas subsequentes:
+1. `totem_laundry_id` encontrado no localStorage
+2. Lavanderia carregada diretamente
+3. Totem abre direto na tela de máquinas
