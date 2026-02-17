@@ -28,150 +28,43 @@ Deno.serve(async (req) => {
 
     console.log(`🎮 Controle ESP32: ${esp32_id} relay ${relay_pin} → ${action}`);
 
-    // Verificar se ESP32 está online
-    const { data: esp32Status, error: statusError } = await supabase
-      .from('esp32_status')
-      .select('is_online, ip_address, last_heartbeat')
-      .eq('esp32_id', esp32_id)
-      .single();
+    // Inserir comando na fila - o ESP32 vai buscar via polling
+    const { data, error } = await supabase.from('pending_commands').insert({
+      esp32_id,
+      relay_pin,
+      action,
+      machine_id,
+      transaction_id,
+      status: 'pending'
+    }).select().single();
 
-    if (statusError || !esp32Status) {
-      console.error('❌ ESP32 não encontrado:', statusError);
-      
-      // Adicionar à fila de comandos pendentes
-      await supabase.from('pending_commands').insert({
-        esp32_id,
-        relay_pin,
-        action,
-        machine_id,
-        transaction_id,
-        status: 'pending'
-      });
-
+    if (error) {
+      console.error('❌ Erro ao inserir comando:', error);
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'ESP32 offline - comando adicionado à fila',
-          queued: true
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 503 }
+        JSON.stringify({ success: false, error: error.message }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
       );
     }
 
-    if (!esp32Status.is_online) {
-      console.warn('⚠️ ESP32 offline, adicionando à fila');
-      
-      await supabase.from('pending_commands').insert({
-        esp32_id,
-        relay_pin,
-        action,
-        machine_id,
-        transaction_id,
-        status: 'pending'
-      });
+    console.log(`✅ Comando enfileirado: ${data.id} - ESP32 vai executar em até 5s`);
 
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'ESP32 offline - comando adicionado à fila',
-          queued: true
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 503 }
-      );
-    }
+    // Registrar no audit log
+    await supabase.from('audit_logs').insert({
+      action: 'ESP32_CONTROL_QUEUED',
+      table_name: 'pending_commands',
+      record_id: data.id,
+      new_values: { esp32_id, relay_pin, action, transaction_id, command_id: data.id }
+    });
 
-    // Enviar comando HTTP direto para ESP32
-    const esp32Url = `http://${esp32Status.ip_address}/relay/${relay_pin}/${action}`;
-    console.log(`🌐 Enviando comando: ${esp32Url}`);
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
-
-    try {
-      const response = await fetch(esp32Url, {
-        method: 'POST',
-        signal: controller.signal,
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`ESP32 respondeu com status ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ ESP32 respondeu:', result);
-
-      // Atualizar status da máquina
-      await supabase
-        .from('machines')
-        .update({ 
-          status: action === 'on' ? 'running' : 'available',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', machine_id);
-
-      // Atualizar relay_status no esp32_status
-      const relayKey = `relay_${relay_pin}`;
-      const { data: currentStatus } = await supabase
-        .from('esp32_status')
-        .select('relay_status, laundry_id')
-        .eq('esp32_id', esp32_id)
-        .single();
-
-      const updatedRelayStatus = {
-        ...(currentStatus?.relay_status || {}),
-        [relayKey]: action === 'on' ? 'on' : 'off'
-      };
-
-      await supabase
-        .from('esp32_status')
-        .update({ 
-          relay_status: updatedRelayStatus,
-          updated_at: new Date().toISOString()
-        })
-        .eq('esp32_id', esp32_id);
-
-      console.log(`✅ Relay status atualizado: ${esp32_id} -> ${JSON.stringify(updatedRelayStatus)}`);
-
-      // Registrar no audit log
-      await supabase.from('audit_logs').insert({
-        action: 'ESP32_CONTROL',
-        table_name: 'machines',
-        record_id: machine_id,
-        new_values: { esp32_id, relay_pin, action, transaction_id, relay_status: updatedRelayStatus }
-      });
-
-      return new Response(
-        JSON.stringify({ success: true, result }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-
-    } catch (error) {
-      clearTimeout(timeoutId);
-      console.error('❌ Erro ao comunicar com ESP32:', error);
-
-      // Adicionar à fila para retry
-      await supabase.from('pending_commands').insert({
-        esp32_id,
-        relay_pin,
-        action,
-        machine_id,
-        transaction_id,
-        status: 'pending',
-        retry_count: 0
-      });
-
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Timeout ao comunicar com ESP32',
-          queued: true
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 504 }
-      );
-    }
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        queued: true, 
+        command_id: data.id,
+        message: 'Comando enfileirado. ESP32 executará em até 5 segundos.' 
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
 
   } catch (error) {
     console.error('❌ Erro no edge function:', error);
