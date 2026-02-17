@@ -27,6 +27,65 @@ serve(async (req) => {
       
       console.log('Received heartbeat:', heartbeatData);
 
+      // === AUTO-REGISTRO ===
+      if (heartbeatData.auto_register) {
+        const { data: existing } = await supabaseClient
+          .from('esp32_status')
+          .select('id, registration_status')
+          .eq('esp32_id', heartbeatData.esp32_id)
+          .eq('laundry_id', heartbeatData.laundry_id)
+          .maybeSingle();
+
+        if (!existing) {
+          // Novo ESP32 detectado - criar com status pending
+          console.log(`🆕 Novo ESP32 detectado: ${heartbeatData.esp32_id} - criando registro pendente`);
+          
+          const { error: insertError } = await supabaseClient
+            .from('esp32_status')
+            .insert({
+              esp32_id: heartbeatData.esp32_id,
+              laundry_id: heartbeatData.laundry_id,
+              ip_address: heartbeatData.ip_address,
+              signal_strength: heartbeatData.signal_strength,
+              network_status: heartbeatData.network_status || 'connected',
+              firmware_version: heartbeatData.firmware_version,
+              uptime_seconds: heartbeatData.uptime_seconds,
+              device_name: heartbeatData.device_name || null,
+              registration_status: 'pending',
+              is_online: true,
+              last_heartbeat: new Date().toISOString(),
+              relay_status: heartbeatData.relay_status || {},
+            });
+
+          if (insertError) {
+            console.error('Error auto-registering ESP32:', insertError);
+          } else {
+            console.log(`✅ ESP32 ${heartbeatData.esp32_id} registrado como pendente`);
+          }
+
+          return new Response(JSON.stringify({
+            success: true,
+            message: 'Auto-registered as pending',
+            status: 'pending_approval',
+            next_interval: 30,
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Se já existe mas está rejeitado, não atualizar
+        if (existing.registration_status === 'rejected') {
+          return new Response(JSON.stringify({
+            success: false,
+            message: 'Device rejected',
+            status: 'rejected',
+            next_interval: 300, // Esperar mais antes de tentar novamente
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+      }
+
       // Atualizar status no banco
       // Processar relay_status para salvar corretamente
       let relayStatusToSave = {};
@@ -132,6 +191,7 @@ serve(async (req) => {
           firmware_version: heartbeatData.firmware_version,
           uptime_seconds: heartbeatData.uptime_seconds,
           relay_status: relayStatusToSave,
+          device_name: heartbeatData.device_name || null,
           is_online: true,
           last_heartbeat: new Date().toISOString()
         }, {
