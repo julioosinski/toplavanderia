@@ -9,15 +9,11 @@ import { useToast } from "@/hooks/use-toast";
 import { useKioskSecurity } from "@/hooks/useKioskSecurity";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
 import { useMachines, type Machine } from "@/hooks/useMachines";
-import { useTEFIntegration } from "@/hooks/useTEFIntegration";
 import { useLaundry } from "@/contexts/LaundryContext";
 import { useCapacitorIntegration } from "@/hooks/useCapacitorIntegration";
-import { SimplePayGOWidget } from '@/components/payment/SimplePayGOWidget';
 import { UniversalPaymentWidget } from '@/components/payment/UniversalPaymentWidget';
-import { useRealPayGOIntegration, RealPayGOConfig } from '@/hooks/useRealPayGOIntegration';
-import { usePixPayment } from '@/hooks/usePixPayment';
+import { UniversalPaymentConfig } from '@/hooks/useUniversalPayment';
 import { PixQRDisplay } from '@/components/payment/PixQRDisplay';
-import { DEFAULT_PAYGO_CONFIG } from '@/lib/paygoUtils';
 import { SecureTEFConfig } from "@/components/admin/SecureTEFConfig";
 import { AdminPinDialog } from "@/components/admin/AdminPinDialog";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,6 +28,7 @@ const Totem = () => {
   const [showAdminDialog, setShowAdminDialog] = useState(false);
   const [adminClickCount, setAdminClickCount] = useState(0);
   const [pixPaymentData, setPixPaymentData] = useState<any>(null);
+  const [paymentSystem, setPaymentSystem] = useState<string>('PAYGO');
   
   // Carregar configurações do sistema
   const { settings: systemSettings, isLoading: settingsLoading } = useSystemSettings();
@@ -45,14 +42,19 @@ const Totem = () => {
     retryDelay: 2000
   });
   
-  const [paygoConfig, setPaygoConfig] = useState<RealPayGOConfig>({
+  const [paygoConfig, setPaygoConfig] = useState({
     host: systemSettings?.paygo_host || 'localhost',
     port: systemSettings?.paygo_port || 8080,
     automationKey: systemSettings?.paygo_automation_key || '',
     timeout: systemSettings?.paygo_timeout || 30000,
     retryAttempts: systemSettings?.paygo_retry_attempts || 3
   });
-  const [paymentSystem, setPaymentSystem] = useState<'TEF' | 'PAYGO' | 'PIX'>('PAYGO');
+
+  // Universal payment config
+  const universalConfig: UniversalPaymentConfig = {
+    paygo: paygoConfig,
+    tef: tefConfig
+  };
   
   const { toast } = useToast();
   const { currentLaundry } = useLaundry();
@@ -79,36 +81,6 @@ const Totem = () => {
     enableKioskMode,
     disableKioskMode
   } = useCapacitorIntegration();
-  
-  const {
-    status: tefStatus,
-    isProcessing: tefProcessing,
-    processTEFPayment,
-    cancelTransaction: cancelTEFTransaction,
-    testConnection: testTEFConnection
-  } = useTEFIntegration(tefConfig);
-
-  const {
-    isInitialized: paygoInitialized,
-    isConnected: paygoConnected,
-    isProcessing: paygoProcessing,
-    systemStatus: paygoStatus,
-    processPayment: processPayGOPayment,
-    cancelTransaction: cancelPayGOTransaction,
-    testConnection: testPayGOConnection,
-    detectPinpad
-  } = useRealPayGOIntegration(paygoConfig);
-
-  const {
-    generatePixQR,
-    startPixPolling,
-    cancelPixPayment,
-    currentPayment: pixCurrentPayment,
-    isGeneratingQR,
-    isPolling: pixPolling,
-    timeRemaining: pixTimeRemaining,
-    formatTime: formatPixTime,
-  } = usePixPayment(paygoConfig);
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
@@ -217,194 +189,15 @@ const Totem = () => {
     return Date.now().toString().slice(-6);
   };
 
-  // Função principal de pagamento via TEF com melhorias
-  const handleTEFPayment = async () => {
-    if (!selectedMachine) return;
-    
-    setPaymentStep("processing");
-    setPaymentSystem('TEF');
-    
-    try {
-      // Preparar dados da transação
-      const amount = selectedMachine.price * 100; // Converter para centavos
-      const transactionParams = {
-        transacao: "venda",
-        valor: amount.toString(),
-        cupomFiscal: generateReceiptNumber(),
-        dataHora: new Date().toISOString().slice(0, 19).replace('T', ' '),
-        estabelecimento: "Top Lavanderia",
-        terminal: "001"
-      };
-
-      console.log("Iniciando transação TEF:", transactionParams);
-
-      // Usar o hook melhorado para processar pagamento
-      const result = await processTEFPayment(transactionParams);
-
-      if (result && result.retorno === "0") {
-        // Transação aprovada
-        setTransactionData(result);
-        setPaymentStep("success");
-
-        // Ativar a máquina após pagamento aprovado
-        await activateMachine('TEF');
-        toast({
-          title: "Pagamento Aprovado!",
-          description: `Transação realizada com sucesso. NSU: ${result.nsu || 'N/A'}`,
-          variant: "default"
-        });
-      } else if (result) {
-        // Transação negada
-        setPaymentStep("error");
-        toast({
-          title: "Pagamento Negado",
-          description: result.mensagem || "Transação não foi aprovada",
-          variant: "destructive"
-        });
-      } else {
-        // Falha total na comunicação
-        setPaymentStep("error");
-      }
-    } catch (error) {
-      console.error("Erro crítico na transação TEF:", error);
-      setPaymentStep("error");
-      toast({
-        title: "Erro Crítico",
-        description: "Falha grave no sistema de pagamento. Contacte o suporte.",
-        variant: "destructive"
-      });
-    }
-  };
-
-  // Função principal de pagamento via PayGO
-  const handlePayGOPayment = async () => {
-    if (!selectedMachine) return;
-    
-    setPaymentStep("processing");
-    setPaymentSystem('PAYGO');
-    
-    try {
-      // Preparar dados da transação PayGO
-      const transactionData = {
-        amount: selectedMachine.price, // PayGO usa valor em reais
-        paymentType: 'credit' as const,
-        orderId: generateReceiptNumber()
-      };
-
-      console.log("Iniciando transação PayGO:", transactionData);
-
-      // Usar o hook do PayGO para processar pagamento
-      const result = await processPayGOPayment(transactionData);
-
-      if (result && result.success) {
-        // Transação aprovada
-        setTransactionData(result);
-        setPaymentStep("success");
-
-        // Ativar a máquina após pagamento aprovado
-        await activateMachine('PAYGO');
-        toast({
-          title: "Pagamento Aprovado!",
-          description: `Transação realizada com sucesso. NSU: ${result.nsu || 'N/A'}`,
-          variant: "default"
-        });
-      } else {
-        // Transação negada
-        setPaymentStep("error");
-        toast({
-          title: "Pagamento Negado",
-          description: result?.resultMessage || "Transação não foi aprovada",
-          variant: "destructive"
-        });
-      }
-    } catch (error) {
-      console.error("Erro crítico na transação PayGO:", error);
-      setPaymentStep("error");
-      toast({
-        title: "Erro Crítico",
-        description: "Falha grave no sistema de pagamento. Contacte o suporte.",
-        variant: "destructive"
-      });
-    }
-  };
-
-  // Função principal de pagamento via Pix
-  const handlePixPayment = async () => {
-    if (!selectedMachine) return;
-    
-    setPaymentStep("processing");
+  // Handle PIX QR code display from UniversalPaymentWidget
+  const handlePixQR = (result: any) => {
+    setPixPaymentData({
+      ...result,
+      amount: selectedMachine?.price,
+      orderId: result.data?.orderId,
+    });
+    setPaymentStep("pix_qr");
     setPaymentSystem('PIX');
-    
-    try {
-      // Preparar dados da transação Pix
-      const pixData = {
-        amount: selectedMachine.price,
-        orderId: generateReceiptNumber()
-      };
-
-      console.log("Iniciando transação Pix:", pixData);
-
-      // Gerar QR Code Pix
-      const result = await generatePixQR(pixData);
-
-      if (result.success && result.qrCode) {
-        // QR Code gerado com sucesso
-        setPixPaymentData({
-          ...result,
-          amount: selectedMachine.price,
-          orderId: pixData.orderId,
-        });
-        setPaymentStep("pix_qr");
-
-        // Iniciar polling para verificar pagamento
-        startPixPolling(pixData.orderId, async (status) => {
-          if (status.status === 'paid') {
-            setTransactionData({
-              success: true,
-              nsu: status.transactionId,
-              transactionId: status.transactionId,
-              amount: status.amount,
-            });
-            setPaymentStep("success");
-            await activateMachine('PIX');
-            toast({
-              title: "Pagamento Pix Confirmado!",
-              description: `Transação realizada com sucesso.`,
-            });
-          } else if (status.status === 'expired') {
-            setPaymentStep("error");
-            toast({
-              title: "QR Code Expirado",
-              description: "O tempo limite para pagamento foi atingido.",
-              variant: "destructive",
-            });
-          } else if (status.status === 'cancelled') {
-            setPaymentStep("error");
-            toast({
-              title: "Pagamento Cancelado",
-              description: "A transação Pix foi cancelada.",
-              variant: "destructive",
-            });
-          }
-        });
-      } else {
-        // Falha ao gerar QR Code
-        setPaymentStep("error");
-        toast({
-          title: "Erro no Pix",
-          description: result.errorMessage || "Falha ao gerar QR Code",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error("Erro crítico na transação Pix:", error);
-      setPaymentStep("error");
-      toast({
-        title: "Erro Crítico",
-        description: "Falha grave no sistema de pagamento Pix. Contacte o suporte.",
-        variant: "destructive",
-      });
-    }
   };
 
   const activateMachine = async (paymentMethod: string = 'TEF') => {
@@ -551,11 +344,11 @@ const Totem = () => {
             <Progress value={50} className="w-full" />
             <div className="flex space-x-2">
               <Button 
-                onClick={() => paymentSystem === 'TEF' ? cancelTEFTransaction() : cancelPayGOTransaction()} 
+                onClick={resetTotem} 
                 variant="outline" 
                 className="flex-1"
               >
-                Cancelar {paymentSystem}
+                Cancelar Pagamento
               </Button>
               <Button onClick={resetTotem} variant="destructive" className="flex-1">
                 Cancelar Tudo
@@ -593,18 +386,11 @@ const Totem = () => {
 
   // Tela de QR Code Pix
   if (paymentStep === "pix_qr" && pixPaymentData) {
-    const handleCancelPix = async () => {
-      try {
-        await cancelPixPayment(pixPaymentData.orderId);
-        resetTotem();
-      } catch (error) {
-        console.error("Erro ao cancelar Pix:", error);
-        resetTotem();
-      }
+    const handleCancelPix = () => {
+      resetTotem();
     };
 
     const handleCopyCode = () => {
-      // Additional feedback for copied code
       console.log("Código Pix copiado:", pixPaymentData.qrCode);
     };
 
@@ -614,7 +400,7 @@ const Totem = () => {
         qrCodeBase64={pixPaymentData.qrCodeBase64}
         pixKey={pixPaymentData.pixKey}
         amount={pixPaymentData.amount}
-        timeRemaining={pixTimeRemaining}
+        timeRemaining={pixPaymentData.expiresIn || 300}
         totalTime={pixPaymentData.expiresIn || 300}
         onCancel={handleCancelPix}
         onCopyCode={handleCopyCode}
@@ -680,9 +466,11 @@ const Totem = () => {
               <div className="space-y-4">
                 <UniversalPaymentWidget
                   amount={selectedMachine?.price || 0}
+                  config={universalConfig}
                   onSuccess={handleUniversalPaymentSuccess}
                   onError={handleUniversalPaymentError}
                   onCancel={resetTotem}
+                  onPixQR={handlePixQR}
                 />
               </div>
 
@@ -709,17 +497,7 @@ const Totem = () => {
             </div>
           </div>
           <div className="flex items-center space-x-2">
-            {/* Indicador PayGO */}
-            <div className={`flex items-center space-x-1 rounded px-2 py-1 ${
-              paygoStatus?.online 
-                ? 'text-green-700 bg-green-100/90' 
-                : 'text-red-700 bg-red-100/90'
-            }`}>
-              <CreditCard size={12} />
-              <span className="text-xs font-medium">
-                {paygoStatus?.online ? 'Online' : 'Offline'}
-              </span>
-            </div>
+            {/* Status indicator removed - managed by UniversalPaymentWidget */}
 
             <div className="text-right text-white">
               <div className="text-sm font-semibold">
