@@ -14,6 +14,8 @@ interface UniversalPaymentWidgetProps {
   onError: (error: string) => void;
   onCancel: () => void;
   onPixQR?: (data: any) => void;
+  /** Compact mode for Smart POS - larger buttons, no method selection */
+  compactMode?: boolean;
 }
 
 export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
@@ -22,7 +24,8 @@ export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
   onSuccess,
   onError,
   onCancel,
-  onPixQR
+  onPixQR,
+  compactMode = false
 }) => {
   const [paymentType, setPaymentType] = useState<PaymentType>('credit');
   const [preferredMethod, setPreferredMethod] = useState<PaymentMethod | undefined>();
@@ -98,6 +101,77 @@ export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
   const bestMethod = getBestAvailableMethod();
   const hasAvailableMethods = methodsStatus.some(s => s.available && s.method !== 'manual');
 
+  // Compact mode for Smart POS - simplified UI
+  if (compactMode) {
+    return (
+      <Card className="w-full max-w-md mx-auto">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <CreditCard className="h-5 w-5" />
+            Pagamento
+          </CardTitle>
+          <div className="text-3xl font-bold text-primary">
+            {formatPayGOAmount(amount)}
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-3">
+          {/* Large payment type buttons for touch */}
+          <div className="grid grid-cols-1 gap-3">
+            <Button
+              variant={paymentType === 'credit' ? 'default' : 'outline'}
+              className="h-16 text-lg font-semibold"
+              onClick={() => { setPaymentType('credit'); }}
+              disabled={isProcessing}
+            >
+              <CreditCard className="mr-3 h-6 w-6" />
+              Crédito
+            </Button>
+            <Button
+              variant={paymentType === 'debit' ? 'default' : 'outline'}
+              className="h-16 text-lg font-semibold"
+              onClick={() => { setPaymentType('debit'); }}
+              disabled={isProcessing}
+            >
+              <Smartphone className="mr-3 h-6 w-6" />
+              Débito
+            </Button>
+            <Button
+              variant={paymentType === 'pix' ? 'default' : 'outline'}
+              className="h-16 text-lg font-semibold"
+              onClick={() => { setPaymentType('pix'); }}
+              disabled={isProcessing}
+            >
+              <QrCode className="mr-3 h-6 w-6" />
+              PIX
+            </Button>
+          </div>
+
+          {/* Pay button */}
+          <Button
+            onClick={handlePayment}
+            disabled={isProcessing}
+            className="w-full h-14 text-lg font-bold"
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Processando...
+              </>
+            ) : (
+              `Pagar ${paymentType === 'pix' ? 'com PIX' : paymentType === 'debit' ? 'Débito' : 'Crédito'}`
+            )}
+          </Button>
+
+          <Button variant="outline" onClick={onCancel} disabled={isProcessing} className="w-full h-12">
+            Cancelar
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Full mode for Totem
   return (
     <Card className="w-full max-w-md mx-auto">
       <CardHeader>
@@ -144,7 +218,7 @@ export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
 
         <Separator />
 
-        {/* Method status (exclude manual and pix from method selection) */}
+        {/* Method status */}
         <div className="space-y-2">
           <h4 className="text-sm font-medium">Métodos Disponíveis:</h4>
           {methodsStatus.filter(s => s.method !== 'manual').map((status) => (
