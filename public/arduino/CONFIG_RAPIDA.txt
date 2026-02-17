@@ -1,68 +1,80 @@
-🚀 CONFIGURAÇÃO RÁPIDA - ESP32 Top Lavanderia
-==============================================
+🚀 CONFIGURAÇÃO RÁPIDA - ESP32 AutoConfig v3.0 (Top Lavanderia)
+================================================================
 
-⚠️ ANTES DE FAZER UPLOAD, CONFIGURE ESTAS 5 LINHAS:
+✅ NÃO PRECISA EDITAR NENHUMA LINHA DO CÓDIGO!
 
-1️⃣ LINHA 18 - WiFi SSID:
-   const char* ssid = "SUA_REDE_WIFI";
+O ESP32 v3.0 é plug-and-play. Basta fazer upload do arquivo
+ESP32_AutoConfig_v3.ino e configurar pelo celular.
 
-2️⃣ LINHA 19 - WiFi Password:
-   const char* password = "SUA_SENHA_WIFI";
+================================================================
 
-3️⃣ LINHA 28 - Laundry ID (copiar do painel admin):
-   #define LAUNDRY_ID "8ace0bcb-83a9-4555-a712-63ef5f52e709"
+📋 PASSO A PASSO:
 
-4️⃣ LINHA 29 - ESP32 ID (único para cada máquina):
-   #define ESP32_ID "lavadora_01"
-   
-   Exemplos:
-   - Primeira lavadora → "lavadora_01"
-   - Segunda lavadora → "lavadora_02"
-   - Primeira secadora → "secadora_01"
-   - Segunda secadora → "secadora_02"
+1️⃣ UPLOAD DO CÓDIGO
+   - Abra o arquivo ESP32_AutoConfig_v3.ino no Arduino IDE
+   - Selecione a placa: "ESP32 Dev Module"
+   - Faça upload (mesmo código para TODOS os ESP32s)
 
-5️⃣ LINHA 30 - Machine Name (nome amigável):
-   #define MACHINE_NAME "Lavadora 01"
+2️⃣ PRIMEIRO BOOT
+   - O ESP32 pisca o LED lentamente
+   - Ele cria uma rede WiFi: TopLav_XXXXXX
+   - E ativa o Bluetooth (BLE) com nome TopLav_XXXXXX
 
-==============================================
+3️⃣ CONFIGURAR WiFi (escolha uma opção):
 
-✅ CHECKLIST PÓS-UPLOAD:
+   Opção A - Pelo Navegador (mais fácil):
+   - Conecte ao WiFi "TopLav_XXXXXX" (sem senha)
+   - Abra o navegador em http://192.168.4.1
+   - Preencha: SSID, Senha do WiFi, Laundry ID
+   - Clique "Salvar e Conectar"
 
-1. Abra o Serial Monitor (115200 baud)
-2. Deve aparecer:
-   ✅ WiFi conectado!
-   ✅ Heartbeat enviado - HTTP 200
+   Opção B - Por Bluetooth (BLE):
+   - Use um app BLE (ex: nRF Connect)
+   - Conecte ao dispositivo "TopLav_XXXXXX"
+   - Envie JSON na característica WiFi Config:
+     {"ssid":"SUA_REDE","pass":"SUA_SENHA","laundry_id":"UUID"}
 
-3. No painel admin:
-   - Vá em: Admin → ESP32 Monitor
-   - Deve aparecer o ESP32 com status "ONLINE"
+4️⃣ O ESP32 REINICIA E SE REGISTRA AUTOMATICAMENTE
+   - Conecta ao WiFi configurado
+   - Envia heartbeat com auto_register=true
+   - Aparece no painel admin como "Pendente"
 
-4. Na lista de máquinas:
-   - A máquina deve aparecer como "DISPONÍVEL" (verde)
+5️⃣ APROVAR NO PAINEL ADMIN
+   - Vá em: Admin → Configurações
+   - Na seção "ESP32s Pendentes de Aprovação"
+   - Associe o ESP32 a uma máquina
+   - Clique "Aprovar"
 
-==============================================
+================================================================
+
+🔑 ONDE ENCONTRAR O LAUNDRY ID:
+   - Painel Admin → Configurações → QR Code de Configuração
+   - Copie o UUID ou escaneie o QR Code
+
+================================================================
+
+🔄 RECONFIGURAR WiFi (se a rede mudar):
+   - Segure o botão BOOT do ESP32 por 5 segundos
+   - O LED pisca rápido e o ESP32 faz reset de fábrica
+   - Repita o passo 3
+
+================================================================
 
 ❌ PROBLEMAS COMUNS:
 
-1. "WiFi não conecta"
-   → Verifique SSID e senha
-   → Use WiFi 2.4GHz (não funciona com 5GHz)
+1. "Não encontro a rede TopLav_XXXXXX"
+   → O ESP32 pode estar em modo normal (já configurado)
+   → Faça reset de fábrica (botão BOOT por 5 segundos)
 
-2. "HTTP 401 Unauthorized"
-   → Verifique o supabaseApiKey na linha 29
+2. "WiFi conectou mas não aparece no painel"
+   → Verifique se o Laundry ID está correto
+   → Aguarde 30 segundos para o heartbeat
 
-3. "ESP32 não aparece no painel"
-   → Verifique se LAUNDRY_ID está correto
-   → Verifique se ESP32_ID coincide com a máquina cadastrada
+3. "ESP32 reinicia em loop"
+   → Verifique se a rede WiFi é 2.4GHz (5GHz não funciona)
 
-4. "Heartbeat enviado mas máquina offline"
-   → Last heartbeat pode estar antigo (>2 minutos)
-   → Aguarde 30 segundos para próximo heartbeat
+================================================================
 
-==============================================
-
-📚 DOCUMENTAÇÃO COMPLETA:
+📚 DOCUMENTAÇÃO:
 - Troubleshooting: public/arduino/TROUBLESHOOTING_ESP32.md
-- Estrutura do banco: docs/DATABASE_STRUCTURE.md
-
-==============================================
+- Código antigo (manual): ESP32_Lavadora_Individual_CORRIGIDO_v2.ino

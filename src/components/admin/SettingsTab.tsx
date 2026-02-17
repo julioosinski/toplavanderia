@@ -6,6 +6,8 @@ import { useLaundry } from "@/contexts/LaundryContext";
 import { SettingsForm } from "./settings/SettingsForm";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Building2 } from "lucide-react";
+import { ESP32PendingApproval } from "./ESP32PendingApproval";
+import { ESP32ConfigQRCode } from "./ESP32ConfigQRCode";
 
 export const SettingsTab = () => {
   const { settings, isLoading, updateSettings, isUpdating } = useSystemSettings();
@@ -42,6 +44,12 @@ export const SettingsTab = () => {
           Configurações de <strong>{currentLaundry?.name}</strong>
         </AlertDescription>
       </Alert>
+
+      {/* ESP32 Pending Approval */}
+      <ESP32PendingApproval />
+
+      {/* ESP32 Config QR Code */}
+      <ESP32ConfigQRCode />
 
       <SettingsForm 
         settings={settings} 

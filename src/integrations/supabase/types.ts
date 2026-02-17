@@ -124,6 +124,7 @@ export type Database = {
       esp32_status: {
         Row: {
           created_at: string
+          device_name: string | null
           esp32_id: string
           firmware_version: string | null
           id: string
@@ -133,6 +134,7 @@ export type Database = {
           laundry_id: string
           machine_count: number | null
           network_status: string | null
+          registration_status: string | null
           relay_status: Json | null
           signal_strength: number | null
           updated_at: string
@@ -140,6 +142,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          device_name?: string | null
           esp32_id: string
           firmware_version?: string | null
           id?: string
@@ -149,6 +152,7 @@ export type Database = {
           laundry_id: string
           machine_count?: number | null
           network_status?: string | null
+          registration_status?: string | null
           relay_status?: Json | null
           signal_strength?: number | null
           updated_at?: string
@@ -156,6 +160,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          device_name?: string | null
           esp32_id?: string
           firmware_version?: string | null
           id?: string
@@ -165,6 +170,7 @@ export type Database = {
           laundry_id?: string
           machine_count?: number | null
           network_status?: string | null
+          registration_status?: string | null
           relay_status?: Json | null
           signal_strength?: number | null
           updated_at?: string
