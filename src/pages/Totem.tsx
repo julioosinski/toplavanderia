@@ -5,7 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
-import { Droplets, Wind, Clock, CreditCard, Wifi, CheckCircle, XCircle, Timer, Sparkles, DollarSign, Shield, Maximize, Loader2, QrCode, Monitor, Smartphone, Settings } from "lucide-react";
+import { Droplets, Wind, Clock, CreditCard, Wifi, CheckCircle, XCircle, Timer, Sparkles, DollarSign, Shield, Maximize, Loader2, QrCode, Monitor, Smartphone, Settings, Eye, EyeOff, RefreshCw } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { nativeStorage } from "@/utils/nativeStorage";
 import { useToast } from "@/hooks/use-toast";
 import { useKioskSecurity } from "@/hooks/useKioskSecurity";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
@@ -37,6 +40,17 @@ const Totem = () => {
   const [cnpjInput, setCnpjInput] = useState('');
   const [cnpjLoading, setCnpjLoading] = useState(false);
   const [cnpjError, setCnpjError] = useState('');
+
+  // Gesto secreto no logo para reconfiguração
+  const [logoTapCount, setLogoTapCount] = useState(0);
+  const [showReconfigureDialog, setShowReconfigureDialog] = useState(false);
+  const [reconfigureStep, setReconfigureStep] = useState<'pin' | 'cnpj'>('pin');
+  const [reconfigurePin, setReconfigurePin] = useState('');
+  const [reconfigureCnpj, setReconfigureCnpj] = useState('');
+  const [reconfigureLoading, setReconfigureLoading] = useState(false);
+  const [reconfigureError, setReconfigureError] = useState('');
+  const [showReconfigurePin, setShowReconfigurePin] = useState(false);
+  const [pinAttempts, setPinAttempts] = useState(0);
 
   // Timeout de segurança: se loading travar por mais de 8s, exibe tela de configuração
   const [loadingTimeout, setLoadingTimeout] = useState(false);
@@ -80,7 +94,8 @@ const Totem = () => {
     disableSecurity
   } = useKioskSecurity();
   const {
-    authenticate: adminAuthenticate
+    authenticate: adminAuthenticate,
+    validatePin
   } = useAdminAccess();
   const {
     machines,
@@ -332,6 +347,64 @@ const Totem = () => {
     }
   };
 
+  // Gesto secreto: 7 toques no logo
+  const handleLogoTap = () => {
+    const newCount = logoTapCount + 1;
+    setLogoTapCount(newCount);
+    if (newCount >= 7) {
+      setShowReconfigureDialog(true);
+      setReconfigureStep('pin');
+      setReconfigurePin('');
+      setReconfigureCnpj('');
+      setReconfigureError('');
+      setPinAttempts(0);
+      setLogoTapCount(0);
+    }
+    setTimeout(() => setLogoTapCount(0), 3000);
+  };
+
+  // Validar PIN na etapa 1
+  const handleReconfigurePin = () => {
+    const isValid = validatePin(reconfigurePin);
+    if (isValid) {
+      setReconfigureStep('cnpj');
+      setReconfigureError('');
+      setReconfigurePin('');
+      setPinAttempts(0);
+    } else {
+      const attempts = pinAttempts + 1;
+      setPinAttempts(attempts);
+      setReconfigurePin('');
+      if (attempts >= 3) {
+        setShowReconfigureDialog(false);
+        setPinAttempts(0);
+        toast({ title: "Acesso bloqueado", description: "Máximo de tentativas atingido.", variant: "destructive" });
+      } else {
+        setReconfigureError(`PIN incorreto. Tentativa ${attempts}/3.`);
+      }
+    }
+  };
+
+  // Reconfigurar CNPJ na etapa 2
+  const handleReconfigureCNPJ = async () => {
+    const cleanCnpj = reconfigureCnpj.replace(/\D/g, '');
+    if (cleanCnpj.length !== 14) {
+      setReconfigureError('CNPJ deve ter 14 dígitos.');
+      return;
+    }
+    setReconfigureLoading(true);
+    setReconfigureError('');
+    await nativeStorage.removeItem('totem_laundry_id');
+    const success = await configureTotemByCNPJ(cleanCnpj);
+    setReconfigureLoading(false);
+    if (success) {
+      setShowReconfigureDialog(false);
+      toast({ title: "✅ Totem Reconfigurado", description: "Nova lavanderia carregada com sucesso." });
+    } else {
+      setReconfigureError('CNPJ não encontrado ou lavanderia inativa.');
+    }
+  };
+
   // Tela de configuração TEF segura
   if (showConfig) {
     return <SecureTEFConfig config={tefConfig} onConfigChange={setTefConfig} onClose={() => setShowConfig(false)} />;
@@ -574,7 +647,7 @@ const Totem = () => {
       {/* Header Compacto */}
       <div className="container mx-auto px-2 py-2">
         <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg p-2 shadow-lg">
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 select-none" onClick={handleLogoTap}>
             <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
               <Sparkles className="text-white" size={16} />
             </div>
@@ -771,6 +844,90 @@ const Totem = () => {
         title="Acesso Administrativo" 
         description="Desativar temporariamente as medidas de segurança do kiosk" 
       />
+
+      {/* Reconfiguração Secreta de CNPJ */}
+      <Dialog open={showReconfigureDialog} onOpenChange={(open) => {
+        setShowReconfigureDialog(open);
+        if (!open) { setReconfigurePin(''); setReconfigureCnpj(''); setReconfigureError(''); setPinAttempts(0); setShowReconfigurePin(false); }
+      }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>🔧 Reconfiguração do Totem</DialogTitle>
+            <DialogDescription>
+              {reconfigureStep === 'pin'
+                ? 'Digite o PIN de administrador para continuar.'
+                : `Totem atual: ${currentLaundry?.name || '—'}. Digite o CNPJ da nova lavanderia.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          {reconfigureStep === 'pin' ? (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reconfig-pin">PIN Administrativo</Label>
+                <div className="relative">
+                  <Input
+                    id="reconfig-pin"
+                    type={showReconfigurePin ? 'text' : 'password'}
+                    placeholder="••••"
+                    value={reconfigurePin}
+                    onChange={(e) => { setReconfigurePin(e.target.value.slice(0, 8)); setReconfigureError(''); }}
+                    onKeyDown={(e) => e.key === 'Enter' && handleReconfigurePin()}
+                    inputMode="numeric"
+                    className="text-center text-xl tracking-widest pr-10"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    onClick={() => setShowReconfigurePin(v => !v)}
+                  >
+                    {showReconfigurePin ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                {reconfigureError && <p className="text-destructive text-sm flex items-center gap-1"><XCircle size={14} />{reconfigureError}</p>}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  className="flex-1 border border-input rounded-md px-4 py-2 text-sm hover:bg-accent"
+                  onClick={() => setShowReconfigureDialog(false)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  className="flex-1 bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+                  onClick={handleReconfigurePin}
+                  disabled={reconfigurePin.length === 0}
+                >
+                  Confirmar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reconfig-cnpj">CNPJ da Nova Lavanderia</Label>
+                <Input
+                  id="reconfig-cnpj"
+                  placeholder="00000000000000 (14 dígitos)"
+                  value={reconfigureCnpj}
+                  onChange={(e) => { setReconfigureCnpj(e.target.value.replace(/\D/g, '').slice(0, 14)); setReconfigureError(''); }}
+                  onKeyDown={(e) => e.key === 'Enter' && handleReconfigureCNPJ()}
+                  inputMode="numeric"
+                  className="text-center text-lg tracking-widest font-mono"
+                  disabled={reconfigureLoading}
+                />
+                {reconfigureError && <p className="text-destructive text-sm flex items-center gap-1"><XCircle size={14} />{reconfigureError}</p>}
+              </div>
+              <button
+                className="w-full bg-primary text-primary-foreground rounded-md px-4 py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-50 flex items-center justify-center gap-2"
+                onClick={handleReconfigureCNPJ}
+                disabled={reconfigureLoading || reconfigureCnpj.replace(/\D/g, '').length !== 14}
+              >
+                {reconfigureLoading ? <><Loader2 size={16} className="animate-spin" />Buscando...</> : <><RefreshCw size={16} />Reconfigurar Totem</>}
+              </button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>;
 };
 
