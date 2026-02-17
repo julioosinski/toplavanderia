@@ -40,7 +40,7 @@ export type Database = {
           action: string
           created_at: string | null
           id: string
-          ip_address: unknown | null
+          ip_address: unknown
           new_values: Json | null
           old_values: Json | null
           record_id: string | null
@@ -53,7 +53,7 @@ export type Database = {
           action: string
           created_at?: string | null
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           new_values?: Json | null
           old_values?: Json | null
           record_id?: string | null
@@ -66,7 +66,7 @@ export type Database = {
           action?: string
           created_at?: string | null
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           new_values?: Json | null
           old_values?: Json | null
           record_id?: string | null
@@ -347,6 +347,13 @@ export type Database = {
             foreignKeyName: "pending_commands_machine_id_fkey"
             columns: ["machine_id"]
             isOneToOne: false
+            referencedRelation: "machine_status_view"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pending_commands_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
             referencedRelation: "machines"
             referencedColumns: ["id"]
           },
@@ -400,7 +407,7 @@ export type Database = {
           device_uuid: string | null
           event_type: string
           id: string
-          ip_address: unknown | null
+          ip_address: unknown
           resolved: boolean | null
           resolved_at: string | null
           resolved_by: string | null
@@ -415,7 +422,7 @@ export type Database = {
           device_uuid?: string | null
           event_type: string
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           resolved?: boolean | null
           resolved_at?: string | null
           resolved_by?: string | null
@@ -430,7 +437,7 @@ export type Database = {
           device_uuid?: string | null
           event_type?: string
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           resolved?: boolean | null
           resolved_at?: string | null
           resolved_by?: string | null
@@ -612,6 +619,13 @@ export type Database = {
             foreignKeyName: "transactions_machine_id_fkey"
             columns: ["machine_id"]
             isOneToOne: false
+            referencedRelation: "machine_status_view"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
             referencedRelation: "machines"
             referencedColumns: ["id"]
           },
@@ -706,6 +720,35 @@ export type Database = {
       }
     }
     Views: {
+      machine_status_view: {
+        Row: {
+          capacity_kg: number | null
+          computed_status: string | null
+          cycle_time_minutes: number | null
+          esp32_id: string | null
+          id: string | null
+          ip_address: string | null
+          is_online: boolean | null
+          last_heartbeat: string | null
+          laundry_id: string | null
+          location: string | null
+          name: string | null
+          price_per_kg: number | null
+          relay_pin: number | null
+          relay_status: Json | null
+          signal_strength: number | null
+          type: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "machines_laundry_id_fkey"
+            columns: ["laundry_id"]
+            isOneToOne: false
+            referencedRelation: "laundries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       public_machines: {
         Row: {
           capacity_kg: number | null
@@ -750,18 +793,12 @@ export type Database = {
       }
     }
     Functions: {
-      cleanup_old_logs: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      cleanup_old_logs: { Args: never; Returns: undefined }
       create_default_system_settings: {
         Args: { _laundry_id: string }
         Returns: string
       }
-      get_user_laundry_id: {
-        Args: { _user_id: string }
-        Returns: string
-      }
+      get_user_laundry_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
           _laundry_id?: string
@@ -770,10 +807,7 @@ export type Database = {
         }
         Returns: boolean
       }
-      is_super_admin: {
-        Args: { _user_id: string }
-        Returns: boolean
-      }
+      is_super_admin: { Args: { _user_id: string }; Returns: boolean }
       log_security_event: {
         Args: {
           _details?: Json
@@ -784,10 +818,7 @@ export type Database = {
         }
         Returns: string
       }
-      validate_admin_pin: {
-        Args: { _pin: string }
-        Returns: boolean
-      }
+      validate_admin_pin: { Args: { _pin: string }; Returns: boolean }
     }
     Enums: {
       app_role: "admin" | "operator" | "user" | "totem_device" | "super_admin"

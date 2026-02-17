@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
     const { esp32_id, relay_pin, action, machine_id, transaction_id } = await req.json() as ESP32ControlRequest;
