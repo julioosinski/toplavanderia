@@ -25,7 +25,7 @@ type Machine = {
   type: 'washing' | 'drying';
   status: string;
   capacity_kg: number;
-  price_per_kg: number;
+  price_per_cycle: number;
   total_uses: number | null;
   total_revenue: number | null;
   location?: string | null;
@@ -305,10 +305,10 @@ export default function Machines() {
       cell: ({ row }) => `${row.getValue("capacity_kg")} kg`,
     },
     {
-      accessorKey: "price_per_kg",
-      header: "Preço/kg",
+      accessorKey: "price_per_cycle",
+      header: "Preço/ciclo",
       cell: ({ row }) => {
-        const price = row.getValue("price_per_kg") as number;
+        const price = row.getValue("price_per_cycle") as number;
         return `R$ ${price.toFixed(2)}`;
       },
     },

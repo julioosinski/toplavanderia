@@ -242,7 +242,7 @@ export type Database = {
           laundry_id: string | null
           location: string | null
           name: string
-          price_per_kg: number
+          price_per_cycle: number
           relay_pin: number | null
           status: string
           temperature: number | null
@@ -261,7 +261,7 @@ export type Database = {
           laundry_id?: string | null
           location?: string | null
           name: string
-          price_per_kg?: number
+          price_per_cycle?: number
           relay_pin?: number | null
           status?: string
           temperature?: number | null
@@ -280,7 +280,7 @@ export type Database = {
           laundry_id?: string | null
           location?: string | null
           name?: string
-          price_per_kg?: number
+          price_per_cycle?: number
           relay_pin?: number | null
           status?: string
           temperature?: number | null
@@ -733,7 +733,7 @@ export type Database = {
           laundry_id: string | null
           location: string | null
           name: string | null
-          price_per_kg: number | null
+          price_per_cycle: number | null
           relay_pin: number | null
           relay_status: Json | null
           signal_strength: number | null
@@ -758,7 +758,7 @@ export type Database = {
           last_maintenance: string | null
           location: string | null
           name: string | null
-          price_per_kg: number | null
+          price_per_cycle: number | null
           status: string | null
           temperature: number | null
           type: string | null
@@ -771,7 +771,7 @@ export type Database = {
           last_maintenance?: string | null
           location?: string | null
           name?: string | null
-          price_per_kg?: number | null
+          price_per_cycle?: number | null
           status?: string | null
           temperature?: number | null
           type?: string | null
@@ -784,7 +784,7 @@ export type Database = {
           last_maintenance?: string | null
           location?: string | null
           name?: string | null
-          price_per_kg?: number | null
+          price_per_cycle?: number | null
           status?: string | null
           temperature?: number | null
           type?: string | null

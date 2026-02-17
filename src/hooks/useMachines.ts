@@ -178,7 +178,7 @@ export const useMachines = (laundryId?: string | null) => {
           name: machine.name,
           type: mappedType,
           title: machine.name,
-          price: Number(machine.price_per_kg) || 18.00,
+          price: Number(machine.price_per_cycle) || 18.00,
           duration: machine.cycle_time_minutes || 40,
           status: machineStatus,
           icon: mappedType === 'lavadora' ? Droplets : Wind,
