@@ -1,111 +1,112 @@
 
-# Problema: Tablet com APK Desatualizado + Estratégia de Configuração Robusta
+# Correção: Incompatibilidade JDK 21 com Android Gradle Plugin
 
-## Diagnóstico Real
+## Diagnóstico
 
-O código já foi corrigido com a tela de configuração CNPJ (linha 327 do Totem.tsx) e a lógica de modo totem no LaundryContext. Porém o tablet continua mostrando "Lavanderia não configurada" porque está rodando um **APK antigo** — as alterações feitas no código web ainda não foram compiladas e instaladas no tablet.
+O erro de `jlink` com JDK 21 é causado por uma incompatibilidade de versões conhecida:
 
-Adicionalmente, há um risco secundário: mesmo com o APK novo, se o tablet não conseguir conexão imediata com o Supabase ao inicializar, o fluxo pode falhar. Precisamos tornar o sistema mais robusto.
+| Componente | Versão Atual | Problema |
+|---|---|---|
+| Android Gradle Plugin | 8.1.4 | Projetado para JDK 17, falha com JDK 21 |
+| Gradle Wrapper | 8.5 | Requer atualização para suportar AGP 8.3+ |
+| `compileOptions` | `VERSION_1_8` | Desatualizado, pode causar warnings |
+| `capacitor-cordova-android-plugins` | AGP 8.7.2 | Já usa versão mais nova que o projeto principal |
 
-## Solução em Duas Partes
+O arquivo `android/capacitor-cordova-android-plugins/build.gradle` já usa AGP `8.7.2`, enquanto o projeto principal usa `8.1.4` — essa inconsistência também pode gerar conflitos.
 
-### Parte 1 — Tornar o fluxo do totem mais resiliente (código)
+## Solução: Atualizar AGP + Gradle Wrapper
 
-Antes de recompilar o APK, vamos garantir que o código seja à prova de falhas para o ambiente tablet:
+### Arquivo 1: `android/build.gradle` (build script raiz)
 
-**`src/contexts/LaundryContext.tsx`** — Melhorar o tratamento de erro no modo totem:
-- Adicionar `try/catch` mais defensivo em `supabase.auth.getUser()` — em redes instáveis, pode lançar erro de rede que hoje não é capturado corretamente
-- Se `getUser()` lançar exceção (não apenas retornar erro), o código atual **não entra no bloco do modo totem** e deixa o loading indefinido
-- Adicionar timeout de 5 segundos na chamada de autenticação para não bloquear o tablet indefinidamente
-
-**`src/pages/Totem.tsx`** — Adicionar fallback visual adicional:
-- Garantir que o campo CNPJ apareça mesmo se `laundryLoading` travar em `true` por mais de 8 segundos (timeout de segurança)
-
-### Parte 2 — Comandos para recompilar e instalar o APK
-
-O usuário precisa rodar estes comandos localmente após as correções:
-
+Atualizar o AGP de `8.1.4` para `8.7.2` (mesma versão já usada pelo plugin Cordova):
 ```text
-# 1. Sincronizar código web com Android
+// ANTES:
+classpath 'com.android.tools.build:gradle:8.1.4'
+
+// DEPOIS:
+classpath 'com.android.tools.build:gradle:8.7.2'
+```
+
+### Arquivo 2: `android/gradle/wrapper/gradle-wrapper.properties`
+
+Atualizar o Gradle Wrapper de `8.5` para `8.9` (compatível com AGP 8.7 + JDK 21):
+```text
+// ANTES:
+distributionUrl=https\://services.gradle.org/distributions/gradle-8.5-bin.zip
+
+// DEPOIS:
+distributionUrl=https\://services.gradle.org/distributions/gradle-8.9-bin.zip
+```
+
+### Arquivo 3: `android/app/build.gradle`
+
+Atualizar `compileOptions` de `VERSION_1_8` para `VERSION_17` (obrigatório para AGP 8.3+):
+```text
+// ANTES:
+compileOptions {
+    sourceCompatibility JavaVersion.VERSION_1_8
+    targetCompatibility JavaVersion.VERSION_1_8
+}
+
+// DEPOIS:
+compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+}
+```
+
+Também atualizar `compileSdk` e `targetSdk` de `34` para `35` (recomendado para AGP 8.7+):
+```text
+compileSdk 35
+targetSdk 35
+```
+
+### Arquivo 4: `android/gradle.properties`
+
+Adicionar flag para suporte explícito ao JDK 21 e melhorar performance de build:
+```text
+# Adicionar no final:
+org.gradle.java.home.auto=false
+android.suppressUnsupportedCompileSdk=35
+```
+
+## Tabela de Compatibilidade (após a mudança)
+
+| Componente | Versão Nova | Compatibilidade JDK 21 |
+|---|---|---|
+| Android Gradle Plugin | 8.7.2 | Suporte nativo JDK 21 |
+| Gradle Wrapper | 8.9 | Compatível com AGP 8.7 |
+| Java compile target | 17 | Compatível com JDK 21 |
+| Kotlin | 1.9.10 | Compatível |
+
+## Comandos após as alterações
+
+Após o Lovable aplicar as mudanças, executar localmente:
+
+```bash
+# Sincronizar e compilar
 npm run build
 npx cap sync android
-
-# 2. Compilar APK
 cd android
 ./gradlew assembleRelease
-
-# 3. Instalar no tablet via USB (ADB)
-adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
-## Alterações Técnicas Detalhadas
-
-### `src/contexts/LaundryContext.tsx`
-
-Problema atual no código:
-```text
-const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-if (authError || !user) {
-  // verifica totem_laundry_id
-}
+Se ainda tiver o Gradle cache antigo com a versão 8.5, forçar limpeza:
+```bash
+cd android
+./gradlew clean assembleRelease
 ```
 
-Se `supabase.auth.getUser()` **lançar uma exceção** (timeout de rede, DNS failure), o código cai no bloco `catch` externo e define `setError(errorMessage)` — nunca chegando ao modo totem.
+## Arquivos a modificar
 
-Correção:
-```text
-let user = null;
-try {
-  const { data, error } = await supabase.auth.getUser();
-  if (!error) user = data.user;
-} catch (networkError) {
-  console.warn('[LaundryContext] Auth check falhou (rede) - modo totem');
-}
+- `android/build.gradle` — AGP de `8.1.4` → `8.7.2`
+- `android/gradle/wrapper/gradle-wrapper.properties` — Gradle de `8.5` → `8.9`
+- `android/app/build.gradle` — `compileOptions` para `VERSION_17`, `compileSdk`/`targetSdk` para `35`
+- `android/gradle.properties` — flags adicionais de compatibilidade JDK 21
 
-if (!user) {
-  // verifica totem_laundry_id → funciona mesmo sem internet
-}
-```
+## Notas Adicionais
 
-Adicionalmente, adicionar `Preferences` do Capacitor como storage alternativo ao `localStorage`, pois em alguns builds Android o WebView pode não persistir o localStorage entre reinicializações. Isso requer usar `@capacitor/preferences` que já está disponível via `@capacitor/core`.
-
-### `src/pages/Totem.tsx`
-
-Adicionar um timeout de segurança: se após 8 segundos `laundryLoading` ainda for `true`, forçar exibição da tela de configuração CNPJ.
-
-```text
-const [loadingTimeout, setLoadingTimeout] = useState(false);
-
-useEffect(() => {
-  const timer = setTimeout(() => {
-    if (laundryLoading) setLoadingTimeout(true);
-  }, 8000);
-  return () => clearTimeout(timer);
-}, [laundryLoading]);
-
-// Na renderização:
-if ((!laundryLoading && !currentLaundry) || loadingTimeout) {
-  return <tela de configuração CNPJ />
-}
-```
-
-## Arquivos a Modificar
-
-- `src/contexts/LaundryContext.tsx` — capturar exceções de rede no `getUser()` para não bloquear o modo totem
-- `src/pages/Totem.tsx` — adicionar timeout de segurança de 8s para exibir tela de configuração mesmo se loading travar
-
-## Resultado Esperado
-
-Após recompilar e instalar o APK novo:
-1. Tablet abre o app
-2. `getUser()` falha silenciosamente (sem usuário logado)
-3. Verifica `totem_laundry_id` no localStorage — não encontra (primeira vez)
-4. Exibe tela de configuração com campo CNPJ
-5. Usuário digita `43652666000137`
-6. Totem configurado e funcionando
-
-Em aberturas subsequentes:
-1. `totem_laundry_id` encontrado no localStorage
-2. Lavanderia carregada diretamente
-3. Totem abre direto na tela de máquinas
+- O `minSdk` continua em `22` (ou pode-se ajustar para `23` que é o padrão do Capacitor)
+- Nenhuma alteração no código React ou Capacitor é necessária
+- A biblioteca PayGO (`.aar`) continuará funcionando pois é compatível com Java 17+
+- O Gradle Wrapper 8.9 será baixado automaticamente na primeira compilação (aprox. 130MB)
