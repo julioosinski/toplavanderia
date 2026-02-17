@@ -1,295 +1,260 @@
 package app.lovable.toplavanderia;
 
+import android.hardware.usb.UsbDevice;
+import android.hardware.usb.UsbManager;
+import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
+
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
-import org.json.JSONException;
-import org.json.JSONObject;
-
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.util.HashMap;
 
 /**
- * Plugin Capacitor para integração com PayGO Web SDK
+ * Capacitor plugin that bridges React/JS ↔ RealPayGoManager (InterfaceAutomacao).
  * 
- * Este plugin faz a ponte entre o app React/TypeScript e o PayGO Web SDK
- * instalado no tablet Android via HTTP.
- * 
- * IMPORTANTE: Este plugin requer que o PayGO Web SDK esteja rodando localmente
- * no tablet (geralmente em http://localhost:8080)
+ * NO HTTP calls. All payment processing goes through the real PayGo library
+ * which communicates with the PPC930 pinpad via the PayGo Integrado APK.
  */
 @CapacitorPlugin(name = "PayGO")
 public class PayGOPlugin extends Plugin {
-    
-    private String paygoHost = "localhost";
-    private int paygoPort = 8080;
-    private String automationKey = "";
-    private int timeout = 30000; // 30 segundos
-    
-    /**
-     * Inicializar PayGO com configurações
-     */
+    private static final String TAG = "PayGOPlugin";
+
+    private RealPayGoManager payGoManager;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+
+    @Override
+    public void load() {
+        super.load();
+        Log.d(TAG, "PayGOPlugin loaded – creating RealPayGoManager");
+        payGoManager = new RealPayGoManager(getContext());
+    }
+
+    // ==================== PLUGIN METHODS ====================
+
     @PluginMethod
     public void initialize(PluginCall call) {
         try {
-            // Receber configurações do JS
-            if (call.hasOption("host")) {
-                paygoHost = call.getString("host");
+            // RealPayGoManager auto-initializes in constructor, but we can
+            // re-initialize if config changed
+            if (!payGoManager.isInitialized()) {
+                // Try re-creating the manager
+                payGoManager = new RealPayGoManager(getContext());
             }
-            if (call.hasOption("port")) {
-                paygoPort = call.getInt("port");
-            }
-            if (call.hasOption("automationKey")) {
-                automationKey = call.getString("automationKey");
-            }
-            if (call.hasOption("timeout")) {
-                timeout = call.getInt("timeout");
-            }
-            
-            // Testar conexão com PayGO
-            String testUrl = "http://" + paygoHost + ":" + paygoPort + "/api/status";
-            boolean connected = testConnection(testUrl);
-            
+
             JSObject result = new JSObject();
-            result.put("success", connected);
-            result.put("message", connected ? "PayGO inicializado com sucesso" : "Falha ao conectar com PayGO");
-            
+            result.put("success", payGoManager.isInitialized());
+            result.put("message", payGoManager.isInitialized()
+                    ? "PayGO inicializado com sucesso (InterfaceAutomacao)"
+                    : "Falha ao inicializar PayGO. Verifique se o PayGo Integrado está instalado.");
             call.resolve(result);
-            
+
         } catch (Exception e) {
-            JSObject error = new JSObject();
-            error.put("success", false);
-            error.put("message", "Erro ao inicializar: " + e.getMessage());
-            error.put("error", e.toString());
-            call.reject("Erro ao inicializar PayGO", error);
+            Log.e(TAG, "Error in initialize", e);
+            JSObject result = new JSObject();
+            result.put("success", false);
+            result.put("message", "Erro ao inicializar: " + e.getMessage());
+            call.resolve(result);
         }
     }
-    
-    /**
-     * Verificar status do PayGO
-     */
+
     @PluginMethod
     public void checkStatus(PluginCall call) {
-        try {
-            String url = "http://" + paygoHost + ":" + paygoPort + "/api/status";
-            String response = makeHttpRequest(url, "GET", null);
-            
-            JSONObject json = new JSONObject(response);
-            
-            JSObject result = new JSObject();
-            result.put("initialized", json.optBoolean("initialized", false));
-            result.put("processing", json.optBoolean("processing", false));
-            result.put("connected", true);
-            result.put("online", true);
-            result.put("status", json.optString("status", "ready"));
-            
-            call.resolve(result);
-            
-        } catch (Exception e) {
-            JSObject result = new JSObject();
-            result.put("initialized", false);
-            result.put("processing", false);
-            result.put("connected", false);
-            result.put("online", false);
-            result.put("status", "error");
-            call.resolve(result);
-        }
+        JSObject result = new JSObject();
+        result.put("initialized", payGoManager.isInitialized());
+        result.put("processing", payGoManager.isProcessing());
+        result.put("connected", payGoManager.isInitialized());
+        result.put("online", payGoManager.isInitialized());
+        result.put("status", payGoManager.isInitialized() ? "ready" : "not_initialized");
+        call.resolve(result);
     }
-    
-    /**
-     * Processar pagamento
-     */
+
     @PluginMethod
     public void processPayment(PluginCall call) {
         try {
             double amount = call.getDouble("amount", 0.0);
             String paymentType = call.getString("paymentType", "credit");
             String orderId = call.getString("orderId", "");
-            
+            String description = call.getString("description", "Top Lavanderia");
+
             if (amount <= 0) {
-                throw new Exception("Valor inválido");
+                JSObject err = new JSObject();
+                err.put("success", false);
+                err.put("message", "Valor inválido");
+                err.put("status", "error");
+                call.resolve(err);
+                return;
             }
-            
-            // Construir payload para PayGO
-            JSONObject payload = new JSONObject();
-            payload.put("amount", amount);
-            payload.put("paymentType", paymentType);
-            payload.put("orderId", orderId);
-            payload.put("automationKey", automationKey);
-            
-            String url = "http://" + paygoHost + ":" + paygoPort + "/api/payment";
-            String response = makeHttpRequest(url, "POST", payload.toString());
-            
-            JSONObject json = new JSONObject(response);
-            
-            JSObject result = new JSObject();
-            result.put("success", json.optBoolean("success", false));
-            result.put("message", json.optString("message", ""));
-            result.put("status", json.optString("status", "error"));
-            result.put("authorizationCode", json.optString("authorizationCode", ""));
-            result.put("transactionId", json.optString("transactionId", ""));
-            result.put("orderId", orderId);
-            result.put("amount", amount);
-            result.put("paymentType", paymentType);
-            
-            call.resolve(result);
-            
+
+            if (!payGoManager.isInitialized()) {
+                JSObject err = new JSObject();
+                err.put("success", false);
+                err.put("message", "PayGO não inicializado. Instale o PayGo Integrado.");
+                err.put("status", "error");
+                call.resolve(err);
+                return;
+            }
+
+            if (payGoManager.isProcessing()) {
+                JSObject err = new JSObject();
+                err.put("success", false);
+                err.put("message", "Já há uma transação em processamento");
+                err.put("status", "error");
+                call.resolve(err);
+                return;
+            }
+
+            Log.d(TAG, "processPayment: amount=" + amount + " type=" + paymentType + " order=" + orderId);
+
+            // Set callback that resolves the Capacitor call
+            payGoManager.setCallback(new RealPayGoManager.PayGoCallback() {
+                @Override
+                public void onPaymentSuccess(String authorizationCode, String transactionId) {
+                    mainHandler.post(() -> {
+                        JSObject result = new JSObject();
+                        result.put("success", true);
+                        result.put("message", "Pagamento aprovado");
+                        result.put("status", "approved");
+                        result.put("authorizationCode", authorizationCode);
+                        result.put("transactionId", transactionId);
+                        result.put("orderId", orderId);
+                        result.put("amount", amount);
+                        result.put("paymentType", paymentType);
+                        call.resolve(result);
+
+                        // Also notify JS listeners
+                        notifyListeners("paymentSuccess", result);
+                    });
+                }
+
+                @Override
+                public void onPaymentError(String error) {
+                    mainHandler.post(() -> {
+                        JSObject result = new JSObject();
+                        result.put("success", false);
+                        result.put("message", error);
+                        result.put("status", "denied");
+                        result.put("orderId", orderId);
+                        result.put("amount", amount);
+                        result.put("paymentType", paymentType);
+                        call.resolve(result);
+
+                        JSObject event = new JSObject();
+                        event.put("error", error);
+                        event.put("message", error);
+                        notifyListeners("paymentError", event);
+                    });
+                }
+
+                @Override
+                public void onPaymentProcessing(String message) {
+                    mainHandler.post(() -> {
+                        JSObject event = new JSObject();
+                        event.put("message", message);
+                        event.put("processing", true);
+                        notifyListeners("paymentProcessing", event);
+                    });
+                }
+            });
+
+            // Delegate to RealPayGoManager (runs on background thread internally)
+            payGoManager.processPayment(amount, paymentType, description, orderId);
+
         } catch (Exception e) {
-            JSObject error = new JSObject();
-            error.put("success", false);
-            error.put("message", "Erro no pagamento: " + e.getMessage());
-            error.put("error", e.toString());
-            error.put("status", "error");
-            call.reject("Erro no pagamento", error);
+            Log.e(TAG, "Error in processPayment", e);
+            JSObject result = new JSObject();
+            result.put("success", false);
+            result.put("message", "Erro no pagamento: " + e.getMessage());
+            result.put("status", "error");
+            call.resolve(result);
         }
     }
-    
-    /**
-     * Cancelar transação
-     */
+
+    @PluginMethod
+    public void cancelPayment(PluginCall call) {
+        payGoManager.cancelPayment();
+        JSObject result = new JSObject();
+        result.put("success", true);
+        result.put("message", "Pagamento cancelado");
+        call.resolve(result);
+    }
+
     @PluginMethod
     public void cancelTransaction(PluginCall call) {
-        try {
-            String transactionId = call.getString("transactionId", "");
-            
-            JSONObject payload = new JSONObject();
-            payload.put("transactionId", transactionId);
-            
-            String url = "http://" + paygoHost + ":" + paygoPort + "/api/cancel";
-            String response = makeHttpRequest(url, "POST", payload.toString());
-            
-            JSONObject json = new JSONObject(response);
-            
-            JSObject result = new JSObject();
-            result.put("success", json.optBoolean("success", false));
-            result.put("message", json.optString("message", "Transação cancelada"));
-            
-            call.resolve(result);
-            
-        } catch (Exception e) {
-            JSObject error = new JSObject();
-            error.put("success", false);
-            error.put("message", "Erro ao cancelar: " + e.getMessage());
-            call.reject("Erro ao cancelar", error);
-        }
+        // For now, just cancel any in-progress payment
+        payGoManager.cancelPayment();
+        JSObject result = new JSObject();
+        result.put("success", true);
+        result.put("message", "Transação cancelada");
+        call.resolve(result);
     }
-    
-    /**
-     * Obter status do sistema
-     */
+
+    @PluginMethod
+    public void testPayGo(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("success", payGoManager.isInitialized());
+        result.put("message", payGoManager.isInitialized()
+                ? "PayGo inicializado – InterfaceAutomacao REAL ativa"
+                : "PayGo NÃO inicializado – verifique PayGo Integrado APK");
+        call.resolve(result);
+    }
+
     @PluginMethod
     public void getSystemStatus(PluginCall call) {
-        try {
-            String url = "http://" + paygoHost + ":" + paygoPort + "/api/system";
-            String response = makeHttpRequest(url, "GET", null);
-            
-            JSONObject json = new JSONObject(response);
-            
-            JSObject result = new JSObject();
-            result.put("initialized", json.optBoolean("initialized", false));
-            result.put("online", json.optBoolean("online", false));
-            result.put("clientConnected", json.optBoolean("clientConnected", false));
-            result.put("usbDeviceDetected", json.optBoolean("usbDeviceDetected", false));
-            result.put("libraryVersion", json.optString("libraryVersion", ""));
-            result.put("timestamp", System.currentTimeMillis());
-            
-            call.resolve(result);
-            
-        } catch (Exception e) {
-            JSObject error = new JSObject();
-            error.put("error", e.getMessage());
-            call.reject("Erro ao obter status", error);
-        }
+        JSObject result = new JSObject();
+        result.put("initialized", payGoManager.isInitialized());
+        result.put("online", payGoManager.isInitialized());
+        result.put("clientConnected", payGoManager.isInitialized());
+        result.put("usbDeviceDetected", detectUsbPinpad());
+        result.put("libraryVersion", "InterfaceAutomacao-v2.1.0.6");
+        result.put("timestamp", System.currentTimeMillis());
+        call.resolve(result);
     }
-    
-    /**
-     * Testar conexão
-     */
+
     @PluginMethod
     public void testConnection(PluginCall call) {
-        try {
-            String url = "http://" + paygoHost + ":" + paygoPort + "/api/ping";
-            boolean connected = testConnection(url);
-            
-            JSObject result = new JSObject();
-            result.put("success", connected);
-            result.put("message", connected ? "Conexão OK" : "Falha na conexão");
-            
-            call.resolve(result);
-            
-        } catch (Exception e) {
-            JSObject error = new JSObject();
-            error.put("success", false);
-            error.put("message", e.getMessage());
-            call.reject("Erro ao testar conexão", error);
-        }
+        JSObject result = new JSObject();
+        result.put("success", payGoManager.isInitialized());
+        result.put("message", payGoManager.isInitialized()
+                ? "Conexão OK – InterfaceAutomacao ativa"
+                : "Falha – PayGo Integrado não disponível");
+        call.resolve(result);
     }
-    
-    // ========== MÉTODOS AUXILIARES ==========
-    
-    private String makeHttpRequest(String urlString, String method, String payload) throws Exception {
-        URL url = new URL(urlString);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        
+
+    @PluginMethod
+    public void detectPinpad(PluginCall call) {
+        boolean detected = detectUsbPinpad();
+        JSObject result = new JSObject();
+        result.put("detected", detected);
+        result.put("message", detected ? "Pinpad USB detectado" : "Nenhum pinpad USB detectado");
+        call.resolve(result);
+    }
+
+    // ==================== HELPERS ====================
+
+    private boolean detectUsbPinpad() {
         try {
-            conn.setRequestMethod(method);
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("X-Automation-Key", automationKey);
-            conn.setConnectTimeout(timeout);
-            conn.setReadTimeout(timeout);
-            
-            if (payload != null && method.equals("POST")) {
-                conn.setDoOutput(true);
-                try (OutputStream os = conn.getOutputStream()) {
-                    byte[] input = payload.getBytes("utf-8");
-                    os.write(input, 0, input.length);
+            UsbManager usbManager = (UsbManager) getContext().getSystemService(Context.USB_SERVICE);
+            if (usbManager == null) return false;
+
+            HashMap<String, UsbDevice> devices = usbManager.getDeviceList();
+            for (UsbDevice device : devices.values()) {
+                int vid = device.getVendorId();
+                int pid = device.getProductId();
+                // Known pinpad vendor/product IDs
+                if (vid == 0x1FC9 || vid == 0x0403 || vid == 0x0483 ||
+                    vid == 0x2BF9 || vid == 0x2C09 || vid == 0x0451) {
+                    return true;
                 }
             }
-            
-            int responseCode = conn.getResponseCode();
-            
-            BufferedReader br = new BufferedReader(
-                new InputStreamReader(
-                    responseCode == 200 ? conn.getInputStream() : conn.getErrorStream(), 
-                    "utf-8"
-                )
-            );
-            
-            StringBuilder response = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) {
-                response.append(line.trim());
-            }
-            
-            if (responseCode != 200) {
-                throw new Exception("HTTP " + responseCode + ": " + response.toString());
-            }
-            
-            return response.toString();
-            
-        } finally {
-            conn.disconnect();
-        }
-    }
-    
-    private boolean testConnection(String urlString) {
-        try {
-            URL url = new URL(urlString);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(5000);
-            conn.setReadTimeout(5000);
-            int responseCode = conn.getResponseCode();
-            conn.disconnect();
-            return responseCode == 200;
         } catch (Exception e) {
-            return false;
+            Log.e(TAG, "Error detecting USB pinpad", e);
         }
+        return false;
     }
 }

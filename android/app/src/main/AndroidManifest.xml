@@ -11,39 +11,39 @@
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security_config">
 
-        <!-- TOTEM ACTIVITY - PRINCIPAL LAUNCHER COM MODO KIOSK -->
+        <!-- MAIN ACTIVITY - Capacitor BridgeActivity (React WebView) -->
         <activity
             android:exported="true"
             android:launchMode="singleTask"
-            android:name="app.lovable.toplavanderia.TotemActivity"
+            android:name="app.lovable.toplavanderia.MainActivity"
             android:theme="@style/AppTheme.NoActionBar"
-            android:screenOrientation="landscape"
-            android:keepScreenOn="true"
-            android:configChanges="orientation|keyboardHidden|screenSize">
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
+            android:keepScreenOn="true">
 
-            <!-- LAUNCHER PRINCIPAL + MODO KIOSK -->
+            <!-- LAUNCHER PRINCIPAL -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
-                <category android:name="android.intent.category.HOME" />
-                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
-            <!-- USB PINPAD PPC930 - DETECÇÃO AUTOMÁTICA -->
+            <!-- USB PINPAD PPC930 -->
             <intent-filter>
                 <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
             </intent-filter>
-            
             <intent-filter>
                 <action android:name="android.hardware.usb.action.USB_DEVICE_DETACHED" />
             </intent-filter>
 
-            <!-- META-DATA PARA DISPOSITIVOS USB -->
-            <meta-data 
+            <meta-data
                 android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
                 android:resource="@xml/device_filter" />
-
         </activity>
+
+        <!-- Legacy TotemActivity (kept for reference, not launcher) -->
+        <activity
+            android:exported="false"
+            android:name="app.lovable.toplavanderia.TotemActivity"
+            android:theme="@style/AppTheme.NoActionBar" />
 
         <activity
             android:exported="false"
