@@ -139,7 +139,7 @@ export const useSystemSettings = () => {
       return data as SystemSettings;
     },
     onSuccess: (data) => {
-      queryClient.setQueryData(['system-settings'], data);
+      queryClient.setQueryData(['system-settings', currentLaundry?.id], data);
       toast.success('Configurações atualizadas com sucesso');
     },
     onError: (error) => {

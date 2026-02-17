@@ -199,31 +199,8 @@ export const useMachines = (laundryId?: string | null) => {
         variant: "destructive"
       });
       
-      // Fallback para dados básicos se houver erro
-      setMachines([
-        {
-          id: 'fallback-1',
-          name: 'Lavadora 1',
-          type: 'lavadora',
-          title: 'Lavadora 1',
-          price: 18.00,
-          duration: 35,
-          status: 'available',
-          icon: Droplets,
-          ip_address: '192.168.0.101'
-        },
-        {
-          id: 'fallback-2',
-          name: 'Secadora 1',
-          type: 'secadora',
-          title: 'Secadora 1',
-          price: 18.00,
-          duration: 40,
-          status: 'available',
-          icon: Wind,
-          ip_address: '192.168.0.101'
-        }
-      ]);
+      // Sem fallback - mostrar lista vazia com erro
+      setMachines([]);
     } finally {
       setLoading(false);
     }

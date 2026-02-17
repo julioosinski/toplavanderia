@@ -430,13 +430,26 @@ const Totem = () => {
         console.error('Erro ao criar transação:', transactionError);
       }
 
-      // Chamar endpoint do ESP32 se tiver IP (mock implementation)
-      try {
-        // Simular chamada para ESP32 - na implementação real seria uma chamada HTTP
-        console.log(`Ativando máquina ${selectedMachine.name} via ESP32 ${selectedMachine.esp32_id}`);
-        // await fetch(`http://esp32-host:port/activate/${machine.relay_pin}`)
-      } catch (error) {
-        console.warn("Erro na comunicação com ESP32, mas máquina foi ativada no sistema:", error);
+      // Ativar máquina fisicamente via ESP32
+      if (selectedMachine.esp32_id) {
+        try {
+          console.log(`🎮 Ativando máquina ${selectedMachine.name} via ESP32 ${selectedMachine.esp32_id}`);
+          const { data: esp32Result, error: esp32Error } = await supabase.functions.invoke('esp32-control', {
+            body: {
+              esp32_id: selectedMachine.esp32_id,
+              relay_pin: selectedMachine.relay_pin || 1,
+              action: 'on',
+              machine_id: selectedMachine.id,
+            }
+          });
+          if (esp32Error) {
+            console.warn("⚠️ Erro na comunicação com ESP32:", esp32Error);
+          } else {
+            console.log("✅ ESP32 respondeu:", esp32Result);
+          }
+        } catch (error) {
+          console.warn("⚠️ Erro na comunicação com ESP32, mas máquina foi ativada no sistema:", error);
+        }
       }
     } catch (error) {
       console.error("Erro ao ativar máquina:", error);
@@ -734,19 +747,7 @@ const Totem = () => {
             </div>
             
             <div className="flex-1 grid grid-cols-6 gap-3">
-              {[...machines.filter(machine => machine.type === "lavadora"), 
-                // Adicionar máquinas fallback se não houver suficientes no banco
-                ...Array.from({ length: Math.max(0, 3 - machines.filter(m => m.type === "lavadora").length) }, (_, i) => ({
-                  id: `lavadora-${i + machines.filter(m => m.type === "lavadora").length + 1}`,
-                  name: `Lavadora ${i + machines.filter(m => m.type === "lavadora").length + 1}`,
-                  type: 'lavadora' as const,
-                  title: `Lavadora ${i + machines.filter(m => m.type === "lavadora").length + 1}`,
-                  price: 18.00,
-                  duration: 35,
-                  status: 'available' as const,
-                  icon: Droplets
-                }))
-              ].slice(0, 6).map(machine => {
+              {machines.filter(machine => machine.type === "lavadora").slice(0, 6).map(machine => {
                 const IconComponent = machine.icon;
                 const isAvailable = machine.status === "available";
                 return <Card key={machine.id} className={`relative overflow-hidden transition-all duration-300 cursor-pointer bg-white ${isAvailable ? 'hover:shadow-lg hover:scale-105 border border-blue-200 hover:border-blue-400' : 'opacity-70 cursor-not-allowed border border-gray-200'} shadow-md rounded-lg h-full flex flex-col`} onClick={() => handleMachineSelect(machine.id)}>
@@ -809,19 +810,7 @@ const Totem = () => {
             </div>
             
             <div className="flex-1 grid grid-cols-6 gap-3">
-              {[...machines.filter(machine => machine.type === "secadora"),
-                // Adicionar máquinas fallback se não houver suficientes no banco
-                ...Array.from({ length: Math.max(0, 3 - machines.filter(m => m.type === "secadora").length) }, (_, i) => ({
-                  id: `secadora-${i + machines.filter(m => m.type === "secadora").length + 1}`,
-                  name: `Secadora ${i + machines.filter(m => m.type === "secadora").length + 1}`,
-                  type: 'secadora' as const,
-                  title: `Secadora ${i + machines.filter(m => m.type === "secadora").length + 1}`,
-                  price: 18.00,
-                  duration: 40,
-                  status: 'available' as const,
-                  icon: Wind
-                }))
-              ].slice(0, 6).map(machine => {
+              {machines.filter(machine => machine.type === "secadora").slice(0, 6).map(machine => {
                 const IconComponent = machine.icon;
                 const isAvailable = machine.status === "available";
                 return <Card key={machine.id} className={`relative overflow-hidden transition-all duration-300 cursor-pointer bg-white ${isAvailable ? 'hover:shadow-lg hover:scale-105 border border-orange-200 hover:border-orange-400' : 'opacity-70 cursor-not-allowed border border-gray-200'} shadow-md rounded-lg h-full flex flex-col`} onClick={() => handleMachineSelect(machine.id)}>
