@@ -1,105 +1,134 @@
 
 
-# Corrigir Arquitetura de Comunicacao ESP32 (Pull em vez de Push)
+# Analise da Estrutura de Pagamento - 4 Cenarios
 
-## Problema Atual
+## Resumo dos Cenarios
 
-O sistema tenta enviar comandos HTTP diretamente para o IP local do ESP32 a partir da edge function na nuvem. Isso nunca funciona porque:
-- Edge functions rodam nos servidores do Supabase (cloud)
-- ESP32 esta em rede local (192.168.x.x)
-- A nuvem nao consegue acessar IPs privados
+| Cenario | Status | Funciona? | Problemas |
+|---------|--------|-----------|-----------|
+| PWA (Lovable web) | Parcial | Limitado | PIX via HTTP local nao funciona; TEF/PayGO inacessiveis |
+| Android Wrapper (Capacitor) | Funcional | Sim | E o cenario principal, bem coberto |
+| TEF PayGo | Funcional | Sim | Depende do plugin nativo Android |
+| ESP32 Wi-Fi | Funcional | Sim | Arquitetura pull ja corrigida |
 
-## Solucao: Modelo Pull (ESP32 busca comandos)
+---
 
-Em vez do servidor empurrar comandos para o ESP32, o ESP32 periodicamente consulta o servidor por comandos pendentes.
+## 1. PWA (Lovable Web no navegador)
+
+**Status: PROBLEMATICO**
+
+O sistema foi desenhado para rodar em Android nativo. No navegador (PWA):
+
+- **PayGO**: `useRealPayGOIntegration` chama `PayGO.initialize()` do plugin Capacitor. No browser, nao existe plugin nativo registrado - vai lancar erro silencioso ou nao fazer nada
+- **TEF**: `useTEFIntegration` faz `fetch()` para `http://192.168.1.100:8080` - isso so funciona se o dispositivo TEF estiver na mesma rede local E aceitar CORS (improvavel)
+- **PIX**: `usePixPayment` faz `fetch()` para `http://localhost:8080/pix/generate` - nao existe servidor local no browser
+- **`usePayGOIntegration`**: Tem fallback web via HTTP (`Capacitor.isNativePlatform()` check), mas o servidor HTTP PayGO estaria na rede local, inacessivel de um PWA hospedado na cloud
+
+**Problema central**: Nenhum metodo de pagamento funciona em PWA puro. O `UniversalPaymentWidget` testa conexoes e mostra tudo como "Indisponivel", mas nao oferece alternativa real.
+
+**Correcao necessaria**: 
+- Para PWA funcionar com pagamentos, seria necessario um gateway de pagamento online (Stripe, Mercado Pago, PagSeguro) que processa tudo na nuvem
+- Ou aceitar que PWA e apenas para visualizacao/admin, sem processar pagamentos
+
+---
+
+## 2. Android Wrapper (Capacitor APK)
+
+**Status: BEM COBERTO**
+
+Este e o cenario principal e esta bem implementado:
+
+- **Plugin PayGO** (`src/plugins/paygo.ts`): Registrado via `registerPlugin('PayGO')`, se comunica com a biblioteca nativa `InterfaceAutomacao-v2.1.0.6.aar`
+- **Plugin TEF** (`src/plugins/tef.ts`): Registrado via `registerPlugin('TEF')`, com fallback web (`tef.web.ts`)
+- **Deteccao de plataforma**: `usePayGOIntegration` usa `Capacitor.isNativePlatform()` para escolher entre plugin nativo ou HTTP fallback
+- **Kiosk mode**: `useKioskSecurity` e `useCapacitorIntegration` gerenciam modo quiosque no Android
+
+**Sem problemas criticos** neste cenario. O fluxo completo funciona:
+1. Totem mostra maquinas
+2. Usuario seleciona e paga via PayGO/TEF/PIX
+3. Sistema envia comando para `pending_commands`
+4. ESP32 busca e executa
+
+---
+
+## 3. TEF PayGo (Pinpad PPC930)
+
+**Status: FUNCIONAL COM RESSALVAS**
+
+Dois caminhos paralelos existem, o que gera confusao:
+
+- **Caminho 1 - Plugin Nativo** (`useRealPayGOIntegration` + `usePayGO`): Usa `PayGO.processPayment()` do plugin Capacitor. Requer o AAR nativo. So funciona em Android.
+- **Caminho 2 - HTTP** (`usePayGOIntegration`): Faz fetch para `http://host:port/transaction`. Funciona se houver um servidor PayGO acessivel via rede.
+- **Caminho 3 - TEF via HTTP** (`useTEFIntegration`): Faz fetch para o endpoint TEF Positivo L4.
+
+**Problemas encontrados**:
+1. **Hooks duplicados**: Existem 4 hooks de pagamento PayGO (`usePayGO`, `usePayGOIntegration`, `useRealPayGOIntegration`, `useUniversalPayment`) que fazem coisas similares mas com interfaces diferentes
+2. **PayGO hardcoded como credito**: No `handlePayGOPayment()` do Totem (linha 290), o `paymentType` e sempre `'credit'` - o usuario nao escolhe debito/credito/pix
+3. **Falta selecao de tipo no Totem**: O Totem tem botoes TEF/PayGO/PIX mas nao permite escolher credito vs debito dentro do PayGO
+
+---
+
+## 4. ESP32 Wi-Fi (Ativacao de Maquinas)
+
+**Status: CORRIGIDO**
+
+A arquitetura pull ja foi implementada:
+- `esp32-control` insere em `pending_commands`
+- ESP32 faz polling a cada 5s via `esp32-monitor?action=poll_commands`
+- ESP32 confirma execucao via `confirm_command`
+
+**Sem problemas** neste fluxo apos as correcoes anteriores.
+
+---
+
+## Problemas Estruturais Identificados
+
+### A. Excesso de hooks de pagamento (4 hooks fazendo a mesma coisa)
 
 ```text
-ANTES (nao funciona):
-  Totem -> Edge Function -> HTTP para 192.168.x.x -> ESP32
-                            ^^^^^ BLOQUEADO ^^^^^
-
-DEPOIS (funciona):
-  Totem -> Edge Function -> Insere em pending_commands
-  ESP32 -> Consulta pending_commands a cada 5s -> Executa -> Confirma
+usePayGO.ts              -> Plugin nativo direto
+usePayGOIntegration.ts   -> Plugin nativo + HTTP fallback
+useRealPayGOIntegration.ts -> Plugin nativo com validacao
+useUniversalPayment.ts   -> Orquestra PayGO + TEF + manual
 ```
 
-## Mudancas Necessarias
+O Totem usa `useRealPayGOIntegration` + `useTEFIntegration` + `usePixPayment` diretamente, mas tambem importa `UniversalPaymentWidget` que usa `useUniversalPayment` (que por sua vez usa `usePayGOIntegration` - diferente do `useRealPayGOIntegration`!).
 
-### 1. Firmware ESP32 (`public/arduino/ESP32_AutoConfig_v3.ino`)
+Resultado: configuracoes diferentes, estados duplicados, comportamentos inconsistentes.
 
-Adicionar no loop principal:
-- A cada 5 segundos, fazer GET para `supabase/functions/v1/esp32-monitor?action=poll_commands&esp32_id=esp32_XXYYZZ`
-- Se houver comandos pendentes, executar (ligar/desligar relay)
-- Apos executar, confirmar com POST para marcar comando como `executed`
+### B. PIX depende de servidor HTTP local
 
-Novo trecho no loop:
-```text
-if (millis() - lastCommandPoll > 5000) {
-  pollPendingCommands();  // GET -> verifica pending_commands
-  lastCommandPoll = millis();
-}
-```
+`usePixPayment` faz fetch para `http://localhost:8080/pix/generate` - isso so funciona se PayGO Integrado estiver rodando localmente. Em PWA, nunca funciona. Em Android, depende de ter o app PayGO com endpoint PIX ativo.
 
-Nova funcao `pollPendingCommands()`:
-- Faz GET para a edge function pedindo comandos pendentes para seu esp32_id
-- Recebe lista de comandos (relay_pin, action)
-- Executa cada comando (digitalWrite no relay)
-- Confirma execucao enviando POST com o command_id
+### C. Falta de gateway de pagamento online
 
-### 2. Edge Function `esp32-control` (`supabase/functions/esp32-control/index.ts`)
+Para PWA funcionar, precisaria de integracao com gateway online (Mercado Pago, Stripe, PagSeguro). Atualmente, todos os metodos dependem de hardware local.
 
-Simplificar para APENAS inserir na tabela `pending_commands`:
-- Remover toda logica de HTTP fetch para IP local (linhas 83-174)
-- Inserir comando na tabela `pending_commands` com status `pending`
-- Retornar imediatamente com `{ success: true, queued: true }`
-- O ESP32 vai buscar e executar o comando em ate 5 segundos
+---
 
-### 3. Edge Function `esp32-monitor` (`supabase/functions/esp32-monitor/index.ts`)
+## Plano de Correcao Recomendado
 
-Adicionar acao `poll_commands`:
-- Receber `esp32_id` como parametro
-- Buscar comandos pendentes na tabela `pending_commands` para aquele esp32_id
-- Retornar lista de comandos
-- Quando ESP32 confirmar execucao, atualizar status para `executed` e atualizar a maquina correspondente
+### Fase 1 - Consolidar hooks de pagamento
+1. Manter apenas `useUniversalPayment` como hook principal
+2. Dentro dele, usar `useRealPayGOIntegration` (nativo) e `useTEFIntegration` (TEF)
+3. Remover `usePayGO` e `usePayGOIntegration` (duplicados)
+4. Atualizar Totem para usar apenas `useUniversalPayment`
 
-### 4. Tabela `pending_commands` - Adicionar campo
+### Fase 2 - Adicionar selecao credito/debito no PayGO
+5. No Totem, apos selecionar PayGO, perguntar: Credito, Debito ou PIX
+6. Passar o tipo correto para `processPayment`
 
-Adicionar coluna `executed_at` (timestamp) para registrar quando o ESP32 executou o comando.
+### Fase 3 - Definir estrategia PWA
+7. Opcao A: PWA e somente admin/visualizacao (sem pagamentos)
+8. Opcao B: Integrar gateway online (Mercado Pago/Stripe) para pagamentos via PWA
 
-## Detalhes Tecnicos
+### Secao Tecnica - Arquivos a Modificar
 
-### Fluxo completo apos a mudanca:
-
-1. Usuario seleciona maquina no Totem e paga
-2. Totem chama edge function `esp32-control`
-3. Edge function insere registro em `pending_commands` com status `pending`
-4. Edge function retorna `{ success: true, queued: true }` para o Totem
-5. ESP32 faz polling a cada 5 segundos via `esp32-monitor?action=poll_commands`
-6. ESP32 recebe o comando pendente
-7. ESP32 executa (liga o relay)
-8. ESP32 confirma execucao via `esp32-monitor?action=confirm_command`
-9. Edge function atualiza `pending_commands` para `executed` e `machines.status` para `running`
-
-### Arquivos a modificar:
-
-| Arquivo | Mudanca |
-|---------|---------|
-| `public/arduino/ESP32_AutoConfig_v3.ino` | Adicionar polling de comandos no loop + funcao pollPendingCommands() + funcao confirmCommand() |
-| `supabase/functions/esp32-control/index.ts` | Remover fetch HTTP local, apenas inserir em pending_commands |
-| `supabase/functions/esp32-monitor/index.ts` | Adicionar acoes poll_commands e confirm_command |
-| Migracao SQL | Adicionar coluna executed_at em pending_commands |
-
-### Sobre IPs dinamicos:
-
-Com esta arquitetura, o IP do ESP32 deixa de ser critico para o funcionamento. O ESP32 e quem inicia a conexao com a nuvem (pull), entao:
-- IP pode mudar a qualquer momento sem problema
-- Multiplos ESP32 na mesma rede funcionam independentemente
-- Cada um usa seu esp32_id unico (baseado no MAC) para buscar seus proprios comandos
-- O IP continua sendo reportado no heartbeat apenas para fins de monitoramento/debug
-
-### Tempo de resposta:
-
-- Polling a cada 5 segundos significa que a maquina liga em no maximo 5 segundos apos o pagamento
-- Pode ser reduzido para 2-3 segundos se necessario (mais requisicoes ao servidor)
-- Alternativa futura: usar WebSocket para resposta instantanea (mais complexo)
+| Arquivo | Acao |
+|---------|------|
+| `src/hooks/useUniversalPayment.ts` | Refatorar para usar `useRealPayGOIntegration` internamente |
+| `src/hooks/usePayGO.ts` | Marcar como deprecated ou remover |
+| `src/hooks/usePayGOIntegration.ts` | Marcar como deprecated ou remover |
+| `src/pages/Totem.tsx` | Simplificar para usar apenas `useUniversalPayment`, adicionar selecao credito/debito |
+| `src/components/payment/UniversalPaymentWidget.tsx` | Atualizar para refletir mudancas no hook |
 
