@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { Droplets, Wind, Clock, CreditCard, Wifi, CheckCircle, XCircle, Timer, Sparkles, DollarSign, Shield, Maximize, Loader2, QrCode } from "lucide-react";
+import { Droplets, Wind, Clock, CreditCard, Wifi, CheckCircle, XCircle, Timer, Sparkles, DollarSign, Shield, Maximize, Loader2, QrCode, Monitor, Smartphone } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useKioskSecurity } from "@/hooks/useKioskSecurity";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
@@ -18,6 +18,8 @@ import { SecureTEFConfig } from "@/components/admin/SecureTEFConfig";
 import { AdminPinDialog } from "@/components/admin/AdminPinDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useSystemSettings } from "@/hooks/useSystemSettings";
+import { useDeviceMode } from "@/hooks/useDeviceMode";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const Totem = () => {
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
@@ -30,6 +32,9 @@ const Totem = () => {
   const [pixPaymentData, setPixPaymentData] = useState<any>(null);
   const [paymentSystem, setPaymentSystem] = useState<string>('PAYGO');
   
+  // Detectar modo do dispositivo
+  const { mode: deviceMode, isSmallScreen, isPWA, canProcessPayments } = useDeviceMode();
+
   // Carregar configurações do sistema
   const { settings: systemSettings, isLoading: settingsLoading } = useSystemSettings();
   
@@ -53,7 +58,8 @@ const Totem = () => {
   // Universal payment config
   const universalConfig: UniversalPaymentConfig = {
     paygo: paygoConfig,
-    tef: tefConfig
+    tef: tefConfig,
+    smartPosMode: deviceMode === 'smartpos'
   };
   
   const { toast } = useToast();
@@ -162,6 +168,7 @@ const Totem = () => {
     }
   };
   const handleMachineSelect = (machineId: string) => {
+    if (!canProcessPayments) return; // PWA: view-only
     const machine = machines.find(m => m.id === machineId);
     if (machine && machine.status === "available") {
       setSelectedMachine(machine);
@@ -471,6 +478,7 @@ const Totem = () => {
                   onError={handleUniversalPaymentError}
                   onCancel={resetTotem}
                   onPixQR={handlePixQR}
+                  compactMode={deviceMode === 'smartpos'}
                 />
               </div>
 
@@ -482,8 +490,12 @@ const Totem = () => {
       </div>;
   }
 
+  // Helper: grid classes based on device mode
+  const gridCols = deviceMode === 'smartpos' ? 'grid-cols-2' : 'grid-cols-6';
+  const isViewOnly = isPWA;
+
   // Tela principal
-  return <div className="h-screen bg-white flex flex-col overflow-hidden">
+  return <div className={`h-screen bg-white flex flex-col ${deviceMode === 'smartpos' ? 'overflow-auto' : 'overflow-hidden'}`}>
       {/* Header Compacto */}
       <div className="container mx-auto px-2 py-2">
         <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg p-2 shadow-lg">
@@ -493,11 +505,22 @@ const Totem = () => {
             </div>
             <div>
               <h1 className="text-lg font-bold text-white">Top Lavanderia</h1>
-              <p className="text-blue-100 text-xs">Sistema Automatizado</p>
+              {deviceMode !== 'smartpos' && (
+                <p className="text-blue-100 text-xs">Sistema Automatizado</p>
+              )}
             </div>
           </div>
           <div className="flex items-center space-x-2">
-            {/* Status indicator removed - managed by UniversalPaymentWidget */}
+            {/* Device mode badge */}
+            <Badge variant="secondary" className="text-xs bg-white/20 text-white border-0">
+              {deviceMode === 'smartpos' ? (
+                <><Smartphone className="mr-1 h-3 w-3" />Smart POS</>
+              ) : deviceMode === 'totem' ? (
+                <><Monitor className="mr-1 h-3 w-3" />Totem</>
+              ) : (
+                <><Monitor className="mr-1 h-3 w-3" />PWA</>
+              )}
+            </Badge>
 
             <div className="text-right text-white">
               <div className="text-sm font-semibold">
@@ -511,9 +534,21 @@ const Totem = () => {
         </div>
       </div>
 
-      {/* Grid de Máquinas - Otimizado para não precisar scroll */}
-      <div className="container mx-auto px-2 flex-1 flex flex-col">
-        <div className="flex-1 grid grid-rows-2 gap-3">
+      {/* PWA View-Only Banner */}
+      {isViewOnly && (
+        <div className="container mx-auto px-2 pb-2">
+          <div className="flex items-center gap-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+            <Shield className="h-4 w-4 text-amber-600 flex-shrink-0" />
+            <p className="text-xs text-amber-700">
+              Modo Visualização — Pagamentos disponíveis apenas no totem físico (Android)
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Grid de Máquinas */}
+      <div className="container mx-auto px-2 flex-1 flex flex-col min-h-0">
+        <div className={`flex-1 ${deviceMode === 'smartpos' ? 'space-y-3' : 'grid grid-rows-2 gap-3'}`}>
           
           {/* Lavadoras */}
           <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl p-3 shadow-lg flex flex-col">
@@ -524,27 +559,27 @@ const Totem = () => {
               <h2 className="text-xl font-bold text-blue-700">Lavadoras</h2>
             </div>
             
-            <div className="flex-1 grid grid-cols-6 gap-3">
-              {machines.filter(machine => machine.type === "lavadora").slice(0, 6).map(machine => {
+            <div className={`flex-1 grid ${gridCols} gap-3`}>
+              {machines.filter(machine => machine.type === "lavadora").slice(0, deviceMode === 'smartpos' ? 4 : 6).map(machine => {
                 const IconComponent = machine.icon;
                 const isAvailable = machine.status === "available";
-                return <Card key={machine.id} className={`relative overflow-hidden transition-all duration-300 cursor-pointer bg-white ${isAvailable ? 'hover:shadow-lg hover:scale-105 border border-blue-200 hover:border-blue-400' : 'opacity-70 cursor-not-allowed border border-gray-200'} shadow-md rounded-lg h-full flex flex-col`} onClick={() => handleMachineSelect(machine.id)}>
+                return <Card key={machine.id} className={`relative overflow-hidden transition-all duration-300 ${isAvailable && !isViewOnly ? 'cursor-pointer' : isViewOnly ? 'cursor-default' : 'cursor-not-allowed'} bg-white ${isAvailable && !isViewOnly ? 'hover:shadow-lg hover:scale-105 border border-blue-200 hover:border-blue-400' : 'opacity-70 border border-gray-200'} shadow-md rounded-lg h-full flex flex-col`} onClick={() => isAvailable && handleMachineSelect(machine.id)}>
                     {/* Status Badge */}
                     <div className="absolute top-2 right-2 z-10">
                       <div className={`w-3 h-3 rounded-full ${getStatusColor(machine.status)} shadow border border-white`}></div>
                     </div>
 
-                    <CardHeader className="text-center p-2 pb-1 flex-shrink-0">
-                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-1 shadow">
-                        <IconComponent className="text-white" size={16} />
+                    <CardHeader className={`text-center ${deviceMode === 'smartpos' ? 'p-3 pb-2' : 'p-2 pb-1'} flex-shrink-0`}>
+                      <div className={`${deviceMode === 'smartpos' ? 'w-12 h-12' : 'w-10 h-10'} bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-1 shadow`}>
+                        <IconComponent className="text-white" size={deviceMode === 'smartpos' ? 20 : 16} />
                       </div>
-                      <CardTitle className="text-xs font-bold text-gray-800 leading-tight">{machine.title}</CardTitle>
+                      <CardTitle className={`${deviceMode === 'smartpos' ? 'text-sm' : 'text-xs'} font-bold text-gray-800 leading-tight`}>{machine.title}</CardTitle>
                     </CardHeader>
 
-                    <CardContent className="flex-1 p-2 pt-0 flex flex-col justify-between">
+                    <CardContent className={`flex-1 ${deviceMode === 'smartpos' ? 'p-3 pt-0' : 'p-2 pt-0'} flex flex-col justify-between`}>
                       <div className="text-center mb-2">
                         <div className="flex items-center justify-center space-x-1 mb-1">
-                          <span className="text-sm font-bold text-blue-600">
+                          <span className={`${deviceMode === 'smartpos' ? 'text-base' : 'text-sm'} font-bold text-blue-600`}>
                             R$ {machine.price.toFixed(2).replace('.', ',')}
                           </span>
                         </div>
@@ -569,7 +604,7 @@ const Totem = () => {
                         </div>
                       )}
 
-                      {isAvailable && <Button variant="default" size="sm" className="w-full text-xs bg-blue-600 hover:bg-blue-700 text-white h-6">
+                      {isAvailable && !isViewOnly && <Button variant="default" size="sm" className={`w-full text-xs bg-blue-600 hover:bg-blue-700 text-white ${deviceMode === 'smartpos' ? 'h-10 text-sm' : 'h-6'}`}>
                           Selecionar
                         </Button>}
                     </CardContent>
@@ -587,27 +622,27 @@ const Totem = () => {
               <h2 className="text-xl font-bold text-orange-700">Secadoras</h2>
             </div>
             
-            <div className="flex-1 grid grid-cols-6 gap-3">
-              {machines.filter(machine => machine.type === "secadora").slice(0, 6).map(machine => {
+            <div className={`flex-1 grid ${gridCols} gap-3`}>
+              {machines.filter(machine => machine.type === "secadora").slice(0, deviceMode === 'smartpos' ? 4 : 6).map(machine => {
                 const IconComponent = machine.icon;
                 const isAvailable = machine.status === "available";
-                return <Card key={machine.id} className={`relative overflow-hidden transition-all duration-300 cursor-pointer bg-white ${isAvailable ? 'hover:shadow-lg hover:scale-105 border border-orange-200 hover:border-orange-400' : 'opacity-70 cursor-not-allowed border border-gray-200'} shadow-md rounded-lg h-full flex flex-col`} onClick={() => handleMachineSelect(machine.id)}>
+                return <Card key={machine.id} className={`relative overflow-hidden transition-all duration-300 ${isAvailable && !isViewOnly ? 'cursor-pointer' : isViewOnly ? 'cursor-default' : 'cursor-not-allowed'} bg-white ${isAvailable && !isViewOnly ? 'hover:shadow-lg hover:scale-105 border border-orange-200 hover:border-orange-400' : 'opacity-70 border border-gray-200'} shadow-md rounded-lg h-full flex flex-col`} onClick={() => isAvailable && handleMachineSelect(machine.id)}>
                     {/* Status Badge */}
                     <div className="absolute top-2 right-2 z-10">
                       <div className={`w-3 h-3 rounded-full ${getStatusColor(machine.status)} shadow border border-white`}></div>
                     </div>
 
-                    <CardHeader className="text-center p-2 pb-1 flex-shrink-0">
-                      <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center mx-auto mb-1 shadow">
-                        <IconComponent className="text-white" size={16} />
+                    <CardHeader className={`text-center ${deviceMode === 'smartpos' ? 'p-3 pb-2' : 'p-2 pb-1'} flex-shrink-0`}>
+                      <div className={`${deviceMode === 'smartpos' ? 'w-12 h-12' : 'w-10 h-10'} bg-gradient-to-br from-orange-500 to-orange-600 rounded-full flex items-center justify-center mx-auto mb-1 shadow`}>
+                        <IconComponent className="text-white" size={deviceMode === 'smartpos' ? 20 : 16} />
                       </div>
-                      <CardTitle className="text-xs font-bold text-gray-800 leading-tight">{machine.title}</CardTitle>
+                      <CardTitle className={`${deviceMode === 'smartpos' ? 'text-sm' : 'text-xs'} font-bold text-gray-800 leading-tight`}>{machine.title}</CardTitle>
                     </CardHeader>
 
-                    <CardContent className="flex-1 p-2 pt-0 flex flex-col justify-between">
+                    <CardContent className={`flex-1 ${deviceMode === 'smartpos' ? 'p-3 pt-0' : 'p-2 pt-0'} flex flex-col justify-between`}>
                       <div className="text-center mb-2">
                         <div className="flex items-center justify-center space-x-1 mb-1">
-                          <span className="text-sm font-bold text-orange-600">
+                          <span className={`${deviceMode === 'smartpos' ? 'text-base' : 'text-sm'} font-bold text-orange-600`}>
                             R$ {machine.price.toFixed(2).replace('.', ',')}
                           </span>
                         </div>
@@ -632,7 +667,7 @@ const Totem = () => {
                         </div>
                       )}
 
-                      {isAvailable && <Button variant="default" size="sm" className="w-full text-xs bg-orange-600 hover:bg-orange-700 text-white h-6">
+                      {isAvailable && !isViewOnly && <Button variant="default" size="sm" className={`w-full text-xs bg-orange-600 hover:bg-orange-700 text-white ${deviceMode === 'smartpos' ? 'h-10 text-sm' : 'h-6'}`}>
                           Selecionar
                         </Button>}
                     </CardContent>

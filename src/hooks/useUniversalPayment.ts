@@ -45,6 +45,8 @@ export interface UniversalPaymentConfig {
     retryAttempts: number;
     retryDelay: number;
   };
+  /** When true, skip TEF/PIX HTTP tests and force PayGO as only method (Smart POS mode) */
+  smartPosMode?: boolean;
 }
 
 export const useUniversalPayment = (config: UniversalPaymentConfig) => {
@@ -70,6 +72,17 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
 
   // Test all payment methods
   const testAllMethods = useCallback(async () => {
+    // In Smart POS mode, force PayGO as the only available method
+    if (config.smartPosMode) {
+      setMethodsStatus([
+        { method: 'paygo', available: true, connected: true, priority: 1, lastTest: new Date() },
+        { method: 'tef', available: false, connected: false, priority: 2 },
+        { method: 'pix', available: true, connected: true, priority: 3, lastTest: new Date() },
+        { method: 'manual', available: true, connected: true, priority: 4 }
+      ]);
+      return;
+    }
+
     const newStatus: PaymentMethodStatus[] = [...methodsStatus];
 
     // Test PayGO
@@ -138,7 +151,7 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
     }
 
     setMethodsStatus(newStatus);
-  }, [paygoIntegration, tefIntegration, methodsStatus]);
+  }, [config.smartPosMode, paygoIntegration, tefIntegration, methodsStatus]);
 
   // Find best available method
   const getBestAvailableMethod = useCallback((): PaymentMethod | null => {
