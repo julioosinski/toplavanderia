@@ -58,8 +58,10 @@ bool wifiConnected = false;
 bool relayState = false;
 bool machineRunning = false;
 unsigned long lastHeartbeat = 0;
+unsigned long lastCommandPoll = 0;
 unsigned long machineStartTime = 0;
 const unsigned long HEARTBEAT_INTERVAL = 30000;
+const unsigned long COMMAND_POLL_INTERVAL = 5000;
 bool bleActive = false;
 bool apActive = false;
 bool deviceConnected = false;
@@ -504,6 +506,85 @@ void sendHeartbeat() {
   http.end();
 }
 
+// ================== POLLING DE COMANDOS PENDENTES ==================
+void pollPendingCommands() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  
+  HTTPClient http;
+  String url = String(supabaseUrl) + "/functions/v1/esp32-monitor?action=poll_commands&esp32_id=" + esp32Id;
+  
+  http.begin(url);
+  http.addHeader("apikey", supabaseApiKey);
+  http.addHeader("Content-Type", "application/json");
+  
+  int httpCode = http.GET();
+  
+  if (httpCode == 200) {
+    String response = http.getString();
+    
+    StaticJsonDocument<1024> doc;
+    if (deserializeJson(doc, response)) {
+      http.end();
+      return;
+    }
+    
+    JsonArray commands = doc["commands"].as<JsonArray>();
+    
+    for (JsonObject cmd : commands) {
+      String cmdId = cmd["id"].as<String>();
+      int pin = cmd["relay_pin"] | RELAY_PIN;
+      String cmdAction = cmd["action"].as<String>();
+      
+      Serial.printf("⚡ Executando comando: relay %d → %s\n", pin, cmdAction.c_str());
+      
+      if (cmdAction == "on") {
+        digitalWrite(pin, HIGH);
+        relayState = true;
+        machineRunning = true;
+        machineStartTime = millis();
+        digitalWrite(LED_PIN, HIGH);
+      } else {
+        digitalWrite(pin, LOW);
+        relayState = false;
+        machineRunning = false;
+        digitalWrite(LED_PIN, LOW);
+      }
+      
+      // Confirmar execução
+      confirmCommand(cmdId);
+    }
+  }
+  
+  http.end();
+  lastCommandPoll = millis();
+}
+
+void confirmCommand(String commandId) {
+  HTTPClient http;
+  String url = String(supabaseUrl) + "/functions/v1/esp32-monitor?action=confirm_command";
+  
+  StaticJsonDocument<256> doc;
+  doc["command_id"] = commandId;
+  doc["esp32_id"] = esp32Id;
+  
+  String payload;
+  serializeJson(doc, payload);
+  
+  http.begin(url);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("apikey", supabaseApiKey);
+  
+  int httpCode = http.POST(payload);
+  
+  if (httpCode == 200) {
+    Serial.printf("✅ Comando %s confirmado\n", commandId.c_str());
+  } else {
+    Serial.printf("❌ Erro ao confirmar comando: HTTP %d\n", httpCode);
+  }
+  
+  http.end();
+}
+
 // ================== CONEXÃO WIFI ==================
 bool connectWiFi() {
   Serial.printf("📡 Conectando ao WiFi: %s\n", savedSSID.c_str());
@@ -609,6 +690,11 @@ void loop() {
   
   // Se estiver no modo normal, enviar heartbeats
   if (wifiConnected && isConfigured) {
+    // Polling de comandos pendentes a cada 5 segundos
+    if (millis() - lastCommandPoll > COMMAND_POLL_INTERVAL) {
+      pollPendingCommands();
+    }
+    
     if (millis() - lastHeartbeat > HEARTBEAT_INTERVAL) {
       sendHeartbeat();
     }

@@ -311,6 +311,7 @@ export type Database = {
           created_at: string | null
           error_message: string | null
           esp32_id: string
+          executed_at: string | null
           id: string
           last_retry_at: string | null
           machine_id: string
@@ -325,6 +326,7 @@ export type Database = {
           created_at?: string | null
           error_message?: string | null
           esp32_id: string
+          executed_at?: string | null
           id?: string
           last_retry_at?: string | null
           machine_id: string
@@ -339,6 +341,7 @@ export type Database = {
           created_at?: string | null
           error_message?: string | null
           esp32_id?: string
+          executed_at?: string | null
           id?: string
           last_retry_at?: string | null
           machine_id?: string
