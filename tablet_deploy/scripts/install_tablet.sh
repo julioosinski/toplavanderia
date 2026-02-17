@@ -17,9 +17,9 @@ fi
 echo "📱 Dispositivo encontrado."
 
 # Instalar PayGo Integrado (CERT para testes)
-if [ -f "paygo/PGIntegrado-CERT.apk" ]; then
+if [ -f "paygo/PGIntegrado-v4.1.50.5_CERT_gertec-signed.apk" ]; then
     echo "💳 Instalando PayGo Integrado CERT..."
-    adb install -r paygo/PGIntegrado-CERT.apk
+    adb install -r paygo/PGIntegrado-v4.1.50.5_CERT_gertec-signed.apk
     echo "✅ PayGo Integrado instalado"
 else
     echo "⚠️  APK do PayGo CERT não encontrado em paygo/"

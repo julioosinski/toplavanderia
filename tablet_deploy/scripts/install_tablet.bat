@@ -17,9 +17,9 @@ if %errorlevel% neq 0 (
 
 echo Dispositivo encontrado. Iniciando instalacao...
 
-if exist "paygo_files\PGIntegrado-v4.1.50.5_CERT_geral_250605.zip" (
+if exist "paygo\PGIntegrado-v4.1.50.5_CERT_gertec-signed.apk" (
     echo Instalando PayGo Integrado CERT...
-    adb install paygo_files\PGIntegrado-v4.1.50.5_CERT_geral_250605.zip
+    adb install paygo\PGIntegrado-v4.1.50.5_CERT_gertec-signed.apk
     echo PayGo Integrado instalado
 )
 
