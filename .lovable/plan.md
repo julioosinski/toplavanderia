@@ -1,113 +1,167 @@
 
-# Totem + Maquininha Smart POS: Dois Modos de Operacao
 
-## Entendimento
+# O Que Falta Para Funcionar 100% REAL no Tablet com PPC930
 
-O sistema precisa suportar **dois cenarios de hardware**:
+## Diagnostico: Dois Sistemas Desconectados
 
-### Cenario A: Tablet/Monitor como Totem + Maquininha externa (PPC930)
-- **Tela grande** (10"+ tablet ou monitor) mostra as maquinas e permite selecao
-- **Maquininha separada** (PPC930 pinpad USB) faz a leitura do cartao e gera QR code PIX
-- Ja e o cenario principal implementado hoje
+Atualmente existem **dois sistemas completamente separados** que nao se comunicam:
 
-### Cenario B: Maquininha Smart POS (tela 5-6" com touch)
-- **Um unico dispositivo** serve como totem E como terminal de pagamento
-- Tela menor (5-6"), precisa de layout adaptado
-- Ja tem leitor de cartao, NFC e impressora termica integrados
-- O PayGO roda nativamente no mesmo dispositivo
+### Sistema 1: Activities Java Nativas (funciona parcialmente)
+- `TotemActivity.java` - UI nativa em Java (nao e Capacitor/React)
+- `RealPayGoManager.java` - Usa a biblioteca `InterfaceAutomacao-v2.1.0.6.aar` REAL
+- Comunica diretamente com o PPC930 via API do PayGo
+- **Problema**: A UI e toda construida em Java puro (botoes, layouts), nao usa a interface React bonita
 
-## O Que Precisa Mudar
+### Sistema 2: Capacitor/React (interface bonita, pagamento NAO funciona)
+- `PayGOPlugin.java` - Faz chamadas HTTP para `localhost:8080` (um "PayGO Web SDK" que **nao existe**)
+- `src/plugins/paygo.ts` + `useRealPayGOIntegration.ts` - Hooks React que chamam o plugin
+- `src/pages/Totem.tsx` - Interface React bonita com grid de maquinas
+- **Problema**: O plugin nunca chama o `RealPayGoManager` - ele tenta HTTP para um servidor que nao esta rodando
 
-### 1. Detectar tipo de dispositivo automaticamente
-Criar hook `useDeviceMode` que detecta:
-- **Tela grande (>= 8")**: Modo Totem classico (grid 6 colunas)
-- **Tela pequena (< 8")**: Modo Smart POS (lista vertical, botoes maiores)
+### Resultado: Nada funciona ponta a ponta
+- A `TotemActivity` (launcher no AndroidManifest) abre uma UI nativa Java, nao o WebView Capacitor
+- O plugin Capacitor `PayGOPlugin.java` nao usa a biblioteca InterfaceAutomacao
+- A interface React nunca e exibida no tablet
 
-A deteccao usa a largura da tela (`window.innerWidth`). Smart POS tipicamente tem resolucao de ~720px de largura. Tablets tem 1024px+.
+---
 
-### 2. Layout adaptado para Smart POS (tela pequena)
-Na tela principal do Totem:
-- **Grid de maquinas**: trocar de 6 colunas para 2 colunas
-- **Cards de maquinas**: maiores, com botoes de toque mais generosos
-- **Header**: mais compacto, sem informacoes desnecessarias
-- **Scroll vertical**: permitido (ao contrario do tablet que evita scroll)
+## O Que Precisa Ser Feito (7 itens)
 
-Na tela de pagamento:
-- Layout verticalizado, sem o widget lateral
-- Botoes de credito/debito/PIX ocupam a tela inteira (facil de tocar)
-- Feedback de processamento ocupa tela cheia
+### 1. Substituir TotemActivity por Capacitor BridgeActivity
+**Criticidade: ALTA** - Sem isso, o React nunca roda no tablet.
 
-### 3. Modo Smart POS no UniversalPaymentWidget
-Quando em modo Smart POS:
-- Nao testar conexao "externa" (o pagamento e local no proprio dispositivo)
-- Interface simplificada: apenas 3 botoes grandes (Credito, Debito, PIX)
-- Sem selecao de "metodo" (PayGO/TEF) - sempre usa o PayGO nativo do dispositivo
-- Feedback visual maior para o cliente ver de perto
+A `TotemActivity` e uma Activity Java pura. Precisa ser convertida para uma `BridgeActivity` do Capacitor que carrega o WebView com a aplicacao React.
 
-### 4. PWA permanece somente visualizacao
-Manter a estrategia definida: PWA (web) e somente admin/visualizacao, sem pagamentos.
+Mudancas:
+- Criar `MainActivity.java` que estende `BridgeActivity` do Capacitor
+- Registrar os plugins `PayGOPlugin`, `USBPlugin`, `TEFPlugin` nessa Activity
+- Atualizar `AndroidManifest.xml` para usar `MainActivity` como launcher
+- Manter a deteccao USB e modo kiosk na nova Activity
 
-## Detalhes Tecnicos
+### 2. Reescrever PayGOPlugin.java para usar RealPayGoManager
+**Criticidade: ALTA** - Sem isso, pagamentos nao funcionam.
 
-### Novo hook: `src/hooks/useDeviceMode.ts`
-```text
-Retorna:
-- mode: 'totem' | 'smartpos' | 'pwa'
-- screenSize: { width, height }
-- isSmallScreen: boolean (< 800px)
-- canProcessPayments: boolean (somente em Android nativo)
-```
+O plugin atual faz HTTP para `localhost:8080`. Precisa chamar diretamente o `RealPayGoManager` que ja tem a integracao real com `InterfaceAutomacao`.
 
-Logica:
-- Se `!Capacitor.isNativePlatform()` -> modo 'pwa'
-- Se nativo e `window.innerWidth < 800` -> modo 'smartpos'
-- Se nativo e `window.innerWidth >= 800` -> modo 'totem'
+Mudancas no `PayGOPlugin.java`:
+- Remover todas as chamadas HTTP (`makeHttpRequest`)
+- Instanciar `RealPayGoManager` no `load()` do plugin
+- Metodo `initialize()`: chamar `RealPayGoManager` em vez de HTTP
+- Metodo `processPayment()`: delegar para `RealPayGoManager.processPayment()`
+- Metodo `checkStatus()`: verificar `RealPayGoManager.isInitialized()`
+- Metodo `detectPinpad()`: detectar USB diretamente via Android UsbManager
+- Usar callbacks do `RealPayGoManager` para notificar o JS via `notifyListeners()`
 
-### Modificar: `src/pages/Totem.tsx`
-- Importar `useDeviceMode`
-- Condicionar o grid de maquinas:
-  - `totem`: grid-cols-6 (atual)
-  - `smartpos`: grid-cols-2 com cards maiores e scroll vertical
-  - `pwa`: grid sem botao "Selecionar" (view-only)
-- Na tela de pagamento (`paymentStep === "payment"`):
-  - `smartpos`: 3 botoes grandes (Credito/Debito/PIX) em tela cheia, sem o widget completo
-  - `totem`: manter UniversalPaymentWidget atual
+### 3. Adicionar suporte a tipo de pagamento (Credito/Debito/PIX)
+**Criticidade: MEDIA** - O `RealPayGoManager` atual sempre usa `PAGAMENTO_CARTAO`.
 
-### Modificar: `src/components/payment/UniversalPaymentWidget.tsx`
-- Receber prop `compactMode?: boolean`
-- Quando `compactMode = true` (Smart POS):
-  - Esconder secao "Metodos Disponiveis" (sempre PayGO nativo)
-  - Botoes de tipo (credito/debito/PIX) ocupam mais espaco
-  - Remover botao "Testar Conexoes"
+Mudancas no `RealPayGoManager.java`:
+- Receber parametro `paymentType` ("credit", "debit", "pix")
+- Mapear para as constantes corretas:
+  - `credit` -> `ModalidadesPagamento.PAGAMENTO_CARTAO` (o PayGo escolhe credito no pinpad)
+  - `debit` -> `ModalidadesPagamento.PAGAMENTO_CARTAO` (idem, o pinpad pergunta)
+  - `pix` -> `Operacoes.PIX` ou modalidade equivalente
+- Extrair dados REAIS do `SaidaTransacao` (NSU, codigo autorizacao, bandeira) em vez de gerar timestamps
 
-### Modificar: `src/hooks/useUniversalPayment.ts`
-- Em modo Smart POS, pular testes de TEF/PIX HTTP (tudo via plugin nativo)
-- Forcar `paygo` como unico metodo disponivel
+### 4. Registrar Transacao no Supabase apos pagamento
+**Criticidade: ALTA** - Sem isso, nao ha registro do pagamento.
 
-### Arquivos a criar/modificar:
+O fluxo completo deve ser:
+1. Usuario seleciona maquina no React (Totem.tsx)
+2. Escolhe tipo de pagamento (credito/debito/PIX)
+3. PayGOPlugin chama RealPayGoManager
+4. PPC930 processa o cartao
+5. Se aprovado: salvar transacao no Supabase + ativar ESP32
+6. Se negado: mostrar erro na tela
+
+Verificar que o hook `useUniversalPayment` ja faz os passos 5 e 6 corretamente apos receber o resultado do plugin.
+
+### 5. Instalar o PayGo Integrado APK no tablet
+**Criticidade: ALTA** - Pre-requisito de hardware.
+
+A biblioteca `InterfaceAutomacao` exige que o app "PayGo Integrado" esteja instalado no tablet Android. Sem ele, a excecao `AplicacaoNaoInstaladaExcecao` sera lancada.
+
+Passos:
+- Instalar o APK `PGIntegrado-v4.1.50.5_CERT_geral_250605.apk` (ambiente de teste)
+- Abrir o PayGo Integrado e parear via Bluetooth com o PPC930
+- Instalar o "Ponto de Captura" com CNPJ e dados do estabelecimento
+- Testar comunicacao basica antes de usar o app
+
+### 6. Configurar CNPJ e Dados do Estabelecimento
+**Criticidade: MEDIA** - Necessario para transacoes reais.
+
+O `DadosAutomacao` no `RealPayGoManager` usa dados fixos. Para producao:
+- Configurar CNPJ real no PayGo Integrado
+- Atualizar nome do estabelecimento no `DadosAutomacao`
+- Obter e configurar a chave de automacao (automationKey)
+- Estas configuracoes devem vir das `system_settings` do Supabase
+
+### 7. Tratar Recibos/Comprovantes
+**Criticidade: BAIXA** - O PPC930 pode imprimir comprovantes.
+
+O `SaidaTransacao` retorna vias para impressao. Implementar:
+- Exibir comprovante na tela do tablet (via digital)
+- Ou enviar para impressora termica se disponivel
+- Guardar comprovante digital no Supabase
+
+---
+
+## Resumo de Prioridades
+
+| # | Item | Criticidade | Tipo |
+|---|------|-------------|------|
+| 1 | Criar MainActivity (BridgeActivity Capacitor) | ALTA | Codigo |
+| 2 | Reescrever PayGOPlugin para usar RealPayGoManager | ALTA | Codigo |
+| 3 | Suporte a credito/debito/PIX no RealPayGoManager | MEDIA | Codigo |
+| 4 | Registrar transacao no Supabase | ALTA | Codigo |
+| 5 | Instalar PayGo Integrado APK no tablet | ALTA | Hardware/Config |
+| 6 | Configurar CNPJ e dados do estabelecimento | MEDIA | Config |
+| 7 | Tratar recibos/comprovantes | BAIXA | Codigo |
+
+Os itens 1, 2, 3 e 4 sao mudancas de codigo que podem ser implementadas aqui no Lovable. Os itens 5 e 6 sao configuracoes que voce precisa fazer diretamente no tablet/PPC930. O item 7 e uma melhoria futura.
+
+---
+
+## Secao Tecnica - Arquivos a Modificar
 
 | Arquivo | Acao | Descricao |
 |---------|------|-----------|
-| `src/hooks/useDeviceMode.ts` | Criar | Detecta totem vs smartpos vs pwa |
-| `src/pages/Totem.tsx` | Modificar | Layout responsivo por modo |
-| `src/components/payment/UniversalPaymentWidget.tsx` | Modificar | Adicionar compactMode |
-| `src/hooks/useUniversalPayment.ts` | Modificar | Otimizar para Smart POS |
+| `android/app/src/main/java/.../MainActivity.java` | Criar | BridgeActivity Capacitor com plugins registrados |
+| `android/app/src/main/AndroidManifest.xml` | Modificar | Apontar launcher para MainActivity |
+| `android/app/src/main/java/.../PayGOPlugin.java` | Reescrever | Usar RealPayGoManager em vez de HTTP |
+| `android/app/src/main/java/.../RealPayGoManager.java` | Modificar | Adicionar suporte a tipo de pagamento |
+| `src/hooks/useUniversalPayment.ts` | Verificar | Confirmar que salva transacao apos aprovacao |
 
-### Comportamento por modo:
+### Fluxo Final Esperado
 
 ```text
-PWA (navegador):
-  - Maquinas: visualizacao apenas (sem "Selecionar")
-  - Pagamento: bloqueado
-  - Admin: acesso completo
-
-Totem (tablet/monitor Android):
-  - Maquinas: grid 6 colunas, selecao habilitada
-  - Pagamento: UniversalPaymentWidget completo (PayGO + TEF + PIX)
-  - Pinpad externo via USB
-
-Smart POS (maquininha Android):
-  - Maquinas: grid 2 colunas, scroll vertical, botoes grandes
-  - Pagamento: 3 botoes grandes (Credito/Debito/PIX) via PayGO nativo
-  - Pagamento integrado no proprio dispositivo
+[React Totem.tsx] --> Seleciona maquina
+       |
+       v
+[UniversalPaymentWidget] --> Escolhe Credito/Debito/PIX
+       |
+       v
+[useUniversalPayment] --> Valida maquina + ESP32 online
+       |
+       v
+[PayGO.processPayment()] --> Plugin Capacitor (JS -> Java)
+       |
+       v
+[PayGOPlugin.java] --> RealPayGoManager.processPayment()
+       |
+       v
+[InterfaceAutomacao] --> transacao.realizaTransacao(entrada)
+       |
+       v
+[PayGo Integrado APK] --> Comunica via Bluetooth com PPC930
+       |
+       v
+[PPC930 Pinpad] --> Cliente insere cartao / aproxima / escaneia QR PIX
+       |
+       v
+[Resultado] --> Aprovado/Negado retorna por callback ate o React
+       |
+       v
+[Se aprovado] --> Salva no Supabase + Ativa ESP32 (liga maquina)
 ```
+
