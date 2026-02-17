@@ -128,10 +128,22 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       setLoading(true);
       setError(null);
       
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      // Envolver getUser() em try/catch separado para capturar erros de rede
+      // (timeout, DNS failure) sem bloquear o fluxo do modo totem
+      let user = null;
+      try {
+        const authPromise = supabase.auth.getUser();
+        const timeoutPromise = new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error('auth_timeout')), 5000)
+        );
+        const result = await Promise.race([authPromise, timeoutPromise]) as Awaited<ReturnType<typeof supabase.auth.getUser>>;
+        if (result && !result.error) user = result.data.user;
+      } catch (networkError) {
+        console.warn('[LaundryContext] Auth check falhou (rede/timeout) - modo totem será verificado');
+      }
       console.log('[LaundryContext] Usuário obtido:', user?.id);
       
-      if (authError || !user) {
+      if (!user) {
         console.log('[LaundryContext] Nenhum usuário autenticado - verificando modo totem...');
         
         // Modo totem: verificar se há lavanderia salva no localStorage

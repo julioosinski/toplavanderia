@@ -37,6 +37,9 @@ const Totem = () => {
   const [cnpjInput, setCnpjInput] = useState('');
   const [cnpjLoading, setCnpjLoading] = useState(false);
   const [cnpjError, setCnpjError] = useState('');
+
+  // Timeout de segurança: se loading travar por mais de 8s, exibe tela de configuração
+  const [loadingTimeout, setLoadingTimeout] = useState(false);
   
   // Detectar modo do dispositivo
   const { mode: deviceMode, isSmallScreen, isPWA, canProcessPayments } = useDeviceMode();
@@ -93,6 +96,17 @@ const Totem = () => {
     enableKioskMode,
     disableKioskMode
   } = useCapacitorIntegration();
+  // Timeout de segurança: se loading travar por mais de 8s, exibe tela de configuração CNPJ
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (laundryLoading) {
+        console.warn('[Totem] Loading travado por 8s - exibindo tela de configuração CNPJ');
+        setLoadingTimeout(true);
+      }
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [laundryLoading]);
+
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
@@ -323,8 +337,10 @@ const Totem = () => {
     return <SecureTEFConfig config={tefConfig} onConfigChange={setTefConfig} onClose={() => setShowConfig(false)} />;
   }
 
-  // Tela de configuração inicial do totem (sem lavanderia configurada)
-  if (!laundryLoading && !currentLaundry) {
+  // Tela de configuração inicial do totem (sem lavanderia configurada OU timeout de segurança)
+  // IMPORTANTE: esta condição deve vir ANTES do check de loading para garantir
+  // que o campo CNPJ apareça mesmo se laundryLoading travar indefinidamente
+  if ((!laundryLoading && !currentLaundry) || loadingTimeout) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center p-6">
         <Card className="w-full max-w-md shadow-2xl">
