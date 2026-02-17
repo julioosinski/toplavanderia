@@ -1,0 +1,34 @@
+{
+  "totem_config": {
+    "name": "Totem Lavanderia",
+    "location": "INSERIR_LOCALIZACAO",
+    "version": "1.0.0"
+  },
+  "paygo_config": {
+    "host": "192.168.1.100",
+    "port": 2500,
+    "timeout": 30000,
+    "retryAttempts": 3,
+    "enableRetry": true,
+    "debugMode": false
+  },
+  "network_config": {
+    "wifi_ssid": "NOME_DA_REDE",
+    "use_static_ip": true,
+    "static_ip": "192.168.1.50",
+    "gateway": "192.168.1.1",
+    "dns": ["8.8.8.8", "8.8.4.4"]
+  },
+  "kiosk_settings": {
+    "auto_start": true,
+    "hide_navigation": true,
+    "disable_back_button": true,
+    "screen_timeout": 0,
+    "enable_debug": false
+  },
+  "admin_config": {
+    "pin": "1234",
+    "session_timeout": 300000,
+    "enable_remote_access": false
+  }
+}
