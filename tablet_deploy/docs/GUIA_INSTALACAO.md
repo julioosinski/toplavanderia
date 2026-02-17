@@ -16,7 +16,7 @@
 
 ### Para Testes (CERT)
 ```bash
-adb install paygo/PGIntegrado-CERT.apk
+adb install paygo/PGIntegrado-v4.1.50.5_CERT_gertec-signed.apk
 ```
 
 ### Para Produção (PROD)
