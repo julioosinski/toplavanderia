@@ -1,134 +1,113 @@
 
+# Totem + Maquininha Smart POS: Dois Modos de Operacao
 
-# Analise da Estrutura de Pagamento - 4 Cenarios
+## Entendimento
 
-## Resumo dos Cenarios
+O sistema precisa suportar **dois cenarios de hardware**:
 
-| Cenario | Status | Funciona? | Problemas |
-|---------|--------|-----------|-----------|
-| PWA (Lovable web) | Parcial | Limitado | PIX via HTTP local nao funciona; TEF/PayGO inacessiveis |
-| Android Wrapper (Capacitor) | Funcional | Sim | E o cenario principal, bem coberto |
-| TEF PayGo | Funcional | Sim | Depende do plugin nativo Android |
-| ESP32 Wi-Fi | Funcional | Sim | Arquitetura pull ja corrigida |
+### Cenario A: Tablet/Monitor como Totem + Maquininha externa (PPC930)
+- **Tela grande** (10"+ tablet ou monitor) mostra as maquinas e permite selecao
+- **Maquininha separada** (PPC930 pinpad USB) faz a leitura do cartao e gera QR code PIX
+- Ja e o cenario principal implementado hoje
 
----
+### Cenario B: Maquininha Smart POS (tela 5-6" com touch)
+- **Um unico dispositivo** serve como totem E como terminal de pagamento
+- Tela menor (5-6"), precisa de layout adaptado
+- Ja tem leitor de cartao, NFC e impressora termica integrados
+- O PayGO roda nativamente no mesmo dispositivo
 
-## 1. PWA (Lovable Web no navegador)
+## O Que Precisa Mudar
 
-**Status: PROBLEMATICO**
+### 1. Detectar tipo de dispositivo automaticamente
+Criar hook `useDeviceMode` que detecta:
+- **Tela grande (>= 8")**: Modo Totem classico (grid 6 colunas)
+- **Tela pequena (< 8")**: Modo Smart POS (lista vertical, botoes maiores)
 
-O sistema foi desenhado para rodar em Android nativo. No navegador (PWA):
+A deteccao usa a largura da tela (`window.innerWidth`). Smart POS tipicamente tem resolucao de ~720px de largura. Tablets tem 1024px+.
 
-- **PayGO**: `useRealPayGOIntegration` chama `PayGO.initialize()` do plugin Capacitor. No browser, nao existe plugin nativo registrado - vai lancar erro silencioso ou nao fazer nada
-- **TEF**: `useTEFIntegration` faz `fetch()` para `http://192.168.1.100:8080` - isso so funciona se o dispositivo TEF estiver na mesma rede local E aceitar CORS (improvavel)
-- **PIX**: `usePixPayment` faz `fetch()` para `http://localhost:8080/pix/generate` - nao existe servidor local no browser
-- **`usePayGOIntegration`**: Tem fallback web via HTTP (`Capacitor.isNativePlatform()` check), mas o servidor HTTP PayGO estaria na rede local, inacessivel de um PWA hospedado na cloud
+### 2. Layout adaptado para Smart POS (tela pequena)
+Na tela principal do Totem:
+- **Grid de maquinas**: trocar de 6 colunas para 2 colunas
+- **Cards de maquinas**: maiores, com botoes de toque mais generosos
+- **Header**: mais compacto, sem informacoes desnecessarias
+- **Scroll vertical**: permitido (ao contrario do tablet que evita scroll)
 
-**Problema central**: Nenhum metodo de pagamento funciona em PWA puro. O `UniversalPaymentWidget` testa conexoes e mostra tudo como "Indisponivel", mas nao oferece alternativa real.
+Na tela de pagamento:
+- Layout verticalizado, sem o widget lateral
+- Botoes de credito/debito/PIX ocupam a tela inteira (facil de tocar)
+- Feedback de processamento ocupa tela cheia
 
-**Correcao necessaria**: 
-- Para PWA funcionar com pagamentos, seria necessario um gateway de pagamento online (Stripe, Mercado Pago, PagSeguro) que processa tudo na nuvem
-- Ou aceitar que PWA e apenas para visualizacao/admin, sem processar pagamentos
+### 3. Modo Smart POS no UniversalPaymentWidget
+Quando em modo Smart POS:
+- Nao testar conexao "externa" (o pagamento e local no proprio dispositivo)
+- Interface simplificada: apenas 3 botoes grandes (Credito, Debito, PIX)
+- Sem selecao de "metodo" (PayGO/TEF) - sempre usa o PayGO nativo do dispositivo
+- Feedback visual maior para o cliente ver de perto
 
----
+### 4. PWA permanece somente visualizacao
+Manter a estrategia definida: PWA (web) e somente admin/visualizacao, sem pagamentos.
 
-## 2. Android Wrapper (Capacitor APK)
+## Detalhes Tecnicos
 
-**Status: BEM COBERTO**
-
-Este e o cenario principal e esta bem implementado:
-
-- **Plugin PayGO** (`src/plugins/paygo.ts`): Registrado via `registerPlugin('PayGO')`, se comunica com a biblioteca nativa `InterfaceAutomacao-v2.1.0.6.aar`
-- **Plugin TEF** (`src/plugins/tef.ts`): Registrado via `registerPlugin('TEF')`, com fallback web (`tef.web.ts`)
-- **Deteccao de plataforma**: `usePayGOIntegration` usa `Capacitor.isNativePlatform()` para escolher entre plugin nativo ou HTTP fallback
-- **Kiosk mode**: `useKioskSecurity` e `useCapacitorIntegration` gerenciam modo quiosque no Android
-
-**Sem problemas criticos** neste cenario. O fluxo completo funciona:
-1. Totem mostra maquinas
-2. Usuario seleciona e paga via PayGO/TEF/PIX
-3. Sistema envia comando para `pending_commands`
-4. ESP32 busca e executa
-
----
-
-## 3. TEF PayGo (Pinpad PPC930)
-
-**Status: FUNCIONAL COM RESSALVAS**
-
-Dois caminhos paralelos existem, o que gera confusao:
-
-- **Caminho 1 - Plugin Nativo** (`useRealPayGOIntegration` + `usePayGO`): Usa `PayGO.processPayment()` do plugin Capacitor. Requer o AAR nativo. So funciona em Android.
-- **Caminho 2 - HTTP** (`usePayGOIntegration`): Faz fetch para `http://host:port/transaction`. Funciona se houver um servidor PayGO acessivel via rede.
-- **Caminho 3 - TEF via HTTP** (`useTEFIntegration`): Faz fetch para o endpoint TEF Positivo L4.
-
-**Problemas encontrados**:
-1. **Hooks duplicados**: Existem 4 hooks de pagamento PayGO (`usePayGO`, `usePayGOIntegration`, `useRealPayGOIntegration`, `useUniversalPayment`) que fazem coisas similares mas com interfaces diferentes
-2. **PayGO hardcoded como credito**: No `handlePayGOPayment()` do Totem (linha 290), o `paymentType` e sempre `'credit'` - o usuario nao escolhe debito/credito/pix
-3. **Falta selecao de tipo no Totem**: O Totem tem botoes TEF/PayGO/PIX mas nao permite escolher credito vs debito dentro do PayGO
-
----
-
-## 4. ESP32 Wi-Fi (Ativacao de Maquinas)
-
-**Status: CORRIGIDO**
-
-A arquitetura pull ja foi implementada:
-- `esp32-control` insere em `pending_commands`
-- ESP32 faz polling a cada 5s via `esp32-monitor?action=poll_commands`
-- ESP32 confirma execucao via `confirm_command`
-
-**Sem problemas** neste fluxo apos as correcoes anteriores.
-
----
-
-## Problemas Estruturais Identificados
-
-### A. Excesso de hooks de pagamento (4 hooks fazendo a mesma coisa)
-
+### Novo hook: `src/hooks/useDeviceMode.ts`
 ```text
-usePayGO.ts              -> Plugin nativo direto
-usePayGOIntegration.ts   -> Plugin nativo + HTTP fallback
-useRealPayGOIntegration.ts -> Plugin nativo com validacao
-useUniversalPayment.ts   -> Orquestra PayGO + TEF + manual
+Retorna:
+- mode: 'totem' | 'smartpos' | 'pwa'
+- screenSize: { width, height }
+- isSmallScreen: boolean (< 800px)
+- canProcessPayments: boolean (somente em Android nativo)
 ```
 
-O Totem usa `useRealPayGOIntegration` + `useTEFIntegration` + `usePixPayment` diretamente, mas tambem importa `UniversalPaymentWidget` que usa `useUniversalPayment` (que por sua vez usa `usePayGOIntegration` - diferente do `useRealPayGOIntegration`!).
+Logica:
+- Se `!Capacitor.isNativePlatform()` -> modo 'pwa'
+- Se nativo e `window.innerWidth < 800` -> modo 'smartpos'
+- Se nativo e `window.innerWidth >= 800` -> modo 'totem'
 
-Resultado: configuracoes diferentes, estados duplicados, comportamentos inconsistentes.
+### Modificar: `src/pages/Totem.tsx`
+- Importar `useDeviceMode`
+- Condicionar o grid de maquinas:
+  - `totem`: grid-cols-6 (atual)
+  - `smartpos`: grid-cols-2 com cards maiores e scroll vertical
+  - `pwa`: grid sem botao "Selecionar" (view-only)
+- Na tela de pagamento (`paymentStep === "payment"`):
+  - `smartpos`: 3 botoes grandes (Credito/Debito/PIX) em tela cheia, sem o widget completo
+  - `totem`: manter UniversalPaymentWidget atual
 
-### B. PIX depende de servidor HTTP local
+### Modificar: `src/components/payment/UniversalPaymentWidget.tsx`
+- Receber prop `compactMode?: boolean`
+- Quando `compactMode = true` (Smart POS):
+  - Esconder secao "Metodos Disponiveis" (sempre PayGO nativo)
+  - Botoes de tipo (credito/debito/PIX) ocupam mais espaco
+  - Remover botao "Testar Conexoes"
 
-`usePixPayment` faz fetch para `http://localhost:8080/pix/generate` - isso so funciona se PayGO Integrado estiver rodando localmente. Em PWA, nunca funciona. Em Android, depende de ter o app PayGO com endpoint PIX ativo.
+### Modificar: `src/hooks/useUniversalPayment.ts`
+- Em modo Smart POS, pular testes de TEF/PIX HTTP (tudo via plugin nativo)
+- Forcar `paygo` como unico metodo disponivel
 
-### C. Falta de gateway de pagamento online
+### Arquivos a criar/modificar:
 
-Para PWA funcionar, precisaria de integracao com gateway online (Mercado Pago, Stripe, PagSeguro). Atualmente, todos os metodos dependem de hardware local.
+| Arquivo | Acao | Descricao |
+|---------|------|-----------|
+| `src/hooks/useDeviceMode.ts` | Criar | Detecta totem vs smartpos vs pwa |
+| `src/pages/Totem.tsx` | Modificar | Layout responsivo por modo |
+| `src/components/payment/UniversalPaymentWidget.tsx` | Modificar | Adicionar compactMode |
+| `src/hooks/useUniversalPayment.ts` | Modificar | Otimizar para Smart POS |
 
----
+### Comportamento por modo:
 
-## Plano de Correcao Recomendado
+```text
+PWA (navegador):
+  - Maquinas: visualizacao apenas (sem "Selecionar")
+  - Pagamento: bloqueado
+  - Admin: acesso completo
 
-### Fase 1 - Consolidar hooks de pagamento
-1. Manter apenas `useUniversalPayment` como hook principal
-2. Dentro dele, usar `useRealPayGOIntegration` (nativo) e `useTEFIntegration` (TEF)
-3. Remover `usePayGO` e `usePayGOIntegration` (duplicados)
-4. Atualizar Totem para usar apenas `useUniversalPayment`
+Totem (tablet/monitor Android):
+  - Maquinas: grid 6 colunas, selecao habilitada
+  - Pagamento: UniversalPaymentWidget completo (PayGO + TEF + PIX)
+  - Pinpad externo via USB
 
-### Fase 2 - Adicionar selecao credito/debito no PayGO
-5. No Totem, apos selecionar PayGO, perguntar: Credito, Debito ou PIX
-6. Passar o tipo correto para `processPayment`
-
-### Fase 3 - Definir estrategia PWA
-7. Opcao A: PWA e somente admin/visualizacao (sem pagamentos)
-8. Opcao B: Integrar gateway online (Mercado Pago/Stripe) para pagamentos via PWA
-
-### Secao Tecnica - Arquivos a Modificar
-
-| Arquivo | Acao |
-|---------|------|
-| `src/hooks/useUniversalPayment.ts` | Refatorar para usar `useRealPayGOIntegration` internamente |
-| `src/hooks/usePayGO.ts` | Marcar como deprecated ou remover |
-| `src/hooks/usePayGOIntegration.ts` | Marcar como deprecated ou remover |
-| `src/pages/Totem.tsx` | Simplificar para usar apenas `useUniversalPayment`, adicionar selecao credito/debito |
-| `src/components/payment/UniversalPaymentWidget.tsx` | Atualizar para refletir mudancas no hook |
-
+Smart POS (maquininha Android):
+  - Maquinas: grid 2 colunas, scroll vertical, botoes grandes
+  - Pagamento: 3 botoes grandes (Credito/Debito/PIX) via PayGO nativo
+  - Pagamento integrado no proprio dispositivo
+```
