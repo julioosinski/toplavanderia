@@ -1,112 +1,177 @@
 
-# Correção: Incompatibilidade JDK 21 com Android Gradle Plugin
+# Gesto Secreto de 7 Toques no Logo para Reconfiguração de CNPJ
 
-## Diagnóstico
+## O que será feito
 
-O erro de `jlink` com JDK 21 é causado por uma incompatibilidade de versões conhecida:
+Quando o totem já está configurado e funcionando, não há como trocar a lavanderia sem reinstalar o app. Vamos adicionar um **gesto secreto** — 7 toques rápidos no logo "Top Lavanderia" no header — que abre um diálogo de reconfiguração de CNPJ protegido por PIN, sem sair do modo kiosk nem reinstalar o APK.
 
-| Componente | Versão Atual | Problema |
-|---|---|---|
-| Android Gradle Plugin | 8.1.4 | Projetado para JDK 17, falha com JDK 21 |
-| Gradle Wrapper | 8.5 | Requer atualização para suportar AGP 8.3+ |
-| `compileOptions` | `VERSION_1_8` | Desatualizado, pode causar warnings |
-| `capacitor-cordova-android-plugins` | AGP 8.7.2 | Já usa versão mais nova que o projeto principal |
+## Fluxo do Gesto
 
-O arquivo `android/capacitor-cordova-android-plugins/build.gradle` já usa AGP `8.7.2`, enquanto o projeto principal usa `8.1.4` — essa inconsistência também pode gerar conflitos.
-
-## Solução: Atualizar AGP + Gradle Wrapper
-
-### Arquivo 1: `android/build.gradle` (build script raiz)
-
-Atualizar o AGP de `8.1.4` para `8.7.2` (mesma versão já usada pelo plugin Cordova):
 ```text
-// ANTES:
-classpath 'com.android.tools.build:gradle:8.1.4'
-
-// DEPOIS:
-classpath 'com.android.tools.build:gradle:8.7.2'
+Usuário toca 7x no logo (em até 3 segundos)
+         ↓
+Vibração sutil de feedback (opcional via toast discreto)
+         ↓
+Abre diálogo: "🔧 Reconfiguração do Totem"
+         ↓
+   ┌─── Etapa 1: PIN ───┐
+   │  Digite o PIN      │
+   │  de administrador  │
+   └────────────────────┘
+         ↓ PIN correto
+   ┌─── Etapa 2: CNPJ ──┐
+   │  Novo CNPJ da      │
+   │  lavanderia        │
+   │  [______________]  │
+   │  [Reconfigurar]    │
+   └────────────────────┘
+         ↓ CNPJ válido
+Totem reinicia com nova lavanderia ✅
 ```
 
-### Arquivo 2: `android/gradle/wrapper/gradle-wrapper.properties`
+## Diferença do Gesto Existente
 
-Atualizar o Gradle Wrapper de `8.5` para `8.9` (compatível com AGP 8.7 + JDK 21):
-```text
-// ANTES:
-distributionUrl=https\://services.gradle.org/distributions/gradle-8.5-bin.zip
+Já existe um gesto de 7 cliques no **texto do rodapé** (`"Sistema Online - Suporte..."`) que abre a configuração TEF. O novo gesto será no **ícone/logo do header** (`Sparkles` + `"Top Lavanderia"`), com propósito diferente: reconfigurar o CNPJ da lavanderia vinculada.
 
-// DEPOIS:
-distributionUrl=https\://services.gradle.org/distributions/gradle-8.9-bin.zip
+## Mudanças no Código
+
+### Arquivo único: `src/pages/Totem.tsx`
+
+#### 1. Novos estados (adicionar junto com os outros `useState`)
+
+```typescript
+// Gesto secreto no logo para reconfiguração
+const [logoTapCount, setLogoTapCount] = useState(0);
+const [showReconfigureDialog, setShowReconfigureDialog] = useState(false);
+const [reconfigureStep, setReconfigureStep] = useState<'pin' | 'cnpj'>('pin');
+const [reconfigurePin, setReconfigurePin] = useState('');
+const [reconfigureCnpj, setReconfigureCnpj] = useState('');
+const [reconfigureLoading, setReconfigureLoading] = useState(false);
+const [reconfigureError, setReconfigureError] = useState('');
+const [showReconfigurePin, setShowReconfigurePin] = useState(false);
 ```
 
-### Arquivo 3: `android/app/build.gradle`
+#### 2. Nova função `handleLogoTap`
 
-Atualizar `compileOptions` de `VERSION_1_8` para `VERSION_17` (obrigatório para AGP 8.3+):
-```text
-// ANTES:
-compileOptions {
-    sourceCompatibility JavaVersion.VERSION_1_8
-    targetCompatibility JavaVersion.VERSION_1_8
-}
+```typescript
+const handleLogoTap = () => {
+  const newCount = logoTapCount + 1;
+  setLogoTapCount(newCount);
 
-// DEPOIS:
-compileOptions {
-    sourceCompatibility JavaVersion.VERSION_17
-    targetCompatibility JavaVersion.VERSION_17
-}
+  if (newCount >= 7) {
+    // Ativar diálogo de reconfiguração
+    setShowReconfigureDialog(true);
+    setReconfigureStep('pin');
+    setReconfigurePin('');
+    setReconfigureCnpj('');
+    setReconfigureError('');
+    setLogoTapCount(0);
+  }
+
+  // Reset contador após 3 segundos de inatividade
+  setTimeout(() => setLogoTapCount(0), 3000);
+};
 ```
 
-Também atualizar `compileSdk` e `targetSdk` de `34` para `35` (recomendado para AGP 8.7+):
-```text
-compileSdk 35
-targetSdk 35
+#### 3. Função `handleReconfigurePin` (valida PIN com `validatePin`)
+
+```typescript
+const handleReconfigurePin = () => {
+  const isValid = validatePin(reconfigurePin); // usando validatePin de useAdminAccess
+  if (isValid) {
+    setReconfigureStep('cnpj');
+    setReconfigureError('');
+    setReconfigurePin('');
+  } else {
+    setReconfigureError('PIN incorreto. Tente novamente.');
+    setReconfigurePin('');
+  }
+};
 ```
 
-### Arquivo 4: `android/gradle.properties`
+#### 4. Função `handleReconfigureCNPJ` (limpa storage e reconfigura)
 
-Adicionar flag para suporte explícito ao JDK 21 e melhorar performance de build:
-```text
-# Adicionar no final:
-org.gradle.java.home.auto=false
-android.suppressUnsupportedCompileSdk=35
+```typescript
+const handleReconfigureCNPJ = async () => {
+  const cleanCnpj = reconfigureCnpj.replace(/\D/g, '');
+  if (cleanCnpj.length !== 14) {
+    setReconfigureError('CNPJ deve ter 14 dígitos.');
+    return;
+  }
+  setReconfigureLoading(true);
+  setReconfigureError('');
+  
+  // Limpar storage atual antes de reconfigurar
+  await nativeStorage.removeItem('totem_laundry_id');
+  
+  const success = await configureTotemByCNPJ(cleanCnpj);
+  setReconfigureLoading(false);
+  
+  if (success) {
+    setShowReconfigureDialog(false);
+    toast({ title: "✅ Totem Reconfigurado", description: "Nova lavanderia carregada com sucesso." });
+  } else {
+    setReconfigureError('CNPJ não encontrado ou lavanderia inativa.');
+  }
+};
 ```
 
-## Tabela de Compatibilidade (após a mudança)
+#### 5. Adicionar `validatePin` ao destructuring de `useAdminAccess`
 
-| Componente | Versão Nova | Compatibilidade JDK 21 |
-|---|---|---|
-| Android Gradle Plugin | 8.7.2 | Suporte nativo JDK 21 |
-| Gradle Wrapper | 8.9 | Compatível com AGP 8.7 |
-| Java compile target | 17 | Compatível com JDK 21 |
-| Kotlin | 1.9.10 | Compatível |
-
-## Comandos após as alterações
-
-Após o Lovable aplicar as mudanças, executar localmente:
-
-```bash
-# Sincronizar e compilar
-npm run build
-npx cap sync android
-cd android
-./gradlew assembleRelease
+```typescript
+const { authenticate: adminAuthenticate, validatePin } = useAdminAccess();
 ```
 
-Se ainda tiver o Gradle cache antigo com a versão 8.5, forçar limpeza:
-```bash
-cd android
-./gradlew clean assembleRelease
+#### 6. Adicionar `onClick={handleLogoTap}` ao `div` do logo no header
+
+O `div` que contém o `Sparkles` e o `h1 "Top Lavanderia"` (linhas 578–587) receberá `onClick` e `select-none cursor-pointer`:
+
+```tsx
+<div 
+  className="flex items-center space-x-2 select-none"
+  onClick={handleLogoTap}
+>
+  <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+    <Sparkles className="text-white" size={16} />
+  </div>
+  <div>
+    <h1 className="text-lg font-bold text-white">Top Lavanderia</h1>
+    ...
+  </div>
+</div>
 ```
 
-## Arquivos a modificar
+#### 7. Adicionar o Dialog de reconfiguração antes do `</div>` final
 
-- `android/build.gradle` — AGP de `8.1.4` → `8.7.2`
-- `android/gradle/wrapper/gradle-wrapper.properties` — Gradle de `8.5` → `8.9`
-- `android/app/build.gradle` — `compileOptions` para `VERSION_17`, `compileSdk`/`targetSdk` para `35`
-- `android/gradle.properties` — flags adicionais de compatibilidade JDK 21
+Um `Dialog` do Radix (já importado via `@/components/ui/dialog`) com dois passos internos:
 
-## Notas Adicionais
+**Passo PIN:**
+- Campo de senha com toggle mostrar/ocultar
+- Botões "Confirmar" / "Cancelar"
+- Máx. 3 tentativas (bloqueia e fecha o diálogo)
 
-- O `minSdk` continua em `22` (ou pode-se ajustar para `23` que é o padrão do Capacitor)
-- Nenhuma alteração no código React ou Capacitor é necessária
-- A biblioteca PayGO (`.aar`) continuará funcionando pois é compatível com Java 17+
-- O Gradle Wrapper 8.9 será baixado automaticamente na primeira compilação (aprox. 130MB)
+**Passo CNPJ:**
+- Campo numérico com máscara visual (14 dígitos)
+- Mostra nome da lavanderia atual como referência
+- Botão "Reconfigurar Totem" com loading spinner
+- Mensagem de erro em vermelho
+
+#### 8. Importar `nativeStorage` no Totem.tsx
+
+```typescript
+import { nativeStorage } from '@/utils/nativeStorage';
+```
+
+Também importar `Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription` de `@/components/ui/dialog`, e `Label` de `@/components/ui/label`, e `Eye, EyeOff, RefreshCw` de `lucide-react`.
+
+## Segurança
+
+- **PIN obrigatório** antes de qualquer reconfiguração — mesmo PIN do admin (`1234` em produção, configurável via `useAdminAccess`)
+- **Máximo 3 tentativas** de PIN antes de fechar o diálogo automaticamente
+- **Gesto invisível** — nenhum indicador visual de que o logo é clicável
+- **Não interrompe o modo kiosk** — a segurança permanece ativa durante o processo
+- O gesto exige **7 toques em até 3 segundos**, evitando ativação acidental
+
+## Arquivo a modificar
+
+- `src/pages/Totem.tsx` — único arquivo alterado
