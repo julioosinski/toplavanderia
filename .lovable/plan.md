@@ -1,117 +1,105 @@
 
 
-# ESP32 Auto-Configuravel - WiFi via Bluetooth + Auto-Registro
+# Corrigir Arquitetura de Comunicacao ESP32 (Pull em vez de Push)
 
-## Objetivo
-Transformar o codigo do ESP32 para que seja "plug and play": basta ligar o ESP32, configurar o WiFi pelo celular via Bluetooth, e ele se registra automaticamente no sistema.
+## Problema Atual
 
-## O Que Muda
+O sistema tenta enviar comandos HTTP diretamente para o IP local do ESP32 a partir da edge function na nuvem. Isso nunca funciona porque:
+- Edge functions rodam nos servidores do Supabase (cloud)
+- ESP32 esta em rede local (192.168.x.x)
+- A nuvem nao consegue acessar IPs privados
 
-**Antes (manual):** Editar 5 linhas no codigo, recompilar e fazer upload para cada ESP32.
+## Solucao: Modelo Pull (ESP32 busca comandos)
 
-**Depois (automatico):** Fazer upload do mesmo codigo em todos os ESP32s. Configurar WiFi pelo celular via Bluetooth. O resto e automatico.
+Em vez do servidor empurrar comandos para o ESP32, o ESP32 periodicamente consulta o servidor por comandos pendentes.
 
-## Como Vai Funcionar
+```text
+ANTES (nao funciona):
+  Totem -> Edge Function -> HTTP para 192.168.x.x -> ESP32
+                            ^^^^^ BLOQUEADO ^^^^^
 
-1. **Primeiro boot**: ESP32 liga e nao tem WiFi configurado. Ativa o Bluetooth (BLE) e aguarda conexao.
-2. **Configuracao pelo celular**: O usuario abre o app/totem, conecta via Bluetooth, envia SSID, senha e LAUNDRY_ID.
-3. **ESP32 salva na memoria**: Credenciais WiFi e LAUNDRY_ID sao salvos na memoria flash (persistem mesmo apos desligar).
-4. **Conexao automatica**: ESP32 conecta ao WiFi e gera seu ID automaticamente a partir do MAC address (ex: `esp32_A1B2C3`).
-5. **Auto-registro**: ESP32 envia heartbeat com `auto_register: true`. O servidor cria o registro automaticamente.
-6. **Admin associa maquina**: No painel admin, o operador ve o ESP32 novo e associa a uma maquina existente.
+DEPOIS (funciona):
+  Totem -> Edge Function -> Insere em pending_commands
+  ESP32 -> Consulta pending_commands a cada 5s -> Executa -> Confirma
+```
+
+## Mudancas Necessarias
+
+### 1. Firmware ESP32 (`public/arduino/ESP32_AutoConfig_v3.ino`)
+
+Adicionar no loop principal:
+- A cada 5 segundos, fazer GET para `supabase/functions/v1/esp32-monitor?action=poll_commands&esp32_id=esp32_XXYYZZ`
+- Se houver comandos pendentes, executar (ligar/desligar relay)
+- Apos executar, confirmar com POST para marcar comando como `executed`
+
+Novo trecho no loop:
+```text
+if (millis() - lastCommandPoll > 5000) {
+  pollPendingCommands();  // GET -> verifica pending_commands
+  lastCommandPoll = millis();
+}
+```
+
+Nova funcao `pollPendingCommands()`:
+- Faz GET para a edge function pedindo comandos pendentes para seu esp32_id
+- Recebe lista de comandos (relay_pin, action)
+- Executa cada comando (digitalWrite no relay)
+- Confirma execucao enviando POST com o command_id
+
+### 2. Edge Function `esp32-control` (`supabase/functions/esp32-control/index.ts`)
+
+Simplificar para APENAS inserir na tabela `pending_commands`:
+- Remover toda logica de HTTP fetch para IP local (linhas 83-174)
+- Inserir comando na tabela `pending_commands` com status `pending`
+- Retornar imediatamente com `{ success: true, queued: true }`
+- O ESP32 vai buscar e executar o comando em ate 5 segundos
+
+### 3. Edge Function `esp32-monitor` (`supabase/functions/esp32-monitor/index.ts`)
+
+Adicionar acao `poll_commands`:
+- Receber `esp32_id` como parametro
+- Buscar comandos pendentes na tabela `pending_commands` para aquele esp32_id
+- Retornar lista de comandos
+- Quando ESP32 confirmar execucao, atualizar status para `executed` e atualizar a maquina correspondente
+
+### 4. Tabela `pending_commands` - Adicionar campo
+
+Adicionar coluna `executed_at` (timestamp) para registrar quando o ESP32 executou o comando.
 
 ## Detalhes Tecnicos
 
-### 1. Novo Codigo Arduino (reescrita completa do .ino)
+### Fluxo completo apos a mudanca:
 
-**Bibliotecas adicionais necessarias:**
-- `BLEDevice.h` (ja incluida no ESP32 Arduino Core)
-- `Preferences.h` (ja incluida no ESP32 Arduino Core)
+1. Usuario seleciona maquina no Totem e paga
+2. Totem chama edge function `esp32-control`
+3. Edge function insere registro em `pending_commands` com status `pending`
+4. Edge function retorna `{ success: true, queued: true }` para o Totem
+5. ESP32 faz polling a cada 5 segundos via `esp32-monitor?action=poll_commands`
+6. ESP32 recebe o comando pendente
+7. ESP32 executa (liga o relay)
+8. ESP32 confirma execucao via `esp32-monitor?action=confirm_command`
+9. Edge function atualiza `pending_commands` para `executed` e `machines.status` para `running`
 
-**Estrutura do novo codigo:**
+### Arquivos a modificar:
 
-```text
-[Boot]
-  |
-  v
-[Ler Preferences (flash)]
-  |
-  +-- Tem WiFi salvo? --SIM--> [Conectar WiFi]
-  |                               |
-  |                               +-- Sucesso --> [Modo Normal: heartbeat + servidor HTTP]
-  |                               |
-  |                               +-- Falha --> [Ativar BLE para reconfigurar]
-  |
-  +-- NAO --> [Ativar BLE e aguardar configuracao]
-```
+| Arquivo | Mudanca |
+|---------|---------|
+| `public/arduino/ESP32_AutoConfig_v3.ino` | Adicionar polling de comandos no loop + funcao pollPendingCommands() + funcao confirmCommand() |
+| `supabase/functions/esp32-control/index.ts` | Remover fetch HTTP local, apenas inserir em pending_commands |
+| `supabase/functions/esp32-monitor/index.ts` | Adicionar acoes poll_commands e confirm_command |
+| Migracao SQL | Adicionar coluna executed_at em pending_commands |
 
-**Dados salvos na flash (Preferences):**
-- `wifi_ssid` - Nome da rede WiFi
-- `wifi_pass` - Senha do WiFi
-- `laundry_id` - UUID da lavanderia
-- `configured` - Flag booleana (true/false)
+### Sobre IPs dinamicos:
 
-**ESP32 ID automatico:**
-```text
-MAC Address: AA:BB:CC:DD:EE:FF
-ESP32 ID gerado: "esp32_DDEEFF" (ultimos 3 bytes do MAC)
-```
+Com esta arquitetura, o IP do ESP32 deixa de ser critico para o funcionamento. O ESP32 e quem inicia a conexao com a nuvem (pull), entao:
+- IP pode mudar a qualquer momento sem problema
+- Multiplos ESP32 na mesma rede funcionam independentemente
+- Cada um usa seu esp32_id unico (baseado no MAC) para buscar seus proprios comandos
+- O IP continua sendo reportado no heartbeat apenas para fins de monitoramento/debug
 
-**Protocolo BLE:**
-- Service UUID: `4fafc201-1fb5-459e-8fcc-c5c9c331914b`
-- Caracteristica WiFi Config: recebe JSON `{"ssid":"rede","pass":"senha","laundry_id":"uuid"}`
-- Caracteristica Status: retorna estado atual (configurado/conectado/erro)
-- O ESP32 aparece como dispositivo BLE com nome `TopLav_DDEEFF`
+### Tempo de resposta:
 
-**Pagina web de configuracao (fallback):**
-- Se BLE nao funcionar, o ESP32 tambem cria um Access Point WiFi: `TopLav_DDEEFF` (sem senha)
-- Acessar `192.168.4.1` no navegador mostra formulario para configurar WiFi
-- Formulario simples: SSID, Senha, Laundry ID (com QR code do admin)
-
-### 2. Edge Function `esp32-monitor` - Adicionar auto-registro
-
-Quando receber heartbeat com flag `auto_register: true`:
-- Verificar se `esp32_id` ja existe na tabela `esp32_status`
-- Se nao existe, criar automaticamente com status `pending_approval`
-- Retornar configuracao (heartbeat_interval, etc) na resposta
-
-### 3. Painel Admin - Tela de aprovacao de ESP32s novos
-
-Na pagina `/admin/settings` (onde o usuario esta agora):
-- Adicionar secao "ESP32s Pendentes de Aprovacao"
-- Lista ESP32s com `auto_register = true` que ainda nao foram associados a maquinas
-- Botao para associar ESP32 a uma maquina existente (selecionar maquina no dropdown)
-- Botao para rejeitar/remover ESP32 desconhecido
-
-### 4. QR Code no Admin para facilitar configuracao
-
-- No painel admin, gerar QR Code contendo: `{"laundry_id":"uuid","supabase_url":"...","api_key":"..."}`
-- O app/totem le o QR Code e envia para o ESP32 via BLE
-- Assim o operador nao precisa digitar o UUID manualmente
-
-## Arquivos a Criar/Modificar
-
-| Arquivo | Acao | Descricao |
-|---------|------|-----------|
-| `public/arduino/ESP32_AutoConfig_v3.ino` | Criar | Novo codigo com BLE + Preferences + auto-registro |
-| `supabase/functions/esp32-monitor/index.ts` | Modificar | Adicionar logica de auto-registro no heartbeat |
-| `src/pages/admin/Settings.tsx` ou componente equivalente | Modificar | Adicionar secao de ESP32s pendentes |
-| `src/components/admin/ESP32PendingApproval.tsx` | Criar | Componente para aprovar/rejeitar ESP32s novos |
-| `src/components/admin/ESP32ConfigQRCode.tsx` | Criar | Componente para gerar QR Code de configuracao |
-| `public/arduino/CONFIG_RAPIDA.txt` | Atualizar | Novas instrucoes simplificadas |
-
-## Migracao SQL
-
-Adicionar coluna `registration_status` na tabela `esp32_status`:
-```text
-ALTER TABLE esp32_status ADD COLUMN registration_status TEXT DEFAULT 'approved';
--- Valores: 'pending', 'approved', 'rejected'
-```
-
-## Beneficios
-
-- **Mesmo codigo para todos os ESP32s** - nao precisa recompilar para cada maquina
-- **Configuracao WiFi sem computador** - faz tudo pelo celular via Bluetooth
-- **Seguro** - ESP32 se registra mas precisa de aprovacao do admin
-- **Resiliente** - se WiFi mudar, reconfigura via BLE sem recompilar
+- Polling a cada 5 segundos significa que a maquina liga em no maximo 5 segundos apos o pagamento
+- Pode ser reduzido para 2-3 segundos se necessario (mais requisicoes ao servidor)
+- Alternativa futura: usar WebSocket para resposta instantanea (mais complexo)
 
