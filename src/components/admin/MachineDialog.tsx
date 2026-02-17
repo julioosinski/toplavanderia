@@ -15,7 +15,7 @@ interface Machine {
   type: 'washing' | 'drying';
   location?: string;
   capacity_kg: number;
-  price_per_kg: number;
+  price_per_cycle: number;
   cycle_time_minutes?: number;
   temperature?: number;
   laundry_id?: string;
@@ -52,7 +52,7 @@ export const MachineDialog = ({
     type: "washing",
     location: "",
     capacity_kg: 10,
-    price_per_kg: 5.00,
+    price_per_cycle: 5.00,
     cycle_time_minutes: 40,
     temperature: 0,
     esp32_id: "",
@@ -103,7 +103,7 @@ export const MachineDialog = ({
         type: "washing",
         location: "",
         capacity_kg: 10,
-        price_per_kg: 5.00,
+        price_per_cycle: 5.00,
         cycle_time_minutes: 40,
         temperature: 0,
         esp32_id: "",
@@ -166,7 +166,7 @@ export const MachineDialog = ({
         type: formData.type,
         location: formData.location,
         capacity_kg: formData.capacity_kg,
-        price_per_kg: formData.price_per_kg,
+        price_per_cycle: formData.price_per_cycle,
         cycle_time_minutes: formData.cycle_time_minutes,
         temperature: formData.temperature,
         esp32_id: formData.esp32_id,
@@ -357,8 +357,8 @@ export const MachineDialog = ({
                 type="number"
                 step="0.01"
                 min="0"
-                value={formData.price_per_kg}
-                onChange={(e) => setFormData({ ...formData, price_per_kg: parseFloat(e.target.value) || 0 })}
+                value={formData.price_per_cycle}
+                onChange={(e) => setFormData({ ...formData, price_per_cycle: parseFloat(e.target.value) || 0 })}
                 required
               />
             </div>

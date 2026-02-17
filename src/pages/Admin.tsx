@@ -51,7 +51,7 @@ interface Machine {
   name: string;
   type: 'washing' | 'drying';
   status: 'available' | 'in_use' | 'maintenance' | 'offline';
-  price_per_kg: number;
+  price_per_cycle: number;
   capacity_kg: number;
   cycle_time_minutes?: number;
   location?: string;
@@ -542,7 +542,7 @@ const Admin = () => {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
                           <p className="text-sm text-muted-foreground">Preço/ciclo</p>
-                          <p className="text-lg font-semibold">R$ {Number(machine.price_per_kg).toFixed(2)}</p>
+                          <p className="text-lg font-semibold">R$ {Number(machine.price_per_cycle).toFixed(2)}</p>
                         </div>
                         <div className="space-y-1">
                           <p className="text-sm text-muted-foreground">Tempo Ciclo</p>
