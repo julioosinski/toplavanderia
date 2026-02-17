@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Laundry, AppRole } from '@/types/laundry';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
+import { nativeStorage } from '@/utils/nativeStorage';
 
 interface LaundryContextType {
   currentLaundry: Laundry | null;
@@ -110,7 +111,7 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
     const laundry = await fetchCurrentLaundry(laundryId);
     if (laundry) {
       setCurrentLaundry(laundry);
-      localStorage.setItem('selectedLaundryId', laundryId);
+      await nativeStorage.setItem('selectedLaundryId', laundryId);
       
       // Invalidar todas as queries para forçar reload dos dados
       queryClient.invalidateQueries();
@@ -146,8 +147,8 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       if (!user) {
         console.log('[LaundryContext] Nenhum usuário autenticado - verificando modo totem...');
         
-        // Modo totem: verificar se há lavanderia salva no localStorage
-        const totemLaundryId = localStorage.getItem('totem_laundry_id');
+        // Modo totem: verificar se há lavanderia salva no storage nativo (ou localStorage)
+        const totemLaundryId = await nativeStorage.getItem('totem_laundry_id');
         if (totemLaundryId) {
           console.log('[LaundryContext] Modo totem: carregando lavanderia', totemLaundryId);
           const laundry = await fetchCurrentLaundry(totemLaundryId);
@@ -156,8 +157,8 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
             setLaundries([laundry]);
             console.log('[LaundryContext] Modo totem: lavanderia carregada -', laundry.name);
           } else {
-            console.warn('[LaundryContext] Modo totem: lavanderia não encontrada, limpando localStorage');
-            localStorage.removeItem('totem_laundry_id');
+            console.warn('[LaundryContext] Modo totem: lavanderia não encontrada, limpando storage');
+            await nativeStorage.removeItem('totem_laundry_id');
           }
         }
         
@@ -193,7 +194,7 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         setLaundries(laundriesList);
         
         // Tentar recuperar última lavanderia selecionada
-        const savedLaundryId = localStorage.getItem('selectedLaundryId');
+        const savedLaundryId = await nativeStorage.getItem('selectedLaundryId');
         if (savedLaundryId && laundriesList.find(l => l.id === savedLaundryId)) {
           const laundry = await fetchCurrentLaundry(savedLaundryId);
           if (laundry) setCurrentLaundry(laundry);
@@ -273,7 +274,7 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         return false;
       }
 
-      localStorage.setItem('totem_laundry_id', data.id);
+      await nativeStorage.setItem('totem_laundry_id', data.id);
       setCurrentLaundry(data);
       setLaundries([data]);
       console.log('[LaundryContext] Totem configurado com sucesso:', data.name);
