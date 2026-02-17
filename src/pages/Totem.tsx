@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { Droplets, Wind, Clock, CreditCard, Wifi, CheckCircle, XCircle, Timer, Sparkles, DollarSign, Shield, Maximize, Loader2, QrCode, Monitor, Smartphone } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Droplets, Wind, Clock, CreditCard, Wifi, CheckCircle, XCircle, Timer, Sparkles, DollarSign, Shield, Maximize, Loader2, QrCode, Monitor, Smartphone, Settings } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useKioskSecurity } from "@/hooks/useKioskSecurity";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
@@ -31,6 +32,11 @@ const Totem = () => {
   const [adminClickCount, setAdminClickCount] = useState(0);
   const [pixPaymentData, setPixPaymentData] = useState<any>(null);
   const [paymentSystem, setPaymentSystem] = useState<string>('PAYGO');
+
+  // Estado para configuração do totem por CNPJ
+  const [cnpjInput, setCnpjInput] = useState('');
+  const [cnpjLoading, setCnpjLoading] = useState(false);
+  const [cnpjError, setCnpjError] = useState('');
   
   // Detectar modo do dispositivo
   const { mode: deviceMode, isSmallScreen, isPWA, canProcessPayments } = useDeviceMode();
@@ -63,7 +69,7 @@ const Totem = () => {
   };
   
   const { toast } = useToast();
-  const { currentLaundry } = useLaundry();
+  const { currentLaundry, loading: laundryLoading, configureTotemByCNPJ } = useLaundry();
   const {
     isFullscreen,
     securityEnabled,
@@ -296,25 +302,78 @@ const Totem = () => {
     return success;
   };
 
+  // Handler configuração CNPJ
+  const handleConfigureCNPJ = async () => {
+    const cleanCnpj = cnpjInput.replace(/\D/g, '');
+    if (cleanCnpj.length !== 14) {
+      setCnpjError('O CNPJ deve ter exatamente 14 dígitos numéricos.');
+      return;
+    }
+    setCnpjError('');
+    setCnpjLoading(true);
+    const success = await configureTotemByCNPJ(cleanCnpj);
+    setCnpjLoading(false);
+    if (!success) {
+      setCnpjError('CNPJ não encontrado ou lavanderia inativa. Verifique e tente novamente.');
+    }
+  };
+
   // Tela de configuração TEF segura
   if (showConfig) {
     return <SecureTEFConfig config={tefConfig} onConfigChange={setTefConfig} onClose={() => setShowConfig(false)} />;
   }
 
-  // Verificar se há lavanderia configurada
-  if (!currentLaundry) {
+  // Tela de configuração inicial do totem (sem lavanderia configurada)
+  if (!laundryLoading && !currentLaundry) {
     return (
-      <div className="min-h-screen bg-gradient-clean flex items-center justify-center">
-        <Card className="p-6 max-w-md">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <XCircle className="text-destructive" />
-              Lavanderia não configurada
-            </CardTitle>
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center p-6">
+        <Card className="w-full max-w-md shadow-2xl">
+          <CardHeader className="text-center space-y-3">
+            <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto">
+              <Settings className="text-white" size={28} />
+            </div>
+            <CardTitle className="text-2xl">🧺 Configuração Inicial</CardTitle>
+            <p className="text-muted-foreground text-sm">
+              Digite o CNPJ da lavanderia para configurar este totem.
+            </p>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-muted-foreground">
-              Este totem precisa estar vinculado a uma lavanderia. Entre em contato com o administrador do sistema.
+            <div className="space-y-2">
+              <label className="text-sm font-medium">CNPJ da Lavanderia</label>
+              <Input
+                placeholder="00000000000000 (14 dígitos)"
+                value={cnpjInput}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, '').slice(0, 14);
+                  setCnpjInput(val);
+                  setCnpjError('');
+                }}
+                className="text-center text-lg tracking-widest font-mono"
+                maxLength={14}
+                inputMode="numeric"
+                disabled={cnpjLoading}
+              />
+              {cnpjError && (
+                <p className="text-destructive text-sm flex items-center gap-1">
+                  <XCircle size={14} />
+                  {cnpjError}
+                </p>
+              )}
+            </div>
+            <Button
+              className="w-full"
+              size="lg"
+              onClick={handleConfigureCNPJ}
+              disabled={cnpjLoading || cnpjInput.replace(/\D/g, '').length !== 14}
+            >
+              {cnpjLoading ? (
+                <><Loader2 className="mr-2 animate-spin" size={18} /> Buscando lavanderia...</>
+              ) : (
+                '✅ Configurar Totem'
+              )}
+            </Button>
+            <p className="text-xs text-center text-muted-foreground">
+              Exemplo: 43652666000137 (TOP LAVANDERIA SINUELO)
             </p>
           </CardContent>
         </Card>
@@ -322,8 +381,8 @@ const Totem = () => {
     );
   }
 
-  // Mostrar loading enquanto carrega máquinas ou configurações
-  if (loading || settingsLoading) {
+  // Mostrar loading enquanto carrega lavanderia, máquinas ou configurações
+  if (laundryLoading || loading || settingsLoading) {
     return <div className="min-h-screen bg-gradient-clean flex items-center justify-center">
         <div className="text-center space-y-4">
           <Loader2 className="mx-auto animate-spin text-primary" size={48} />

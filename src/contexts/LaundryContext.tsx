@@ -16,6 +16,7 @@ interface LaundryContextType {
   switchLaundry: (laundryId: string) => Promise<void>;
   refreshLaundries: () => Promise<void>;
   retry: () => void;
+  configureTotemByCNPJ: (cnpj: string) => Promise<boolean>;
 }
 
 const LaundryContext = createContext<LaundryContextType | undefined>(undefined);
@@ -131,7 +132,23 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       console.log('[LaundryContext] Usuário obtido:', user?.id);
       
       if (authError || !user) {
-        console.log('[LaundryContext] Nenhum usuário autenticado');
+        console.log('[LaundryContext] Nenhum usuário autenticado - verificando modo totem...');
+        
+        // Modo totem: verificar se há lavanderia salva no localStorage
+        const totemLaundryId = localStorage.getItem('totem_laundry_id');
+        if (totemLaundryId) {
+          console.log('[LaundryContext] Modo totem: carregando lavanderia', totemLaundryId);
+          const laundry = await fetchCurrentLaundry(totemLaundryId);
+          if (laundry) {
+            setCurrentLaundry(laundry);
+            setLaundries([laundry]);
+            console.log('[LaundryContext] Modo totem: lavanderia carregada -', laundry.name);
+          } else {
+            console.warn('[LaundryContext] Modo totem: lavanderia não encontrada, limpando localStorage');
+            localStorage.removeItem('totem_laundry_id');
+          }
+        }
+        
         setLoading(false);
         setError(null);
         return;
@@ -229,6 +246,32 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
     initializeLaundryContext();
   };
 
+  const configureTotemByCNPJ = async (cnpj: string): Promise<boolean> => {
+    try {
+      const cleanCnpj = cnpj.replace(/\D/g, '');
+      const { data, error } = await supabase
+        .from('laundries')
+        .select('*')
+        .eq('cnpj', cleanCnpj)
+        .eq('is_active', true)
+        .single();
+
+      if (error || !data) {
+        console.error('[LaundryContext] CNPJ não encontrado:', cnpj);
+        return false;
+      }
+
+      localStorage.setItem('totem_laundry_id', data.id);
+      setCurrentLaundry(data);
+      setLaundries([data]);
+      console.log('[LaundryContext] Totem configurado com sucesso:', data.name);
+      return true;
+    } catch (err) {
+      console.error('[LaundryContext] Erro ao configurar totem por CNPJ:', err);
+      return false;
+    }
+  };
+
   return (
     <LaundryContext.Provider
       value={{
@@ -243,6 +286,7 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         switchLaundry,
         refreshLaundries,
         retry,
+        configureTotemByCNPJ,
       }}
     >
       {children}
