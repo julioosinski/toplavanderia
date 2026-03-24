@@ -95,13 +95,15 @@ const Totem = () => {
   useEffect(() => {
     if (systemSettings) {
       setTefConfig({
-        host: systemSettings.esp32_host || "127.0.0.1",
-        port: systemSettings.tef_terminal_id || "4321",
-        timeout: 60000, retryAttempts: 3, retryDelay: 2000
+        host: systemSettings.paygo_host || "pos-transac-sb.tpgweb.io",
+        port: systemSettings.tef_terminal_id || "102251",
+        timeout: systemSettings.paygo_timeout || 30000,
+        retryAttempts: systemSettings.paygo_retry_attempts || 3,
+        retryDelay: systemSettings.paygo_retry_delay || 2000
       });
       setPaygoConfig({
-        host: systemSettings.paygo_host || 'localhost',
-        port: systemSettings.paygo_port || 8080,
+        host: systemSettings.paygo_host || 'pos-transac-sb.tpgweb.io',
+        port: systemSettings.paygo_port || 31735,
         automationKey: systemSettings.paygo_automation_key || '',
         timeout: systemSettings.paygo_timeout || 30000,
         retryAttempts: systemSettings.paygo_retry_attempts || 3
