@@ -19,6 +19,7 @@ import Security from "./pages/admin/Security";
 import Settings from "./pages/admin/Settings";
 import Profile from "./pages/admin/Profile";
 import ESP32Diagnostics from "./pages/admin/ESP32Diagnostics";
+import Payments from "./pages/admin/Payments";
 
 const queryClient = new QueryClient();
 
@@ -42,6 +43,7 @@ const App = () => (
                 <Route path="users" element={<Users />} />
                 <Route path="laundries" element={<Laundries />} />
                 <Route path="reports" element={<Reports />} />
+                <Route path="payments" element={<Payments />} />
                 <Route path="security" element={<Security />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="profile" element={<Profile />} />
