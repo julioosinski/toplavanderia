@@ -1,112 +1,143 @@
 
 
-# Implementar Todas as 5 Melhorias do Sistema
+# Análise Completa do Sistema — O que Falta para 100% Funcional
 
-## Melhoria 1: PIN Administrativo do Supabase
+## Estado Atual do Sistema
 
-Migrar `useAdminAccess.ts` para buscar o PIN via `validate_admin_pin()` do Supabase em vez do hardcoded `"1234"`.
-
-**Arquivo: `src/hooks/useAdminAccess.ts`**
-- Tornar `authenticate` e `validatePin` assíncronos
-- Chamar `supabase.rpc('validate_admin_pin', { _pin: pin })` para validação
-- Manter fallback local `"1234"` apenas se a chamada RPC falhar (offline)
-- Atualizar assinaturas: `authenticate(pin) → Promise<boolean>`, `validatePin(pin) → Promise<boolean>`
-
-**Arquivos impactados pela mudança de assinatura:**
-- `src/pages/Totem.tsx` — `handleReconfigurePin` e `handleAdminAuthenticate` precisam virar `async`
-- `src/components/admin/AdminPinDialog.tsx` — `onAuthenticate` precisa aceitar retorno `Promise<boolean>`
-
-**Nota:** A tabela `admin_config` e a função `validate_admin_pin` já existem no Supabase. A RLS permite apenas super_admins lerem a tabela, mas a função é `SECURITY DEFINER` e pode ser chamada por qualquer um — ideal para o totem sem login.
+O sistema tem uma arquitetura sólida com frontend React (totem), backend Supabase, comunicação ESP32 via pull model, e integração PayGO nativa. Porém há gaps críticos entre o código e a operação real.
 
 ---
 
-## Melhoria 2: Refatorar Totem.tsx em Componentes
+## 1. BLOQUEADORES CRÍTICOS (sistema não funciona sem isso)
 
-Extrair do monolito de 934 linhas:
+### 1.1. APK Desatualizado no Tablet
+Todas as melhorias recentes (CNPJ setup, cache offline, refatoração, diagnósticos) existem apenas no código web. O tablet roda um APK antigo. **Ação necessária:**
+```text
+npm run build
+npx cap sync android
+cd android && ./gradlew assembleRelease
+adb install -r app/build/outputs/apk/release/app-release.apk
+```
 
-| Componente | Responsabilidade | Linhas aprox. |
+### 1.2. ESP32s Offline
+Os dois ESP32 registrados (`lavadora_01` e `lavadora_02`) estão **offline desde outubro 2025** (último heartbeat: 12/10/2025). Sem ESP32 online, as máquinas não podem ser ativadas fisicamente após pagamento.
+
+**Ação necessária:**
+- Verificar se os ESP32 estão ligados e conectados à rede Wi-Fi `2G Osinski`
+- Confirmar que o firmware v3.0.0 está fazendo polling para `esp32-monitor?action=poll_commands` a cada 5 segundos
+- Verificar se os IPs `192.168.0.11` e `192.168.0.21` ainda são válidos
+
+### 1.3. PayGO Não Configurado
+No banco de dados, as configurações PayGO estão zeradas:
+- `paygo_enabled: false`
+- `paygo_host: null`
+- `paygo_automation_key: null`
+- `paygo_cnpj_cpf: null`
+
+**Sem estas configurações, nenhum pagamento por cartão funciona.** Ação necessária no painel admin:
+- Habilitar PayGO (`paygo_enabled: true`)
+- Configurar `paygo_host` com o IP do terminal/pinpad na rede local
+- Configurar `paygo_automation_key` (chave fornecida pela PayGO)
+- Configurar `paygo_cnpj_cpf` com o CNPJ da empresa
+
+### 1.4. Máquinas sem ESP32 Correspondente
+Existem 10 máquinas cadastradas para TOP LAVANDERIA SINUELO, mas apenas 2 ESP32s registrados (`lavadora_01` e `lavadora_02`). As máquinas `lavadora_03`, `lavadora_04`, `lavadora_05`, `secadora_01` a `secadora_05` não têm ESP32 registrado na tabela `esp32_status`, o que significa que não podem receber comandos de ativação.
+
+---
+
+## 2. CONFIGURAÇÕES NECESSÁRIAS PARA INTEGRAÇÃO COM MAQUININHA
+
+### 2.1. Hardware Necessário
+- **Pinpad PPC930** conectado ao tablet via USB
+- **Biblioteca PayGO** (`InterfaceAutomacao-v2.1.0.6.aar`) já incluída no projeto Android
+- **MainActivity.java** com `RealPayGoManager` configurado (já existe no código nativo)
+
+### 2.2. Configuração no Painel Admin (system_settings)
+Acessar o painel admin e configurar:
+
+| Campo | Valor Necessário | Descrição |
 |---|---|---|
-| `TotemHeader.tsx` | Logo, hora, badge de modo, gesto secreto | 650-683 |
-| `TotemMachineCard.tsx` | Card individual de máquina (reutilizado para lavadoras e secadoras) | 712-759 / 774-823 |
-| `TotemMachineGrid.tsx` | Grid de lavadoras + secadoras | 697-827 |
-| `TotemCNPJSetup.tsx` | Tela de configuração inicial por CNPJ | 416-471 |
-| `TotemReconfigureDialog.tsx` | Dialog de reconfiguração via gesto secreto | 848-930 |
-| `TotemPaymentScreens.tsx` | Telas de processing, error, success | 486-595 |
+| `paygo_enabled` | `true` | Ativar integração |
+| `paygo_host` | IP do pinpad (ex: `127.0.0.1`) | Para Smart POS, usar localhost |
+| `paygo_port` | `8080` ou porta configurada | Porta de comunicação |
+| `paygo_automation_key` | Chave da PayGO | Fornecida pela credenciadora |
+| `paygo_cnpj_cpf` | `43652666000137` | CNPJ da TOP LAVANDERIA |
 
-**Diretório:** `src/components/totem/`
-
-O `Totem.tsx` ficará como orquestrador (~150 linhas), delegando renderização aos sub-componentes.
-
----
-
-## Melhoria 3: Cache Offline de Máquinas
-
-**Arquivo: `src/hooks/useMachines.ts`**
-- Após cada `fetchMachines` bem-sucedido, salvar os dados transformados via `nativeStorage.setItem('machines_cache_<laundryId>', JSON.stringify(machines))`
-- No `catch` do `fetchMachines`, antes de setar `setMachines([])`, tentar carregar do cache
-- Adicionar flag `isOffline` ao retorno do hook para que a UI possa mostrar indicador
-
-**Arquivo: `src/pages/Totem.tsx` (ou `TotemHeader.tsx` após refactor)**
-- Mostrar badge "Offline - dados em cache" quando `isOffline` for `true`
+### 2.3. Credenciamento PayGO
+Antes de processar pagamentos reais:
+1. Contatar a PayGO para obter credenciamento
+2. Receber a `automation_key` de produção
+3. Configurar o terminal para o CNPJ da empresa
+4. Realizar transações de teste (R$ 0,01) para homologação
 
 ---
 
-## Melhoria 4: Tela de Diagnóstico
+## 3. GAPS NO CÓDIGO (problemas que precisam ser corrigidos)
 
-**Novo arquivo: `src/components/totem/TotemDiagnostics.tsx`**
+### 3.1. Fluxo de Pagamento Incompleto
+No `Totem.tsx` linha 247, após pagamento bem-sucedido, `activateMachine` é chamada mas o `paymentStep` nunca muda para `"success"`. O fluxo para em `onSuccess` sem feedback visual ao cliente.
 
-Acessível pelo gesto secreto (após PIN), como uma terceira opção além de "reconfigurar CNPJ". Ou como aba no dialog de reconfiguração.
+**Correção:** Após `activateMachine`, setar `setPaymentStep("success")` e `setTransactionData(result.data)`.
 
-Informações exibidas:
-- CNPJ e nome da lavanderia configurada
-- ID do totem (`totem_laundry_id`)
-- Status de conexão Supabase (realtime channel status)
-- Quantidade de máquinas carregadas (online/offline/total)
-- Último heartbeat de cada ESP32
-- Informações do dispositivo (`deviceInfo` do Capacitor)
-- Versão do app (do `package.json`)
-- Botão "Copiar Diagnóstico" para suporte remoto
+### 3.2. system_settings sem Acesso Público (RLS)
+A tabela `system_settings` exige autenticação (`is_super_admin` ou role-based). O totem opera sem login, então **não consegue carregar** `paygo_host`, `paygo_automation_key`, etc. O `useSystemSettings` vai falhar silenciosamente.
 
-**Integração:** Adicionar `reconfigureStep = 'pin' | 'cnpj' | 'diagnostics'` no dialog existente, com botões para navegar entre as opções após autenticação do PIN.
+**Correção:** Adicionar uma política RLS pública de SELECT para `system_settings` (somente campos não-sensíveis), ou criar uma edge function que retorne as configs necessárias.
 
----
+### 3.3. Transação Criada como "completed" Antes da Ativação
+Na `activateMachine` (linha 125-134), a transação é inserida com `status: 'completed'` e `completed_at` preenchido **antes** de confirmar que o ESP32 executou o comando. Se o ESP32 falhar, a transação fica registrada como concluída mas a máquina nunca ligou.
 
-## Melhoria 5: Countdown Visual para Máquinas em Uso
+**Correção:** Inserir com `status: 'pending'`, atualizar para `'completed'` apenas após confirmação do ESP32 via `confirm_command`.
 
-**Arquivo: `src/hooks/useMachines.ts`**
-- Calcular `timeRemaining` baseado em `updated_at` + `cycle_time_minutes`:
-  ```
-  const elapsed = (now - updatedAt) / 60000;
-  timeRemaining = Math.max(0, cycleTime - elapsed);
-  ```
-- Setar esse valor no campo `timeRemaining` da interface `Machine`
-
-**Arquivo: `TotemMachineCard.tsx` (ou diretamente no Totem.tsx)**
-- O código de Progress bar já existe (linhas 746-753), mas nunca é ativado porque `timeRemaining` nunca é populado
-- Com o cálculo acima, a barra de progresso e o texto de minutos restantes aparecerão automaticamente
-- Adicionar atualização a cada 30s via `setInterval` no `Totem.tsx` para manter o countdown atualizado
+### 3.4. PIN Admin — Hash Correto?
+O `admin_config` tem um `pin_hash` usando bcrypt. O `validate_admin_pin` faz `crypt(_pin, stored_hash)`. Verifique se o PIN que você quer usar corresponde ao hash armazenado. Para redefinir:
+```sql
+UPDATE admin_config SET pin_hash = crypt('SEU_NOVO_PIN', gen_salt('bf'));
+```
 
 ---
 
-## Ordem de Implementação
+## 4. CHECKLIST PARA OPERAÇÃO 100%
 
-1. **Melhoria 5** (countdown) — menor risco, ativa funcionalidade existente
-2. **Melhoria 1** (PIN do Supabase) — correção de segurança crítica
-3. **Melhoria 3** (cache offline) — resiliência
-4. **Melhoria 2** (refatoração) — organização do código
-5. **Melhoria 4** (diagnósticos) — utiliza estrutura refatorada
+### Hardware
+- [ ] ESP32 de cada máquina ligado e online (firmware v3.0.0, polling a cada 5s)
+- [ ] Pinpad PPC930 conectado ao tablet via USB
+- [ ] Tablet com APK atualizado instalado
+- [ ] Rede Wi-Fi estável (`2G Osinski`, senha `10203040`)
 
-## Arquivos Criados/Modificados
+### Supabase (Banco de Dados)
+- [ ] ESP32s registrados para todas as 10 máquinas (faltam 8)
+- [ ] `paygo_enabled = true` nas system_settings
+- [ ] `paygo_host`, `paygo_automation_key`, `paygo_cnpj_cpf` preenchidos
+- [ ] RLS de `system_settings` permitindo leitura pública (ou edge function)
+- [ ] PIN admin configurado corretamente no `admin_config`
 
-- `src/hooks/useAdminAccess.ts` — PIN via Supabase RPC
-- `src/hooks/useMachines.ts` — cache offline + cálculo timeRemaining
-- `src/pages/Totem.tsx` — orquestrador simplificado
-- `src/components/totem/TotemHeader.tsx` — novo
-- `src/components/totem/TotemMachineCard.tsx` — novo
-- `src/components/totem/TotemMachineGrid.tsx` — novo
-- `src/components/totem/TotemCNPJSetup.tsx` — novo
-- `src/components/totem/TotemReconfigureDialog.tsx` — novo
-- `src/components/totem/TotemPaymentScreens.tsx` — novo
-- `src/components/totem/TotemDiagnostics.tsx` — novo
-- `src/components/admin/AdminPinDialog.tsx` — async pin validation
+### PayGO / Maquininha
+- [ ] Credenciamento ativo com a PayGO
+- [ ] `automation_key` de produção obtida
+- [ ] Terminal homologado para o CNPJ `43652666000137`
+- [ ] Teste de transação R$ 0,01 aprovado
+
+### Código (correções necessárias)
+- [ ] Corrigir fluxo de sucesso no pagamento (setar `paymentStep = "success"`)
+- [ ] Corrigir status da transação (inserir como `pending`, não `completed`)
+- [ ] Resolver acesso do totem às `system_settings` (RLS ou edge function)
+- [ ] Recompilar e instalar APK no tablet
+
+---
+
+## 5. RESUMO POR PRIORIDADE
+
+| Prioridade | Item | Esforço |
+|---|---|---|
+| URGENTE | Recompilar e instalar APK | 10 min |
+| URGENTE | Ligar e conectar ESP32s | Hardware |
+| URGENTE | Configurar PayGO no banco | 5 min |
+| ALTA | Corrigir RLS de system_settings para totem | 1 correção SQL |
+| ALTA | Corrigir fluxo de pagamento (success + pending) | 2 edições no código |
+| ALTA | Registrar ESP32s faltantes no banco | 8 inserts |
+| MÉDIA | Obter credenciamento PayGO | Processo externo |
+| MÉDIA | Testar transação real com pinpad | Teste físico |
+
+Posso implementar todas as correções de código (itens 3.1, 3.2, 3.3) agora se você aprovar. As configurações de hardware e credenciamento da PayGO são ações externas que você precisa fazer manualmente.
 
