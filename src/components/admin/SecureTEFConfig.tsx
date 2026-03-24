@@ -79,8 +79,8 @@ export const SecureTEFConfig = ({ config, onConfigChange, onClose }: SecureTEFCo
     onClose();
   };
 
-  const handleAuthenticate = (pin: string) => {
-    const success = authenticate(pin);
+  const handleAuthenticate = async (pin: string): Promise<boolean> => {
+    const success = await authenticate(pin);
     if (success) {
       setSessionActive(true);
       toast({

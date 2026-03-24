@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Droplets, Wind } from 'lucide-react';
 import { useMachineAutoStatus } from './useMachineAutoStatus';
+import { nativeStorage } from '@/utils/nativeStorage';
 
 export interface Machine {
   id: string;
@@ -20,186 +21,157 @@ export interface Machine {
   ip_address?: string;
 }
 
+const CACHE_KEY_PREFIX = 'machines_cache_';
+
 export const useMachines = (laundryId?: string | null) => {
   const [machines, setMachines] = useState<Machine[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
   const { toast } = useToast();
   
-  // Hook para atualização automática de status
   useMachineAutoStatus();
+
+  const cacheKey = `${CACHE_KEY_PREFIX}${laundryId || 'all'}`;
+
+  const calculateTimeRemaining = (updatedAt: string, cycleMinutes: number): number => {
+    const elapsed = (Date.now() - new Date(updatedAt).getTime()) / 60000;
+    return Math.max(0, Math.round(cycleMinutes - elapsed));
+  };
+
+  const transformMachine = (machine: any, esp32Map: Map<string, any>): Machine => {
+    const esp32 = esp32Map.get(machine.esp32_id || 'main');
+    
+    const typeMapping: Record<string, 'lavadora' | 'secadora'> = {
+      'washing': 'lavadora', 'drying': 'secadora',
+      'lavadora': 'lavadora', 'secadora': 'secadora'
+    };
+    const mappedType = typeMapping[machine.type] || 'lavadora';
+    
+    let machineStatus = machine.status as any;
+    
+    if (machine.esp32_id) {
+      const esp32Status = esp32Map.get(machine.esp32_id);
+      const now = new Date();
+      const lastHeartbeat = esp32Status?.last_heartbeat ? new Date(esp32Status.last_heartbeat) : null;
+      const minutesSinceHeartbeat = lastHeartbeat 
+        ? (now.getTime() - lastHeartbeat.getTime()) / (1000 * 60) : 999999;
+      const maxOfflineMinutes = 5;
+      
+      if (!esp32Status || !esp32Status.is_online || minutesSinceHeartbeat > maxOfflineMinutes) {
+        machineStatus = 'offline';
+      } else {
+        if (esp32Status.relay_status && typeof esp32Status.relay_status === 'object') {
+          const relayObj = esp32Status.relay_status as any;
+          const relayKey = `relay_${machine.relay_pin || 1}`;
+          let relayStatus: string | boolean | number | undefined;
+          
+          if (relayObj[relayKey] !== undefined) relayStatus = relayObj[relayKey];
+          else if (relayObj.status && typeof relayObj.status === 'object') relayStatus = relayObj.status[relayKey];
+          else if (relayObj.status !== undefined) relayStatus = relayObj.status;
+          
+          if (relayStatus === 'on' || relayStatus === true || relayStatus === 1) {
+            machineStatus = 'running';
+          } else if (machine.status !== 'running' && machine.status !== 'maintenance') {
+            machineStatus = 'available';
+          }
+        } else if (machine.status !== 'running' && machine.status !== 'maintenance') {
+          machineStatus = 'available';
+        }
+      }
+    }
+    
+    // Verificar timeout do ciclo
+    let timeRemaining: number | undefined;
+    if (machineStatus === 'running' && machine.updated_at) {
+      const cycleTime = machine.cycle_time_minutes || 40;
+      timeRemaining = calculateTimeRemaining(machine.updated_at, cycleTime);
+      
+      // Se passou do ciclo + margem, marcar disponível
+      if (timeRemaining <= 0) {
+        const lastUpdate = new Date(machine.updated_at);
+        const minutesSinceUpdate = (Date.now() - lastUpdate.getTime()) / 60000;
+        if (minutesSinceUpdate > cycleTime + 10) {
+          machineStatus = 'available';
+          timeRemaining = undefined;
+        }
+      }
+    }
+    
+    return {
+      id: machine.id,
+      name: machine.name,
+      type: mappedType,
+      title: machine.name,
+      price: Number(machine.price_per_cycle) || 18.00,
+      duration: machine.cycle_time_minutes || 40,
+      status: machineStatus,
+      icon: mappedType === 'lavadora' ? Droplets : Wind,
+      timeRemaining,
+      esp32_id: machine.esp32_id,
+      relay_pin: machine.relay_pin,
+      location: machine.location,
+      ip_address: esp32?.ip_address
+    };
+  };
 
   const fetchMachines = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      console.log('🔍 Buscando máquinas do Supabase...', { laundryId });
-      
-      let query = supabase
-        .from('machines')
-        .select('*');
-      
-      // Filtrar por lavanderia se fornecido
-      if (laundryId) {
-        query = query.eq('laundry_id', laundryId);
-      }
-      
+      let query = supabase.from('machines').select('*');
+      if (laundryId) query = query.eq('laundry_id', laundryId);
       const { data: machinesData, error: machinesError } = await query.order('name');
 
-      if (machinesError) {
-        console.error('❌ Erro ao buscar máquinas:', machinesError);
-        throw machinesError;
-      }
+      if (machinesError) throw machinesError;
 
-      console.log('✅ Máquinas carregadas:', machinesData?.length || 0);
-
-      // Buscar status dos ESP32s FILTRADO pela lavanderia atual
-      console.log('🔍 Buscando status ESP32 para lavanderia:', laundryId);
       let esp32Query = supabase
         .from('esp32_status')
         .select('esp32_id, ip_address, is_online, relay_status, last_heartbeat, laundry_id');
-      
-      // Filtrar por lavanderia se fornecido
-      if (laundryId) {
-        esp32Query = esp32Query.eq('laundry_id', laundryId);
-      }
-      
-      const { data: esp32Data, error: esp32Error } = await esp32Query;
+      if (laundryId) esp32Query = esp32Query.eq('laundry_id', laundryId);
+      const { data: esp32Data } = await esp32Query;
 
-      if (esp32Error) {
-        console.warn('⚠️ Erro ao buscar ESP32 status:', esp32Error);
-      } else {
-        console.log('✅ ESP32 status carregado:', esp32Data?.length || 0);
-      }
-
-      const esp32Map = new Map(
-        esp32Data?.map(esp32 => [esp32.esp32_id, esp32]) || []
-      );
-
-      // Transformar dados para o formato esperado pelo componente
-      const transformedMachines: Machine[] = machinesData?.map(machine => {
-        const esp32 = esp32Map.get(machine.esp32_id || 'main');
-        
-        // Map database types to frontend types
-        const typeMapping: Record<string, 'lavadora' | 'secadora'> = {
-          'washing': 'lavadora',
-          'drying': 'secadora',
-          'lavadora': 'lavadora',
-          'secadora': 'secadora'
-        };
-        
-        const mappedType = typeMapping[machine.type] || 'lavadora';
-        
-        // Determinar status inteligente baseado em ESP32 e status da máquina
-        let machineStatus = machine.status as any;
-        
-        // Verificar status do ESP32 com validação de timeout
-        if (machine.esp32_id) {
-          const esp32Status = esp32Map.get(machine.esp32_id);
-          
-          // Calcular tempo desde último heartbeat
-          const now = new Date();
-          const lastHeartbeat = esp32Status?.last_heartbeat ? new Date(esp32Status.last_heartbeat) : null;
-          const minutesSinceHeartbeat = lastHeartbeat 
-            ? (now.getTime() - lastHeartbeat.getTime()) / (1000 * 60) 
-            : 999999;
-          
-          const maxOfflineMinutes = 5;
-          
-          console.log(`[Machine ${machine.name}] ESP32: ${machine.esp32_id}, Online: ${esp32Status?.is_online}, Last Heartbeat: ${minutesSinceHeartbeat.toFixed(1)}min ago`);
-          
-          // Se ESP32 não existe, está marcado como offline OU último heartbeat > 5 minutos
-          if (!esp32Status || !esp32Status.is_online || minutesSinceHeartbeat > maxOfflineMinutes) {
-            machineStatus = 'offline';
-            console.log(`[Machine ${machine.name}] Marked as OFFLINE (ESP32 unavailable or timeout)`);
-          } else {
-            // ESP32 está online E heartbeat é recente, verificar status do relé
-            if (esp32Status.relay_status && typeof esp32Status.relay_status === 'object') {
-              const relayObj = esp32Status.relay_status as any;
-              
-              console.log(`🔍 [Machine ${machine.name}] relay_status completo:`, JSON.stringify(relayObj));
-              
-              // Suportar múltiplos formatos de relay_status
-              let relayStatus: string | boolean | number | undefined;
-              
-              const relayKey = `relay_${machine.relay_pin || 1}`;
-              
-              // Formato 1: {"relay_1": "on", "relay_2": "off"}
-              if (relayObj[relayKey] !== undefined) {
-                relayStatus = relayObj[relayKey];
-                console.log(`✅ [Machine ${machine.name}] Formato direto: {${relayKey}: ${relayStatus}}`);
-              }
-              // Formato 2: {"status": {"relay_1": "on"}} - formato incorreto do banco
-              else if (relayObj.status && typeof relayObj.status === 'object') {
-                relayStatus = relayObj.status[relayKey];
-                console.log(`⚠️ [Machine ${machine.name}] Formato embrulhado: {status: {${relayKey}: ${relayStatus}}}`);
-              }
-              // Formato 3: {"status": "on"} - formato simples legado
-              else if (relayObj.status !== undefined) {
-                relayStatus = relayObj.status;
-                console.log(`⚠️ [Machine ${machine.name}] Formato legado: {status: ${relayStatus}}`);
-              }
-              
-              console.log(`🎯 [Machine ${machine.name}] Relay final detectado: ${relayStatus}`);
-              
-              // Se relé está ativo, máquina está rodando
-              if (relayStatus === 'on' || relayStatus === true || relayStatus === 1) {
-                machineStatus = 'running';
-                console.log(`✅ [Machine ${machine.name}] STATUS = RUNNING (relay ativo)`);
-              } else if (machine.status !== 'running' && machine.status !== 'maintenance') {
-                // Se relé está desligado e não está em manutenção, está disponível
-                machineStatus = 'available';
-                console.log(`✅ [Machine ${machine.name}] STATUS = AVAILABLE (relay desligado)`);
-              }
-            } else if (machine.status !== 'running' && machine.status !== 'maintenance') {
-              // Se não há dados de relé mas ESP32 está online, considerar disponível
-              machineStatus = 'available';
-              console.log(`⚠️ [Machine ${machine.name}] STATUS = AVAILABLE (sem dados relay)`);
-            }
-          }
-        }
-        
-        // Se máquina está "running", verificar se passou do tempo esperado
-        if (machineStatus === 'running' && machine.updated_at) {
-          const lastUpdate = new Date(machine.updated_at);
-          const now = new Date();
-          const minutesSinceUpdate = (now.getTime() - lastUpdate.getTime()) / (1000 * 60);
-          const cycleTime = machine.cycle_time_minutes || 40;
-          
-          // Se passou mais tempo que o ciclo + 10 minutos de margem, marcar como disponível
-          if (minutesSinceUpdate > cycleTime + 10) {
-            machineStatus = 'available';
-          }
-        }
-        
-        return {
-          id: machine.id,
-          name: machine.name,
-          type: mappedType,
-          title: machine.name,
-          price: Number(machine.price_per_cycle) || 18.00,
-          duration: machine.cycle_time_minutes || 40,
-          status: machineStatus,
-          icon: mappedType === 'lavadora' ? Droplets : Wind,
-          esp32_id: machine.esp32_id,
-          relay_pin: machine.relay_pin,
-          location: machine.location,
-          ip_address: esp32?.ip_address
-        };
-      }) || [];
+      const esp32Map = new Map(esp32Data?.map(e => [e.esp32_id, e]) || []);
+      const transformedMachines = machinesData?.map(m => transformMachine(m, esp32Map)) || [];
 
       setMachines(transformedMachines);
+      setIsOffline(false);
+
+      // Cache para uso offline
+      try {
+        await nativeStorage.setItem(cacheKey, JSON.stringify(
+          transformedMachines.map(({ icon, ...rest }) => rest)
+        ));
+      } catch { /* ignore cache errors */ }
     } catch (error) {
       console.error('Erro ao buscar máquinas:', error);
       setError('Erro ao carregar máquinas');
+
+      // Tentar carregar do cache
+      try {
+        const cached = await nativeStorage.getItem(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached) as Omit<Machine, 'icon'>[];
+          const restored = parsed.map(m => ({
+            ...m,
+            icon: m.type === 'lavadora' ? Droplets : Wind
+          })) as Machine[];
+          setMachines(restored);
+          setIsOffline(true);
+          toast({
+            title: "Modo Offline",
+            description: "Exibindo dados em cache. Conexão indisponível.",
+          });
+          return;
+        }
+      } catch { /* ignore */ }
+
       toast({
         title: "Erro",
-        description: "Não foi possível carregar as máquinas. Usando dados padrão.",
+        description: "Não foi possível carregar as máquinas.",
         variant: "destructive"
       });
-      
-      // Sem fallback - mostrar lista vazia com erro
       setMachines([]);
     } finally {
       setLoading(false);
@@ -212,61 +184,30 @@ export const useMachines = (laundryId?: string | null) => {
         .from('machines')
         .update({ status, updated_at: new Date().toISOString() })
         .eq('id', machineId);
-
       if (error) throw error;
-
-      // Atualizar estado local
-      setMachines(prev => 
-        prev.map(machine => 
-          machine.id === machineId 
-            ? { ...machine, status }
-            : machine
-        )
-      );
+      setMachines(prev => prev.map(m => m.id === machineId ? { ...m, status } : m));
     } catch (error) {
-      console.error('Erro ao atualizar status da máquina:', error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível atualizar o status da máquina",
-        variant: "destructive"
-      });
+      console.error('Erro ao atualizar status:', error);
+      toast({ title: "Erro", description: "Não foi possível atualizar o status da máquina", variant: "destructive" });
     }
   };
 
   useEffect(() => {
     fetchMachines();
 
-    // Configurar realtime para máquinas
     const machinesChannel = supabase
       .channel(`machines-changes-${laundryId || 'all'}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'machines',
-          filter: laundryId ? `laundry_id=eq.${laundryId}` : undefined
-        },
-        () => {
-          fetchMachines();
-        }
-      )
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'machines',
+        filter: laundryId ? `laundry_id=eq.${laundryId}` : undefined
+      }, () => fetchMachines())
       .subscribe();
 
-    // Configurar realtime para ESP32 status
     const esp32Channel = supabase
       .channel('esp32-status-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'esp32_status'
-        },
-        () => {
-          fetchMachines();
-        }
-      )
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'esp32_status'
+      }, () => fetchMachines())
       .subscribe();
 
     return () => {
@@ -279,6 +220,7 @@ export const useMachines = (laundryId?: string | null) => {
     machines,
     loading,
     error,
+    isOffline,
     refreshMachines: fetchMachines,
     updateMachineStatus
   };

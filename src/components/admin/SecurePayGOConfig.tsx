@@ -57,8 +57,8 @@ export const SecurePayGOConfig: React.FC<SecurePayGOConfigProps> = ({
     });
   };
 
-  const handleAuthenticate = (pin: string): boolean => {
-    const success = authenticate(pin);
+  const handleAuthenticate = async (pin: string): Promise<boolean> => {
+    const success = await authenticate(pin);
     if (success) {
       setSessionActive(true);
       setShowPinDialog(false);
