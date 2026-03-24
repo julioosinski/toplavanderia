@@ -1,58 +1,77 @@
 
 
-# Corrigir Configuração de Pagamento: TPGWeb/SiTef (não PayGO Desktop)
+# Auto-Descoberta de ESP32: Plug-and-Play Completo
 
-## Entendimento
+## Problema Atual
 
-Os dados que você recebeu **não são do PayGO Desktop** — são credenciais do **SiTef/TPGWeb** (gateway de pagamento). Os campos mapeiam assim:
+O fluxo atual exige **3 etapas manuais** para cada ESP32:
+1. Conectar ao AP do ESP32 (`TopLav_XXXXXX`)
+2. Inserir WiFi SSID, senha e Laundry ID manualmente
+3. Aprovar no painel admin e associar a uma máquina existente
 
-| Dado Recebido | Campo no Sistema |
+O usuário quer: **ligar o ESP32 → ele aparece no painel → admin dá nome e aprova**.
+
+## Novo Fluxo
+
+```text
+ESP32 ligado (firmware v4 com WiFi+Laundry hardcoded)
+         ↓ conecta WiFi automaticamente
+Heartbeat enviado com auto_register=true
+         ↓
+Aparece no painel admin como "Pendente"
+         ↓
+Admin preenche:
+  - Nome amigável (ex: "Lavadora 01")
+  - Tipo (Lavadora / Secadora)
+  - Pino do relé (padrão: 2)
+         ↓
+Clica "Aprovar" → máquina criada automaticamente ✅
+```
+
+## Mudanças
+
+### 1. Novo firmware v4 — `public/arduino/ESP32_AutoConfig_v4.ino`
+
+Firmware simplificado que **elimina AP/BLE**:
+- WiFi SSID, senha e laundry_id vêm hardcoded (gerados pelo painel admin)
+- No boot: conecta WiFi direto, sem etapa de configuração
+- Envia heartbeat com `auto_register: true` imediatamente
+- Se WiFi falhar, tenta reconectar em loop (sem abrir AP)
+- Mantém polling de comandos e confirmação igual ao v3
+- Gera `esp32_id` pelo MAC normalmente, mas **inicializa WiFi antes** para corrigir o bug `esp32_000000`
+
+### 2. Atualizar `ESP32PendingApproval.tsx` — Aprovação com criação automática de máquina
+
+Substituir o select de "associar a uma máquina existente" por um formulário inline:
+- Campo **Nome** (ex: "Lavadora 01") — obrigatório
+- Select **Tipo** (Lavadora / Secadora) — obrigatório
+- Campo **Pino do Relé** (padrão: 2)
+- Campo **Preço por ciclo** (padrão do system_settings)
+- Campo **Tempo de ciclo** (padrão do system_settings)
+- Campo **Capacidade (kg)** (padrão: 10)
+
+Ao clicar "Aprovar":
+1. Cria automaticamente uma nova máquina na tabela `machines` com os dados preenchidos e `esp32_id` do dispositivo
+2. Atualiza `esp32_status.registration_status` para `approved`
+3. Atualiza `esp32_status.device_name` com o nome dado pelo admin
+
+### 3. Atualizar `ESP32ConfigQRCode.tsx` — Gerar firmware pronto para download
+
+Substituir o QR Code por um **gerador de firmware .ino**:
+- Puxa `wifi_ssid` e `wifi_password` do `system_settings`
+- Gera o arquivo `.ino` v4 com WiFi + laundry_id já preenchidos
+- Botão "Baixar Firmware" que faz download do `.ino` pronto para upload no Arduino IDE
+- Se WiFi não estiver configurado nas settings, mostra aviso pedindo para preencher
+
+### 4. Edge function `esp32-monitor` — Nenhuma mudança necessária
+
+O heartbeat com `auto_register: true` já funciona corretamente: insere na `esp32_status` com `registration_status: 'pending'` e o polling só retorna comandos para ESP32s existentes.
+
+## Arquivos Modificados/Criados
+
+| Arquivo | Ação |
 |---|---|
-| Ponto de captura: `102251` | `tef_terminal_id` |
-| Endereço: `pos-transac-sb.tpgweb.io:31735` | `paygo_host` + `paygo_port` |
-| CNPJ: `43652666000137` | `paygo_cnpj_cpf` |
-| Senha técnica: `314159` | `paygo_automation_key` |
-
-O sufixo `-sb` no endereço indica **sandbox** (ambiente de homologação/testes).
-
-## Mudanças Necessárias
-
-### 1. Atualizar a seção PayGO no SettingsForm para refletir campos SiTef/TPGWeb
-
-Renomear labels e placeholders na seção "Configurações PayGO (Maquininha)" em `src/components/admin/settings/SettingsForm.tsx`:
-
-- **"Chave de Automação"** → **"Senha Técnica"** (placeholder: `314159`)
-- **"Host do PayGO"** → **"Endereço do Servidor"** (placeholder: `pos-transac-sb.tpgweb.io`)
-- Adicionar campo **"Ponto de Captura"** usando a coluna `tef_terminal_id`
-- Atualizar descrições para mencionar SiTef/TPGWeb
-
-### 2. Atualizar a seção TEF existente
-
-A seção TEF atual (linhas 233-266) tem campos genéricos. Vamos integrá-la com a seção PayGO numa única seção coerente chamada **"Integração de Pagamentos (SiTef/TPGWeb)"** que contenha todos os campos necessários.
-
-### 3. Preencher valores padrão com os dados fornecidos
-
-Os campos terão os seguintes valores pré-preenchidos como placeholder/exemplo:
-- Host: `pos-transac-sb.tpgweb.io`
-- Porta: `31735`
-- Ponto de Captura: `102251`
-- Senha Técnica: (campo senha)
-- CNPJ: `43652666000137`
-
-### 4. Atualizar Totem.tsx para usar tef_terminal_id como ponto de captura
-
-No `useEffect` que sincroniza `systemSettings` (linhas 94-109), mapear:
-- `tef_terminal_id` → ponto de captura no config do TEF
-- `paygo_host` → host do servidor SiTef
-- `paygo_port` → porta do servidor
-- `paygo_automation_key` → senha técnica
-
-## Arquivos a Modificar
-
-- `src/components/admin/settings/SettingsForm.tsx` — Unificar seções TEF + PayGO numa única seção "Integração de Pagamentos" com labels corretos
-- `src/pages/Totem.tsx` — Ajustar mapeamento de `systemSettings` para refletir campos SiTef
-
-## Nota sobre Ambiente
-
-O endereço `pos-transac-sb.tpgweb.io` é o ambiente **sandbox** (testes). Quando for para produção, a credenciadora fornecerá o endereço de produção (provavelmente `pos-transac.tpgweb.io` sem o `-sb`).
+| `public/arduino/ESP32_AutoConfig_v4.ino` | Novo — firmware simplificado sem AP/BLE |
+| `src/components/admin/ESP32PendingApproval.tsx` | Reescrever — formulário de criação de máquina inline na aprovação |
+| `src/components/admin/ESP32ConfigQRCode.tsx` | Reescrever — gerador de firmware .ino para download |
 
