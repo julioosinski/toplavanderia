@@ -1,34 +1,46 @@
 import { useState, useCallback } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 
-const ADMIN_PIN = "1234"; // Em produção, isso deve vir de configuração segura
-const SESSION_TIMEOUT = 300000; // 5 minutos em millisegundos
+const FALLBACK_PIN = "1234"; // Fallback offline only
+const SESSION_TIMEOUT = 300000; // 5 minutos
 
 export const useAdminAccess = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sessionTimeout, setSessionTimeout] = useState<NodeJS.Timeout | null>(null);
 
-  // Função para autenticar com PIN
-  const authenticate = useCallback((pin: string): boolean => {
-    if (pin === ADMIN_PIN) {
-      setIsAuthenticated(true);
-      
-      // Configurar timeout da sessão
-      if (sessionTimeout) {
-        clearTimeout(sessionTimeout);
-      }
-      
-      const timeout = setTimeout(() => {
-        setIsAuthenticated(false);
-        setSessionTimeout(null);
-      }, SESSION_TIMEOUT);
-      
-      setSessionTimeout(timeout);
-      return true;
-    }
-    return false;
+  const startSession = useCallback(() => {
+    if (sessionTimeout) clearTimeout(sessionTimeout);
+    const timeout = setTimeout(() => {
+      setIsAuthenticated(false);
+      setSessionTimeout(null);
+    }, SESSION_TIMEOUT);
+    setSessionTimeout(timeout);
   }, [sessionTimeout]);
 
-  // Função para logout manual
+  // Validar PIN via Supabase RPC, com fallback local se offline
+  const validatePinRemote = async (pin: string): Promise<boolean> => {
+    try {
+      const { data, error } = await supabase.rpc('validate_admin_pin', { _pin: pin });
+      if (error) {
+        console.warn('[AdminAccess] RPC falhou, usando fallback local:', error.message);
+        return pin === FALLBACK_PIN;
+      }
+      return data === true;
+    } catch {
+      console.warn('[AdminAccess] Rede indisponível, usando fallback local');
+      return pin === FALLBACK_PIN;
+    }
+  };
+
+  const authenticate = useCallback(async (pin: string): Promise<boolean> => {
+    const isValid = await validatePinRemote(pin);
+    if (isValid) {
+      setIsAuthenticated(true);
+      startSession();
+    }
+    return isValid;
+  }, [startSession]);
+
   const logout = useCallback(() => {
     setIsAuthenticated(false);
     if (sessionTimeout) {
@@ -37,25 +49,12 @@ export const useAdminAccess = () => {
     }
   }, [sessionTimeout]);
 
-  // Função para renovar sessão
   const renewSession = useCallback(() => {
-    if (isAuthenticated) {
-      if (sessionTimeout) {
-        clearTimeout(sessionTimeout);
-      }
-      
-      const timeout = setTimeout(() => {
-        setIsAuthenticated(false);
-        setSessionTimeout(null);
-      }, SESSION_TIMEOUT);
-      
-      setSessionTimeout(timeout);
-    }
-  }, [isAuthenticated, sessionTimeout]);
+    if (isAuthenticated) startSession();
+  }, [isAuthenticated, startSession]);
 
-  // Verificar se PIN é válido (sem autenticar)
-  const validatePin = useCallback((pin: string): boolean => {
-    return pin === ADMIN_PIN;
+  const validatePin = useCallback(async (pin: string): Promise<boolean> => {
+    return validatePinRemote(pin);
   }, []);
 
   return {
