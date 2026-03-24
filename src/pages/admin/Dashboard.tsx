@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { DollarSign, WashingMachine, Receipt, TrendingUp } from "lucide-react";
+import { DollarSign, WashingMachine, Receipt, TrendingUp, Activity, CheckCircle } from "lucide-react";
 import { useLaundry } from "@/contexts/LaundryContext";
 import { supabase } from "@/integrations/supabase/client";
 import { LaundryDashboardSelector } from "@/components/admin/LaundryDashboardSelector";
@@ -14,9 +14,7 @@ interface Stats {
   activeMachines: number;
   totalMachines: number;
   todayTransactions: number;
-  revenueChange: number;
   monthlyRevenue: number;
-  occupancyRate: number;
 }
 
 export default function Dashboard() {
@@ -27,15 +25,13 @@ export default function Dashboard() {
     activeMachines: 0,
     totalMachines: 0,
     todayTransactions: 0,
-    revenueChange: 0,
     monthlyRevenue: 0,
-    occupancyRate: 0
   });
   const [revenueData, setRevenueData] = useState<any[]>([]);
   const [machineData, setMachineData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [machinesByLaundry, setMachinesByLaundry] = useState<Record<string, { laundryName: string; machines: any[] }>>({});
-  
+
   const isViewingAll = localStorage.getItem('selectedLaundryId') === 'all' && isSuperAdmin;
 
   const loadDashboardData = async () => {
@@ -44,44 +40,30 @@ export default function Dashboard() {
     try {
       setLoading(true);
 
-      // Build query based on view mode
       const machinesQuery = supabase.from('machines').select('*');
       const transactionsQuery = supabase.from('transactions').select('*');
-      
+
       if (!isViewingAll && currentLaundry) {
         machinesQuery.eq('laundry_id', currentLaundry.id);
         transactionsQuery.eq('laundry_id', currentLaundry.id);
       }
 
-      // Buscar máquinas
-      const { data: machinesData, error: machinesError } = await machinesQuery;
+      const { data: machinesData } = await machinesQuery;
+      const { data: transactionsData } = await transactionsQuery;
 
-      if (machinesError) {
-        console.error("Erro ao carregar máquinas:", machinesError);
-        return;
-      }
-
-      // Buscar transações
-      const { data: transactionsData, error: transactionsError } = await transactionsQuery;
-
-      if (transactionsError) {
-        console.error("Erro ao carregar transações:", transactionsError);
-        return;
-      }
-
-      // Calcular estatísticas
       const totalMachines = machinesData?.length || 0;
       const activeMachines = machinesData?.filter(m => m.status === 'available').length || 0;
+      const inUse = machinesData?.filter(m => m.status === 'running' || m.status === 'in_use').length || 0;
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const todayISO = today.toISOString();
 
-      const todayTransactions = transactionsData?.filter(t => 
+      const todayTransactions = transactionsData?.filter(t =>
         new Date(t.created_at) >= today
       ).length || 0;
 
-      const totalRevenue = transactionsData?.reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0) || 0;
+      const totalRevenue = machinesData?.reduce((sum, m) => sum + (Number(m.total_revenue) || 0), 0) || 0;
+      const totalUses = machinesData?.reduce((sum, m) => sum + (Number(m.total_uses) || 0), 0) || 0;
 
       const currentMonth = new Date().getMonth();
       const currentYear = new Date().getFullYear();
@@ -90,7 +72,7 @@ export default function Dashboard() {
         return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
       }).reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0) || 0;
 
-      // Receita dos últimos 7 dias
+      // Last 7 days revenue
       const last7Days = Array.from({ length: 7 }, (_, i) => {
         const d = new Date();
         d.setDate(d.getDate() - (6 - i));
@@ -101,37 +83,24 @@ export default function Dashboard() {
       const revenueByDay = last7Days.map(date => {
         const nextDay = new Date(date);
         nextDay.setDate(nextDay.getDate() + 1);
-        
         const dayRevenue = transactionsData?.filter(t => {
           const transDate = new Date(t.created_at);
           return transDate >= date && transDate < nextDay;
         }).reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0) || 0;
-
         return {
           date: date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
-          receita: dayRevenue
+          receita: dayRevenue,
         };
       });
 
-      // Uso por máquina
       const machineUsage = machinesData?.map(machine => ({
         name: machine.name,
-        uso: transactionsData?.filter(t => t.machine_id === machine.id).length || 0
+        uso: machine.total_uses || 0,
       })) || [];
 
-      setStats({
-        totalRevenue,
-        activeMachines,
-        totalMachines,
-        todayTransactions,
-        monthlyRevenue,
-        revenueChange: 12.5, // Calcular real depois
-        occupancyRate: totalMachines > 0 ? (activeMachines / totalMachines) * 100 : 0
-      });
-
+      setStats({ totalRevenue, activeMachines, totalMachines, todayTransactions, monthlyRevenue });
       setRevenueData(revenueByDay);
       setMachineData(machineUsage);
-
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
     } finally {
@@ -139,34 +108,22 @@ export default function Dashboard() {
     }
   };
 
-  // Load machines by laundry for consolidated view
   const loadConsolidatedMachines = async () => {
     if (!isViewingAll) return;
-
     const groupedMachines: Record<string, { laundryName: string; machines: any[] }> = {};
-    
     for (const laundry of laundries) {
       const { data: laundryMachines } = await supabase
-        .from('machines')
-        .select('*')
-        .eq('laundry_id', laundry.id);
-
+        .from('machines').select('*').eq('laundry_id', laundry.id);
       if (laundryMachines && laundryMachines.length > 0) {
-        groupedMachines[laundry.id] = {
-          laundryName: laundry.name,
-          machines: laundryMachines,
-        };
+        groupedMachines[laundry.id] = { laundryName: laundry.name, machines: laundryMachines };
       }
     }
-
     setMachinesByLaundry(groupedMachines);
   };
 
   useEffect(() => {
     loadDashboardData();
-    if (isViewingAll) {
-      loadConsolidatedMachines();
-    }
+    if (isViewingAll) loadConsolidatedMachines();
   }, [currentLaundry, isViewingAll]);
 
   if (loading) {
@@ -174,14 +131,7 @@ export default function Dashboard() {
       <div className="space-y-6 animate-pulse">
         <div className="h-8 bg-muted rounded w-64" />
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-32 bg-muted rounded" />
-          ))}
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          {[1, 2].map((i) => (
-            <div key={i} className="h-64 bg-muted rounded" />
-          ))}
+          {[1, 2, 3, 4].map(i => <div key={i} className="h-32 bg-muted rounded" />)}
         </div>
       </div>
     );
@@ -189,28 +139,115 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      {/* Header com seletor */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Status das Máquinas</h1>
-          <p className="text-muted-foreground">
-            Visualização em tempo real das máquinas
-          </p>
+          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground">Visão geral da lavanderia</p>
         </div>
         <LaundryDashboardSelector />
       </div>
 
+      {/* Stats Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center space-x-4">
+              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
+                <DollarSign className="text-primary" size={24} />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Receita Total</p>
+                <p className="text-2xl font-bold">R$ {stats.totalRevenue.toFixed(2)}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center space-x-4">
+              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
+                <Receipt className="text-primary" size={24} />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Receita Mensal</p>
+                <p className="text-2xl font-bold">R$ {stats.monthlyRevenue.toFixed(2)}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center space-x-4">
+              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
+                <Activity className="text-primary" size={24} />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Transações Hoje</p>
+                <p className="text-2xl font-bold">{stats.todayTransactions}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center space-x-4">
+              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
+                <CheckCircle className="text-primary" size={24} />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Disponíveis</p>
+                <p className="text-2xl font-bold">{stats.activeMachines} / {stats.totalMachines}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Charts */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Receita - Últimos 7 dias</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={250}>
+              <AreaChart data={revenueData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" fontSize={12} />
+                <YAxis fontSize={12} />
+                <Tooltip formatter={(v: number) => [`R$ ${v.toFixed(2)}`, 'Receita']} />
+                <Area type="monotone" dataKey="receita" stroke="hsl(var(--primary))" fill="hsl(var(--primary) / 0.2)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Uso por Máquina</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={machineData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" fontSize={12} />
+                <YAxis fontSize={12} />
+                <Tooltip />
+                <Bar dataKey="uso" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Machine Status Section */}
       {isViewingAll ? (
-        <ConsolidatedMachineStatus 
-          machinesByLaundry={machinesByLaundry}
-          loading={machinesLoading}
-        />
+        <ConsolidatedMachineStatus machinesByLaundry={machinesByLaundry} loading={machinesLoading} />
       ) : (
-        <MachineStatusGrid 
-          machines={machines} 
-          loading={machinesLoading}
-        />
+        <MachineStatusGrid machines={machines} loading={machinesLoading} />
       )}
     </div>
   );
