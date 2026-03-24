@@ -1,77 +1,54 @@
 
 
-# Auto-Descoberta de ESP32: Plug-and-Play Completo
+# ESP32 com Portal de Configuração WiFi (Captive Portal)
 
-## Problema Atual
+## Objetivo
 
-O fluxo atual exige **3 etapas manuais** para cada ESP32:
-1. Conectar ao AP do ESP32 (`TopLav_XXXXXX`)
-2. Inserir WiFi SSID, senha e Laundry ID manualmente
-3. Aprovar no painel admin e associar a uma máquina existente
+Alterar o firmware para que o ESP32 crie um Access Point (AP) chamado `TopLav_Config_XXXXXX` quando não conseguir conectar ao WiFi. O usuário conecta nessa rede e acessa `192.168.4.1` para configurar SSID e senha. Após salvar, o ESP32 reinicia, conecta ao WiFi configurado e faz auto-registro normalmente.
 
-O usuário quer: **ligar o ESP32 → ele aparece no painel → admin dá nome e aprova**.
-
-## Novo Fluxo
+## Fluxo
 
 ```text
-ESP32 ligado (firmware v4 com WiFi+Laundry hardcoded)
-         ↓ conecta WiFi automaticamente
-Heartbeat enviado com auto_register=true
-         ↓
-Aparece no painel admin como "Pendente"
-         ↓
-Admin preenche:
-  - Nome amigável (ex: "Lavadora 01")
-  - Tipo (Lavadora / Secadora)
-  - Pino do relé (padrão: 2)
-         ↓
-Clica "Aprovar" → máquina criada automaticamente ✅
+ESP32 ligado
+  ↓
+Tenta conectar WiFi pré-configurado (10s)
+  ↓ falhou?
+Abre AP: "TopLav_Config_XXXXXX" (sem senha)
+  ↓
+Usuário conecta ao AP pelo celular
+  ↓
+Acessa http://192.168.4.1 → formulário HTML
+  ↓
+Preenche SSID + Senha → Salva no SPIFFS
+  ↓
+ESP32 reinicia → conecta WiFi → auto-registro normal
 ```
 
 ## Mudanças
 
-### 1. Novo firmware v4 — `public/arduino/ESP32_AutoConfig_v4.ino`
+### 1. Firmware `public/arduino/ESP32_AutoConfig_v4.ino`
 
-Firmware simplificado que **elimina AP/BLE**:
-- WiFi SSID, senha e laundry_id vêm hardcoded (gerados pelo painel admin)
-- No boot: conecta WiFi direto, sem etapa de configuração
-- Envia heartbeat com `auto_register: true` imediatamente
-- Se WiFi falhar, tenta reconectar em loop (sem abrir AP)
-- Mantém polling de comandos e confirmação igual ao v3
-- Gera `esp32_id` pelo MAC normalmente, mas **inicializa WiFi antes** para corrigir o bug `esp32_000000`
+Reescrever com:
+- **SPIFFS** para salvar/carregar WiFi credentials persistentemente
+- **WebServer** na porta 80 do AP para servir formulário HTML de configuração
+- No `setup()`: tenta conectar com credenciais salvas no SPIFFS (ou hardcoded se for a primeira vez). Se falhar em 10s, entra em **modo AP** com portal captive
+- Página HTML simples em `192.168.4.1` com campos SSID e Senha + botão Salvar
+- Ao salvar: grava no SPIFFS e reinicia (`ESP.restart()`)
+- Laundry ID, Supabase URL e Key continuam hardcoded (vêm do painel)
+- Adicionar `#include <SPIFFS.h>` e `#include <WebServer.h>`
 
-### 2. Atualizar `ESP32PendingApproval.tsx` — Aprovação com criação automática de máquina
+### 2. Template no `ESP32ConfigQRCode.tsx`
 
-Substituir o select de "associar a uma máquina existente" por um formulário inline:
-- Campo **Nome** (ex: "Lavadora 01") — obrigatório
-- Select **Tipo** (Lavadora / Secadora) — obrigatório
-- Campo **Pino do Relé** (padrão: 2)
-- Campo **Preço por ciclo** (padrão do system_settings)
-- Campo **Tempo de ciclo** (padrão do system_settings)
-- Campo **Capacidade (kg)** (padrão: 10)
+Atualizar o `FIRMWARE_TEMPLATE` com o novo código que inclui modo AP + SPIFFS. O WiFi SSID/senha do painel serão usados como **valores padrão iniciais**, mas o ESP32 poderá ser reconfigurado via AP a qualquer momento.
 
-Ao clicar "Aprovar":
-1. Cria automaticamente uma nova máquina na tabela `machines` com os dados preenchidos e `esp32_id` do dispositivo
-2. Atualiza `esp32_status.registration_status` para `approved`
-3. Atualiza `esp32_status.device_name` com o nome dado pelo admin
+### 3. Instruções na UI
 
-### 3. Atualizar `ESP32ConfigQRCode.tsx` — Gerar firmware pronto para download
+Atualizar o texto de "Como usar" para mencionar que, se o WiFi falhar, o ESP32 criará uma rede `TopLav_Config_*` para reconfiguração.
 
-Substituir o QR Code por um **gerador de firmware .ino**:
-- Puxa `wifi_ssid` e `wifi_password` do `system_settings`
-- Gera o arquivo `.ino` v4 com WiFi + laundry_id já preenchidos
-- Botão "Baixar Firmware" que faz download do `.ino` pronto para upload no Arduino IDE
-- Se WiFi não estiver configurado nas settings, mostra aviso pedindo para preencher
+## Arquivos Modificados
 
-### 4. Edge function `esp32-monitor` — Nenhuma mudança necessária
-
-O heartbeat com `auto_register: true` já funciona corretamente: insere na `esp32_status` com `registration_status: 'pending'` e o polling só retorna comandos para ESP32s existentes.
-
-## Arquivos Modificados/Criados
-
-| Arquivo | Ação |
+| Arquivo | Mudança |
 |---|---|
-| `public/arduino/ESP32_AutoConfig_v4.ino` | Novo — firmware simplificado sem AP/BLE |
-| `src/components/admin/ESP32PendingApproval.tsx` | Reescrever — formulário de criação de máquina inline na aprovação |
-| `src/components/admin/ESP32ConfigQRCode.tsx` | Reescrever — gerador de firmware .ino para download |
+| `public/arduino/ESP32_AutoConfig_v4.ino` | Adicionar modo AP + SPIFFS + WebServer portal |
+| `src/components/admin/ESP32ConfigQRCode.tsx` | Atualizar FIRMWARE_TEMPLATE e instruções |
 
