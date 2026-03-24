@@ -265,6 +265,122 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating }: SettingsFormPro
         </CardContent>
       </Card>
 
+      {/* PayGO Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <CreditCard className="text-primary" />
+            <span>Configurações PayGO (Maquininha)</span>
+          </CardTitle>
+          <CardDescription>
+            Configure a integração com o pinpad PPC930 via PayGO Elgin para pagamentos com cartão
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Habilitar PayGO</p>
+              <p className="text-sm text-muted-foreground">
+                Ativa a integração com a maquininha de cartão
+              </p>
+            </div>
+            <Switch
+              checked={localSettings.paygo_enabled || false}
+              onCheckedChange={(checked) => updateSetting('paygo_enabled', checked)}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="paygo-host">Host do PayGO</Label>
+              <Input
+                id="paygo-host"
+                value={localSettings.paygo_host || ''}
+                onChange={(e) => updateSetting('paygo_host', e.target.value)}
+                placeholder="127.0.0.1"
+              />
+              <p className="text-xs text-muted-foreground">
+                Use 127.0.0.1 se o PayGO roda no mesmo dispositivo
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="paygo-port">Porta</Label>
+              <Input
+                id="paygo-port"
+                type="number"
+                min="1"
+                max="65535"
+                value={localSettings.paygo_port || 8080}
+                onChange={(e) => updateSetting('paygo_port', parseInt(e.target.value) || 8080)}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="paygo-automation-key">Chave de Automação</Label>
+              <Input
+                id="paygo-automation-key"
+                type="password"
+                value={localSettings.paygo_automation_key || ''}
+                onChange={(e) => updateSetting('paygo_automation_key', e.target.value)}
+                placeholder="Chave fornecida pela credenciadora"
+              />
+              <p className="text-xs text-muted-foreground">
+                Chave fornecida pela PayGO ao credenciar o terminal
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="paygo-cnpj">CNPJ/CPF do Estabelecimento</Label>
+              <Input
+                id="paygo-cnpj"
+                value={localSettings.paygo_cnpj_cpf || ''}
+                onChange={(e) => updateSetting('paygo_cnpj_cpf', e.target.value)}
+                placeholder="43.652.666/0001-37"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="paygo-timeout">Timeout (ms)</Label>
+              <Input
+                id="paygo-timeout"
+                type="number"
+                min="5000"
+                max="120000"
+                value={localSettings.paygo_timeout || 30000}
+                onChange={(e) => updateSetting('paygo_timeout', parseInt(e.target.value) || 30000)}
+              />
+              <p className="text-xs text-muted-foreground">Tempo máximo de espera</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="paygo-retry">Tentativas</Label>
+              <Input
+                id="paygo-retry"
+                type="number"
+                min="1"
+                max="10"
+                value={localSettings.paygo_retry_attempts || 3}
+                onChange={(e) => updateSetting('paygo_retry_attempts', parseInt(e.target.value) || 3)}
+              />
+              <p className="text-xs text-muted-foreground">Retentativas em caso de falha</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="paygo-retry-delay">Delay entre tentativas (ms)</Label>
+              <Input
+                id="paygo-retry-delay"
+                type="number"
+                min="500"
+                max="10000"
+                value={localSettings.paygo_retry_delay || 2000}
+                onChange={(e) => updateSetting('paygo_retry_delay', parseInt(e.target.value) || 2000)}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* System Features */}
       <Card>
         <CardHeader>
