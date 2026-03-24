@@ -35,7 +35,7 @@ interface MachineForm {
 
 const defaultForm = (settings: any): MachineForm => ({
   name: "",
-  type: "washer",
+  type: "lavadora",
   relay_pin: 2,
   price_per_cycle: settings?.default_price || 5,
   cycle_time_minutes: settings?.default_cycle_time || 40,
@@ -214,8 +214,8 @@ export const ESP32PendingApproval = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="washer">Lavadora</SelectItem>
-                      <SelectItem value="dryer">Secadora</SelectItem>
+                      <SelectItem value="lavadora">Lavadora</SelectItem>
+                      <SelectItem value="secadora">Secadora</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

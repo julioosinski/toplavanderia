@@ -22,7 +22,7 @@ import {
 type Machine = {
   id: string;
   name: string;
-  type: 'washing' | 'drying';
+  type: string;
   status: string;
   capacity_kg: number;
   price_per_cycle: number;
@@ -217,11 +217,11 @@ export default function Machines() {
     {
       accessorKey: "type",
       header: "Tipo",
-      cell: ({ row }) => (
-        <span className="capitalize">
-          {row.getValue("type") === "washing" ? "Lavadora" : "Secadora"}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const type = row.getValue("type") as string;
+        const label = type === "lavadora" || type === "washing" ? "Lavadora" : "Secadora";
+        return <span className="capitalize">{label}</span>;
+      },
     },
     {
       accessorKey: "realStatus",
@@ -391,7 +391,7 @@ export default function Machines() {
         </div>
 
         <MachineDialog 
-          machine={editingMachine}
+          machine={editingMachine ? { ...editingMachine, type: (editingMachine.type === 'washing' ? 'lavadora' : editingMachine.type === 'drying' ? 'secadora' : editingMachine.type) as 'lavadora' | 'secadora' } : null}
           onSuccess={handleSuccess}
           open={dialogOpen}
           onOpenChange={setDialogOpen}

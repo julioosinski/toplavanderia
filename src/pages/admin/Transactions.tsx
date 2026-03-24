@@ -6,16 +6,35 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { DataTable } from "@/components/ui/data-table";
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "lucide-react";
 
 type Transaction = {
   id: string;
   created_at: string;
   machine_id: string;
+  machine_name?: string;
   status: string;
   total_amount: number;
   payment_method: string | null;
   weight_kg: number;
   duration_minutes: number | null;
+};
+
+const statusLabels: Record<string, string> = {
+  completed: "Concluído",
+  in_progress: "Em Andamento",
+  pending: "Pendente",
+  cancelled: "Cancelado",
+  failed: "Falhou",
+};
+
+const statusVariants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  completed: "default",
+  in_progress: "secondary",
+  pending: "outline",
+  cancelled: "destructive",
+  failed: "destructive",
 };
 
 const columns: ColumnDef<Transaction>[] = [
@@ -25,38 +44,27 @@ const columns: ColumnDef<Transaction>[] = [
     cell: ({ row }) => {
       const date = new Date(row.getValue("created_at"));
       return date.toLocaleDateString("pt-BR", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
+        day: "2-digit", month: "2-digit", year: "numeric",
+        hour: "2-digit", minute: "2-digit",
       });
     },
   },
   {
-    accessorKey: "machine_id",
+    accessorKey: "machine_name",
     header: "Máquina",
-    cell: ({ row }) => {
-      const id = row.getValue("machine_id") as string;
-      return id.slice(0, 8);
-    },
+    cell: ({ row }) => row.original.machine_name || row.original.machine_id.slice(0, 8),
   },
   {
     accessorKey: "status",
     header: "Status",
     cell: ({ row }) => {
       const status = row.getValue("status") as string;
-      const variants: Record<string, "default" | "secondary" | "destructive"> = {
-        completed: "default",
-        in_progress: "secondary",
-        cancelled: "destructive",
-      };
-      return <Badge variant={variants[status] || "secondary"}>{status}</Badge>;
+      return (
+        <Badge variant={statusVariants[status] || "secondary"}>
+          {statusLabels[status] || status}
+        </Badge>
+      );
     },
-  },
-  {
-    accessorKey: "weight_kg",
-    header: "Peso (kg)",
   },
   {
     accessorKey: "duration_minutes",
@@ -76,30 +84,69 @@ const columns: ColumnDef<Transaction>[] = [
   },
 ];
 
+type DateFilter = "all" | "today" | "week" | "month";
+
 export default function Transactions() {
   const { currentLaundry } = useLaundry();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
 
   useEffect(() => {
-    if (currentLaundry) {
-      loadTransactions();
-    }
-  }, [currentLaundry]);
+    if (currentLaundry) loadTransactions();
+  }, [currentLaundry, dateFilter]);
 
   const loadTransactions = async () => {
     if (!currentLaundry) return;
 
     setLoading(true);
-    const { data } = await supabase
+
+    // Fetch transactions
+    let query = supabase
       .from("transactions")
       .select("*")
       .eq("laundry_id", currentLaundry.id)
       .order("created_at", { ascending: false })
-      .limit(100);
+      .limit(200);
 
-    setTransactions(data || []);
+    // Apply date filter
+    if (dateFilter !== "all") {
+      const now = new Date();
+      let startDate: Date;
+      if (dateFilter === "today") {
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      } else if (dateFilter === "week") {
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      } else {
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      }
+      query = query.gte("created_at", startDate.toISOString());
+    }
+
+    const { data: txData } = await query;
+
+    // Fetch machine names
+    const { data: machinesData } = await supabase
+      .from("machines")
+      .select("id, name")
+      .eq("laundry_id", currentLaundry.id);
+
+    const machineMap = new Map(machinesData?.map(m => [m.id, m.name]) || []);
+
+    const enriched = (txData || []).map(tx => ({
+      ...tx,
+      machine_name: machineMap.get(tx.machine_id) || undefined,
+    }));
+
+    setTransactions(enriched);
     setLoading(false);
+  };
+
+  const filterLabels: Record<DateFilter, string> = {
+    all: "Todas",
+    today: "Hoje",
+    week: "Semana",
+    month: "Mês",
   };
 
   if (loading) {
@@ -109,26 +156,40 @@ export default function Transactions() {
   return (
     <LaundryGuard>
       <div className="space-y-6 animate-in fade-in duration-500">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Transações</h1>
-          <p className="text-muted-foreground">
-            Histórico completo de transações
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Transações</h1>
+            <p className="text-muted-foreground">Histórico completo de transações</p>
+          </div>
+          <div className="flex gap-1">
+            {(["all", "today", "week", "month"] as DateFilter[]).map(f => (
+              <Button
+                key={f}
+                variant={dateFilter === f ? "default" : "outline"}
+                size="sm"
+                onClick={() => setDateFilter(f)}
+              >
+                {filterLabels[f]}
+              </Button>
+            ))}
+          </div>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>Todas as Transações</CardTitle>
+            <CardTitle>Transações</CardTitle>
             <CardDescription>
-              Últimas 100 transações realizadas
+              {dateFilter === "all" ? "Últimas 200 transações" : `Filtro: ${filterLabels[dateFilter]}`}
+              {" — "}
+              {transactions.length} registro(s)
             </CardDescription>
           </CardHeader>
           <CardContent>
             <DataTable
               columns={columns}
               data={transactions}
-              searchKey="status"
-              searchPlaceholder="Filtrar por status..."
+              searchKey="machine_name"
+              searchPlaceholder="Filtrar por máquina..."
             />
           </CardContent>
         </Card>

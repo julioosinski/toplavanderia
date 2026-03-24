@@ -10,14 +10,25 @@ interface TotemMachineGridProps {
 }
 
 export const TotemMachineGrid = ({ machines, deviceMode, isViewOnly, onSelect }: TotemMachineGridProps) => {
-  const gridCols = deviceMode === 'smartpos' ? 'grid-cols-2' : 'grid-cols-6';
-  const lavadoras = machines.filter(m => m.type === "lavadora").slice(0, deviceMode === 'smartpos' ? 4 : 6);
-  const secadoras = machines.filter(m => m.type === "secadora").slice(0, deviceMode === 'smartpos' ? 4 : 6);
+  const lavadoras = machines.filter(m => m.type === "lavadora");
+  const secadoras = machines.filter(m => m.type === "secadora");
+  const maxCols = deviceMode === 'smartpos' ? 2 : Math.min(lavadoras.length || secadoras.length || 3, 6);
+  const gridCols = deviceMode === 'smartpos' ? 'grid-cols-2' : `grid-cols-${maxCols}`;
 
   return (
-    <div className="container mx-auto px-2 flex-1 flex flex-col min-h-0">
+    <div className="container mx-auto px-2 flex-1 flex flex-col min-h-0 overflow-auto">
+      {lavadoras.length === 0 && secadoras.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center space-y-3 p-8">
+            <Droplets className="mx-auto text-muted-foreground" size={48} />
+            <h2 className="text-xl font-semibold text-muted-foreground">Nenhuma máquina cadastrada</h2>
+            <p className="text-sm text-muted-foreground">Entre em contato com o administrador.</p>
+          </div>
+        </div>
+      ) : (
       <div className={`flex-1 ${deviceMode === 'smartpos' ? 'space-y-3' : 'grid grid-rows-2 gap-3'}`}>
         {/* Lavadoras */}
+        {lavadoras.length > 0 && (
         <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl p-3 shadow-lg flex flex-col">
           <div className="flex items-center justify-center mb-3 space-x-2">
             <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center shadow-lg">
@@ -31,8 +42,10 @@ export const TotemMachineGrid = ({ machines, deviceMode, isViewOnly, onSelect }:
             ))}
           </div>
         </div>
+        )}
 
         {/* Secadoras */}
+        {secadoras.length > 0 && (
         <div className="bg-gradient-to-r from-orange-50 to-orange-100 rounded-xl p-3 shadow-lg flex flex-col">
           <div className="flex items-center justify-center mb-3 space-x-2">
             <div className="w-8 h-8 bg-orange-600 rounded-full flex items-center justify-center shadow-lg">
@@ -46,7 +59,9 @@ export const TotemMachineGrid = ({ machines, deviceMode, isViewOnly, onSelect }:
             ))}
           </div>
         </div>
+        )}
       </div>
+      )}
     </div>
   );
 };
