@@ -122,16 +122,15 @@ const Totem = () => {
     if (!selectedMachine || !currentLaundry) return;
     try {
       await updateMachineStatus(selectedMachine.id, 'running');
-      await supabase.from('transactions').insert({
+      const { data: txData } = await supabase.from('transactions').insert({
         machine_id: selectedMachine.id,
         total_amount: selectedMachine.price,
         duration_minutes: selectedMachine.duration,
-        status: 'completed',
+        status: 'pending',
         payment_method: paymentMethod,
         laundry_id: currentLaundry.id,
         started_at: new Date().toISOString(),
-        completed_at: new Date().toISOString()
-      });
+      }).select().single();
 
       if (selectedMachine.esp32_id) {
         try {
@@ -244,7 +243,11 @@ const Totem = () => {
         machine={selectedMachine}
         config={universalConfig}
         deviceMode={deviceMode}
-        onSuccess={async (result) => { await activateMachine(`Universal - ${result.method.toUpperCase()}`); }}
+        onSuccess={async (result) => { 
+          await activateMachine(`Universal - ${result.method.toUpperCase()}`); 
+          setTransactionData(result.data);
+          setPaymentStep("success"); 
+        }}
         onError={(err) => { toast({ title: "Erro no Pagamento", description: err, variant: "destructive" }); setPaymentStep('error'); }}
         onCancel={resetTotem}
         onPixQR={handlePixQR}
