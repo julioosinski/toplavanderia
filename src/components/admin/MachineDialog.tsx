@@ -12,7 +12,7 @@ import { Plus, Edit } from "lucide-react";
 interface Machine {
   id?: string;
   name: string;
-  type: 'washing' | 'drying';
+  type: 'lavadora' | 'secadora';
   location?: string;
   capacity_kg: number;
   price_per_cycle: number;
@@ -49,7 +49,7 @@ export const MachineDialog = ({
   const [availableRelayPins, setAvailableRelayPins] = useState<number[]>([]);
   const [formData, setFormData] = useState<Machine>({
     name: "",
-    type: "washing",
+    type: "lavadora",
     location: "",
     capacity_kg: 10,
     price_per_cycle: 5.00,
@@ -100,7 +100,7 @@ export const MachineDialog = ({
       // Reset form quando não há máquina
       setFormData({
         name: "",
-        type: "washing",
+        type: "lavadora",
         location: "",
         capacity_kg: 10,
         price_per_cycle: 5.00,
@@ -267,14 +267,14 @@ export const MachineDialog = ({
               <Label htmlFor="type">Tipo</Label>
               <Select 
                 value={formData.type} 
-                onValueChange={(value: 'washing' | 'drying') => setFormData({ ...formData, type: value })}
+                onValueChange={(value: 'lavadora' | 'secadora') => setFormData({ ...formData, type: value })}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="washing">Lavadora</SelectItem>
-                  <SelectItem value="drying">Secadora</SelectItem>
+                  <SelectItem value="lavadora">Lavadora</SelectItem>
+                  <SelectItem value="secadora">Secadora</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -376,7 +376,7 @@ export const MachineDialog = ({
             </div>
           </div>
 
-          {formData.type === 'washing' && (
+          {formData.type === 'lavadora' && (
             <div className="space-y-2">
               <Label htmlFor="temperature">Temperatura (°C)</Label>
               <Input

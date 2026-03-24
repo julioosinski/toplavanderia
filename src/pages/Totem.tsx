@@ -69,11 +69,6 @@ const Totem = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Countdown refresh every 30s
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 30000);
-    return () => clearInterval(timer);
-  }, []);
 
   // Auto kiosk mode
   useEffect(() => {
@@ -280,7 +275,7 @@ const Totem = () => {
         <div className="flex items-center justify-center space-x-2 text-gray-500">
           <Wifi size={12} />
           <span className="text-xs cursor-pointer select-none" onClick={handleAdminAccess}>
-            Sistema Online - Suporte: (11) 9999-9999
+            Sistema Online — {currentLaundry?.name || 'Top Lavanderia'}
           </span>
         </div>
       </div>
