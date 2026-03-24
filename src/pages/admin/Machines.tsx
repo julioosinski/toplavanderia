@@ -391,7 +391,7 @@ export default function Machines() {
         </div>
 
         <MachineDialog 
-          machine={editingMachine}
+          machine={editingMachine ? { ...editingMachine, type: (editingMachine.type === 'washing' ? 'lavadora' : editingMachine.type === 'drying' ? 'secadora' : editingMachine.type) as 'lavadora' | 'secadora' } : null}
           onSuccess={handleSuccess}
           open={dialogOpen}
           onOpenChange={setDialogOpen}
