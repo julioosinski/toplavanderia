@@ -230,58 +230,23 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating }: SettingsFormPro
         </CardContent>
       </Card>
 
-      {/* TEF Configuration */}
+      {/* SiTef/TPGWeb Payment Integration */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <CreditCard className="text-primary" />
-            <span>Configurações TEF</span>
+            <span>Integração de Pagamentos (SiTef/TPGWeb)</span>
           </CardTitle>
           <CardDescription>
-            Configure o Terminal Eletrônico Fiscal (TEF) para pagamentos
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="tef-terminal">ID do Terminal TEF</Label>
-              <Input
-                id="tef-terminal"
-                value={localSettings.tef_terminal_id || ''}
-                onChange={(e) => updateSetting('tef_terminal_id', e.target.value)}
-                placeholder="ID do terminal"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="tef-config">Configuração TEF</Label>
-              <Input
-                id="tef-config"
-                value={localSettings.tef_config || ''}
-                onChange={(e) => updateSetting('tef_config', e.target.value)}
-                placeholder="Configurações adicionais"
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* PayGO Configuration */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <CreditCard className="text-primary" />
-            <span>Configurações PayGO (Maquininha)</span>
-          </CardTitle>
-          <CardDescription>
-            Configure a integração com o pinpad PPC930 via PayGO Elgin para pagamentos com cartão
+            Configure a conexão com o gateway SiTef/TPGWeb para processar pagamentos via pinpad PPC930
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="font-medium">Habilitar PayGO</p>
+              <p className="font-medium">Habilitar Pagamentos</p>
               <p className="text-sm text-muted-foreground">
-                Ativa a integração com a maquininha de cartão
+                Ativa a integração com a maquininha de cartão via SiTef
               </p>
             </div>
             <Switch
@@ -290,62 +255,80 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating }: SettingsFormPro
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="paygo-host">Host do PayGO</Label>
+              <Label htmlFor="sitef-host">Endereço do Servidor</Label>
               <Input
-                id="paygo-host"
+                id="sitef-host"
                 value={localSettings.paygo_host || ''}
                 onChange={(e) => updateSetting('paygo_host', e.target.value)}
-                placeholder="127.0.0.1"
+                placeholder="pos-transac-sb.tpgweb.io"
               />
               <p className="text-xs text-muted-foreground">
-                Use 127.0.0.1 se o PayGO roda no mesmo dispositivo
+                Endereço fornecido pela credenciadora (ex: pos-transac-sb.tpgweb.io)
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="paygo-port">Porta</Label>
+              <Label htmlFor="sitef-port">Porta</Label>
               <Input
-                id="paygo-port"
+                id="sitef-port"
                 type="number"
                 min="1"
                 max="65535"
-                value={localSettings.paygo_port || 8080}
-                onChange={(e) => updateSetting('paygo_port', parseInt(e.target.value) || 8080)}
+                value={localSettings.paygo_port || 31735}
+                onChange={(e) => updateSetting('paygo_port', parseInt(e.target.value) || 31735)}
               />
+              <p className="text-xs text-muted-foreground">
+                Porta do servidor SiTef (sandbox: 31735)
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sitef-ponto-captura">Ponto de Captura</Label>
+              <Input
+                id="sitef-ponto-captura"
+                value={localSettings.tef_terminal_id || ''}
+                onChange={(e) => updateSetting('tef_terminal_id', e.target.value)}
+                placeholder="102251"
+              />
+              <p className="text-xs text-muted-foreground">
+                Código do ponto de captura fornecido pela credenciadora
+              </p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="paygo-automation-key">Chave de Automação</Label>
+              <Label htmlFor="sitef-senha">Senha Técnica</Label>
               <Input
-                id="paygo-automation-key"
+                id="sitef-senha"
                 type="password"
                 value={localSettings.paygo_automation_key || ''}
                 onChange={(e) => updateSetting('paygo_automation_key', e.target.value)}
-                placeholder="Chave fornecida pela credenciadora"
+                placeholder="Senha fornecida pela credenciadora"
               />
               <p className="text-xs text-muted-foreground">
-                Chave fornecida pela PayGO ao credenciar o terminal
+                Senha técnica para autenticação no SiTef
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="paygo-cnpj">CNPJ/CPF do Estabelecimento</Label>
+              <Label htmlFor="sitef-cnpj">CNPJ de Instalação</Label>
               <Input
-                id="paygo-cnpj"
+                id="sitef-cnpj"
                 value={localSettings.paygo_cnpj_cpf || ''}
                 onChange={(e) => updateSetting('paygo_cnpj_cpf', e.target.value)}
-                placeholder="43.652.666/0001-37"
+                placeholder="43652666000137"
               />
+              <p className="text-xs text-muted-foreground">
+                CNPJ cadastrado na credenciadora (apenas números)
+              </p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="paygo-timeout">Timeout (ms)</Label>
+              <Label htmlFor="sitef-timeout">Timeout (ms)</Label>
               <Input
-                id="paygo-timeout"
+                id="sitef-timeout"
                 type="number"
                 min="5000"
                 max="120000"
@@ -355,9 +338,9 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating }: SettingsFormPro
               <p className="text-xs text-muted-foreground">Tempo máximo de espera</p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="paygo-retry">Tentativas</Label>
+              <Label htmlFor="sitef-retry">Tentativas</Label>
               <Input
-                id="paygo-retry"
+                id="sitef-retry"
                 type="number"
                 min="1"
                 max="10"
@@ -367,9 +350,9 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating }: SettingsFormPro
               <p className="text-xs text-muted-foreground">Retentativas em caso de falha</p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="paygo-retry-delay">Delay entre tentativas (ms)</Label>
+              <Label htmlFor="sitef-retry-delay">Delay entre tentativas (ms)</Label>
               <Input
-                id="paygo-retry-delay"
+                id="sitef-retry-delay"
                 type="number"
                 min="500"
                 max="10000"
@@ -377,6 +360,19 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating }: SettingsFormPro
                 onChange={(e) => updateSetting('paygo_retry_delay', parseInt(e.target.value) || 2000)}
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="sitef-extra-config">Configuração Adicional (JSON)</Label>
+            <Input
+              id="sitef-extra-config"
+              value={localSettings.tef_config || ''}
+              onChange={(e) => updateSetting('tef_config', e.target.value)}
+              placeholder='{"ambiente": "sandbox"}'
+            />
+            <p className="text-xs text-muted-foreground">
+              Configurações extras em formato JSON (opcional)
+            </p>
           </div>
         </CardContent>
       </Card>
