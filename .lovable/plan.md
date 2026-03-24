@@ -1,177 +1,112 @@
 
-# Gesto Secreto de 7 Toques no Logo para Reconfiguração de CNPJ
 
-## O que será feito
+# Implementar Todas as 5 Melhorias do Sistema
 
-Quando o totem já está configurado e funcionando, não há como trocar a lavanderia sem reinstalar o app. Vamos adicionar um **gesto secreto** — 7 toques rápidos no logo "Top Lavanderia" no header — que abre um diálogo de reconfiguração de CNPJ protegido por PIN, sem sair do modo kiosk nem reinstalar o APK.
+## Melhoria 1: PIN Administrativo do Supabase
 
-## Fluxo do Gesto
+Migrar `useAdminAccess.ts` para buscar o PIN via `validate_admin_pin()` do Supabase em vez do hardcoded `"1234"`.
 
-```text
-Usuário toca 7x no logo (em até 3 segundos)
-         ↓
-Vibração sutil de feedback (opcional via toast discreto)
-         ↓
-Abre diálogo: "🔧 Reconfiguração do Totem"
-         ↓
-   ┌─── Etapa 1: PIN ───┐
-   │  Digite o PIN      │
-   │  de administrador  │
-   └────────────────────┘
-         ↓ PIN correto
-   ┌─── Etapa 2: CNPJ ──┐
-   │  Novo CNPJ da      │
-   │  lavanderia        │
-   │  [______________]  │
-   │  [Reconfigurar]    │
-   └────────────────────┘
-         ↓ CNPJ válido
-Totem reinicia com nova lavanderia ✅
-```
+**Arquivo: `src/hooks/useAdminAccess.ts`**
+- Tornar `authenticate` e `validatePin` assíncronos
+- Chamar `supabase.rpc('validate_admin_pin', { _pin: pin })` para validação
+- Manter fallback local `"1234"` apenas se a chamada RPC falhar (offline)
+- Atualizar assinaturas: `authenticate(pin) → Promise<boolean>`, `validatePin(pin) → Promise<boolean>`
 
-## Diferença do Gesto Existente
+**Arquivos impactados pela mudança de assinatura:**
+- `src/pages/Totem.tsx` — `handleReconfigurePin` e `handleAdminAuthenticate` precisam virar `async`
+- `src/components/admin/AdminPinDialog.tsx` — `onAuthenticate` precisa aceitar retorno `Promise<boolean>`
 
-Já existe um gesto de 7 cliques no **texto do rodapé** (`"Sistema Online - Suporte..."`) que abre a configuração TEF. O novo gesto será no **ícone/logo do header** (`Sparkles` + `"Top Lavanderia"`), com propósito diferente: reconfigurar o CNPJ da lavanderia vinculada.
+**Nota:** A tabela `admin_config` e a função `validate_admin_pin` já existem no Supabase. A RLS permite apenas super_admins lerem a tabela, mas a função é `SECURITY DEFINER` e pode ser chamada por qualquer um — ideal para o totem sem login.
 
-## Mudanças no Código
+---
 
-### Arquivo único: `src/pages/Totem.tsx`
+## Melhoria 2: Refatorar Totem.tsx em Componentes
 
-#### 1. Novos estados (adicionar junto com os outros `useState`)
+Extrair do monolito de 934 linhas:
 
-```typescript
-// Gesto secreto no logo para reconfiguração
-const [logoTapCount, setLogoTapCount] = useState(0);
-const [showReconfigureDialog, setShowReconfigureDialog] = useState(false);
-const [reconfigureStep, setReconfigureStep] = useState<'pin' | 'cnpj'>('pin');
-const [reconfigurePin, setReconfigurePin] = useState('');
-const [reconfigureCnpj, setReconfigureCnpj] = useState('');
-const [reconfigureLoading, setReconfigureLoading] = useState(false);
-const [reconfigureError, setReconfigureError] = useState('');
-const [showReconfigurePin, setShowReconfigurePin] = useState(false);
-```
+| Componente | Responsabilidade | Linhas aprox. |
+|---|---|---|
+| `TotemHeader.tsx` | Logo, hora, badge de modo, gesto secreto | 650-683 |
+| `TotemMachineCard.tsx` | Card individual de máquina (reutilizado para lavadoras e secadoras) | 712-759 / 774-823 |
+| `TotemMachineGrid.tsx` | Grid de lavadoras + secadoras | 697-827 |
+| `TotemCNPJSetup.tsx` | Tela de configuração inicial por CNPJ | 416-471 |
+| `TotemReconfigureDialog.tsx` | Dialog de reconfiguração via gesto secreto | 848-930 |
+| `TotemPaymentScreens.tsx` | Telas de processing, error, success | 486-595 |
 
-#### 2. Nova função `handleLogoTap`
+**Diretório:** `src/components/totem/`
 
-```typescript
-const handleLogoTap = () => {
-  const newCount = logoTapCount + 1;
-  setLogoTapCount(newCount);
+O `Totem.tsx` ficará como orquestrador (~150 linhas), delegando renderização aos sub-componentes.
 
-  if (newCount >= 7) {
-    // Ativar diálogo de reconfiguração
-    setShowReconfigureDialog(true);
-    setReconfigureStep('pin');
-    setReconfigurePin('');
-    setReconfigureCnpj('');
-    setReconfigureError('');
-    setLogoTapCount(0);
-  }
+---
 
-  // Reset contador após 3 segundos de inatividade
-  setTimeout(() => setLogoTapCount(0), 3000);
-};
-```
+## Melhoria 3: Cache Offline de Máquinas
 
-#### 3. Função `handleReconfigurePin` (valida PIN com `validatePin`)
+**Arquivo: `src/hooks/useMachines.ts`**
+- Após cada `fetchMachines` bem-sucedido, salvar os dados transformados via `nativeStorage.setItem('machines_cache_<laundryId>', JSON.stringify(machines))`
+- No `catch` do `fetchMachines`, antes de setar `setMachines([])`, tentar carregar do cache
+- Adicionar flag `isOffline` ao retorno do hook para que a UI possa mostrar indicador
 
-```typescript
-const handleReconfigurePin = () => {
-  const isValid = validatePin(reconfigurePin); // usando validatePin de useAdminAccess
-  if (isValid) {
-    setReconfigureStep('cnpj');
-    setReconfigureError('');
-    setReconfigurePin('');
-  } else {
-    setReconfigureError('PIN incorreto. Tente novamente.');
-    setReconfigurePin('');
-  }
-};
-```
+**Arquivo: `src/pages/Totem.tsx` (ou `TotemHeader.tsx` após refactor)**
+- Mostrar badge "Offline - dados em cache" quando `isOffline` for `true`
 
-#### 4. Função `handleReconfigureCNPJ` (limpa storage e reconfigura)
+---
 
-```typescript
-const handleReconfigureCNPJ = async () => {
-  const cleanCnpj = reconfigureCnpj.replace(/\D/g, '');
-  if (cleanCnpj.length !== 14) {
-    setReconfigureError('CNPJ deve ter 14 dígitos.');
-    return;
-  }
-  setReconfigureLoading(true);
-  setReconfigureError('');
-  
-  // Limpar storage atual antes de reconfigurar
-  await nativeStorage.removeItem('totem_laundry_id');
-  
-  const success = await configureTotemByCNPJ(cleanCnpj);
-  setReconfigureLoading(false);
-  
-  if (success) {
-    setShowReconfigureDialog(false);
-    toast({ title: "✅ Totem Reconfigurado", description: "Nova lavanderia carregada com sucesso." });
-  } else {
-    setReconfigureError('CNPJ não encontrado ou lavanderia inativa.');
-  }
-};
-```
+## Melhoria 4: Tela de Diagnóstico
 
-#### 5. Adicionar `validatePin` ao destructuring de `useAdminAccess`
+**Novo arquivo: `src/components/totem/TotemDiagnostics.tsx`**
 
-```typescript
-const { authenticate: adminAuthenticate, validatePin } = useAdminAccess();
-```
+Acessível pelo gesto secreto (após PIN), como uma terceira opção além de "reconfigurar CNPJ". Ou como aba no dialog de reconfiguração.
 
-#### 6. Adicionar `onClick={handleLogoTap}` ao `div` do logo no header
+Informações exibidas:
+- CNPJ e nome da lavanderia configurada
+- ID do totem (`totem_laundry_id`)
+- Status de conexão Supabase (realtime channel status)
+- Quantidade de máquinas carregadas (online/offline/total)
+- Último heartbeat de cada ESP32
+- Informações do dispositivo (`deviceInfo` do Capacitor)
+- Versão do app (do `package.json`)
+- Botão "Copiar Diagnóstico" para suporte remoto
 
-O `div` que contém o `Sparkles` e o `h1 "Top Lavanderia"` (linhas 578–587) receberá `onClick` e `select-none cursor-pointer`:
+**Integração:** Adicionar `reconfigureStep = 'pin' | 'cnpj' | 'diagnostics'` no dialog existente, com botões para navegar entre as opções após autenticação do PIN.
 
-```tsx
-<div 
-  className="flex items-center space-x-2 select-none"
-  onClick={handleLogoTap}
->
-  <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-    <Sparkles className="text-white" size={16} />
-  </div>
-  <div>
-    <h1 className="text-lg font-bold text-white">Top Lavanderia</h1>
-    ...
-  </div>
-</div>
-```
+---
 
-#### 7. Adicionar o Dialog de reconfiguração antes do `</div>` final
+## Melhoria 5: Countdown Visual para Máquinas em Uso
 
-Um `Dialog` do Radix (já importado via `@/components/ui/dialog`) com dois passos internos:
+**Arquivo: `src/hooks/useMachines.ts`**
+- Calcular `timeRemaining` baseado em `updated_at` + `cycle_time_minutes`:
+  ```
+  const elapsed = (now - updatedAt) / 60000;
+  timeRemaining = Math.max(0, cycleTime - elapsed);
+  ```
+- Setar esse valor no campo `timeRemaining` da interface `Machine`
 
-**Passo PIN:**
-- Campo de senha com toggle mostrar/ocultar
-- Botões "Confirmar" / "Cancelar"
-- Máx. 3 tentativas (bloqueia e fecha o diálogo)
+**Arquivo: `TotemMachineCard.tsx` (ou diretamente no Totem.tsx)**
+- O código de Progress bar já existe (linhas 746-753), mas nunca é ativado porque `timeRemaining` nunca é populado
+- Com o cálculo acima, a barra de progresso e o texto de minutos restantes aparecerão automaticamente
+- Adicionar atualização a cada 30s via `setInterval` no `Totem.tsx` para manter o countdown atualizado
 
-**Passo CNPJ:**
-- Campo numérico com máscara visual (14 dígitos)
-- Mostra nome da lavanderia atual como referência
-- Botão "Reconfigurar Totem" com loading spinner
-- Mensagem de erro em vermelho
+---
 
-#### 8. Importar `nativeStorage` no Totem.tsx
+## Ordem de Implementação
 
-```typescript
-import { nativeStorage } from '@/utils/nativeStorage';
-```
+1. **Melhoria 5** (countdown) — menor risco, ativa funcionalidade existente
+2. **Melhoria 1** (PIN do Supabase) — correção de segurança crítica
+3. **Melhoria 3** (cache offline) — resiliência
+4. **Melhoria 2** (refatoração) — organização do código
+5. **Melhoria 4** (diagnósticos) — utiliza estrutura refatorada
 
-Também importar `Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription` de `@/components/ui/dialog`, e `Label` de `@/components/ui/label`, e `Eye, EyeOff, RefreshCw` de `lucide-react`.
+## Arquivos Criados/Modificados
 
-## Segurança
+- `src/hooks/useAdminAccess.ts` — PIN via Supabase RPC
+- `src/hooks/useMachines.ts` — cache offline + cálculo timeRemaining
+- `src/pages/Totem.tsx` — orquestrador simplificado
+- `src/components/totem/TotemHeader.tsx` — novo
+- `src/components/totem/TotemMachineCard.tsx` — novo
+- `src/components/totem/TotemMachineGrid.tsx` — novo
+- `src/components/totem/TotemCNPJSetup.tsx` — novo
+- `src/components/totem/TotemReconfigureDialog.tsx` — novo
+- `src/components/totem/TotemPaymentScreens.tsx` — novo
+- `src/components/totem/TotemDiagnostics.tsx` — novo
+- `src/components/admin/AdminPinDialog.tsx` — async pin validation
 
-- **PIN obrigatório** antes de qualquer reconfiguração — mesmo PIN do admin (`1234` em produção, configurável via `useAdminAccess`)
-- **Máximo 3 tentativas** de PIN antes de fechar o diálogo automaticamente
-- **Gesto invisível** — nenhum indicador visual de que o logo é clicável
-- **Não interrompe o modo kiosk** — a segurança permanece ativa durante o processo
-- O gesto exige **7 toques em até 3 segundos**, evitando ativação acidental
-
-## Arquivo a modificar
-
-- `src/pages/Totem.tsx` — único arquivo alterado
