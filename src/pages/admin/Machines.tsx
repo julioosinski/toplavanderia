@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { MachineDialog } from "@/components/admin/MachineDialog";
 import { ESP32ConfigurationDialog } from "@/components/admin/ESP32ConfigurationDialog";
+import { ESP32PendingApproval } from "@/components/admin/ESP32PendingApproval";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -389,6 +390,8 @@ export default function Machines() {
             </Button>
           </div>
         </div>
+
+        <ESP32PendingApproval />
 
         <MachineDialog 
           machine={editingMachine ? { ...editingMachine, type: (editingMachine.type === 'washing' ? 'lavadora' : editingMachine.type === 'drying' ? 'secadora' : editingMachine.type) as 'lavadora' | 'secadora' } : null}
