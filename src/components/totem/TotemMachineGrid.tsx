@@ -12,8 +12,16 @@ interface TotemMachineGridProps {
 export const TotemMachineGrid = ({ machines, deviceMode, isViewOnly, onSelect }: TotemMachineGridProps) => {
   const lavadoras = machines.filter(m => m.type === "lavadora");
   const secadoras = machines.filter(m => m.type === "secadora");
-  const maxCols = deviceMode === 'smartpos' ? 2 : Math.min(lavadoras.length || secadoras.length || 3, 6);
-  const gridCols = deviceMode === 'smartpos' ? 'grid-cols-2' : `grid-cols-${maxCols}`;
+
+  const getGridClass = (count: number) => {
+    if (deviceMode === 'smartpos') return 'grid-cols-2';
+    if (count <= 3) return 'grid-cols-3';
+    if (count <= 4) return 'grid-cols-4';
+    if (count <= 5) return 'grid-cols-5';
+    if (count <= 6) return 'grid-cols-6';
+    if (count <= 8) return 'grid-cols-8';
+    return 'grid-cols-10';
+  };
 
   return (
     <div className="container mx-auto px-2 flex-1 flex flex-col min-h-0 overflow-auto">
