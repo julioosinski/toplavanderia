@@ -61,12 +61,30 @@ export const ESP32PendingApproval = () => {
 
   const fetchPendingDevices = async () => {
     if (!currentLaundry?.id) return;
-    const { data, error } = await supabase
+
+    // Fetch pending ESP32s
+    const { data: pendingData } = await supabase
       .from("esp32_status")
       .select("id, esp32_id, device_name, ip_address, signal_strength, firmware_version, last_heartbeat, registration_status, created_at")
       .eq("laundry_id", currentLaundry.id)
       .eq("registration_status", "pending");
-    if (!error) setPendingDevices(data || []);
+
+    // Fetch approved ESP32s that have no associated machine (orphans)
+    const { data: approvedData } = await supabase
+      .from("esp32_status")
+      .select("id, esp32_id, device_name, ip_address, signal_strength, firmware_version, last_heartbeat, registration_status, created_at")
+      .eq("laundry_id", currentLaundry.id)
+      .eq("registration_status", "approved");
+
+    const { data: machinesData } = await supabase
+      .from("machines")
+      .select("esp32_id")
+      .eq("laundry_id", currentLaundry.id);
+
+    const machineEsp32Ids = new Set(machinesData?.map(m => m.esp32_id) || []);
+    const orphanedApproved = (approvedData || []).filter(d => !machineEsp32Ids.has(d.esp32_id));
+
+    setPendingDevices([...(pendingData || []), ...orphanedApproved]);
     setLoading(false);
   };
 

@@ -1,0 +1,1 @@
+UPDATE esp32_status SET registration_status = 'pending' WHERE registration_status = 'approved' AND esp32_id NOT IN (SELECT DISTINCT esp32_id FROM machines WHERE esp32_id IS NOT NULL);
