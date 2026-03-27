@@ -1,109 +1,100 @@
 
 
-# Revisao Completa e Sugestoes de Melhoria
+# Sugestoes de Melhoria para o Sistema
 
-## Problemas Identificados
-
-### A. DUPLICACAO DE FUNCIONALIDADE (Admin antigo vs novo layout)
-
-O sistema tem **duas interfaces admin paralelas** que confundem:
-- `src/pages/Admin.tsx` (754 linhas) — painel antigo com 15 tabs inline (Maquinas, PayGO, TEF, USB, Debug, Failover, etc.)
-- `src/layouts/AdminLayout.tsx` + `src/pages/admin/*.tsx` — painel novo com sidebar e paginas dedicadas
-
-Ambos estao acessiveis. O antigo tem funcionalidades que o novo nao tem (PayGO admin, TEF L4, USB diagnostics, Debug, Failover, Credit Release). O novo tem melhor UX (sidebar, breadcrumbs, tema escuro).
-
-**Acao:** Remover `Admin.tsx` e migrar as funcionalidades exclusivas para as paginas do novo layout.
-
-### B. INCONSISTENCIA DE TIPOS DE MAQUINA
-
-- `Admin.tsx` usa `washing`/`drying`
-- `useMachines.ts` (totem) aceita ambos mas converte para `lavadora`/`secadora`
-- `ESP32PendingApproval.tsx` cria maquinas com `washer`/`dryer`
-- Banco de dados tem registros misturados
-
-**Acao:** Padronizar para `lavadora`/`secadora` em todo o sistema.
-
-### C. TOTEM — UX INCOMPLETA
-
-1. **Grid limita a 6 lavadoras e 6 secadoras** — hard-coded `.slice(0, 6)`, ignora maquinas extras
-2. **Nenhum estado vazio** — se nao ha maquinas, tela fica em branco
-3. **Timeout de ciclo nao reseta a maquina** — quando `timeRemaining <= 0` e passa da margem, muda status localmente mas nao atualiza o banco
-4. **Dois setInterval para clock** (linhas 67-76) — redundante, o segundo nao atualiza UI visivelmente
-5. **Footer com telefone fake** `(11) 9999-9999`
-
-### D. DASHBOARD — SEM DADOS REAIS
-
-O `Dashboard.tsx` removeu os graficos de receita/uso (code exists mas nao renderiza). Mostra apenas o grid de maquinas. Os cards de estatisticas (receita, usos, etc.) foram removidos.
-
-### E. TRANSACOES — COLUNA MAQUINA ILEGIVEL
-
-A coluna "Maquina" mostra `machine_id.slice(0, 8)` (UUID truncado) em vez do nome da maquina. Nao faz join com `machines`.
-
-### F. SEGURANCA — TOTEM INSERE COM ANON KEY
-
-O totem insere transacoes e atualiza status de maquinas usando a `anon key` sem autenticacao. As RLS permitem isso (`INSERT WITH CHECK true`), mas e um risco.
+Apos revisar o codigo atual, identifiquei as seguintes oportunidades de melhoria organizadas por area:
 
 ---
 
-## Plano de Melhorias
+## 1. Totem — Experiencia do Usuario
 
-### 1. Eliminar painel Admin antigo e unificar funcionalidades
-- Deletar `src/pages/Admin.tsx`
-- Criar novas paginas: `/admin/paygo`, `/admin/tef`, `/admin/usb-diagnostics`
-- Adicionar ao sidebar em `AdminLayout.tsx`
-- Mover `CreditReleaseWidget`, `EnhancedPayGOAdmin`, `TEFPositivoL4Config`, `USBDiagnosticsTab`, `ESP32FailoverManager` para suas paginas dedicadas
+### 1.1 Header dinamico com nome da lavanderia
+O header mostra "Top Lavanderia" fixo. Deveria mostrar `currentLaundry.name` dinamicamente. O `TotemHeader` nao recebe essa prop.
 
-### 2. Padronizar tipos de maquina
-- Alterar `ESP32PendingApproval.tsx`: mudar `washer`→`lavadora`, `dryer`→`secadora`
-- Alterar `MachineDialog.tsx`: usar `lavadora`/`secadora`
-- Atualizar `Admin.tsx` (se nao removido) e `Machines.tsx`
+**Acao:** Passar `laundryName` como prop para `TotemHeader` e exibir no lugar do texto fixo.
 
-### 3. Melhorar Totem
-- Remover `.slice(0, 6)` — usar grid responsivo com scroll se necessario
-- Adicionar estado vazio ("Nenhuma maquina cadastrada")
-- Remover setInterval duplicado
-- Quando `timeRemaining <= 0`, chamar `updateMachineStatus(id, 'available')` no banco
-- Atualizar telefone de suporte com dado real ou remover
+### 1.2 Indicador visual de "toque para selecionar"
+Os cards de maquina disponiveis nao tem instrucao clara para o usuario. Adicionar uma mensagem entre o header e o grid: "Toque em uma maquina disponivel para iniciar".
 
-### 4. Restaurar Dashboard com estatisticas
-- Trazer de volta os 4 cards (Receita, Usos, Em Uso, Disponiveis)
-- Trazer de volta graficos de receita dos ultimos 7 dias e uso por maquina
-- O codigo ja existe no antigo `Admin.tsx`, apenas precisa ser portado
+### 1.3 Auto-reset apos sucesso
+A tela de sucesso (`SuccessScreen`) depende do usuario clicar "Nova Transacao". Em um totem publico, deveria ter auto-reset apos 15-20 segundos com countdown visual.
 
-### 5. Corrigir pagina de Transacoes
-- Fazer join com tabela `machines` para mostrar nome da maquina
-- Adicionar filtro por data (hoje, semana, mes)
-- Traduzir status (`completed`→`Concluido`, `pending`→`Pendente`)
+### 1.4 Auto-reset apos erro
+Mesma logica para `ErrorScreen` — auto-voltar para tela principal apos 30 segundos.
 
-### 6. Adicionar pagina de PayGO/Pagamentos ao novo layout
-- Nova rota `/admin/payments`
-- Conteudo: configuracao SiTef/TPGWeb + diagnostico de conexao + credit release widget
-- Link no sidebar
+### 1.5 Animacao no status "running"
+Maquinas em uso mostram um badge estatico. Adicionar uma animacao pulsante no indicador de status (o circulo verde/azul) para maquinas rodando, tornando mais claro visualmente.
 
-### 7. Adicionar indicador de maquinas sem ESP32
-- Na pagina de Maquinas, mostrar alerta se alguma maquina nao tem `esp32_id` valido
-- Facilitar associacao via dropdown
+### 1.6 Formatacao do CNPJ na tela de setup
+O input aceita apenas numeros sem mascara. Adicionar mascara `XX.XXX.XXX/XXXX-XX` para facilitar a leitura.
 
-## Arquivos a Modificar/Criar
+---
 
-| Arquivo | Acao |
+## 2. Cards de Maquina — Visual
+
+### 2.1 Icone de cadeado para maquinas em manutencao
+Maquinas com status `maintenance` usam o mesmo icone da maquina. Adicionar um icone de cadeado/ferramenta sobreposto para diferenciar visualmente.
+
+### 2.2 Remover botao "Selecionar" redundante
+O card inteiro ja e clicavel. O botao "Selecionar" dentro do card ocupa espaco e e redundante. Remover o botao e usar o visual do card (borda, sombra, hover) como feedback de interacao.
+
+---
+
+## 3. Tela de Pagamento — Fluxo
+
+### 3.1 Confirmacao antes do pagamento
+Ao clicar em uma maquina, vai direto para pagamento. Adicionar um passo intermediario de confirmacao: "Voce selecionou Lavadora 01 — R$ 18,00 — 40 min. Confirmar?"
+
+### 3.2 Tela de sucesso com dados da maquina
+A `SuccessScreen` mostra `machine?.name` mas poderia ser mais visual — mostrar o icone da maquina, cor do tipo (azul/laranja), e uma estimativa de horario de termino.
+
+---
+
+## 4. Seguranca e Robustez
+
+### 4.1 Gesto admin com feedback visual
+Os gestos de 7 toques (footer e logo) nao dao nenhum feedback visual. Adicionar um contador discreto (ex: um pequeno ponto que aparece a cada toque apos o 3o) para que o tecnico saiba que esta funcionando.
+
+### 4.2 Timeout na tela de pagamento
+Se o usuario seleciona uma maquina e nao finaliza o pagamento, nao ha timeout. Adicionar auto-cancel apos 2 minutos de inatividade na `PaymentScreen`.
+
+---
+
+## 5. Dashboard Admin
+
+### 5.1 Indicador de maquinas offline
+O dashboard mostra "Disponiveis / Total" mas nao destaca maquinas offline ou em manutencao. Adicionar um card ou alerta quando ha maquinas com problemas.
+
+### 5.2 Refresh automatico
+O dashboard nao tem realtime subscription. Adicionar polling a cada 30s ou subscription para manter os dados atualizados sem reload manual.
+
+---
+
+## Resumo de Prioridades
+
+| # | Melhoria | Impacto | Esforco |
+|---|---|---|---|
+| 1 | Auto-reset sucesso/erro (1.3, 1.4) | Alto | Baixo |
+| 2 | Header dinamico com nome da lavanderia (1.1) | Medio | Baixo |
+| 3 | Timeout na tela de pagamento (4.2) | Alto | Baixo |
+| 4 | Confirmacao antes do pagamento (3.1) | Medio | Medio |
+| 5 | Feedback visual no gesto admin (4.1) | Baixo | Baixo |
+| 6 | Remover botao "Selecionar" redundante (2.2) | Baixo | Baixo |
+| 7 | Instrucao "Toque para selecionar" (1.2) | Medio | Baixo |
+| 8 | Animacao pulsante em maquinas rodando (2.1) | Baixo | Baixo |
+| 9 | Mascara CNPJ (1.6) | Baixo | Baixo |
+| 10 | Dashboard refresh automatico (5.2) | Medio | Medio |
+
+## Arquivos a Modificar
+
+| Arquivo | Melhorias |
 |---|---|
-| `src/pages/Admin.tsx` | Deletar |
-| `src/App.tsx` | Remover rota antiga, adicionar novas rotas |
-| `src/layouts/AdminLayout.tsx` | Adicionar itens ao sidebar (PayGO, ESP32 Failover) |
-| `src/pages/admin/Payments.tsx` | Criar — PayGO admin + credit release |
-| `src/pages/admin/Dashboard.tsx` | Restaurar cards e graficos |
-| `src/pages/admin/Transactions.tsx` | Join com machines, filtros, traduzir status |
-| `src/components/admin/ESP32PendingApproval.tsx` | Corrigir tipos `washer`→`lavadora` |
-| `src/components/totem/TotemMachineGrid.tsx` | Remover `.slice()`, add estado vazio |
-| `src/pages/Totem.tsx` | Remover setInterval duplicado, corrigir timeout de ciclo |
+| `TotemHeader.tsx` | Receber e exibir nome da lavanderia |
+| `Totem.tsx` | Passar laundryName ao header, adicionar instrucao, timeout pagamento |
+| `TotemPaymentScreens.tsx` | Auto-reset com countdown em SuccessScreen e ErrorScreen, confirmacao |
+| `TotemMachineCard.tsx` | Remover botao, animacao pulsante, icone manutencao |
+| `TotemCNPJSetup.tsx` | Mascara CNPJ formatada |
+| `Dashboard.tsx` | Card de alertas, refresh automatico |
 
-## Prioridade
-
-1. Padronizar tipos de maquina (causa bugs reais)
-2. Corrigir Totem (UX do cliente final)
-3. Eliminar Admin antigo e unificar
-4. Restaurar Dashboard com dados
-5. Corrigir Transacoes com nome da maquina
-6. Criar pagina de Pagamentos no novo layout
+Deseja que eu implemente todas essas melhorias ou prefere selecionar algumas?
 
