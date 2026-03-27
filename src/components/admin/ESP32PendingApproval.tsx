@@ -111,11 +111,12 @@ export const ESP32PendingApproval = () => {
     }
 
     // 1. Criar máquina automaticamente
+    const dbType = form.type === 'lavadora' ? 'washing' : 'drying';
     const { error: machineError } = await supabase
       .from("machines")
       .insert({
         name: form.name,
-        type: form.type,
+        type: dbType,
         esp32_id: device.esp32_id,
         relay_pin: form.relay_pin,
         price_per_cycle: form.price_per_cycle,
