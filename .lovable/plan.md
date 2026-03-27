@@ -1,26 +1,34 @@
 
 
-# Mostrar ESP32 Pendentes no Painel de Maquinas
+# Corrigir Detecção de ESP32 sem Máquina Associada
 
 ## Problema
-O componente `ESP32PendingApproval` (que mostra ESP32s pendentes para aprovacao e criacao de maquinas) so aparece na aba **Configuracoes** (`SettingsTab.tsx`). O usuario espera ver dispositivos pendentes diretamente na pagina **Maquinas** (`Machines.tsx`), onde gerencia todas as maquinas.
 
-## Solucao
+O ESP32 "lavadora teste" está na tabela `esp32_status` com `registration_status = 'approved'` e `is_online = true`, mas **não existe uma máquina na tabela `machines`** vinculada a ele. O componente `ESP32PendingApproval` só busca dispositivos com `registration_status = 'pending'`, então esse ESP32 fica invisível.
 
-Adicionar o componente `ESP32PendingApproval` na pagina `src/pages/admin/Machines.tsx`, acima da tabela de maquinas existentes. Assim, quando um novo ESP32 envia heartbeat e aparece como "pending", o admin pode aprova-lo e criar a maquina diretamente no painel de maquinas.
+## Solução
 
-## Alteracoes
+Duas ações:
 
-### 1. `src/pages/admin/Machines.tsx`
-- Importar `ESP32PendingApproval`
-- Renderizar o componente entre o header e o card da tabela de maquinas
-- Adicionar subscription realtime para a tabela `esp32_status` para que a lista de maquinas atualize automaticamente quando um ESP32 pendente for aprovado
+### 1. Corrigir o registro atual no banco
+- Alterar o `registration_status` do ESP32 "lavadora teste" de `approved` para `pending` via migration, para que ele apareça no painel de aprovação e o admin possa criar a máquina.
 
-### 2. Nenhuma outra alteracao necessaria
-O componente `ESP32PendingApproval` ja e auto-contido — busca dados, exibe formulario, aprova/rejeita e cria a maquina. Basta inclui-lo na pagina.
+### 2. Melhorar o componente `ESP32PendingApproval`
+- Além de buscar ESP32s com `registration_status = 'pending'`, também buscar ESP32s com `registration_status = 'approved'` que **não têm máquina associada** na tabela `machines`.
+- Isso previne que o problema se repita: se um ESP32 for aprovado mas a máquina não for criada (por erro ou falha), ele continuará aparecendo no painel.
+
+## Alterações
+
+### Arquivo: `src/components/admin/ESP32PendingApproval.tsx`
+- Modificar `fetchPendingDevices` para buscar ESP32s pendentes E ESP32s aprovados sem máquina correspondente
+- Buscar a lista de `esp32_id`s da tabela `machines` para a lavanderia atual
+- Filtrar ESP32s aprovados que não estão vinculados a nenhuma máquina
+- Mostrar ambos os grupos (pendentes e "órfãos") no mesmo painel
+
+### Database: Corrigir registro atual
+- Executar UPDATE para setar `registration_status = 'pending'` no ESP32 "lavadora teste" (solução imediata enquanto o código é melhorado)
 
 ## Resultado
-Ao abrir o painel Maquinas, o admin vera:
-1. Banner com ESP32s pendentes (se houver) — com formulario para nomear, definir tipo/preco e aprovar
-2. Tabela com todas as maquinas ja cadastradas
+- O ESP32 "lavadora teste" aparecerá imediatamente no painel de Máquinas para ser configurado
+- Futuramente, qualquer ESP32 aprovado sem máquina também será detectado automaticamente
 
