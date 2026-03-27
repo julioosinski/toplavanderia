@@ -44,7 +44,7 @@ export const TotemMachineGrid = ({ machines, deviceMode, isViewOnly, onSelect }:
                 </div>
                 <h2 className="text-xl font-bold text-blue-700">Lavadoras</h2>
               </div>
-              <div className={`flex-1 grid ${gridCols} gap-3 auto-rows-fr`}>
+              <div className={`flex-1 grid ${getGridClass(lavadoras.length)} gap-3 auto-rows-fr`}>
                 {lavadoras.map(machine => (
                   <TotemMachineCard key={machine.id} machine={machine} deviceMode={deviceMode} isViewOnly={isViewOnly} colorScheme="blue" onSelect={onSelect} />
                 ))}
@@ -61,7 +61,7 @@ export const TotemMachineGrid = ({ machines, deviceMode, isViewOnly, onSelect }:
                 </div>
                 <h2 className="text-xl font-bold text-orange-700">Secadoras</h2>
               </div>
-              <div className={`flex-1 grid ${gridCols} gap-3 auto-rows-fr`}>
+              <div className={`flex-1 grid ${getGridClass(secadoras.length)} gap-3 auto-rows-fr`}>
                 {secadoras.map(machine => (
                   <TotemMachineCard key={machine.id} machine={machine} deviceMode={deviceMode} isViewOnly={isViewOnly} colorScheme="orange" onSelect={onSelect} />
                 ))}
