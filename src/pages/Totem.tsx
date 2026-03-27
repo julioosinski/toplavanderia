@@ -19,11 +19,11 @@ import { TotemHeader } from "@/components/totem/TotemHeader";
 import { TotemMachineGrid } from "@/components/totem/TotemMachineGrid";
 import { TotemCNPJSetup } from "@/components/totem/TotemCNPJSetup";
 import { TotemReconfigureDialog } from "@/components/totem/TotemReconfigureDialog";
-import { ProcessingScreen, ErrorScreen, SuccessScreen, PaymentScreen } from "@/components/totem/TotemPaymentScreens";
+import { ProcessingScreen, ErrorScreen, SuccessScreen, PaymentScreen, ConfirmationScreen } from "@/components/totem/TotemPaymentScreens";
 
 const Totem = () => {
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
-  const [paymentStep, setPaymentStep] = useState<"select" | "payment" | "processing" | "success" | "error" | "pix_qr">("select");
+  const [paymentStep, setPaymentStep] = useState<"select" | "confirm" | "payment" | "processing" | "success" | "error" | "pix_qr">("select");
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showConfig, setShowConfig] = useState(false);
   const [transactionData, setTransactionData] = useState<any>(null);
@@ -69,7 +69,6 @@ const Totem = () => {
     return () => clearInterval(timer);
   }, []);
 
-
   // Auto kiosk mode
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -111,7 +110,7 @@ const Totem = () => {
     const machine = machines.find(m => m.id === machineId);
     if (machine && machine.status === "available") {
       setSelectedMachine(machine);
-      setPaymentStep("payment");
+      setPaymentStep("confirm");
     }
   };
 
@@ -149,12 +148,12 @@ const Totem = () => {
     }
   };
 
-  const resetTotem = () => {
+  const resetTotem = useCallback(() => {
     setSelectedMachine(null);
     setPaymentStep("select");
     setTransactionData(null);
     setPixPaymentData(null);
-  };
+  }, []);
 
   // Admin footer gesture (7 clicks)
   const handleAdminAccess = () => {
@@ -234,6 +233,16 @@ const Totem = () => {
     return <SuccessScreen machine={selectedMachine} transactionData={transactionData} onReset={resetTotem} />;
   }
 
+  if (paymentStep === "confirm" && selectedMachine) {
+    return (
+      <ConfirmationScreen
+        machine={selectedMachine}
+        onConfirm={() => setPaymentStep("payment")}
+        onCancel={resetTotem}
+      />
+    );
+  }
+
   if (paymentStep === "payment" && selectedMachine) {
     return (
       <PaymentScreen
@@ -257,7 +266,14 @@ const Totem = () => {
   // Main screen
   return (
     <div className={`h-screen bg-white flex flex-col ${deviceMode === 'smartpos' ? 'overflow-auto' : 'overflow-hidden'}`}>
-      <TotemHeader currentTime={currentTime} deviceMode={deviceMode} isOffline={isOffline} onLogoTap={handleLogoTap} />
+      <TotemHeader
+        currentTime={currentTime}
+        deviceMode={deviceMode}
+        isOffline={isOffline}
+        laundryName={currentLaundry?.name}
+        onLogoTap={handleLogoTap}
+        tapCount={logoTapCount}
+      />
 
       {isViewOnly && (
         <div className="container mx-auto px-2 pb-2">
@@ -268,6 +284,12 @@ const Totem = () => {
         </div>
       )}
 
+      {!isViewOnly && (
+        <div className="container mx-auto px-2 pb-1">
+          <p className="text-center text-sm text-muted-foreground">Toque em uma máquina disponível para iniciar</p>
+        </div>
+      )}
+
       <TotemMachineGrid machines={machines} deviceMode={deviceMode} isViewOnly={isViewOnly} onSelect={handleMachineSelect} />
 
       {/* Footer */}
@@ -275,8 +297,15 @@ const Totem = () => {
         <div className="flex items-center justify-center space-x-2 text-gray-500">
           <Wifi size={12} />
           <span className="text-xs cursor-pointer select-none" onClick={handleAdminAccess}>
-            Sistema Online — {currentLaundry?.name || 'Top Lavanderia'}
+            Sistema Online — {currentLaundry?.name || 'Lavanderia'}
           </span>
+          {adminClickCount >= 3 && (
+            <div className="flex space-x-0.5 ml-1">
+              {Array.from({ length: adminClickCount - 2 }, (_, i) => (
+                <div key={i} className="w-1 h-1 rounded-full bg-gray-400 animate-scale-in" />
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

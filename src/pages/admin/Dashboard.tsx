@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { DollarSign, WashingMachine, Receipt, TrendingUp, Activity, CheckCircle } from "lucide-react";
+import { DollarSign, WashingMachine, Receipt, TrendingUp, Activity, CheckCircle, AlertTriangle } from "lucide-react";
 import { useLaundry } from "@/contexts/LaundryContext";
 import { supabase } from "@/integrations/supabase/client";
 import { LaundryDashboardSelector } from "@/components/admin/LaundryDashboardSelector";
 import { MachineStatusGrid } from "@/components/admin/MachineStatusGrid";
 import { ConsolidatedMachineStatus } from "@/components/admin/ConsolidatedMachineStatus";
 import { useMachines } from "@/hooks/useMachines";
+import { Badge } from "@/components/ui/badge";
 
 interface Stats {
   totalRevenue: number;
@@ -15,6 +16,8 @@ interface Stats {
   totalMachines: number;
   todayTransactions: number;
   monthlyRevenue: number;
+  offlineMachines: number;
+  maintenanceMachines: number;
 }
 
 export default function Dashboard() {
@@ -26,6 +29,8 @@ export default function Dashboard() {
     totalMachines: 0,
     todayTransactions: 0,
     monthlyRevenue: 0,
+    offlineMachines: 0,
+    maintenanceMachines: 0,
   });
   const [revenueData, setRevenueData] = useState<any[]>([]);
   const [machineData, setMachineData] = useState<any[]>([]);
@@ -53,7 +58,8 @@ export default function Dashboard() {
 
       const totalMachines = machinesData?.length || 0;
       const activeMachines = machinesData?.filter(m => m.status === 'available').length || 0;
-      const inUse = machinesData?.filter(m => m.status === 'running' || m.status === 'in_use').length || 0;
+      const offlineMachines = machinesData?.filter(m => m.status === 'offline').length || 0;
+      const maintenanceMachines = machinesData?.filter(m => m.status === 'maintenance').length || 0;
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -63,7 +69,6 @@ export default function Dashboard() {
       ).length || 0;
 
       const totalRevenue = machinesData?.reduce((sum, m) => sum + (Number(m.total_revenue) || 0), 0) || 0;
-      const totalUses = machinesData?.reduce((sum, m) => sum + (Number(m.total_uses) || 0), 0) || 0;
 
       const currentMonth = new Date().getMonth();
       const currentYear = new Date().getFullYear();
@@ -98,7 +103,7 @@ export default function Dashboard() {
         uso: machine.total_uses || 0,
       })) || [];
 
-      setStats({ totalRevenue, activeMachines, totalMachines, todayTransactions, monthlyRevenue });
+      setStats({ totalRevenue, activeMachines, totalMachines, todayTransactions, monthlyRevenue, offlineMachines, maintenanceMachines });
       setRevenueData(revenueByDay);
       setMachineData(machineUsage);
     } catch (error) {
@@ -124,6 +129,14 @@ export default function Dashboard() {
   useEffect(() => {
     loadDashboardData();
     if (isViewingAll) loadConsolidatedMachines();
+
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(() => {
+      loadDashboardData();
+      if (isViewingAll) loadConsolidatedMachines();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, [currentLaundry, isViewingAll]);
 
   if (loading) {
@@ -137,6 +150,8 @@ export default function Dashboard() {
     );
   }
 
+  const hasAlerts = stats.offlineMachines > 0 || stats.maintenanceMachines > 0;
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex items-center justify-between">
@@ -146,6 +161,29 @@ export default function Dashboard() {
         </div>
         <LaundryDashboardSelector />
       </div>
+
+      {/* Alerts */}
+      {hasAlerts && (
+        <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/20">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="text-amber-600 flex-shrink-0" size={20} />
+              <div className="flex flex-wrap gap-2">
+                {stats.offlineMachines > 0 && (
+                  <Badge variant="outline" className="border-red-300 text-red-700 bg-red-50">
+                    {stats.offlineMachines} máquina{stats.offlineMachines > 1 ? 's' : ''} offline
+                  </Badge>
+                )}
+                {stats.maintenanceMachines > 0 && (
+                  <Badge variant="outline" className="border-amber-300 text-amber-700 bg-amber-50">
+                    {stats.maintenanceMachines} em manutenção
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

@@ -1,8 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Clock } from "lucide-react";
+import { Clock, Wrench } from "lucide-react";
 import type { Machine } from "@/hooks/useMachines";
 
 interface TotemMachineCardProps {
@@ -36,6 +35,8 @@ const getStatusText = (status: string) => {
 export const TotemMachineCard = ({ machine, deviceMode, isViewOnly, colorScheme, onSelect }: TotemMachineCardProps) => {
   const IconComponent = machine.icon;
   const isAvailable = machine.status === "available";
+  const isRunning = machine.status === "running";
+  const isMaintenance = machine.status === "maintenance";
   const colors = colorScheme === 'blue' 
     ? { gradient: 'from-blue-500 to-blue-600', text: 'text-blue-600', border: 'border-blue-200 hover:border-blue-400', btn: 'bg-blue-600 hover:bg-blue-700' }
     : { gradient: 'from-orange-500 to-orange-600', text: 'text-orange-600', border: 'border-orange-200 hover:border-orange-400', btn: 'bg-orange-600 hover:bg-orange-700' };
@@ -50,8 +51,14 @@ export const TotemMachineCard = ({ machine, deviceMode, isViewOnly, colorScheme,
       onClick={() => isAvailable && onSelect(machine.id)}
     >
       <div className="absolute top-2 right-2 z-10">
-        <div className={`w-3 h-3 rounded-full ${getStatusColor(machine.status)} shadow border border-white`} />
+        <div className={`w-3 h-3 rounded-full ${getStatusColor(machine.status)} shadow border border-white ${isRunning ? 'animate-pulse' : ''}`} />
       </div>
+
+      {isMaintenance && (
+        <div className="absolute top-2 left-2 z-10">
+          <Wrench size={14} className="text-red-500" />
+        </div>
+      )}
 
       <CardHeader className={`text-center ${deviceMode === 'smartpos' ? 'p-3 pb-2' : 'p-2 pb-1'} flex-shrink-0`}>
         <div className={`${deviceMode === 'smartpos' ? 'w-12 h-12' : 'w-10 h-10'} bg-gradient-to-br ${colors.gradient} rounded-full flex items-center justify-center mx-auto mb-1 shadow`}>
@@ -88,7 +95,7 @@ export const TotemMachineCard = ({ machine, deviceMode, isViewOnly, colorScheme,
           </Badge>
         </div>
 
-        {machine.status === "running" && machine.timeRemaining !== undefined && machine.timeRemaining > 0 && (
+        {isRunning && machine.timeRemaining !== undefined && machine.timeRemaining > 0 && (
           <div className="space-y-1 mb-2">
             <Progress value={(machine.duration - machine.timeRemaining) / machine.duration * 100} className="h-1" />
             <div className="text-center text-xs text-gray-600">
@@ -98,9 +105,9 @@ export const TotemMachineCard = ({ machine, deviceMode, isViewOnly, colorScheme,
         )}
 
         {isAvailable && !isViewOnly && (
-          <Button variant="default" size="sm" className={`w-full text-xs ${colors.btn} text-white ${deviceMode === 'smartpos' ? 'h-10 text-sm' : 'h-6'}`}>
-            Selecionar
-          </Button>
+          <div className={`w-full text-center text-xs ${colors.text} font-semibold ${deviceMode === 'smartpos' ? 'py-2' : 'py-1'}`}>
+            Toque para selecionar
+          </div>
         )}
       </CardContent>
     </Card>
