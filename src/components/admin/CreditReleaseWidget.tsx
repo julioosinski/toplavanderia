@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Zap, Clock, CheckCircle, AlertCircle } from 'lucide-react';
 import { useESP32CreditRelease } from '@/hooks/useESP32CreditRelease';
-import { useToast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
 
 interface CreditReleaseLog {
   id: string;

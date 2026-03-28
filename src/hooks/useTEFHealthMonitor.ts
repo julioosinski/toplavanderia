@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useToast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
 
 interface TEFHealthMetrics {
   latency: number;
