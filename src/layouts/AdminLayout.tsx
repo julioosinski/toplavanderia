@@ -11,13 +11,13 @@ import {
   Users,
   Store,
   BarChart3,
-  Shield,
   Settings,
   LogOut,
   ChevronRight,
   Moon,
   Sun,
   Activity,
+  Bluetooth,
 } from "lucide-react";
 import {
   Sidebar,
@@ -54,7 +54,7 @@ const menuItems = [
   { title: "Lavanderias", url: "/admin/laundries", icon: Store, superAdminOnly: true },
   { title: "Relatórios", url: "/admin/reports", icon: BarChart3 },
   { title: "Diagnóstico ESP32", url: "/admin/esp32-diagnostics", icon: Activity, adminOnly: true },
-  { title: "Segurança", url: "/admin/security", icon: Shield, adminOnly: true },
+  { title: "Bluetooth ESP32", url: "/admin/ble-diagnostics", icon: Bluetooth, adminOnly: true },
   { title: "Configurações", url: "/admin/settings", icon: Settings },
 ];
 
