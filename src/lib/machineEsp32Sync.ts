@@ -1,7 +1,14 @@
 import { supabase } from '@/integrations/supabase/client';
 
+/** Pino físico padrão no firmware TopLav (GPIO 2) quando `relay_pin` não veio do banco */
+export const DEFAULT_ESP32_RELAY_PIN = 2;
+
 function relayKey(pin: number): string {
   return `relay_${pin}`;
+}
+
+export function resolvedRelayPin(pin: number | null | undefined): number {
+  return pin != null && Number(pin) > 0 ? Number(pin) : DEFAULT_ESP32_RELAY_PIN;
 }
 
 /**
@@ -79,7 +86,7 @@ export async function forceMachineReleased(params: {
   if (upErr) return { error: upErr as Error };
 
   if (m.esp32_id && m.laundry_id) {
-    const pin = m.relay_pin ?? 1;
+    const pin = resolvedRelayPin(m.relay_pin);
     const { error: relayErr } = await mergeRelayIntoEsp32Status(m.esp32_id, m.laundry_id, pin, 'off');
     if (relayErr) console.warn('[forceMachineReleased] relay_status:', relayErr);
     if (hardwareOff) await queueEsp32RelayOff(m.esp32_id, pin, machineId);
@@ -106,7 +113,7 @@ export async function forceMachineMaintenance(machineId: string): Promise<{ erro
   if (upErr) return { error: upErr as Error };
 
   if (m.esp32_id && m.laundry_id) {
-    const pin = m.relay_pin ?? 1;
+    const pin = resolvedRelayPin(m.relay_pin);
     const { error: relayErr } = await mergeRelayIntoEsp32Status(m.esp32_id, m.laundry_id, pin, 'off');
     if (relayErr) console.warn('[forceMachineMaintenance] relay_status:', relayErr);
     await queueEsp32RelayOff(m.esp32_id, pin, machineId);

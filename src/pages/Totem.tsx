@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Wifi, Shield, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useKioskSecurity } from "@/hooks/useKioskSecurity";
+import { resolvedRelayPin } from "@/lib/machineEsp32Sync";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
 import { useMachines, type Machine } from "@/hooks/useMachines";
 import { useLaundry } from "@/contexts/LaundryContext";
@@ -186,16 +187,31 @@ const Totem = () => {
 
         if (selectedMachine.esp32_id) {
           try {
-            await supabase.functions.invoke('esp32-control', {
+            const relayPin = resolvedRelayPin(selectedMachine.relay_pin);
+            const { data: espData, error: espErr } = await supabase.functions.invoke('esp32-control', {
               body: {
                 esp32_id: selectedMachine.esp32_id,
-                relay_pin: selectedMachine.relay_pin || 1,
+                relay_pin: relayPin,
                 action: 'on',
                 machine_id: selectedMachine.id,
               },
             });
+            if (espErr) throw espErr;
+            if (espData && typeof espData === 'object' && 'success' in espData && espData.success === false) {
+              console.warn('esp32-control:', (espData as { error?: string }).error);
+              toast({
+                title: 'Relé ESP32',
+                description: 'Comando não enfileirado. Verifique pending_commands e o ESP32 online.',
+                variant: 'destructive',
+              });
+            }
           } catch (e) {
             console.warn('⚠️ ESP32 communication error:', e);
+            toast({
+              title: 'ESP32',
+              description: 'Falha ao enfileirar acionamento do relé.',
+              variant: 'destructive',
+            });
           }
         }
       } catch (error) {

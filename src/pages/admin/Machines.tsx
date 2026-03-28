@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useLaundry } from "@/contexts/LaundryContext";
 import { supabase } from "@/integrations/supabase/client";
 import { LaundryGuard } from "@/components/admin/LaundryGuard";
@@ -11,7 +11,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { MachineDialog } from "@/components/admin/MachineDialog";
-import { forceMachineReleased, forceMachineMaintenance } from "@/lib/machineEsp32Sync";
+import { forceMachineReleased, forceMachineMaintenance, resolvedRelayPin } from "@/lib/machineEsp32Sync";
 import { ESP32ConfigurationDialog } from "@/components/admin/ESP32ConfigurationDialog";
 import { ESP32PendingApproval } from "@/components/admin/ESP32PendingApproval";
 import {
@@ -49,12 +49,7 @@ export default function Machines() {
   const [loading, setLoading] = useState(true);
   const [editingMachine, setEditingMachine] = useState<Machine | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-
-  useEffect(() => {
-    if (currentLaundry) {
-      loadMachines();
-    }
-  }, [currentLaundry]);
+  const loadMachinesRef = useRef<() => Promise<void>>(async () => {});
 
   const loadMachines = async () => {
     if (!currentLaundry) return;
@@ -82,43 +77,80 @@ export default function Machines() {
         esp32Data?.filter((esp) => esp.laundry_id === currentLaundry.id) ?? [];
 
       const enrichedMachines = (machinesData || []).map((machine) => {
-        const esp32 = esp32ForLaundry.find((esp) => esp.esp32_id === machine.esp32_id);
+        if (machine.status === 'maintenance') {
+          const esp32 = machine.esp32_id
+            ? esp32ForLaundry.find((esp) => esp.esp32_id === machine.esp32_id)
+            : undefined;
+          let esp32Online = false;
+          if (esp32) {
+            const lastHb = esp32.last_heartbeat ? new Date(esp32.last_heartbeat) : null;
+            const now = new Date();
+            const minAgo = lastHb ? (now.getTime() - lastHb.getTime()) / 60000 : 999999;
+            const recent = lastHb && minAgo < 5;
+            esp32Online = Boolean(esp32.is_online && recent);
+          }
+          return {
+            ...machine,
+            realStatus: 'maintenance' as const,
+            esp32_online: esp32Online,
+            signal_strength: esp32?.signal_strength || null,
+            last_heartbeat: esp32?.last_heartbeat || null,
+            network_status: esp32?.network_status || 'unknown',
+          };
+        }
 
-        let realStatus = machine.status;
+        if (!machine.esp32_id) {
+          return {
+            ...machine,
+            realStatus: machine.status,
+            esp32_online: false,
+            signal_strength: null,
+            last_heartbeat: null,
+            network_status: 'unknown',
+          };
+        }
+
+        const esp32 = esp32ForLaundry.find((esp) => esp.esp32_id === machine.esp32_id);
+        let realStatus: string = machine.status;
         let esp32Online = false;
 
-        if (esp32) {
-          const lastHeartbeat = esp32.last_heartbeat ? new Date(esp32.last_heartbeat) : null;
-          const now = new Date();
-          const minutesAgo = lastHeartbeat ? (now.getTime() - lastHeartbeat.getTime()) / 60000 : 999999;
-          const isRecent = lastHeartbeat && minutesAgo < 5;
+        if (!esp32) {
+          return {
+            ...machine,
+            realStatus: 'offline',
+            esp32_online: false,
+            signal_strength: null,
+            last_heartbeat: null,
+            network_status: 'unknown',
+          };
+        }
 
-          esp32Online = esp32.is_online && isRecent;
+        const lastHeartbeat = esp32.last_heartbeat ? new Date(esp32.last_heartbeat) : null;
+        const now = new Date();
+        const minutesAgo = lastHeartbeat ? (now.getTime() - lastHeartbeat.getTime()) / 60000 : 999999;
+        const isRecent = lastHeartbeat && minutesAgo < 5;
+        esp32Online = Boolean(esp32.is_online && isRecent);
 
-          if (!esp32Online) {
-            realStatus = 'offline';
-          } else {
-            const relayStatus = esp32.relay_status as Record<string, unknown> | string | null;
-            if (typeof relayStatus === 'string') {
-              realStatus = relayStatus === 'on' ? 'running' : 'available';
-            } else if (relayStatus && typeof relayStatus === 'object') {
-              let relayOn = false;
-              const relayKey = `relay_${machine.relay_pin || 1}`;
-              const rs = relayStatus as Record<string, unknown>;
-
-              if (rs[relayKey] !== undefined) {
-                relayOn = rs[relayKey] === 'on';
-              } else if (rs.status && typeof rs.status === 'object') {
-                relayOn = (rs.status as Record<string, unknown>)[relayKey] === 'on';
-              } else if (rs.status !== undefined) {
-                relayOn = rs.status === 'on';
-              }
-
-              realStatus = relayOn ? 'running' : 'available';
+        if (!esp32Online) {
+          realStatus = 'offline';
+        } else {
+          let relayOn = false;
+          const relayStatus = esp32.relay_status as Record<string, unknown> | string | null;
+          if (typeof relayStatus === 'string') {
+            relayOn = relayStatus === 'on';
+          } else if (relayStatus && typeof relayStatus === 'object') {
+            const relayKey = `relay_${resolvedRelayPin(machine.relay_pin)}`;
+            const rs = relayStatus as Record<string, unknown>;
+            if (rs[relayKey] !== undefined) {
+              relayOn = rs[relayKey] === 'on';
+            } else if (rs.status && typeof rs.status === 'object') {
+              relayOn = (rs.status as Record<string, unknown>)[relayKey] === 'on';
+            } else if (rs.status !== undefined) {
+              relayOn = rs.status === 'on';
             }
           }
-        } else {
-          realStatus = 'offline';
+          const dbRunning = machine.status === 'running';
+          realStatus = dbRunning || relayOn ? 'running' : 'available';
         }
 
         return {
@@ -143,6 +175,35 @@ export default function Machines() {
       setLoading(false);
     }
   };
+
+  loadMachinesRef.current = loadMachines;
+
+  useEffect(() => {
+    if (currentLaundry) {
+      void loadMachines();
+    }
+  }, [currentLaundry]);
+
+  useEffect(() => {
+    if (!currentLaundry?.id) return;
+    const lid = currentLaundry.id;
+    const channel = supabase
+      .channel(`admin-machines-rt-${lid}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'machines', filter: `laundry_id=eq.${lid}` },
+        () => void loadMachinesRef.current()
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'esp32_status', filter: `laundry_id=eq.${lid}` },
+        () => void loadMachinesRef.current()
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [currentLaundry?.id]);
 
   const handleEdit = (machine: Machine) => {
     setEditingMachine(machine);

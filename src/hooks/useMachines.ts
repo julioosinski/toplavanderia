@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Droplets, Wind } from 'lucide-react';
 import { useMachineAutoStatus } from './useMachineAutoStatus';
 import { nativeStorage, getItemWithTimeout } from '@/utils/nativeStorage';
+import { resolvedRelayPin } from '@/lib/machineEsp32Sync';
 
 export interface Machine {
   id: string;
@@ -108,7 +109,7 @@ export const useMachines = (laundryId?: string | null) => {
           machineStatus = 'available';
         } else if (esp32Status.relay_status && typeof esp32Status.relay_status === 'object') {
           const relayObj = esp32Status.relay_status as any;
-          const relayKey = `relay_${machine.relay_pin || 1}`;
+          const relayKey = `relay_${resolvedRelayPin(machine.relay_pin)}`;
           let relayStatus: string | boolean | number | undefined;
           
           if (relayObj[relayKey] !== undefined) relayStatus = relayObj[relayKey];
@@ -302,7 +303,7 @@ export const useMachines = (laundryId?: string | null) => {
     (machineId: string, durationMinutes: number) => {
       const startedAt = new Date().toISOString();
       postPaymentRunningRef.current.set(machineId, {
-        until: Date.now() + (durationMinutes + 8) * 60_000,
+        until: Date.now() + (durationMinutes + CYCLE_END_GRACE_MINUTES) * 60_000,
         startedAt,
         durationMin: durationMinutes,
       });

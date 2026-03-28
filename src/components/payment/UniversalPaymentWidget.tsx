@@ -90,6 +90,10 @@ export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
   const btnClass = compactMode ? 'h-16 text-lg font-semibold' : 'h-14 text-base font-semibold';
   const iconClass = compactMode ? 'h-6 w-6 mr-3' : 'h-5 w-5 mr-2';
 
+  const waitingCard =
+    isProcessing && (activeType === 'credit' || activeType === 'debit');
+  const waitingPix = isProcessing && activeType === 'pix';
+
   const typeButton = (type: PaymentType, label: string, Icon: typeof CreditCard) => {
     const busy = isProcessing && activeType === type;
     return (
@@ -109,18 +113,50 @@ export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
     );
   };
 
+  const cardFlowTitle =
+    activeType === 'credit' ? 'Crédito' : activeType === 'debit' ? 'Débito' : '';
+
   const inner = (
     <>
-      <div className="space-y-2">
-        <p className="text-sm text-muted-foreground text-center">
-          Toque na forma de pagamento para iniciar na maquininha
-        </p>
-        <div className={`grid grid-cols-1 ${compactMode ? 'gap-3' : 'gap-2'}`}>
-          {typeButton('credit', 'Crédito', CreditCard)}
-          {typeButton('debit', 'Débito', Smartphone)}
-          {typeButton('pix', 'PIX', QrCode)}
+      {waitingCard ? (
+        <div className="flex flex-col items-center justify-center gap-4 py-6 text-center">
+          <Loader2
+            className={`${compactMode ? 'h-14 w-14' : 'h-12 w-12'} animate-spin text-primary`}
+          />
+          <div className="space-y-2">
+            <p className={`font-semibold ${compactMode ? 'text-xl' : 'text-lg'}`}>
+              {cardFlowTitle ? `Pagamento — ${cardFlowTitle}` : 'Pagamento com cartão'}
+            </p>
+            <p className="text-sm text-muted-foreground max-w-sm">
+              Aproxime, insira ou passe o cartão na maquininha e aguarde a conclusão na pinpad.
+              Não é necessário escolher de novo na tela.
+            </p>
+          </div>
         </div>
-      </div>
+      ) : waitingPix ? (
+        <div className="flex flex-col items-center justify-center gap-4 py-6 text-center">
+          <Loader2
+            className={`${compactMode ? 'h-14 w-14' : 'h-12 w-12'} animate-spin text-primary`}
+          />
+          <div className="space-y-2">
+            <p className={`font-semibold ${compactMode ? 'text-xl' : 'text-lg'}`}>PIX</p>
+            <p className="text-sm text-muted-foreground max-w-sm">
+              Gerando o código PIX. Em seguida use a câmera do celular ou confirme no app do banco.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground text-center">
+            Toque na forma de pagamento para iniciar na maquininha
+          </p>
+          <div className={`grid grid-cols-1 ${compactMode ? 'gap-3' : 'gap-2'}`}>
+            {typeButton('credit', 'Crédito', CreditCard)}
+            {typeButton('debit', 'Débito', Smartphone)}
+            {typeButton('pix', 'PIX', QrCode)}
+          </div>
+        </div>
+      )}
 
       {!hasAvailableMethods && (
         <div className="flex items-center gap-2 p-3 bg-destructive/10 rounded-lg">
