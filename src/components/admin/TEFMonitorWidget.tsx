@@ -195,7 +195,7 @@ export const TEFMonitorWidget = ({ config, onConfigClick }: TEFMonitorWidgetProp
 
             {/* Test Connection Button */}
             <Button 
-              onClick={testConnection} 
+              onClick={() => testConnection()} 
               variant="outline" 
               className="w-full"
               disabled={isProcessing}

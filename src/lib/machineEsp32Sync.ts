@@ -24,8 +24,8 @@ export async function mergeRelayIntoEsp32Status(
   if (selErr) return { error: selErr as Error };
   if (!row) return { error: null };
 
-  const prev = (row.relay_status as Record<string, unknown> | null) || {};
-  const next = { ...prev, [relayKey(relayPin)]: value };
+  const prev = (row.relay_status as Record<string, string> | null) || {};
+  const next: Record<string, string> = { ...prev, [relayKey(relayPin)]: value };
 
   const { error: upErr } = await supabase
     .from('esp32_status')
