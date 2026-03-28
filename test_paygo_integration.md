@@ -225,6 +225,34 @@ adb logcat | grep PayGo
 - [ ] Error handling test
 - [ ] Logging verification
 
+## Homologação e credencial de produção (resumo)
+
+O **credenciamento definitivo** (chaves, TID, ambiente produtivo) é definido pela **credenciadora/adquirente** e pelo **contrato PayGo**, não só pelo app. Use o checklist abaixo para validar o sistema antes de pedir **produção**.
+
+### Checklist técnico no tablet (CERT)
+
+1. **PayGo Integrado CERT** instalado e aberto; pinpad **USB** (ou BT, conforme kit) pareado e respondendo.
+2. **Instalação de ponto de captura** concluída (operação administrativa → INSTALAÇÃO, senha técnica conforme manual, CNPJ do ponto, servidor/porta de **homologação**).
+3. **Top Lavanderia** com totem configurado (CNPJ), máquinas carregando, pagamento **Crédito**, **Débito** e **PIX** (se habilitado no contrato) executados com **cartões/amostras de teste** fornecidos pela adquirente.
+4. **Comprovantes**: conferir NSU/autorização, valores corretos e registro no painel/back-end (Supabase), se aplicável.
+5. **Cancelamento / estorno**: se o escopo exigir, repetir fluxos conforme manual PayGo.
+6. **Estabilidade**: repetir vendas seguidas, troca de tela, reconexão USB.
+
+### O que a adquirente / PayGo costuma exigir para liberar produção
+
+- Evidências de testes em **CERT** (prints, relatórios ou checklist assinado — seguir o que o **suporte comercial/técnico PayGo** pedir).
+- **Dados cadastrais** do estabelecimento e **CNPJ** do ponto de captura alinhados ao contrato.
+- Substituição do **APK CERT** pelo **APK PROD** e parâmetros de **servidor/porta produtivos** (quando não for automático pela instalação).
+- Em alguns casos, **visita técnica** ou validação remota.
+
+### Produção (após liberação)
+
+1. Instalar **PayGo Integrado PROD** (pacote do kit, não reutilizar CERT em loja).
+2. Refazer **instalação de ponto de captura** em modo produção, se exigido.
+3. Validar **uma venda real de baixo valor** e conciliação.
+
+> **Importante:** o roteiro oficial pode variar (bandeira, adquirente, versão do kit). Confirme sempre com o **manual do Kit PayGo Android** recebido e com o **canal de homologação** da PayGo.
+
 ## Production Deployment
 
 Before deploying to production:

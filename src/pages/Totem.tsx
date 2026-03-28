@@ -19,7 +19,7 @@ import { TotemHeader } from "@/components/totem/TotemHeader";
 import { TotemMachineGrid } from "@/components/totem/TotemMachineGrid";
 import { TotemCNPJSetup } from "@/components/totem/TotemCNPJSetup";
 import { TotemReconfigureDialog } from "@/components/totem/TotemReconfigureDialog";
-import { ProcessingScreen, ErrorScreen, SuccessScreen, PaymentScreen, ConfirmationScreen } from "@/components/totem/TotemPaymentScreens";
+import { ProcessingScreen, ErrorScreen, SuccessScreen, PaymentScreen } from "@/components/totem/TotemPaymentScreens";
 
 const Totem = () => {
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
@@ -120,7 +120,7 @@ const Totem = () => {
     const machine = machines.find(m => m.id === machineId);
     if (machine && machine.status === "available") {
       setSelectedMachine(machine);
-      setPaymentStep("confirm");
+      setPaymentStep("payment");
     }
   };
 
@@ -261,16 +261,6 @@ const Totem = () => {
 
   if (paymentStep === "success") {
     return <SuccessScreen machine={selectedMachine} transactionData={transactionData} onReset={resetTotem} />;
-  }
-
-  if (paymentStep === "confirm" && selectedMachine) {
-    return (
-      <ConfirmationScreen
-        machine={selectedMachine}
-        onConfirm={() => setPaymentStep("payment")}
-        onCancel={resetTotem}
-      />
-    );
   }
 
   if (paymentStep === "payment" && selectedMachine) {
