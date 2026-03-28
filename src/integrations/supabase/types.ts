@@ -481,6 +481,7 @@ export type Database = {
           paygo_enabled: boolean | null
           paygo_host: string | null
           paygo_port: number | null
+          paygo_provedor: string | null
           paygo_retry_attempts: number | null
           paygo_retry_delay: number | null
           paygo_timeout: number | null
@@ -515,6 +516,7 @@ export type Database = {
           paygo_enabled?: boolean | null
           paygo_host?: string | null
           paygo_port?: number | null
+          paygo_provedor?: string | null
           paygo_retry_attempts?: number | null
           paygo_retry_delay?: number | null
           paygo_timeout?: number | null
@@ -549,6 +551,7 @@ export type Database = {
           paygo_enabled?: boolean | null
           paygo_host?: string | null
           paygo_port?: number | null
+          paygo_provedor?: string | null
           paygo_retry_attempts?: number | null
           paygo_retry_delay?: number | null
           paygo_timeout?: number | null

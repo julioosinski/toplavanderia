@@ -30,6 +30,7 @@ export interface SystemSettings {
   paygo_retry_delay: number;
   paygo_automation_key: string | null;
   paygo_cnpj_cpf: string | null;
+  paygo_provedor: string | null;
   
   // TEF Settings
   tef_config: string | null;
