@@ -14,11 +14,14 @@ type Transaction = {
   created_at: string;
   machine_id: string;
   machine_name?: string;
+  machine_type?: string;
   status: string;
   total_amount: number;
   payment_method: string | null;
   weight_kg: number;
   duration_minutes: number | null;
+  user_id?: string | null;
+  operator_name?: string;
 };
 
 const statusLabels: Record<string, string> = {
@@ -73,6 +76,26 @@ const columns: ColumnDef<Transaction>[] = [
   {
     accessorKey: "payment_method",
     header: "Pagamento",
+    cell: ({ row }) => {
+      const method = row.getValue("payment_method") as string | null;
+      if (method === "manual_release") {
+        return (
+          <Badge variant="outline" className="border-amber-500 text-amber-700">
+            Liberação Manual
+          </Badge>
+        );
+      }
+      return method || "—";
+    },
+  },
+  {
+    accessorKey: "operator_name",
+    header: "Operador",
+    cell: ({ row }) => {
+      const name = row.original.operator_name;
+      if (!name) return "—";
+      return <span className="text-sm font-medium">{name}</span>;
+    },
   },
   {
     accessorKey: "total_amount",
@@ -98,10 +121,8 @@ export default function Transactions() {
 
   const loadTransactions = async () => {
     if (!currentLaundry) return;
-
     setLoading(true);
 
-    // Fetch transactions
     let query = supabase
       .from("transactions")
       .select("*")
@@ -109,7 +130,6 @@ export default function Transactions() {
       .order("created_at", { ascending: false })
       .limit(200);
 
-    // Apply date filter
     if (dateFilter !== "all") {
       const now = new Date();
       let startDate: Date;
@@ -128,15 +148,30 @@ export default function Transactions() {
     // Fetch machine names
     const { data: machinesData } = await supabase
       .from("machines")
-      .select("id, name")
+      .select("id, name, type")
       .eq("laundry_id", currentLaundry.id);
+    const machineMap = new Map(machinesData?.map(m => [m.id, m]) || []);
 
-    const machineMap = new Map(machinesData?.map(m => [m.id, m.name]) || []);
+    // Fetch operator names for manual releases
+    const manualUserIds = [...new Set((txData || []).filter(t => t.payment_method === 'manual_release' && t.user_id).map(t => t.user_id!))];
+    let profileMap = new Map<string, string>();
+    if (manualUserIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("user_id, full_name")
+        .in("user_id", manualUserIds);
+      profileMap = new Map(profiles?.map(p => [p.user_id, p.full_name || '']) || []);
+    }
 
-    const enriched = (txData || []).map(tx => ({
-      ...tx,
-      machine_name: machineMap.get(tx.machine_id) || undefined,
-    }));
+    const enriched = (txData || []).map(tx => {
+      const machine = machineMap.get(tx.machine_id);
+      return {
+        ...tx,
+        machine_name: machine?.name || undefined,
+        machine_type: machine?.type || undefined,
+        operator_name: tx.payment_method === 'manual_release' && tx.user_id ? profileMap.get(tx.user_id) || undefined : undefined,
+      };
+    });
 
     setTransactions(enriched);
     setLoading(false);
