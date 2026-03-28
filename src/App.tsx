@@ -14,7 +14,7 @@ import Transactions from "./pages/admin/Transactions";
 import Users from "./pages/admin/Users";
 import Laundries from "./pages/admin/Laundries";
 import Reports from "./pages/admin/Reports";
-import Security from "./pages/admin/Security";
+
 import Settings from "./pages/admin/Settings";
 import Profile from "./pages/admin/Profile";
 import ESP32Diagnostics from "./pages/admin/ESP32Diagnostics";
@@ -44,7 +44,7 @@ const App = () => (
                 <Route path="laundries" element={<Laundries />} />
                 <Route path="reports" element={<Reports />} />
                 <Route path="payments" element={<Navigate to="/admin/dashboard" replace />} />
-                <Route path="security" element={<Security />} />
+                <Route path="security" element={<Navigate to="/admin/dashboard" replace />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="profile" element={<Profile />} />
                 <Route path="esp32-diagnostics" element={<ESP32Diagnostics />} />
