@@ -45,7 +45,7 @@ const Totem = () => {
   const { currentLaundry, loading: laundryLoading, configureTotemByCNPJ } = useLaundry();
   const { disableSecurity, enableSecurity } = useKioskSecurity();
   const { authenticate: adminAuthenticate, validatePin } = useAdminAccess();
-  const { machines, loading, isOffline, updateMachineStatus, refreshMachines } = useMachines(currentLaundry?.id);
+  const { machines, loading, isOffline, updateMachineStatus, rememberRunningAfterPayment, refreshMachines } = useMachines(currentLaundry?.id);
   const refreshMachinesRef = useRef(refreshMachines);
   refreshMachinesRef.current = refreshMachines;
   const { isNative, deviceInfo, isReady, enableKioskMode } = useCapacitorIntegration();
@@ -172,6 +172,7 @@ const Totem = () => {
     async (paymentMethod: string = 'TEF') => {
       if (!selectedMachine || !currentLaundry) return;
       try {
+        rememberRunningAfterPayment(selectedMachine.id, selectedMachine.duration);
         await updateMachineStatus(selectedMachine.id, 'running');
         await supabase.from('transactions').insert({
           machine_id: selectedMachine.id,
@@ -206,7 +207,7 @@ const Totem = () => {
         });
       }
     },
-    [selectedMachine, currentLaundry, updateMachineStatus, toast]
+    [selectedMachine, currentLaundry, updateMachineStatus, rememberRunningAfterPayment, toast]
   );
 
   const resetTotem = useCallback(() => {

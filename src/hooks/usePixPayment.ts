@@ -76,13 +76,19 @@ export const usePixPayment = (paygoConfig: { host: string; port: number; automat
 
       const fields = extractPixQrFields(result);
       const hasPayload = Boolean(fields.qrCode || fields.qrCodeBase64);
-      const explicitFail = result.success === false || result.ok === false;
+      const explicitFail =
+        result.success === false ||
+        result.ok === false ||
+        String(result.status ?? '').toLowerCase() === 'denied' ||
+        String(result.result ?? '').toLowerCase() === 'error';
       const ok = hasPayload && !explicitFail;
+      const effectiveOrderId = fields.orderId || paymentData.orderId;
 
       if (ok) {
         const expiresIn = fields.expiresIn ?? 300;
         const pixData: PixPaymentData = {
           ...paymentData,
+          orderId: effectiveOrderId,
           qrCode: fields.qrCode,
           qrCodeBase64: fields.qrCodeBase64,
           pixKey: fields.pixKey,
@@ -98,7 +104,7 @@ export const usePixPayment = (paygoConfig: { host: string; port: number; automat
           qrCodeBase64: fields.qrCodeBase64,
           pixKey: fields.pixKey,
           transactionId: fields.transactionId,
-          orderId: paymentData.orderId,
+          orderId: effectiveOrderId,
           expiresIn,
         };
       }
@@ -149,17 +155,31 @@ export const usePixPayment = (paygoConfig: { host: string; port: number; automat
         return { status: 'pending' as const };
       }
 
-      const status = normalizePixPaymentStatus(result.status ?? result.paymentStatus ?? result.state);
+      const dataNested =
+        result.data && typeof result.data === 'object' && !Array.isArray(result.data)
+          ? (result.data as Record<string, unknown>)
+          : null;
+
+      const status = normalizePixPaymentStatus(
+        result.status ??
+          result.paymentStatus ??
+          result.state ??
+          dataNested?.status ??
+          dataNested?.paymentStatus ??
+          dataNested?.state
+      );
 
       return {
         status,
         transactionId:
           (typeof result.transactionId === 'string' && result.transactionId) ||
           (typeof result.transaction_id === 'string' && result.transaction_id) ||
+          (dataNested && typeof dataNested.transactionId === 'string' && dataNested.transactionId) ||
           undefined,
         paidAt:
           (typeof result.paidAt === 'string' && result.paidAt) ||
           (typeof result.paid_at === 'string' && result.paid_at) ||
+          (dataNested && typeof dataNested.paidAt === 'string' && dataNested.paidAt) ||
           undefined,
         amount: typeof result.amount === 'number' ? result.amount : undefined,
       };

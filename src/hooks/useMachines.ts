@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { supabase } from '@/integrations/supabase/client';
@@ -58,6 +58,10 @@ export const useMachines = (laundryId?: string | null) => {
   useMachineAutoStatus();
 
   const cacheKey = `${CACHE_KEY_PREFIX}${laundryId || 'all'}`;
+  /** Totem: após pagamento o refetch traz "available" da BD — forçar "em uso" na UI até expirar */
+  const postPaymentRunningRef = useRef<
+    Map<string, { until: number; startedAt: string; durationMin: number }>
+  >(new Map());
 
   const transformMachine = (machine: any, esp32Map: Map<string, any>): Machine => {
     const esp32 = esp32Map.get(machine.esp32_id || 'main');
@@ -138,7 +142,20 @@ export const useMachines = (laundryId?: string | null) => {
         runningSinceAt = undefined;
       }
     }
-    
+
+    const payOv = postPaymentRunningRef.current.get(machine.id);
+    if (payOv) {
+      if (Date.now() >= payOv.until) {
+        postPaymentRunningRef.current.delete(machine.id);
+      } else if (machineStatus !== 'maintenance') {
+        machineStatus = 'running';
+        const cycleTime = payOv.durationMin || machine.cycle_time_minutes || 40;
+        const minutesSinceStart = (Date.now() - new Date(payOv.startedAt).getTime()) / 60000;
+        timeRemaining = Math.max(0, Math.round(cycleTime - minutesSinceStart));
+        runningSinceAt = payOv.startedAt;
+      }
+    }
+
     return {
       id: machine.id,
       name: machine.name,
@@ -256,17 +273,61 @@ export const useMachines = (laundryId?: string | null) => {
     }
   };
 
-  const updateMachineStatus = async (machineId: string, status: Machine['status']) => {
+  const applyLocalMachineStatus = useCallback(
+    (machineId: string, status: Machine['status'], startedAtForRunning?: string) => {
+      const now = startedAtForRunning ?? new Date().toISOString();
+      setMachines((prev) =>
+        prev.map((m) => {
+          if (m.id !== machineId) return m;
+          if (status === 'running') {
+            const elapsedMin = (Date.now() - new Date(now).getTime()) / 60000;
+            return {
+              ...m,
+              status: 'running',
+              runningSinceAt: now,
+              timeRemaining: Math.max(0, Math.round(m.duration - elapsedMin)),
+            };
+          }
+          if (status === 'available') {
+            return { ...m, status: 'available', runningSinceAt: undefined, timeRemaining: undefined };
+          }
+          return { ...m, status };
+        })
+      );
+    },
+    []
+  );
+
+  const rememberRunningAfterPayment = useCallback(
+    (machineId: string, durationMinutes: number) => {
+      const startedAt = new Date().toISOString();
+      postPaymentRunningRef.current.set(machineId, {
+        until: Date.now() + (durationMinutes + 8) * 60_000,
+        startedAt,
+        durationMin: durationMinutes,
+      });
+      applyLocalMachineStatus(machineId, 'running', startedAt);
+    },
+    [applyLocalMachineStatus]
+  );
+
+  const updateMachineStatus = async (machineId: string, status: Machine['status']): Promise<boolean> => {
     try {
       const { data, error } = await supabase.functions.invoke('update-machine-status', {
         body: { machine_id: machineId, status },
       });
       if (error) throw error;
       if (data && !data.success) throw new Error(data.error || 'Falha ao atualizar status');
-      setMachines(prev => prev.map(m => m.id === machineId ? { ...m, status } : m));
+      applyLocalMachineStatus(machineId, status);
+      return true;
     } catch (error) {
       console.error('Erro ao atualizar status:', error);
-      toast({ title: "Erro", description: "Não foi possível atualizar o status da máquina", variant: "destructive" });
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível gravar o status no servidor (ex.: permissão RLS).',
+        variant: 'destructive',
+      });
+      return false;
     }
   };
 
@@ -342,6 +403,8 @@ export const useMachines = (laundryId?: string | null) => {
     error,
     isOffline,
     refreshMachines: fetchMachines,
-    updateMachineStatus
+    updateMachineStatus,
+    applyLocalMachineStatus,
+    rememberRunningAfterPayment,
   };
 };

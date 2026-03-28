@@ -68,37 +68,6 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
     return validatePayGOConfig(config);
   }, [config]);
 
-  // Initialize PayGO
-  const initialize = useCallback(async (): Promise<boolean> => {
-    if (!isConfigValid) return false;
-
-    try {
-      setLastError(null);
-      
-      const result = await PayGO.initialize({
-        host: config.host,
-        port: config.port,
-        automationKey: config.automationKey
-      });
-
-      if (result.success) {
-        setIsInitialized(true);
-        toast.success('PayGO inicializado com sucesso');
-        await getSystemStatus();
-        return true;
-      } else {
-        const errorMsg = result.message;
-        setLastError(errorMsg);
-        toast.error(`Falha ao inicializar PayGO: ${errorMsg}`);
-        return false;
-      }
-    } catch (error) {
-      const errorMsg = handlePayGOError(error, 'Erro ao inicializar PayGO');
-      setLastError(errorMsg);
-      return false;
-    }
-  }, [config, isConfigValid]);
-
   // Check connection status
   const checkStatus = useCallback(async (): Promise<boolean> => {
     try {
@@ -134,6 +103,41 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
     }
   }, []);
 
+  // Initialize PayGO
+  const initialize = useCallback(async (options?: { silent?: boolean }): Promise<boolean> => {
+    if (!isConfigValid) return false;
+
+    try {
+      setLastError(null);
+      
+      const result = await PayGO.initialize({
+        host: config.host,
+        port: config.port,
+        automationKey: config.automationKey
+      });
+
+      if (result.success) {
+        setIsInitialized(true);
+        if (!options?.silent) {
+          toast.success('PayGO inicializado com sucesso');
+        }
+        await getSystemStatus();
+        return true;
+      } else {
+        const errorMsg = result.message;
+        setLastError(errorMsg);
+        if (!options?.silent) {
+          toast.error(`Falha ao inicializar PayGO: ${errorMsg}`);
+        }
+        return false;
+      }
+    } catch (error) {
+      const errorMsg = handlePayGOError(error, 'Erro ao inicializar PayGO');
+      setLastError(errorMsg);
+      return false;
+    }
+  }, [config, isConfigValid, getSystemStatus]);
+
   // Test PayGO connection (silent: sem toast — uso em polling / teste automático)
   const testConnection = useCallback(async (options?: { silent?: boolean }): Promise<boolean> => {
     const silent = options?.silent === true;
@@ -160,13 +164,19 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
 
   // Process payment
   const processPayment = useCallback(async (transaction: PayGOTransaction): Promise<PayGOPaymentResult> => {
-    if (!isInitialized) {
+    let ready = isInitialized;
+    if (!ready && isConfigValid) {
+      ready = await initialize({ silent: true });
+    }
+
+    if (!ready) {
       throw new Error(
         'PayGO não está pronto. No tablet: instale o app PayGo Integrado, abra-o e conclua a configuração do estabelecimento.'
       );
     }
 
-    if (!isConnected) {
+    const native = Capacitor.isNativePlatform();
+    if (!isConnected && !native) {
       throw new Error(
         'PayGO sem conexão. Verifique se o PayGo Integrado está ativo e o pinpad USB está conectado.'
       );
@@ -182,21 +192,31 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
         orderId: transaction.orderId
       });
 
-      if (result.success && result.status === 'approved') {
+      const stRaw = result.status;
+      const st = typeof stRaw === 'string' ? stRaw.toLowerCase() : '';
+      const failed = result.success === false || st === 'denied' || st === 'error';
+      const cardApproved =
+        !failed && (st === 'approved' || (result.success === true && !st));
+
+      if (cardApproved) {
         toast.success(`Pagamento aprovado: ${formatCurrency(result.amount || transaction.amount)}`);
       } else {
-        toast.error(`Pagamento falhou: ${result.message}`);
+        toast.error(`Pagamento falhou: ${result.message || 'Negado'}`);
       }
 
       return {
-        success: result.success,
+        success: cardApproved,
         paymentType: result.paymentType || transaction.paymentType,
         amount: result.amount || transaction.amount,
         orderId: result.orderId || transaction.orderId,
         transactionId: result.transactionId,
         timestamp: Date.now(),
         message: result.message,
-        status: (result.status || 'error') as 'approved' | 'denied' | 'pending' | 'error',
+        status: (cardApproved ? 'approved' : st === 'denied' ? 'denied' : (result.status || 'error')) as
+          | 'approved'
+          | 'denied'
+          | 'pending'
+          | 'error',
         nsu: result.authorizationCode,
         authorizationCode: result.authorizationCode
       };
@@ -215,7 +235,7 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
     } finally {
       setIsProcessing(false);
     }
-  }, [isInitialized, isConnected]);
+  }, [isInitialized, isConnected, isConfigValid, initialize]);
 
   // Cancel transaction
   const cancelTransaction = useCallback(async (transactionId?: string): Promise<boolean> => {
