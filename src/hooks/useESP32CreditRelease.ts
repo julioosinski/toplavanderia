@@ -36,7 +36,8 @@ export const useESP32CreditRelease = () => {
         body: {
           transactionId,
           amount,
-          esp32Id: targetESP32Id
+          esp32Id: targetESP32Id,
+          machineId: machineId || undefined,
         }
       });
 
