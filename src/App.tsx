@@ -18,7 +18,7 @@ import Reports from "./pages/admin/Reports";
 import Settings from "./pages/admin/Settings";
 import Profile from "./pages/admin/Profile";
 import ESP32Diagnostics from "./pages/admin/ESP32Diagnostics";
-
+import BLEDiagnostics from "./pages/admin/BLEDiagnostics";
 import NoAccess from "./pages/NoAccess";
 
 const queryClient = new QueryClient();
@@ -48,6 +48,7 @@ const App = () => (
                 <Route path="settings" element={<Settings />} />
                 <Route path="profile" element={<Profile />} />
                 <Route path="esp32-diagnostics" element={<ESP32Diagnostics />} />
+                <Route path="ble-diagnostics" element={<BLEDiagnostics />} />
               </Route>
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
