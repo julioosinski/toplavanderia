@@ -1,81 +1,77 @@
 
 
-# Auditoria Completa do Sistema Top Lavanderia
+# Liberacao Manual no Dashboard + Relatorios com Dados Reais
 
-## Problemas Encontrados
+## Problemas Identificados
 
-### 1. CRITICO: Totem (anon) nao consegue ler esp32_status
-A politica RLS `esp32_select_authenticated` na tabela `esp32_status` so permite SELECT para `authenticated`. O totem roda como `anon`, entao **nao consegue ler o status dos ESP32s**. Isso significa que o totem trata todas as maquinas como offline (heartbeat nunca chega), e a sincronizacao de status fica quebrada.
-
-**Correcao:** Adicionar politica SELECT para `anon` em `esp32_status` (leitura publica, igual a `machines`).
-
-### 2. CRITICO: esp32-credit-release falha — query sem filtro laundry_id
-O log mostra: `Error: ESP32 configurations not found in system settings`. A Edge Function faz `.select('esp32_configurations').single()` sem filtrar por `laundry_id`, o que falha se houver mais de uma lavanderia. Alem disso, o conceito de "credit release" via `esp32_configurations` e legado — o sistema real usa `esp32-control` + `pending_commands`.
-
-**Correcao:** Reescrever `esp32-credit-release` para receber `laundry_id` e filtrar, OU depreciar em favor de `esp32-control` que ja funciona.
-
-### 3. IMPORTANTE: Imports inconsistentes de useToast
-5 ficheiros importam de `@/components/ui/use-toast` (antigo shadcn) em vez de `@/hooks/use-toast` (Sonner):
-- `useESP32CreditRelease.ts`
-- `CreditReleaseWidget.tsx`
-- `useTEFIntegration.ts`
-- `useTEFHealthMonitor.ts`
-- `TEFPositivoL4Config.tsx`
-
-Isso pode causar toasts duplicados ou nao aparecerem. Todos devem usar `@/hooks/use-toast`.
-
-### 4. Status no tablet vs painel — causa raiz
-O Realtime esta ativo (confirmado: `machines` e `esp32_status` na publicacao). O polling esta a 7s no nativo. O problema principal e o **item 1**: sem leitura de `esp32_status`, o totem ve tudo como offline. Alem disso, quando o admin faz `forceMachineReleased`, o UPDATE em `machines` dispara Realtime, mas o totem precisa tambem ler `esp32_status` para computar o estado correto.
-
-### 5. Liberacao manual remota — funciona parcialmente
-`forceMachineReleased` no admin (Machines.tsx e MachineDetailsDialog.tsx):
-- Atualiza `machines.status` para `available` — OK
-- Espelha `relay_status` no `esp32_status` para OFF — OK
-- Enfileira comando OFF no ESP32 via `esp32-control` — OK
-
-Problema: `forceMachineReleased` usa client-side Supabase (`supabase` do frontend). O UPDATE em `machines` para `available` exige role `admin` ou `super_admin` (politica RLS). **Funciona para admin autenticado**, mas nao para uma eventual API remota. O fluxo esta correto para o painel admin.
-
-### 6. CreditReleaseWidget nao permite escolher maquina
-O widget sempre envia `esp32Id: 'main'` hardcoded. Deveria permitir selecionar a maquina especifica para liberacao remota.
-
-### 7. user_credits INSERT falha sem user_id
-A Edge Function `esp32-credit-release` insere em `user_credits` com `user_id: null`, mas a coluna `user_id` e NOT NULL. Isso causa falha silenciosa no registro.
+1. **Liberacao manual so existe na pagina Payments** — nao ha botao de "liberar ciclo" ao clicar numa maquina no Dashboard
+2. **Liberacao manual nao cria transacao** — o `CreditReleaseWidget` e o `esp32-credit-release` nao inserem registro em `transactions`, entao nao aparece em relatorios
+3. **Liberacao manual nao registra quem fez** — nenhum `user_id` e associado a acao
+4. **MachineStatusCard so abre detalhes para maquinas "available"** — linha 67: `onClick={() => isAvailable && onClick?.()}` impede clique em maquinas running/offline
+5. **MachineDetailsDialog so mostra "Parar/liberar"** — falta botao "Iniciar Ciclo Manual"
+6. **Relatorios LaundryReportsTab**: filtros de periodo e maquina funcionam corretamente, mas faltam filtros por tipo (lavadora/secadora) e por metodo de pagamento
+7. **ConsolidatedReportsTab**: nao tem filtro de periodo — sempre mostra tudo
+8. **Transacoes**: nao distinguem entre pagamento normal e liberacao manual
 
 ---
 
 ## Plano de Implementacao
 
-| # | Acao | Tipo |
-|---|------|------|
-| 1 | Adicionar politica RLS SELECT em `esp32_status` para `anon` | SQL Migration |
-| 2 | Corrigir 5 imports de `useToast` para `@/hooks/use-toast` | Codigo React |
-| 3 | Corrigir `esp32-credit-release` para filtrar por `laundry_id` e tratar `user_id` nullable | Edge Function |
-| 4 | Melhorar `CreditReleaseWidget` para permitir selecao de maquina | Codigo React |
+### 1. Permitir clique em todas as maquinas no Dashboard
 
-### Detalhes Tecnicos
+**MachineStatusCard.tsx**: Remover restricao `isAvailable &&` do onClick. Todas as maquinas devem ser clicaveis (menos opacity para offline mas ainda interativas).
 
-**Migracao SQL (item 1):**
-```sql
-CREATE POLICY "Allow anon read esp32_status"
-  ON public.esp32_status
-  FOR SELECT
-  TO anon
-  USING (true);
+### 2. Adicionar "Iniciar Ciclo Manual" no MachineDetailsDialog
+
+**MachineDetailsDialog.tsx**: Adicionar botao "Iniciar Ciclo Manual" para maquinas com status `available`. Ao clicar:
+- Buscar `auth.uid()` do admin logado
+- Inserir registro em `transactions` com `payment_method: 'manual_release'`, `user_id: auth.uid()`, `status: 'completed'`, `laundry_id`, `machine_id`
+- Chamar `esp32-credit-release` com `machineId` para enfileirar comando ON no ESP32
+- Atualizar status da maquina para `running`
+- Registrar o nome do admin via join com `profiles`
+
+### 3. Atualizar esp32-credit-release para criar transacao
+
+**supabase/functions/esp32-credit-release/index.ts**: Quando receber `machineId`, criar um registro em `transactions`:
 ```
+{ machine_id, laundry_id, total_amount: amount, payment_method: 'manual_release', 
+  user_id (do JWT se disponivel), status: 'completed', completed_at: now }
+```
+Isso garante que toda liberacao manual apareca automaticamente nos relatorios existentes.
 
-**Imports (item 2):** Substituir `from '@/components/ui/use-toast'` por `from '@/hooks/use-toast'` nos 5 ficheiros listados.
+### 4. Melhorar Relatorios
 
-**Edge Function (item 3):** Adicionar `laundry_id` ao body, filtrar `system_settings` por ele, e tornar `user_id` no INSERT de `user_credits` compativel com o schema (ou remover o INSERT se nao fizer sentido sem utilizador).
+**LaundryReportsTab.tsx**:
+- Adicionar filtro por tipo de maquina (lavadora/secadora) — via join com `machines.type`
+- Adicionar filtro por metodo de pagamento (cartao, PIX, manual, todos)
+- Na lista de transacoes, mostrar badge "Manual" quando `payment_method = 'manual_release'`
+- Buscar nome do usuario que fez liberacao manual (join com `profiles` via `user_id`)
 
-**Widget (item 4):** Receber lista de maquinas e permitir selecionar qual liberar, passando `machineId` e `esp32Id` corretos.
+**ConsolidatedReportsTab.tsx**:
+- Adicionar filtro de periodo (data inicial/final) — atualmente so mostra totais acumulados sem restricao temporal
+
+**Transactions.tsx**:
+- Adicionar coluna "Operador" que mostra o nome do admin quando `payment_method = 'manual_release'`
+- Mostrar badge visual "Liberacao Manual" na coluna de pagamento
+
+### 5. Garantir dados 100% reais
+
+- Dashboard ja usa `supabase.from('machines')` e `transactions` — dados reais
+- Relatorios usam queries reais com joins
+- Verificar que `ConsolidatedReportsTab` usa `total_revenue` de `machines` (acumulado) em vez de somar transacoes — manter consistencia
+- Status das maquinas no dashboard ja reflete ESP32 via Realtime + polling
 
 ---
 
-## Sugestoes de Melhoria
+## Detalhes Tecnicos
 
-1. **Funcionalidade de liberacao remota de ciclo dedicada**: Criar um botao "Iniciar Ciclo Remoto" no painel admin que faz o mesmo que o totem (status → running + esp32-control ON + transaction), util para testes ou atendimento ao cliente.
+**Edge Function `esp32-credit-release`**: Adicionar INSERT em `transactions` apos criar o `pending_command`. Extrair `user_id` do header Authorization (JWT) se presente, caso contrario `null`.
 
-2. **Dashboard de saude ESP32**: Indicador visual no painel admin mostrando tempo desde ultimo heartbeat de cada ESP32, com alerta amarelo (>1min) e vermelho (>2min).
+**MachineDetailsDialog**: Usar `supabase.auth.getUser()` para obter o admin logado e passar ao edge function. Adicionar botao condicional para `status === 'available'` que chama a liberacao completa.
 
-3. **Notificacoes push**: Quando uma maquina termina o ciclo ou entra em manutencao, notificar o admin via browser notification ou webhook.
+**MachineStatusCard**: Mudar para `onClick={() => onClick?.()}` — remover gate `isAvailable`. Manter estilo visual diferente para offline/running mas permitir interacao.
+
+**LaundryReportsTab**: Query expandida com join `machines!inner(name, type)` e filtro opcional por `payment_method`.
+
+**Nenhuma migracao SQL necessaria** — `transactions` ja tem `user_id` nullable e `payment_method` text.
 
