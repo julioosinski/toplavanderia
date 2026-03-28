@@ -10,15 +10,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { type Machine } from "@/hooks/useMachines";
-import { Droplets, Wind, Clock, DollarSign, MapPin, Cpu, Wifi } from "lucide-react";
+import { Droplets, Wind, Clock, DollarSign, MapPin, Cpu, Wifi, Play } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { forceMachineReleased } from "@/lib/machineEsp32Sync";
+import { supabase } from "@/integrations/supabase/client";
 
 interface MachineDetailsDialogProps {
   machine: Machine | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Após liberar com sucesso (ex.: recarregar lista no pai) */
   onAfterAction?: () => void;
 }
 
@@ -30,6 +30,7 @@ export const MachineDetailsDialog = ({
 }: MachineDetailsDialogProps) => {
   const { toast } = useToast();
   const [releasing, setReleasing] = useState(false);
+  const [startingCycle, setStartingCycle] = useState(false);
 
   if (!machine) return null;
 
@@ -37,31 +38,59 @@ export const MachineDetailsDialog = ({
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "available":
-        return "bg-green-100 text-green-700";
-      case "running":
-        return "bg-blue-100 text-blue-700";
-      case "offline":
-        return "bg-red-100 text-red-700";
-      case "maintenance":
-        return "bg-amber-100 text-amber-800";
-      default:
-        return "bg-gray-100 text-gray-700";
+      case "available": return "bg-green-100 text-green-700";
+      case "running": return "bg-blue-100 text-blue-700";
+      case "offline": return "bg-red-100 text-red-700";
+      case "maintenance": return "bg-amber-100 text-amber-800";
+      default: return "bg-gray-100 text-gray-700";
     }
   };
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case "available":
-        return "Disponível";
-      case "running":
-        return "Em uso";
-      case "offline":
-        return "Offline";
-      case "maintenance":
-        return "Manutenção";
-      default:
-        return "Desconhecido";
+      case "available": return "Disponível";
+      case "running": return "Em uso";
+      case "offline": return "Offline";
+      case "maintenance": return "Manutenção";
+      default: return "Desconhecido";
+    }
+  };
+
+  const handleStartManualCycle = async () => {
+    if (!confirm("Iniciar ciclo manual nesta máquina? Isso será registrado como liberação manual.")) return;
+
+    setStartingCycle(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuário não autenticado");
+
+      // Call esp32-credit-release which now creates the transaction
+      const { data, error } = await supabase.functions.invoke("esp32-credit-release", {
+        body: {
+          transactionId: crypto.randomUUID(),
+          amount: machine.price,
+          machineId: machine.id,
+          esp32Id: machine.esp32_id || "main",
+        },
+      });
+
+      if (error) throw error;
+      if (data && !data.success) throw new Error(data.error || "Falha na liberação");
+
+      toast({
+        title: "Ciclo manual iniciado",
+        description: `${machine.name} — liberação registrada no relatório.`,
+      });
+      onAfterAction?.();
+      onOpenChange(false);
+    } catch (e) {
+      toast({
+        title: "Erro ao iniciar ciclo",
+        description: e instanceof Error ? e.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setStartingCycle(false);
     }
   };
 
@@ -104,7 +133,6 @@ export const MachineDetailsDialog = ({
               </div>
               <p className="text-lg font-bold">R$ {machine.price?.toFixed(2).replace(".", ",")}</p>
             </div>
-
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Clock size={14} />
@@ -162,27 +190,32 @@ export const MachineDetailsDialog = ({
             <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
               Fechar
             </Button>
+
+            {machine.status === "available" && (
+              <Button
+                className="flex-1 bg-green-600 hover:bg-green-700 text-primary-foreground"
+                disabled={startingCycle}
+                onClick={handleStartManualCycle}
+              >
+                <Play size={16} className="mr-1" />
+                {startingCycle ? "Iniciando…" : "Iniciar Ciclo Manual"}
+              </Button>
+            )}
+
             {machine.status === "running" && (
               <Button
                 variant="destructive"
                 className="flex-1"
                 disabled={releasing}
                 onClick={async () => {
-                  if (
-                    !confirm(
-                      "Liberar no totem, marcar como disponível e enviar comando para desligar o relé no ESP32?"
-                    )
-                  ) {
-                    return;
-                  }
+                  if (!confirm("Liberar no totem, marcar como disponível e enviar comando para desligar o relé no ESP32?")) return;
                   setReleasing(true);
                   try {
                     const { error } = await forceMachineReleased({ machineId: machine.id });
                     if (error) throw error;
                     toast({
                       title: "Máquina liberada",
-                      description:
-                        "Status atualizado no banco, relé espelhado como desligado e comando enviado ao ESP32.",
+                      description: "Status atualizado, relé desligado e comando enviado ao ESP32.",
                     });
                     onAfterAction?.();
                     onOpenChange(false);

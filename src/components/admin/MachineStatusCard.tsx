@@ -59,12 +59,10 @@ export const MachineStatusCard = ({ machine, onClick }: MachineStatusCardProps) 
 
   return (
     <Card
-      className={`relative overflow-hidden transition-all duration-300 cursor-pointer bg-card ${
-        isAvailable
-          ? `hover:shadow-lg hover:scale-105 border ${borderColor} ${hoverBorder}`
-          : "opacity-70 cursor-not-allowed border border-muted"
+      className={`relative overflow-hidden transition-all duration-300 cursor-pointer bg-card hover:shadow-lg hover:scale-105 border ${borderColor} ${hoverBorder} ${
+        machine.status === 'offline' ? 'opacity-60' : ''
       } shadow-md rounded-lg h-full flex flex-col`}
-      onClick={() => isAvailable && onClick?.()}
+      onClick={() => onClick?.()}
     >
       {/* Status Badge */}
       <div className="absolute top-2 right-2 z-10">

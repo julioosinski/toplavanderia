@@ -35,73 +35,41 @@ serve(async (req) => {
 
     console.log('Credit release request:', { transactionId, amount, esp32Id, machineId, laundryId });
 
+    // Extract user_id from JWT if present
+    let userId: string | null = null;
+    const authHeader = req.headers.get('Authorization');
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      const { data: { user } } = await supabaseClient.auth.getUser(token);
+      if (user) userId = user.id;
+    }
+
     let targetESP32Id = esp32Id || 'main';
     let targetLaundryId = laundryId;
+    let machineDuration: number | null = null;
 
-    // Se machineId fornecido, buscar esp32_id e laundry_id da máquina
+    // Get machine info
     if (machineId) {
       const { data: machine, error: machineError } = await supabaseClient
         .from('machines')
-        .select('esp32_id, laundry_id')
+        .select('esp32_id, laundry_id, relay_pin, cycle_time_minutes, price_per_cycle')
         .eq('id', machineId)
         .single();
 
       if (!machineError && machine) {
         if (machine.esp32_id) targetESP32Id = machine.esp32_id;
         if (machine.laundry_id) targetLaundryId = machine.laundry_id;
-      }
-    }
+        machineDuration = machine.cycle_time_minutes;
 
-    // Buscar configurações do ESP32 filtrando por laundry_id
-    let settingsQuery = supabaseClient
-      .from('system_settings')
-      .select('esp32_configurations');
-
-    if (targetLaundryId) {
-      settingsQuery = settingsQuery.eq('laundry_id', targetLaundryId);
-    }
-
-    const { data: settings, error: settingsError } = await settingsQuery.limit(1).single();
-
-    if (settingsError || !settings?.esp32_configurations) {
-      console.warn('ESP32 configurations not found, proceeding with defaults');
-    }
-
-    // Encontrar configuração do ESP32 específico
-    let esp32Config: any = null;
-    if (settings?.esp32_configurations) {
-      const configs = settings.esp32_configurations as any[];
-      esp32Config = configs.find((c: any) => c.id === targetESP32Id);
-    }
-
-    // Buscar status do ESP32
-    const { data: esp32Status } = await supabaseClient
-      .from('esp32_status')
-      .select('*')
-      .eq('esp32_id', targetESP32Id)
-      .limit(1)
-      .single();
-
-    // Usar abordagem via pending_commands (arquitetura pull)
-    // Em vez de chamar HTTP diretamente no ESP32, enfileirar comando
-    if (machineId) {
-      // Buscar relay_pin da máquina
-      const { data: machineData } = await supabaseClient
-        .from('machines')
-        .select('relay_pin, esp32_id')
-        .eq('id', machineId)
-        .single();
-
-      if (machineData) {
+        // Create pending command for ESP32
         const { error: cmdError } = await supabaseClient
           .from('pending_commands')
           .insert({
-            esp32_id: machineData.esp32_id || targetESP32Id,
+            esp32_id: machine.esp32_id || targetESP32Id,
             machine_id: machineId,
-            relay_pin: machineData.relay_pin || 1,
+            relay_pin: machine.relay_pin || 1,
             action: 'turn_on',
             status: 'pending',
-            transaction_id: null, // transactionId é string, não UUID
           });
 
         if (cmdError) {
@@ -110,7 +78,7 @@ serve(async (req) => {
           console.log('Pending command created for machine:', machineId);
         }
 
-        // Atualizar status da máquina para running
+        // Update machine status to running
         await supabaseClient
           .from('machines')
           .update({ status: 'running', updated_at: new Date().toISOString() })
@@ -118,14 +86,39 @@ serve(async (req) => {
       }
     }
 
+    // Create transaction record for reporting
+    const now = new Date().toISOString();
+    const { data: txData, error: txError } = await supabaseClient
+      .from('transactions')
+      .insert({
+        machine_id: machineId!,
+        laundry_id: targetLaundryId,
+        total_amount: amount,
+        payment_method: 'manual_release',
+        user_id: userId,
+        status: 'completed',
+        started_at: now,
+        completed_at: now,
+        duration_minutes: machineDuration,
+      })
+      .select('id')
+      .single();
+
+    if (txError) {
+      console.error('Error creating transaction:', txError);
+    } else {
+      console.log('Transaction created:', txData?.id);
+    }
+
     const result = {
       success: true,
       message: 'Crédito liberado com sucesso',
-      transaction_id: transactionId,
+      transaction_id: txData?.id || transactionId,
       amount,
       esp32_id: targetESP32Id,
       machine_id: machineId || null,
-      timestamp: new Date().toISOString(),
+      operator_id: userId,
+      timestamp: now,
     };
 
     console.log('Credit release result:', result);
