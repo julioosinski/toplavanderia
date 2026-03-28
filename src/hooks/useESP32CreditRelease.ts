@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
 
 interface CreditReleaseParams {
   transactionId: string;
@@ -36,7 +36,8 @@ export const useESP32CreditRelease = () => {
         body: {
           transactionId,
           amount,
-          esp32Id: targetESP32Id
+          esp32Id: targetESP32Id,
+          machineId: machineId || undefined,
         }
       });
 

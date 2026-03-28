@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Zap, Clock, CheckCircle, AlertCircle } from 'lucide-react';
 import { useESP32CreditRelease } from '@/hooks/useESP32CreditRelease';
-import { useToast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { useLaundry } from '@/contexts/LaundryContext';
 
 interface CreditReleaseLog {
   id: string;
@@ -15,43 +18,84 @@ interface CreditReleaseLog {
   timestamp: string;
   status: 'success' | 'error';
   message: string;
+  machineName?: string;
+}
+
+interface MachineOption {
+  id: string;
+  name: string;
+  esp32_id: string | null;
+  type: string;
+  status: string;
 }
 
 const CreditReleaseWidget: React.FC = () => {
   const [amount, setAmount] = useState<number>(10);
+  const [selectedMachineId, setSelectedMachineId] = useState<string>('');
+  const [machines, setMachines] = useState<MachineOption[]>([]);
   const [releaseLog, setReleaseLog] = useState<CreditReleaseLog[]>([]);
   const { releaseCredit, isReleasing } = useESP32CreditRelease();
   const { toast } = useToast();
+  const { currentLaundry } = useLaundry();
+
+  useEffect(() => {
+    if (!currentLaundry?.id) return;
+
+    const fetchMachines = async () => {
+      const { data, error } = await supabase
+        .from('machines')
+        .select('id, name, esp32_id, type, status')
+        .eq('laundry_id', currentLaundry.id)
+        .order('name');
+
+      if (!error && data) {
+        setMachines(data);
+        if (data.length > 0 && !selectedMachineId) {
+          setSelectedMachineId(data[0].id);
+        }
+      }
+    };
+
+    fetchMachines();
+  }, [currentLaundry?.id]);
+
+  const selectedMachine = machines.find(m => m.id === selectedMachineId);
 
   const handleRelease = async () => {
+    if (!selectedMachineId) {
+      toast({ title: 'Selecione uma máquina', variant: 'destructive' });
+      return;
+    }
+
     try {
       const transactionId = `manual-${Date.now()}`;
-      const result = await releaseCredit({
+      await releaseCredit({
         transactionId,
         amount,
-        esp32Id: 'main'
+        esp32Id: selectedMachine?.esp32_id || 'main',
+        machineId: selectedMachineId,
       });
 
-      // Adicionar ao log
       const logEntry: CreditReleaseLog = {
         id: transactionId,
         transactionId,
         amount,
         timestamp: new Date().toISOString(),
         status: 'success',
-        message: 'Crédito liberado com sucesso'
+        message: 'Crédito liberado com sucesso',
+        machineName: selectedMachine?.name,
       };
 
-      setReleaseLog(prev => [logEntry, ...prev.slice(0, 9)]); // Manter apenas 10 entradas
+      setReleaseLog(prev => [logEntry, ...prev.slice(0, 9)]);
     } catch (error) {
-      // Adicionar erro ao log
       const logEntry: CreditReleaseLog = {
         id: `error-${Date.now()}`,
         transactionId: `manual-${Date.now()}`,
         amount,
         timestamp: new Date().toISOString(),
         status: 'error',
-        message: error instanceof Error ? error.message : 'Erro desconhecido'
+        message: error instanceof Error ? error.message : 'Erro desconhecido',
+        machineName: selectedMachine?.name,
       };
 
       setReleaseLog(prev => [logEntry, ...prev.slice(0, 9)]);
@@ -68,7 +112,6 @@ const CreditReleaseWidget: React.FC = () => {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Release Form */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
@@ -77,6 +120,22 @@ const CreditReleaseWidget: React.FC = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Máquina</Label>
+            <Select value={selectedMachineId} onValueChange={setSelectedMachineId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione uma máquina" />
+              </SelectTrigger>
+              <SelectContent>
+                {machines.map(machine => (
+                  <SelectItem key={machine.id} value={machine.id}>
+                    {machine.name} ({machine.type}) — {machine.status}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="release-amount">Valor (R$)</Label>
             <Input
@@ -93,7 +152,7 @@ const CreditReleaseWidget: React.FC = () => {
           
           <Button 
             onClick={handleRelease}
-            disabled={isReleasing || amount <= 0}
+            disabled={isReleasing || amount <= 0 || !selectedMachineId}
             className="w-full"
             size="lg"
           >
@@ -102,12 +161,11 @@ const CreditReleaseWidget: React.FC = () => {
           </Button>
           
           <p className="text-sm text-muted-foreground">
-            Libere crédito manualmente para o ESP32 conectado
+            Libere crédito manualmente para a máquina selecionada via ESP32
           </p>
         </CardContent>
       </Card>
 
-      {/* Release Log */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
@@ -127,23 +185,20 @@ const CreditReleaseWidget: React.FC = () => {
                 <div key={log.id} className="flex items-center justify-between p-3 border rounded-lg">
                   <div className="flex items-center space-x-3">
                     {log.status === 'success' ? (
-                      <CheckCircle className="w-5 h-5 text-green-500" />
+                      <CheckCircle className="w-5 h-5 text-primary" />
                     ) : (
-                      <AlertCircle className="w-5 h-5 text-red-500" />
+                      <AlertCircle className="w-5 h-5 text-destructive" />
                     )}
                     <div>
                       <p className="font-medium">
-                        R$ {log.amount.toFixed(2)}
+                        R$ {log.amount.toFixed(2)} {log.machineName && `— ${log.machineName}`}
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {formatTimestamp(log.timestamp)}
                       </p>
                     </div>
                   </div>
-                  <Badge 
-                    variant={log.status === 'success' ? 'secondary' : 'destructive'}
-                    className={log.status === 'success' ? 'bg-green-100 text-green-800' : ''}
-                  >
+                  <Badge variant={log.status === 'success' ? 'secondary' : 'destructive'}>
                     {log.status === 'success' ? 'Sucesso' : 'Erro'}
                   </Badge>
                 </div>
