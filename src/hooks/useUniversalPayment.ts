@@ -29,6 +29,8 @@ export interface UniversalPaymentResponse {
   data?: any;
   error?: string;
   transactionId?: string;
+  /** Mesmo enviado ao PayGO em /pix/status/{orderId} */
+  orderId?: string;
   // PIX-specific
   qrCode?: string;
   qrCodeBase64?: string;
@@ -70,88 +72,96 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
     timeout: config.paygo.timeout,
   });
 
-  // Test all payment methods
-  const testAllMethods = useCallback(async () => {
-    // In Smart POS mode, force PayGO as the only available method
-    if (config.smartPosMode) {
-      setMethodsStatus([
-        { method: 'paygo', available: true, connected: true, priority: 1, lastTest: new Date() },
-        { method: 'tef', available: false, connected: false, priority: 2 },
-        { method: 'pix', available: true, connected: true, priority: 3, lastTest: new Date() },
-        { method: 'manual', available: true, connected: true, priority: 4 }
-      ]);
-      return;
-    }
+  const defaultMethodsStatus = (): PaymentMethodStatus[] => [
+    { method: 'paygo', available: false, connected: false, priority: 1 },
+    { method: 'tef', available: false, connected: false, priority: 2 },
+    { method: 'pix', available: false, connected: false, priority: 3 },
+    { method: 'manual', available: true, connected: true, priority: 4 },
+  ];
 
-    const newStatus: PaymentMethodStatus[] = [...methodsStatus];
+  /** interactive: true = toasts no PayGO/TEF (botão "Testar conexões"). Omitido = silencioso (polling). */
+  const testAllMethods = useCallback(
+    async (options?: { interactive?: boolean }) => {
+      const silent = options?.interactive !== true;
 
-    // Test PayGO
-    try {
-      const paygoAvailable = await paygoIntegration.testConnection();
-      const idx = newStatus.findIndex(s => s.method === 'paygo');
-      if (idx >= 0) {
-        newStatus[idx] = {
-          ...newStatus[idx],
-          available: paygoAvailable,
-          connected: paygoAvailable,
+      if (config.smartPosMode) {
+        setMethodsStatus([
+          { method: 'paygo', available: true, connected: true, priority: 1, lastTest: new Date() },
+          { method: 'tef', available: false, connected: false, priority: 2 },
+          { method: 'pix', available: true, connected: true, priority: 3, lastTest: new Date() },
+          { method: 'manual', available: true, connected: true, priority: 4 },
+        ]);
+        return;
+      }
+
+      const newStatus = defaultMethodsStatus();
+
+      try {
+        const paygoAvailable = await paygoIntegration.testConnection({ silent });
+        const idx = newStatus.findIndex((s) => s.method === 'paygo');
+        if (idx >= 0) {
+          newStatus[idx] = {
+            ...newStatus[idx],
+            available: paygoAvailable,
+            connected: paygoAvailable,
+            lastTest: new Date(),
+            error: paygoAvailable ? undefined : 'Conexão PayGO falhou',
+          };
+        }
+      } catch (error) {
+        const idx = newStatus.findIndex((s) => s.method === 'paygo');
+        if (idx >= 0) {
+          newStatus[idx] = {
+            ...newStatus[idx],
+            available: false,
+            connected: false,
+            lastTest: new Date(),
+            error: error instanceof Error ? error.message : 'Erro desconhecido',
+          };
+        }
+      }
+
+      try {
+        const tefAvailable = await tefIntegration.testConnection({ silent });
+        const idx = newStatus.findIndex((s) => s.method === 'tef');
+        if (idx >= 0) {
+          newStatus[idx] = {
+            ...newStatus[idx],
+            available: tefAvailable,
+            connected: tefAvailable,
+            lastTest: new Date(),
+            error: tefAvailable ? undefined : 'Conexão TEF falhou',
+          };
+        }
+      } catch (error) {
+        const idx = newStatus.findIndex((s) => s.method === 'tef');
+        if (idx >= 0) {
+          newStatus[idx] = {
+            ...newStatus[idx],
+            available: false,
+            connected: false,
+            lastTest: new Date(),
+            error: error instanceof Error ? error.message : 'Erro desconhecido',
+          };
+        }
+      }
+
+      const paygoStatus = newStatus.find((s) => s.method === 'paygo');
+      const pixIdx = newStatus.findIndex((s) => s.method === 'pix');
+      if (pixIdx >= 0 && paygoStatus) {
+        newStatus[pixIdx] = {
+          ...newStatus[pixIdx],
+          available: paygoStatus.available,
+          connected: paygoStatus.connected,
           lastTest: new Date(),
-          error: paygoAvailable ? undefined : 'Conexão PayGO falhou'
+          error: paygoStatus.available ? undefined : 'PIX depende do PayGO',
         };
       }
-    } catch (error) {
-      const idx = newStatus.findIndex(s => s.method === 'paygo');
-      if (idx >= 0) {
-        newStatus[idx] = {
-          ...newStatus[idx],
-          available: false,
-          connected: false,
-          lastTest: new Date(),
-          error: error instanceof Error ? error.message : 'Erro desconhecido'
-        };
-      }
-    }
 
-    // Test TEF
-    try {
-      const tefAvailable = await tefIntegration.testConnection();
-      const idx = newStatus.findIndex(s => s.method === 'tef');
-      if (idx >= 0) {
-        newStatus[idx] = {
-          ...newStatus[idx],
-          available: tefAvailable,
-          connected: tefAvailable,
-          lastTest: new Date(),
-          error: tefAvailable ? undefined : 'Conexão TEF falhou'
-        };
-      }
-    } catch (error) {
-      const idx = newStatus.findIndex(s => s.method === 'tef');
-      if (idx >= 0) {
-        newStatus[idx] = {
-          ...newStatus[idx],
-          available: false,
-          connected: false,
-          lastTest: new Date(),
-          error: error instanceof Error ? error.message : 'Erro desconhecido'
-        };
-      }
-    }
-
-    // PIX availability mirrors PayGO (same infrastructure)
-    const paygoStatus = newStatus.find(s => s.method === 'paygo');
-    const pixIdx = newStatus.findIndex(s => s.method === 'pix');
-    if (pixIdx >= 0 && paygoStatus) {
-      newStatus[pixIdx] = {
-        ...newStatus[pixIdx],
-        available: paygoStatus.available,
-        connected: paygoStatus.connected,
-        lastTest: new Date(),
-        error: paygoStatus.available ? undefined : 'PIX depende do PayGO'
-      };
-    }
-
-    setMethodsStatus(newStatus);
-  }, [config.smartPosMode, paygoIntegration, tefIntegration, methodsStatus]);
+      setMethodsStatus(newStatus);
+    },
+    [config.smartPosMode, paygoIntegration, tefIntegration]
+  );
 
   // Find best available method
   const getBestAvailableMethod = useCallback((): PaymentMethod | null => {
@@ -169,10 +179,11 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
     setIsProcessing(true);
 
     try {
-      const methodToUse = preferredMethod &&
-        methodsStatus.find(s => s.method === preferredMethod && s.available)
-        ? preferredMethod
-        : getBestAvailableMethod();
+      const methodToUse =
+        preferredMethod &&
+        methodsStatus.find((s) => s.method === preferredMethod && s.available && s.connected)
+          ? preferredMethod
+          : getBestAvailableMethod();
 
       if (!methodToUse) {
         return {
@@ -219,9 +230,10 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
         }
 
         case 'pix': {
+          const orderId = transaction.orderId || `ORDER_${Date.now()}`;
           const pixResult = await pixIntegration.generatePixQR({
             amount: transaction.amount,
-            orderId: transaction.orderId || Date.now().toString()
+            orderId,
           });
 
           return {
@@ -229,10 +241,12 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
             method: 'pix',
             data: pixResult,
             transactionId: pixResult.transactionId,
+            orderId: pixResult.orderId || orderId,
             qrCode: pixResult.qrCode,
             qrCodeBase64: pixResult.qrCodeBase64,
             pixKey: pixResult.pixKey,
             expiresIn: pixResult.expiresIn,
+            error: pixResult.success ? undefined : pixResult.errorMessage,
           };
         }
 
@@ -261,10 +275,9 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
     }
   }, [methodsStatus, getBestAvailableMethod, paygoIntegration, tefIntegration, pixIntegration, currentMethod, toast]);
 
-  // Periodic status check
   useEffect(() => {
-    testAllMethods();
-    const interval = setInterval(testAllMethods, 30000);
+    void testAllMethods();
+    const interval = setInterval(() => void testAllMethods(), 30000);
     return () => clearInterval(interval);
   }, [testAllMethods]);
 

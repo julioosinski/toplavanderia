@@ -21,8 +21,10 @@ interface Stats {
 }
 
 export default function Dashboard() {
-  const { currentLaundry, isSuperAdmin, laundries } = useLaundry();
-  const { machines, loading: machinesLoading } = useMachines(currentLaundry?.id);
+  const { currentLaundry, isSuperAdmin, laundries, isViewingAllLaundries } = useLaundry();
+  const isViewingAll = isSuperAdmin && isViewingAllLaundries;
+  const laundryIdForMachines = isViewingAll ? undefined : currentLaundry?.id;
+  const { machines, loading: machinesLoading, refreshMachines } = useMachines(laundryIdForMachines);
   const [stats, setStats] = useState<Stats>({
     totalRevenue: 0,
     activeMachines: 0,
@@ -36,8 +38,6 @@ export default function Dashboard() {
   const [machineData, setMachineData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [machinesByLaundry, setMachinesByLaundry] = useState<Record<string, { laundryName: string; machines: any[] }>>({});
-
-  const isViewingAll = localStorage.getItem('selectedLaundryId') === 'all' && isSuperAdmin;
 
   const loadDashboardData = async () => {
     if (!currentLaundry && !isViewingAll) return;
@@ -137,7 +137,7 @@ export default function Dashboard() {
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [currentLaundry, isViewingAll]);
+  }, [currentLaundry, isViewingAll, isSuperAdmin, laundries]);
 
   if (loading) {
     return (
@@ -283,9 +283,21 @@ export default function Dashboard() {
 
       {/* Machine Status Section */}
       {isViewingAll ? (
-        <ConsolidatedMachineStatus machinesByLaundry={machinesByLaundry} loading={machinesLoading} />
+        <ConsolidatedMachineStatus
+          machinesByLaundry={machinesByLaundry}
+          loading={machinesLoading}
+          onAfterMachineAction={() => {
+            void loadConsolidatedMachines();
+          }}
+        />
       ) : (
-        <MachineStatusGrid machines={machines} loading={machinesLoading} />
+        <MachineStatusGrid
+          machines={machines}
+          loading={machinesLoading}
+          onAfterMachineAction={() => {
+            void refreshMachines({ background: true });
+          }}
+        />
       )}
     </div>
   );

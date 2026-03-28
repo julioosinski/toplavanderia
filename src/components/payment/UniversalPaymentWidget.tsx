@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -36,10 +36,6 @@ export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
     getBestAvailableMethod,
   } = useUniversalPayment(config);
 
-  useEffect(() => {
-    testAllMethods();
-  }, [testAllMethods]);
-
   const hasAvailableMethods = methodsStatus.some((s) => s.available && s.method !== 'manual');
   const bestMethod = getBestAvailableMethod();
   const bestLabel =
@@ -60,12 +56,19 @@ export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
           method
         );
 
-        if (result.method === 'pix' && result.success && result.qrCode) {
+        const hasPixPayload = Boolean(result.qrCode || result.qrCodeBase64);
+        if (result.method === 'pix' && result.success && hasPixPayload) {
           onPixQR?.(result);
         } else if (result.success) {
           onSuccess(result);
         } else {
-          onError(result.error || 'Falha no pagamento');
+          onError(
+            result.error ||
+              (result.data && typeof result.data.errorMessage === 'string'
+                ? result.data.errorMessage
+                : undefined) ||
+              'Falha no pagamento'
+          );
         }
       } catch (error) {
         onError(error instanceof Error ? error.message : 'Erro inesperado');
@@ -138,7 +141,13 @@ export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
         Voltar
       </Button>
 
-      <Button variant="ghost" size="sm" onClick={() => void testAllMethods()} disabled={isProcessing} className="w-full text-xs">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => void testAllMethods({ interactive: true })}
+        disabled={isProcessing}
+        className="w-full text-xs"
+      >
         Testar conexões
       </Button>
     </>

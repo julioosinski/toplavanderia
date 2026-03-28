@@ -3,7 +3,8 @@ import { useLaundry } from "@/contexts/LaundryContext";
 import { Building2 } from "lucide-react";
 
 export const LaundryDashboardSelector = () => {
-  const { currentLaundry, laundries, isSuperAdmin, switchLaundry } = useLaundry();
+  const { currentLaundry, laundries, isSuperAdmin, switchLaundry, switchToAllLaundries, isViewingAllLaundries } =
+    useLaundry();
 
   if (!isSuperAdmin) {
     return (
@@ -16,14 +17,12 @@ export const LaundryDashboardSelector = () => {
 
   return (
     <Select
-      value={currentLaundry?.id || "all"}
+      value={isViewingAllLaundries ? "all" : currentLaundry?.id || ""}
       onValueChange={(value) => {
-        if (value !== "all") {
-          switchLaundry(value);
+        if (value === "all") {
+          void switchToAllLaundries();
         } else {
-          // Set to "all" mode - store in localStorage
-          localStorage.setItem('selectedLaundryId', 'all');
-          window.location.reload(); // Refresh to load all data
+          void switchLaundry(value);
         }
       }}
     >

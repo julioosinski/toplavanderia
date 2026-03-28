@@ -11,15 +11,22 @@ import { useLaundry } from "@/contexts/LaundryContext";
 import { useState } from "react";
 
 export const LaundrySelector = () => {
-  const { currentLaundry, laundries, isSuperAdmin, switchLaundry } = useLaundry();
+  const {
+    currentLaundry,
+    laundries,
+    isSuperAdmin,
+    switchLaundry,
+    switchToAllLaundries,
+    isViewingAllLaundries,
+  } = useLaundry();
   const [isChanging, setIsChanging] = useState(false);
 
   if (!isSuperAdmin || laundries.length <= 1) {
     return (
       <div className="flex items-center gap-2">
         <Building2 className="h-4 w-4 text-muted-foreground" />
-        <Badge variant="outline" className="text-sm">
-          {currentLaundry?.name || 'Carregando...'}
+        <Badge variant="outline" className="text-sm max-w-[200px] truncate">
+          {currentLaundry?.name || "Carregando..."}
         </Badge>
       </div>
     );
@@ -27,22 +34,35 @@ export const LaundrySelector = () => {
 
   const handleChange = async (value: string) => {
     setIsChanging(true);
-    await switchLaundry(value);
-    setIsChanging(false);
+    try {
+      if (value === "all") {
+        await switchToAllLaundries();
+      } else {
+        await switchLaundry(value);
+      }
+    } finally {
+      setIsChanging(false);
+    }
   };
 
   return (
     <div className="flex items-center gap-2">
-      <Building2 className="h-4 w-4 text-muted-foreground" />
+      <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
       <Select
-        value={currentLaundry?.id || ''}
-        onValueChange={handleChange}
+        value={isViewingAllLaundries ? "all" : currentLaundry?.id || ""}
+        onValueChange={(v) => void handleChange(v)}
         disabled={isChanging}
       >
-        <SelectTrigger className="w-[240px]">
-          <SelectValue placeholder="Selecione a lavanderia" />
+        <SelectTrigger className="w-[min(100vw-8rem,260px)]">
+          <SelectValue placeholder="Lavanderia" />
         </SelectTrigger>
         <SelectContent>
+          <SelectItem value="all">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-3 w-3" />
+              Todas (visão consolidada)
+            </div>
+          </SelectItem>
           {laundries.map((laundry) => (
             <SelectItem key={laundry.id} value={laundry.id}>
               <div className="flex items-center gap-2">

@@ -300,34 +300,42 @@ export const useTEFIntegration = (config: TEFConfig) => {
   }, [toast]);
 
   // Função para testar conectividade
-  const testConnection = useCallback(async (): Promise<boolean> => {
-    try {
-      const isOnline = await checkTEFStatus();
-      
-      if (isOnline) {
-        toast({
-          title: "Teste de Conectividade",
-          description: "Conexão com TEF estabelecida com sucesso",
-          variant: "default"
-        });
-      } else {
-        toast({
-          title: "Teste de Conectividade",
-          description: "Falha na conexão com TEF",
-          variant: "destructive"
-        });
+  const testConnection = useCallback(
+    async (options?: { silent?: boolean }): Promise<boolean> => {
+      const silent = options?.silent === true;
+      try {
+        const isOnline = await checkTEFStatus();
+
+        if (!silent) {
+          if (isOnline) {
+            toast({
+              title: "Teste de Conectividade",
+              description: "Conexão com TEF estabelecida com sucesso",
+              variant: "default",
+            });
+          } else {
+            toast({
+              title: "Teste de Conectividade",
+              description: "Falha na conexão com TEF",
+              variant: "destructive",
+            });
+          }
+        }
+
+        return isOnline;
+      } catch {
+        if (!silent) {
+          toast({
+            title: "Erro no Teste",
+            description: "Erro ao testar conectividade TEF",
+            variant: "destructive",
+          });
+        }
+        return false;
       }
-      
-      return isOnline;
-    } catch (error) {
-      toast({
-        title: "Erro no Teste",
-        description: "Erro ao testar conectividade TEF",
-        variant: "destructive"
-      });
-      return false;
-    }
-  }, [checkTEFStatus, toast]);
+    },
+    [checkTEFStatus, toast]
+  );
 
   return {
     status,

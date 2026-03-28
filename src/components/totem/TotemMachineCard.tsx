@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -37,6 +38,26 @@ export const TotemMachineCard = ({ machine, deviceMode, isViewOnly, colorScheme,
   const isAvailable = machine.status === "available";
   const isRunning = machine.status === "running";
   const isMaintenance = machine.status === "maintenance";
+
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!isRunning || !machine.runningSinceAt) return;
+    const id = window.setInterval(() => setTick((t) => t + 1), 15000);
+    return () => window.clearInterval(id);
+  }, [isRunning, machine.runningSinceAt]);
+
+  const displayRemaining = useMemo(() => {
+    if (isRunning && machine.runningSinceAt) {
+      return Math.max(
+        0,
+        Math.round(
+          machine.duration -
+            (Date.now() - new Date(machine.runningSinceAt).getTime()) / 60000
+        )
+      );
+    }
+    return machine.timeRemaining ?? 0;
+  }, [isRunning, machine.runningSinceAt, machine.duration, machine.timeRemaining, tick]);
   const colors = colorScheme === 'blue' 
     ? { gradient: 'from-blue-500 to-blue-600', text: 'text-blue-600', border: 'border-blue-200 hover:border-blue-400', btn: 'bg-blue-600 hover:bg-blue-700' }
     : { gradient: 'from-orange-500 to-orange-600', text: 'text-orange-600', border: 'border-orange-200 hover:border-orange-400', btn: 'bg-orange-600 hover:bg-orange-700' };
@@ -95,11 +116,14 @@ export const TotemMachineCard = ({ machine, deviceMode, isViewOnly, colorScheme,
           </Badge>
         </div>
 
-        {isRunning && machine.timeRemaining !== undefined && machine.timeRemaining > 0 && (
+        {isRunning && displayRemaining > 0 && (
           <div className="space-y-1 mb-2">
-            <Progress value={(machine.duration - machine.timeRemaining) / machine.duration * 100} className="h-1" />
+            <Progress
+              value={((machine.duration - displayRemaining) / machine.duration) * 100}
+              className="h-1"
+            />
             <div className="text-center text-xs text-gray-600">
-              {machine.timeRemaining}min restantes
+              {displayRemaining}min restantes
             </div>
           </div>
         )}

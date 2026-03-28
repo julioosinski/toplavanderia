@@ -1,9 +1,11 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AuditLogsTab } from "@/components/admin/AuditLogsTab";
 import { SecurityEventsTab } from "@/components/admin/SecurityEventsTab";
+import { LaundryGuard } from "@/components/admin/LaundryGuard";
 
 export default function Security() {
   return (
+    <LaundryGuard>
     <div className="space-y-6 animate-in fade-in duration-500">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Segurança</h1>
@@ -27,5 +29,6 @@ export default function Security() {
         </TabsContent>
       </Tabs>
     </div>
+    </LaundryGuard>
   );
 }

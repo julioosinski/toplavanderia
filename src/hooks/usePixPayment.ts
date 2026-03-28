@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { extractPixQrFields, normalizePixPaymentStatus } from '@/lib/paygoPixResponse';
 
 export interface PixPaymentData {
   amount: number;
@@ -16,6 +17,7 @@ export interface PixPaymentResult {
   qrCodeBase64?: string;
   pixKey?: string;
   transactionId?: string;
+  orderId?: string;
   expiresIn?: number;
   errorMessage?: string;
 }
@@ -42,7 +44,7 @@ export const usePixPayment = (paygoConfig: { host: string; port: number; automat
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Automation-Key': paygoConfig.automationKey,
+          'X-Automation-Key': paygoConfig.automationKey ?? '',
         },
         body: JSON.stringify({
           amount: Math.round(paymentData.amount * 100), // Convert to cents
@@ -52,38 +54,68 @@ export const usePixPayment = (paygoConfig: { host: string; port: number; automat
         signal: AbortSignal.timeout(paygoConfig.timeout),
       });
 
-      const result = await response.json();
-      
-      if (result.success && result.qrCode) {
-        const pixData: PixPaymentData = {
-          ...paymentData,
-          qrCode: result.qrCode,
-          qrCodeBase64: result.qrCodeBase64,
-          pixKey: result.pixKey,
-          expiresIn: result.expiresIn || 300,
-        };
-        
-        setCurrentPayment(pixData);
-        setTimeRemaining(pixData.expiresIn!);
-        
+      let result: Record<string, unknown> = {};
+      try {
+        const text = await response.text();
+        if (text) result = JSON.parse(text) as Record<string, unknown>;
+      } catch {
         return {
-          success: true,
-          qrCode: result.qrCode,
-          qrCodeBase64: result.qrCodeBase64,
-          pixKey: result.pixKey,
-          transactionId: result.transactionId,
-          expiresIn: result.expiresIn,
+          success: false,
+          errorMessage: 'Resposta inválida do servidor PayGO (PIX)',
+          orderId: paymentData.orderId,
         };
       }
-      
+
+      if (!response.ok) {
+        const msg =
+          (typeof result.message === 'string' && result.message) ||
+          (typeof result.error === 'string' && result.error) ||
+          `HTTP ${response.status}`;
+        return { success: false, errorMessage: msg, orderId: paymentData.orderId };
+      }
+
+      const fields = extractPixQrFields(result);
+      const hasPayload = Boolean(fields.qrCode || fields.qrCodeBase64);
+      const explicitFail = result.success === false || result.ok === false;
+      const ok = hasPayload && !explicitFail;
+
+      if (ok) {
+        const expiresIn = fields.expiresIn ?? 300;
+        const pixData: PixPaymentData = {
+          ...paymentData,
+          qrCode: fields.qrCode,
+          qrCodeBase64: fields.qrCodeBase64,
+          pixKey: fields.pixKey,
+          expiresIn,
+        };
+
+        setCurrentPayment(pixData);
+        setTimeRemaining(expiresIn);
+
+        return {
+          success: true,
+          qrCode: fields.qrCode,
+          qrCodeBase64: fields.qrCodeBase64,
+          pixKey: fields.pixKey,
+          transactionId: fields.transactionId,
+          orderId: paymentData.orderId,
+          expiresIn,
+        };
+      }
+
       return {
         success: false,
-        errorMessage: result.message || 'Falha ao gerar QR Code Pix',
+        orderId: paymentData.orderId,
+        errorMessage:
+          (typeof result.message === 'string' && result.message) ||
+          (typeof result.error === 'string' && result.error) ||
+          'Falha ao gerar QR Code Pix (sem payload EMV ou imagem)',
       };
     } catch (error) {
       console.error('Erro ao gerar Pix QR:', error);
       return {
         success: false,
+        orderId: paymentData.orderId,
         errorMessage: 'Erro de comunicação com PayGO',
       };
     } finally {
@@ -93,22 +125,43 @@ export const usePixPayment = (paygoConfig: { host: string; port: number; automat
 
   const checkPixPaymentStatus = useCallback(async (orderId: string): Promise<PixPaymentStatus> => {
     try {
-      const response = await fetch(`http://${paygoConfig.host}:${paygoConfig.port}/pix/status/${orderId}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Automation-Key': paygoConfig.automationKey,
-        },
-        signal: AbortSignal.timeout(paygoConfig.timeout),
-      });
+      const response = await fetch(
+        `http://${paygoConfig.host}:${paygoConfig.port}/pix/status/${encodeURIComponent(orderId)}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Automation-Key': paygoConfig.automationKey ?? '',
+          },
+          signal: AbortSignal.timeout(paygoConfig.timeout),
+        }
+      );
 
-      const result = await response.json();
-      
+      let result: Record<string, unknown> = {};
+      try {
+        const text = await response.text();
+        if (text) result = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        return { status: 'pending' as const };
+      }
+
+      if (!response.ok) {
+        return { status: 'pending' as const };
+      }
+
+      const status = normalizePixPaymentStatus(result.status ?? result.paymentStatus ?? result.state);
+
       return {
-        status: result.status || 'pending',
-        transactionId: result.transactionId,
-        paidAt: result.paidAt,
-        amount: result.amount,
+        status,
+        transactionId:
+          (typeof result.transactionId === 'string' && result.transactionId) ||
+          (typeof result.transaction_id === 'string' && result.transaction_id) ||
+          undefined,
+        paidAt:
+          (typeof result.paidAt === 'string' && result.paidAt) ||
+          (typeof result.paid_at === 'string' && result.paid_at) ||
+          undefined,
+        amount: typeof result.amount === 'number' ? result.amount : undefined,
       };
     } catch (error) {
       console.error('Erro ao verificar status Pix:', error);

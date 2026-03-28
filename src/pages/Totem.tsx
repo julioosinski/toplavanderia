@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Link } from "react-router-dom";
 import { Wifi, Shield, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useKioskSecurity } from "@/hooks/useKioskSecurity";
@@ -7,6 +8,7 @@ import { useMachines, type Machine } from "@/hooks/useMachines";
 import { useLaundry } from "@/contexts/LaundryContext";
 import { useCapacitorIntegration } from "@/hooks/useCapacitorIntegration";
 import { UniversalPaymentConfig } from '@/hooks/useUniversalPayment';
+import { usePixPayment } from '@/hooks/usePixPayment';
 import { PixQRDisplay } from '@/components/payment/PixQRDisplay';
 import { SecureTEFConfig } from "@/components/admin/SecureTEFConfig";
 import { AdminPinDialog } from "@/components/admin/AdminPinDialog";
@@ -31,6 +33,7 @@ const Totem = () => {
   const [adminClickCount, setAdminClickCount] = useState(0);
   const [pixPaymentData, setPixPaymentData] = useState<any>(null);
   const [loadingTimeout, setLoadingTimeout] = useState(false);
+  const pixPollDoneRef = useRef(false);
 
   // Logo tap gesture for reconfiguration
   const [logoTapCount, setLogoTapCount] = useState(0);
@@ -42,7 +45,9 @@ const Totem = () => {
   const { currentLaundry, loading: laundryLoading, configureTotemByCNPJ } = useLaundry();
   const { disableSecurity, enableSecurity } = useKioskSecurity();
   const { authenticate: adminAuthenticate, validatePin } = useAdminAccess();
-  const { machines, loading, isOffline, updateMachineStatus } = useMachines(currentLaundry?.id);
+  const { machines, loading, isOffline, updateMachineStatus, refreshMachines } = useMachines(currentLaundry?.id);
+  const refreshMachinesRef = useRef(refreshMachines);
+  refreshMachinesRef.current = refreshMachines;
   const { isNative, deviceInfo, isReady, enableKioskMode } = useCapacitorIntegration();
 
   // Configs
@@ -54,8 +59,20 @@ const Totem = () => {
   });
 
   const universalConfig: UniversalPaymentConfig = {
-    paygo: paygoConfig, tef: tefConfig, smartPosMode: deviceMode === 'smartpos'
+    paygo: {
+      ...paygoConfig,
+      port: Number(paygoConfig.port) || 31735,
+    },
+    tef: tefConfig,
+    smartPosMode: deviceMode === 'smartpos',
   };
+
+  const { checkPixPaymentStatus } = usePixPayment({
+    host: paygoConfig.host,
+    port: Number(paygoConfig.port) || 31735,
+    automationKey: paygoConfig.automationKey,
+    timeout: paygoConfig.timeout,
+  });
 
   // Loading timeout safety
   useEffect(() => {
@@ -124,39 +141,73 @@ const Totem = () => {
     }
   };
 
-  const activateMachine = async (paymentMethod: string = 'TEF') => {
-    if (!selectedMachine || !currentLaundry) return;
-    try {
-      await updateMachineStatus(selectedMachine.id, 'running');
-      const { data: txData } = await supabase.from('transactions').insert({
-        machine_id: selectedMachine.id,
-        total_amount: selectedMachine.price,
-        duration_minutes: selectedMachine.duration,
-        status: 'pending',
-        payment_method: paymentMethod,
-        laundry_id: currentLaundry.id,
-        started_at: new Date().toISOString(),
-      }).select().single();
+  /** Ao voltar à grade, puxar preços/status frescos (útil no tablet com Realtime instável) */
+  useEffect(() => {
+    if (paymentStep !== "select") return;
+    void refreshMachinesRef.current({ background: true });
+  }, [paymentStep]);
 
-      if (selectedMachine.esp32_id) {
-        try {
-          await supabase.functions.invoke('esp32-control', {
-            body: {
-              esp32_id: selectedMachine.esp32_id,
-              relay_pin: selectedMachine.relay_pin || 1,
-              action: 'on',
-              machine_id: selectedMachine.id,
-            }
-          });
-        } catch (e) {
-          console.warn("⚠️ ESP32 communication error:", e);
-        }
+  /** Manter máquina selecionada alinhada à lista (admin alterou preço no painel) */
+  const selectedId = selectedMachine?.id;
+  useEffect(() => {
+    if (!selectedId) return;
+    setSelectedMachine((prev) => {
+      if (!prev || prev.id !== selectedId) return prev;
+      const fresh = machines.find((m) => m.id === selectedId);
+      if (!fresh) return prev;
+      if (
+        prev.price === fresh.price &&
+        prev.duration === fresh.duration &&
+        prev.status === fresh.status &&
+        prev.timeRemaining === fresh.timeRemaining &&
+        prev.runningSinceAt === fresh.runningSinceAt
+      ) {
+        return prev;
       }
-    } catch (error) {
-      console.error("Erro ao ativar máquina:", error);
-      toast({ title: "Atenção", description: "Pagamento aprovado, mas houve erro na ativação.", variant: "destructive" });
-    }
-  };
+      return fresh;
+    });
+  }, [machines, selectedId]);
+
+  const activateMachine = useCallback(
+    async (paymentMethod: string = 'TEF') => {
+      if (!selectedMachine || !currentLaundry) return;
+      try {
+        await updateMachineStatus(selectedMachine.id, 'running');
+        await supabase.from('transactions').insert({
+          machine_id: selectedMachine.id,
+          total_amount: selectedMachine.price,
+          duration_minutes: selectedMachine.duration,
+          status: 'pending',
+          payment_method: paymentMethod,
+          laundry_id: currentLaundry.id,
+          started_at: new Date().toISOString(),
+        }).select().single();
+
+        if (selectedMachine.esp32_id) {
+          try {
+            await supabase.functions.invoke('esp32-control', {
+              body: {
+                esp32_id: selectedMachine.esp32_id,
+                relay_pin: selectedMachine.relay_pin || 1,
+                action: 'on',
+                machine_id: selectedMachine.id,
+              },
+            });
+          } catch (e) {
+            console.warn('⚠️ ESP32 communication error:', e);
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao ativar máquina:', error);
+        toast({
+          title: 'Atenção',
+          description: 'Pagamento aprovado, mas houve erro na ativação.',
+          variant: 'destructive',
+        });
+      }
+    },
+    [selectedMachine, currentLaundry, updateMachineStatus, toast]
+  );
 
   const resetTotem = useCallback(() => {
     setSelectedMachine(null);
@@ -192,9 +243,80 @@ const Totem = () => {
   };
 
   const handlePixQR = (result: any) => {
-    setPixPaymentData({ ...result, amount: selectedMachine?.price, orderId: result.data?.orderId });
-    setPaymentStep("pix_qr");
+    pixPollDoneRef.current = false;
+    setPixPaymentData({
+      ...result,
+      amount: selectedMachine?.price,
+      orderId: result.orderId ?? result.data?.orderId,
+    });
+    setPaymentStep('pix_qr');
   };
+
+  useEffect(() => {
+    if (paymentStep !== 'pix_qr' || !pixPaymentData?.orderId) return;
+
+    const orderId = String(pixPaymentData.orderId);
+    const expiresMs = (Number(pixPaymentData.expiresIn) || 300) * 1000;
+
+    const tick = async () => {
+      if (pixPollDoneRef.current) return;
+      try {
+        const st = await checkPixPaymentStatus(orderId);
+        if (st.status === 'paid') {
+          pixPollDoneRef.current = true;
+          await activateMachine('PIX');
+          setTransactionData({
+            paymentMethod: 'PIX',
+            orderId,
+            transactionId: st.transactionId,
+            paidAt: st.paidAt,
+          });
+          setPaymentStep('success');
+        } else if (st.status === 'expired' || st.status === 'cancelled') {
+          pixPollDoneRef.current = true;
+          toast({
+            title: 'PIX',
+            description:
+              st.status === 'cancelled'
+                ? 'Pagamento cancelado.'
+                : 'O QR Code PIX expirou. Inicie o pagamento novamente.',
+            variant: 'destructive',
+          });
+          resetTotem();
+        }
+      } catch (e) {
+        console.warn('PIX poll:', e);
+      }
+    };
+
+    const id = window.setInterval(() => void tick(), 2500);
+    void tick();
+    const max = window.setTimeout(() => {
+      window.clearInterval(id);
+      if (!pixPollDoneRef.current) {
+        pixPollDoneRef.current = true;
+        toast({
+          title: 'PIX',
+          description: 'Tempo esgotado aguardando o PIX. Tente novamente.',
+          variant: 'destructive',
+        });
+        resetTotem();
+      }
+    }, expiresMs + 20_000);
+
+    return () => {
+      window.clearInterval(id);
+      window.clearTimeout(max);
+    };
+  }, [
+    paymentStep,
+    pixPaymentData?.orderId,
+    pixPaymentData?.expiresIn,
+    checkPixPaymentStatus,
+    activateMachine,
+    resetTotem,
+    toast,
+  ]);
 
   // === RENDER ===
 
@@ -314,18 +436,25 @@ const Totem = () => {
 
       {/* Footer */}
       <div className="container mx-auto px-2 py-2 text-center">
-        <div className="flex items-center justify-center space-x-2 text-gray-500">
-          <Wifi size={12} />
-          <span className="text-xs cursor-pointer select-none" onClick={handleAdminAccess}>
-            Sistema Online — {currentLaundry?.name || 'Lavanderia'}
+        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-gray-500">
+          <div className="flex items-center space-x-2">
+            <Wifi size={12} />
+            <span className="text-xs cursor-pointer select-none" onClick={handleAdminAccess}>
+              Sistema Online — {currentLaundry?.name || 'Lavanderia'}
+            </span>
+            {adminClickCount >= 3 && (
+              <div className="flex space-x-0.5 ml-1">
+                {Array.from({ length: adminClickCount - 2 }, (_, i) => (
+                  <div key={i} className="w-1 h-1 rounded-full bg-gray-400 animate-scale-in" />
+                ))}
+              </div>
+            )}
+          </div>
+          <span className="text-[10px] text-gray-400 opacity-80 hover:opacity-100">
+            <Link to="/auth" className="underline-offset-2 hover:underline">
+              Área da equipe
+            </Link>
           </span>
-          {adminClickCount >= 3 && (
-            <div className="flex space-x-0.5 ml-1">
-              {Array.from({ length: adminClickCount - 2 }, (_, i) => (
-                <div key={i} className="w-1 h-1 rounded-full bg-gray-400 animate-scale-in" />
-              ))}
-            </div>
-          )}
         </div>
       </div>
 

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -9,16 +10,27 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { type Machine } from "@/hooks/useMachines";
-import { Droplets, Wind, Clock, DollarSign, MapPin, Cpu, Wifi, Calendar } from "lucide-react";
-import { format } from "date-fns";
+import { Droplets, Wind, Clock, DollarSign, MapPin, Cpu, Wifi } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { forceMachineReleased } from "@/lib/machineEsp32Sync";
 
 interface MachineDetailsDialogProps {
   machine: Machine | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Após liberar com sucesso (ex.: recarregar lista no pai) */
+  onAfterAction?: () => void;
 }
 
-export const MachineDetailsDialog = ({ machine, open, onOpenChange }: MachineDetailsDialogProps) => {
+export const MachineDetailsDialog = ({
+  machine,
+  open,
+  onOpenChange,
+  onAfterAction,
+}: MachineDetailsDialogProps) => {
+  const { toast } = useToast();
+  const [releasing, setReleasing] = useState(false);
+
   if (!machine) return null;
 
   const IconComponent = machine.type === "lavadora" ? Droplets : Wind;
@@ -31,6 +43,8 @@ export const MachineDetailsDialog = ({ machine, open, onOpenChange }: MachineDet
         return "bg-blue-100 text-blue-700";
       case "offline":
         return "bg-red-100 text-red-700";
+      case "maintenance":
+        return "bg-amber-100 text-amber-800";
       default:
         return "bg-gray-100 text-gray-700";
     }
@@ -44,6 +58,8 @@ export const MachineDetailsDialog = ({ machine, open, onOpenChange }: MachineDet
         return "Em uso";
       case "offline":
         return "Offline";
+      case "maintenance":
+        return "Manutenção";
       default:
         return "Desconhecido";
     }
@@ -147,8 +163,41 @@ export const MachineDetailsDialog = ({ machine, open, onOpenChange }: MachineDet
               Fechar
             </Button>
             {machine.status === "running" && (
-              <Button variant="destructive" className="flex-1">
-                Parar Emergência
+              <Button
+                variant="destructive"
+                className="flex-1"
+                disabled={releasing}
+                onClick={async () => {
+                  if (
+                    !confirm(
+                      "Liberar no totem, marcar como disponível e enviar comando para desligar o relé no ESP32?"
+                    )
+                  ) {
+                    return;
+                  }
+                  setReleasing(true);
+                  try {
+                    const { error } = await forceMachineReleased({ machineId: machine.id });
+                    if (error) throw error;
+                    toast({
+                      title: "Máquina liberada",
+                      description:
+                        "Status atualizado no banco, relé espelhado como desligado e comando enviado ao ESP32.",
+                    });
+                    onAfterAction?.();
+                    onOpenChange(false);
+                  } catch (e) {
+                    toast({
+                      title: "Erro ao liberar",
+                      description: e instanceof Error ? e.message : "Tente novamente.",
+                      variant: "destructive",
+                    });
+                  } finally {
+                    setReleasing(false);
+                  }
+                }}
+              >
+                {releasing ? "Liberando…" : "Parar / liberar"}
               </Button>
             )}
           </div>

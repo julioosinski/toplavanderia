@@ -1,4 +1,3 @@
-import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -20,6 +19,7 @@ import Settings from "./pages/admin/Settings";
 import Profile from "./pages/admin/Profile";
 import ESP32Diagnostics from "./pages/admin/ESP32Diagnostics";
 import Payments from "./pages/admin/Payments";
+import NoAccess from "./pages/NoAccess";
 
 const queryClient = new QueryClient();
 
@@ -28,13 +28,13 @@ const App = () => (
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
       <LaundryProvider>
         <TooltipProvider>
-          <Toaster />
           <Sonner />
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Navigate to="/totem" replace />} />
               <Route path="/totem" element={<Totem />} />
               <Route path="/auth" element={<Auth />} />
+              <Route path="/no-access" element={<NoAccess />} />
               <Route path="/admin" element={<AdminLayout />}>
                 <Route index element={<Dashboard />} />
                 <Route path="dashboard" element={<Dashboard />} />

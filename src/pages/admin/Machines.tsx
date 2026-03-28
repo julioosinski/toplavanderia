@@ -4,13 +4,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { LaundryGuard } from "@/components/admin/LaundryGuard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Pencil, Trash2, MoreVertical, Circle } from "lucide-react";
+import { Plus, Pencil, Trash2, MoreVertical, Circle, Unlock, Wrench } from "lucide-react";
 import { SignalIndicator } from "@/components/admin/SignalIndicator";
 import { DataTable } from "@/components/ui/data-table";
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { MachineDialog } from "@/components/admin/MachineDialog";
+import { forceMachineReleased, forceMachineMaintenance } from "@/lib/machineEsp32Sync";
 import { ESP32ConfigurationDialog } from "@/components/admin/ESP32ConfigurationDialog";
 import { ESP32PendingApproval } from "@/components/admin/ESP32PendingApproval";
 import {
@@ -77,77 +78,47 @@ export default function Machines() {
 
       if (esp32Error) throw esp32Error;
 
-      // Merge machine data with ESP32 status
+      const esp32ForLaundry =
+        esp32Data?.filter((esp) => esp.laundry_id === currentLaundry.id) ?? [];
+
       const enrichedMachines = (machinesData || []).map((machine) => {
-        // Find ESP32 status matching this machine's esp32_id
-        const esp32 = esp32Data?.find((esp) => esp.esp32_id === machine.esp32_id);
-        
-        // Determine real status based on ESP32 data
+        const esp32 = esp32ForLaundry.find((esp) => esp.esp32_id === machine.esp32_id);
+
         let realStatus = machine.status;
         let esp32Online = false;
-        
-        console.log(`🔍 [Machines] Verificando ESP32 para máquina ${machine.name}:`, {
-          machine_esp32_id: machine.esp32_id,
-          esp32_found: !!esp32,
-          esp32_data: esp32
-        });
 
         if (esp32) {
           const lastHeartbeat = esp32.last_heartbeat ? new Date(esp32.last_heartbeat) : null;
           const now = new Date();
           const minutesAgo = lastHeartbeat ? (now.getTime() - lastHeartbeat.getTime()) / 60000 : 999999;
-          const isRecent = lastHeartbeat && minutesAgo < 5; // 5 minutes
-          
+          const isRecent = lastHeartbeat && minutesAgo < 5;
+
           esp32Online = esp32.is_online && isRecent;
-          
-          console.log(`📡 [Machines] ${machine.name} - ESP32 Status:`, {
-            is_online: esp32.is_online,
-            last_heartbeat: esp32.last_heartbeat,
-            minutes_ago: minutesAgo.toFixed(1),
-            is_recent: isRecent,
-            esp32_online: esp32Online
-          });
-          
+
           if (!esp32Online) {
             realStatus = 'offline';
-            console.log(`❌ [Machines] ${machine.name} marcado como OFFLINE (heartbeat antigo ou ESP32 offline)`);
           } else {
-            // Check relay status
-            const relayStatus = esp32.relay_status as any;
-            if (relayStatus) {
+            const relayStatus = esp32.relay_status as Record<string, unknown> | string | null;
+            if (typeof relayStatus === 'string') {
+              realStatus = relayStatus === 'on' ? 'running' : 'available';
+            } else if (relayStatus && typeof relayStatus === 'object') {
               let relayOn = false;
               const relayKey = `relay_${machine.relay_pin || 1}`;
-              
-              console.log(`🔍 [Machines] ${machine.name} relay_status:`, JSON.stringify(relayStatus));
-              
-              // Formato 1: {relay_1: "on", relay_2: "off"}
-              if (relayStatus[relayKey] !== undefined) {
-                relayOn = relayStatus[relayKey] === 'on';
-                console.log(`✅ [Machines] ${machine.name} - Formato direto: ${relayKey} = ${relayStatus[relayKey]}`);
+              const rs = relayStatus as Record<string, unknown>;
+
+              if (rs[relayKey] !== undefined) {
+                relayOn = rs[relayKey] === 'on';
+              } else if (rs.status && typeof rs.status === 'object') {
+                relayOn = (rs.status as Record<string, unknown>)[relayKey] === 'on';
+              } else if (rs.status !== undefined) {
+                relayOn = rs.status === 'on';
               }
-              // Formato 2: {status: {relay_1: "on"}} - formato incorreto do banco
-              else if (relayStatus.status && typeof relayStatus.status === 'object') {
-                relayOn = relayStatus.status[relayKey] === 'on';
-                console.log(`⚠️ [Machines] ${machine.name} - Formato embrulhado: status.${relayKey} = ${relayStatus.status[relayKey]}`);
-              }
-              // Formato 3: {status: "on"} - formato legado
-              else if (relayStatus.status !== undefined) {
-                relayOn = relayStatus.status === 'on';
-                console.log(`⚠️ [Machines] ${machine.name} - Formato legado: status = ${relayStatus.status}`);
-              }
-              // Formato 4: string "on"
-              else if (typeof relayStatus === 'string') {
-                relayOn = relayStatus === 'on';
-                console.log(`⚠️ [Machines] ${machine.name} - Formato string: ${relayStatus}`);
-              }
-              
+
               realStatus = relayOn ? 'running' : 'available';
-              console.log(`🎯 [Machines] ${machine.name} - Status final: ${realStatus} (relay=${relayOn})`);
             }
           }
         } else {
           realStatus = 'offline';
-          console.log(`❌ [Machines] ${machine.name} - ESP32 NÃO ENCONTRADO (esp32_id: ${machine.esp32_id})`);
         }
 
         return {
@@ -342,6 +313,62 @@ export default function Machines() {
               <DropdownMenuItem onClick={() => handleEdit(machine)}>
                 <Pencil className="mr-2 h-4 w-4" />
                 Editar
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={async () => {
+                  if (
+                    !confirm(
+                      "Liberar no totem (disponível), atualizar relé no painel e enviar comando OFF ao ESP32?"
+                    )
+                  ) {
+                    return;
+                  }
+                  const { error } = await forceMachineReleased({ machineId: machine.id });
+                  if (error) {
+                    toast({
+                      title: "Erro",
+                      description: error.message,
+                      variant: "destructive",
+                    });
+                  } else {
+                    toast({
+                      title: "Máquina liberada",
+                      description: "Totem e esp32_status alinhados; comando de desligar relé enfileirado.",
+                    });
+                    loadMachines();
+                  }
+                }}
+              >
+                <Unlock className="mr-2 h-4 w-4" />
+                Liberar máquina
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={async () => {
+                  if (
+                    !confirm(
+                      "Colocar em manutenção, espelhar relé OFF e enviar comando OFF ao ESP32?"
+                    )
+                  ) {
+                    return;
+                  }
+                  const { error } = await forceMachineMaintenance(machine.id);
+                  if (error) {
+                    toast({
+                      title: "Erro",
+                      description: error.message,
+                      variant: "destructive",
+                    });
+                  } else {
+                    toast({
+                      title: "Manutenção",
+                      description: "Status atualizado e relé desligado no painel e no ESP32.",
+                    });
+                    loadMachines();
+                  }
+                }}
+              >
+                <Wrench className="mr-2 h-4 w-4" />
+                Colocar em manutenção
               </DropdownMenuItem>
               <DropdownMenuItem 
                 onClick={() => handleDelete(machine)}

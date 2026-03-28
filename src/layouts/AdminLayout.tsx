@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Outlet, Link, useNavigate, useLocation } from "react-router-dom";
+import { Outlet, Link, useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useLaundry } from "@/contexts/LaundryContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -104,7 +104,7 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
-  const { currentLaundry, loading, error, retry, userRole, isSuperAdmin } = useLaundry();
+  const { currentLaundry, loading, error, retry, userRole, isSuperAdmin, panelAccessDenied } = useLaundry();
   const [user, setUser] = useState<any>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -114,7 +114,9 @@ export default function AdminLayout() {
     if (userRole === 'super_admin') return 'Super Admin';
     if (userRole === 'admin') return 'Administrador';
     if (userRole === 'operator') return 'Operador';
-    return 'Usuário';
+    if (userRole === 'totem_device') return 'Dispositivo totem';
+    if (userRole === 'user') return 'Usuário';
+    return 'Conta';
   };
 
   const getRoleBadgeVariant = () => {
@@ -123,21 +125,33 @@ export default function AdminLayout() {
     return 'outline';
   };
 
-  const getBreadcrumbs = () => {
-    const paths = location.pathname.split('/').filter(Boolean);
-    const labels: Record<string, string> = {
-      admin: 'Admin',
-      dashboard: 'Dashboard',
-      machines: 'Máquinas',
-      transactions: 'Transações',
-      users: 'Usuários',
-      laundries: 'Lavanderias',
-      reports: 'Relatórios',
-      security: 'Segurança',
-      settings: 'Configurações',
-      profile: 'Perfil',
-    };
-    return paths.map(path => labels[path] || path);
+  const breadcrumbLabels: Record<string, string> = {
+    admin: 'Admin',
+    dashboard: 'Dashboard',
+    machines: 'Máquinas',
+    transactions: 'Transações',
+    users: 'Usuários',
+    laundries: 'Lavanderias',
+    reports: 'Relatórios',
+    payments: 'Pagamentos',
+    security: 'Segurança',
+    settings: 'Configurações',
+    profile: 'Perfil',
+    'esp32-diagnostics': 'Diagnóstico ESP32',
+  };
+
+  const getBreadcrumbItems = () => {
+    const segments = location.pathname.split('/').filter(Boolean);
+    const items: { path: string; label: string }[] = [];
+    let acc = '';
+    for (const seg of segments) {
+      acc += `/${seg}`;
+      items.push({
+        path: acc,
+        label: breadcrumbLabels[seg] || seg,
+      });
+    }
+    return items;
   };
 
   const handleSignOut = async () => {
@@ -196,6 +210,10 @@ export default function AdminLayout() {
     );
   }
 
+  if (panelAccessDenied) {
+    return <Navigate to="/no-access" replace />;
+  }
+
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen gap-4 p-8 text-center">
@@ -222,16 +240,20 @@ export default function AdminLayout() {
               <SidebarTrigger />
               
               {/* Breadcrumbs */}
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                {getBreadcrumbs().map((crumb, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    {index > 0 && <ChevronRight className="h-4 w-4" />}
-                    <span className={index === getBreadcrumbs().length - 1 ? "text-foreground font-medium" : ""}>
-                      {crumb}
-                    </span>
+              <nav className="flex items-center gap-2 text-sm text-muted-foreground" aria-label="Breadcrumb">
+                {getBreadcrumbItems().map((item, index, arr) => (
+                  <div key={item.path} className="flex items-center gap-2">
+                    {index > 0 && <ChevronRight className="h-4 w-4 shrink-0" />}
+                    {index < arr.length - 1 ? (
+                      <Link to={item.path} className="hover:text-foreground transition-colors">
+                        {item.label}
+                      </Link>
+                    ) : (
+                      <span className="text-foreground font-medium">{item.label}</span>
+                    )}
                   </div>
                 ))}
-              </div>
+              </nav>
 
               <div className="flex-1" />
               

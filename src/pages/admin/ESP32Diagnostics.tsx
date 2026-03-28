@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useLaundry } from "@/contexts/LaundryContext";
+import { LaundryGuard } from "@/components/admin/LaundryGuard";
 import { Activity, AlertTriangle, CheckCircle, WifiOff, Zap } from "lucide-react";
 
 interface ESP32Status {
@@ -52,29 +53,38 @@ export default function ESP32Diagnostics() {
   }, [currentLaundry]);
 
   const fetchData = async () => {
+    const laundryId = currentLaundry?.id;
     try {
       setLoading(true);
 
-      // Buscar todas as lavanderias
-      const { data: laundriesData } = await supabase
+      if (!laundryId) {
+        setLaundries([]);
+        setEsp32List([]);
+        setMachineList([]);
+        return;
+      }
+
+      const { data: laundryRow } = await supabase
         .from('laundries')
         .select('id, name')
-        .eq('is_active', true);
-      
-      setLaundries(laundriesData || []);
+        .eq('id', laundryId)
+        .eq('is_active', true)
+        .maybeSingle();
 
-      // Buscar todos ESP32s
+      setLaundries(laundryRow ? [laundryRow] : []);
+
       const { data: esp32Data } = await supabase
         .from('esp32_status')
         .select('*')
+        .eq('laundry_id', laundryId)
         .order('esp32_id');
 
       setEsp32List(esp32Data || []);
 
-      // Buscar todas as máquinas
       const { data: machinesData } = await supabase
         .from('machines')
         .select('*')
+        .eq('laundry_id', laundryId)
         .order('name');
 
       setMachineList(machinesData || []);
@@ -122,23 +132,21 @@ export default function ESP32Diagnostics() {
     return relayStatus.hasOwnProperty('status') && !relayStatus.hasOwnProperty('relay_1');
   };
 
-  if (loading) {
-    return (
-      <div className="container mx-auto p-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-muted rounded w-1/3"></div>
-          <div className="h-64 bg-muted rounded"></div>
-        </div>
-      </div>
-    );
-  }
-
   return (
+    <LaundryGuard>
+      {loading ? (
+        <div className="container mx-auto p-6">
+          <div className="animate-pulse space-y-4">
+            <div className="h-8 bg-muted rounded w-1/3"></div>
+            <div className="h-64 bg-muted rounded"></div>
+          </div>
+        </div>
+      ) : (
     <div className="container mx-auto p-6 space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Diagnóstico ESP32</h1>
         <p className="text-muted-foreground">
-          Visualização completa de todos os ESP32s e suas máquinas vinculadas
+          ESP32s e máquinas vinculadas à unidade atual ({currentLaundry?.name ?? '—'})
         </p>
       </div>
 
@@ -322,5 +330,7 @@ export default function ESP32Diagnostics() {
         </Card>
       )}
     </div>
+      )}
+    </LaundryGuard>
   );
 }

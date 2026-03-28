@@ -8,7 +8,8 @@ import { useToast } from '@/hooks/use-toast';
 import QRCodeLib from 'qrcode';
 
 interface PixQRDisplayProps {
-  qrCode: string;
+  /** Payload copia-e-cola (EMV); opcional se só houver imagem base64 */
+  qrCode?: string;
   qrCodeBase64?: string;
   pixKey?: string;
   amount: number;
@@ -36,7 +37,7 @@ export const PixQRDisplay: React.FC<PixQRDisplayProps> = ({
 
   // Generate QR code if not provided
   useEffect(() => {
-    if (!qrCodeBase64 && qrCode) {
+    if (!qrCodeBase64 && qrCode && qrCode.length > 0) {
       QRCodeLib.toDataURL(qrCode, {
         width: 192,
         margin: 2,
@@ -51,7 +52,8 @@ export const PixQRDisplay: React.FC<PixQRDisplayProps> = ({
   }, [qrCode, qrCodeBase64]);
 
   const handleCopyQR = () => {
-    navigator.clipboard.writeText(qrCode);
+    if (!qrCode) return;
+    void navigator.clipboard.writeText(qrCode);
     onCopyCode();
     toast({
       title: "Código copiado!",
@@ -128,11 +130,12 @@ export const PixQRDisplay: React.FC<PixQRDisplayProps> = ({
               </div>
 
               {/* Copy QR Code Button */}
-              <Button 
+              <Button
                 onClick={handleCopyQR}
-                variant="outline" 
+                variant="outline"
                 size="sm"
                 className="w-full"
+                disabled={!qrCode}
               >
                 <Copy className="mr-2" size={14} />
                 Copiar Código Pix

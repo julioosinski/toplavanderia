@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { mergeRelayIntoEsp32Status } from '@/lib/machineEsp32Sync';
 
 export const useMachineAutoStatus = () => {
   useEffect(() => {
@@ -8,7 +9,7 @@ export const useMachineAutoStatus = () => {
         // Buscar máquinas que estão "running" há mais tempo que o ciclo
         const { data: runningMachines, error } = await supabase
           .from('machines')
-          .select('id, updated_at, cycle_time_minutes')
+          .select('id, updated_at, cycle_time_minutes, esp32_id, relay_pin, laundry_id')
           .eq('status', 'running');
 
         if (error) {
@@ -25,8 +26,8 @@ export const useMachineAutoStatus = () => {
             const minutesSinceUpdate = (now.getTime() - lastUpdate.getTime()) / (1000 * 60);
             const cycleTime = machine.cycle_time_minutes || 40;
             
-            // Se passou mais tempo que o ciclo + 5 minutos de margem
-            if (minutesSinceUpdate > cycleTime + 5) {
+            // Ciclo configurado + pequena margem (alinhado ao totem)
+            if (minutesSinceUpdate >= cycleTime + 2) {
               machinesToUpdate.push(machine.id);
             }
           }
@@ -46,6 +47,21 @@ export const useMachineAutoStatus = () => {
             console.error('Erro ao atualizar status das máquinas:', updateError);
           } else {
             console.log(`${machinesToUpdate.length} máquinas atualizadas para "available"`);
+            const releasedRows =
+              runningMachines?.filter((m) => machinesToUpdate.includes(m.id)) ?? [];
+            for (const m of releasedRows) {
+              if (m.esp32_id && m.laundry_id) {
+                const { error: relayErr } = await mergeRelayIntoEsp32Status(
+                  m.esp32_id,
+                  m.laundry_id,
+                  m.relay_pin ?? 1,
+                  'off'
+                );
+                if (relayErr) {
+                  console.warn('[useMachineAutoStatus] espelho relay_status:', relayErr);
+                }
+              }
+            }
           }
         }
       } catch (error) {
@@ -53,8 +69,8 @@ export const useMachineAutoStatus = () => {
       }
     };
 
-    // Verificar a cada 60 segundos (otimizado)
-    const interval = setInterval(checkMachineTimeouts, 60000);
+    // A cada 45s para alinhar liberação ao que o usuário vê no totem
+    const interval = setInterval(checkMachineTimeouts, 45000);
 
     // Verificar imediatamente
     checkMachineTimeouts();

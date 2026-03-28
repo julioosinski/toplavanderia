@@ -1,6 +1,10 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Laundry, AppRole } from '@/types/laundry';
+import { Laundry, AppRole, ADMIN_PANEL_ROLES } from '@/types/laundry';
+
+const debugLaundry = (...args: unknown[]) => {
+  if (import.meta.env.DEV) console.log(...args);
+};
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { nativeStorage, getItemWithTimeout } from '@/utils/nativeStorage';
@@ -11,10 +15,15 @@ interface LaundryContextType {
   isSuperAdmin: boolean;
   isAdmin: boolean;
   isOperator: boolean;
+  /** Super admin com visão consolidada (todas as lavanderias) — use no dashboard */
+  isViewingAllLaundries: boolean;
+  /** Login com perfil sem acesso ao painel (ex.: user, totem_device) */
+  panelAccessDenied: boolean;
   laundries: Laundry[];
   loading: boolean;
   error: string | null;
   switchLaundry: (laundryId: string) => Promise<void>;
+  switchToAllLaundries: () => Promise<void>;
   refreshLaundries: () => Promise<void>;
   retry: () => void;
   configureTotemByCNPJ: (cnpj: string) => Promise<boolean>;
@@ -28,6 +37,8 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
   const [laundries, setLaundries] = useState<Laundry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isViewingAllLaundries, setIsViewingAllLaundries] = useState(false);
+  const [panelAccessDenied, setPanelAccessDenied] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -110,24 +121,33 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
   const switchLaundry = async (laundryId: string) => {
     const laundry = await fetchCurrentLaundry(laundryId);
     if (laundry) {
+      setIsViewingAllLaundries(false);
       setCurrentLaundry(laundry);
       await nativeStorage.setItem('selectedLaundryId', laundryId);
-      
-      // Invalidar todas as queries para forçar reload dos dados
       queryClient.invalidateQueries();
-      
       toast({
-        title: "Lavanderia alterada",
+        title: 'Lavanderia alterada',
         description: `Agora você está gerenciando: ${laundry.name}`,
       });
     }
   };
 
+  const switchToAllLaundries = async () => {
+    await nativeStorage.setItem('selectedLaundryId', 'all');
+    setIsViewingAllLaundries(true);
+    queryClient.invalidateQueries();
+    toast({
+      title: 'Visão consolidada',
+      description: 'Dashboard e relatórios globais. Para editar máquinas ou configurações, escolha uma lavanderia no menu.',
+    });
+  };
+
   const initializeLaundryContext = async () => {
     try {
-      console.log('[LaundryContext] Iniciando inicialização...');
+      debugLaundry('[LaundryContext] Iniciando inicialização...');
       setLoading(true);
       setError(null);
+      setPanelAccessDenied(false);
       
       // Envolver getUser() em try/catch separado para capturar erros de rede
       // (timeout, DNS failure) sem bloquear o fluxo do modo totem
@@ -142,16 +162,17 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       } catch (networkError) {
         console.warn('[LaundryContext] Auth check falhou (rede/timeout) - modo totem será verificado');
       }
-      console.log('[LaundryContext] Usuário obtido:', user?.id);
-      
+      debugLaundry('[LaundryContext] Usuário obtido:', user?.id);
+
       if (!user) {
-        console.log('[LaundryContext] Nenhum usuário autenticado - verificando modo totem...');
+        setIsViewingAllLaundries(false);
+        debugLaundry('[LaundryContext] Nenhum usuário autenticado - verificando modo totem...');
         
         // Modo totem: verificar se há lavanderia salva no storage nativo (ou localStorage).
         // getItem sem timeout pode nunca resolver no WebView → laundryLoading infinito.
         const totemLaundryId = await getItemWithTimeout('totem_laundry_id', 8000);
         if (totemLaundryId) {
-          console.log('[LaundryContext] Modo totem: carregando lavanderia', totemLaundryId);
+          debugLaundry('[LaundryContext] Modo totem: carregando lavanderia', totemLaundryId);
           const laundry = await Promise.race([
             fetchCurrentLaundry(totemLaundryId),
             new Promise<null>((resolve) => setTimeout(() => resolve(null), 15000)),
@@ -159,7 +180,7 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
           if (laundry) {
             setCurrentLaundry(laundry);
             setLaundries([laundry]);
-            console.log('[LaundryContext] Modo totem: lavanderia carregada -', laundry.name);
+            debugLaundry('[LaundryContext] Modo totem: lavanderia carregada -', laundry.name);
           } else {
             console.warn('[LaundryContext] Modo totem: lavanderia não encontrada, limpando storage');
             await Promise.race([
@@ -174,13 +195,11 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      // Buscar role do usuário
-      console.log('[LaundryContext] Buscando role do usuário...');
+      debugLaundry('[LaundryContext] Buscando role do usuário...');
       const roleData = await fetchUserRole(user.id);
-      console.log('[LaundryContext] Role encontrada:', roleData);
-      
+      debugLaundry('[LaundryContext] Role encontrada:', roleData);
+
       if (!roleData) {
-        console.log('[LaundryContext] Usuário sem role - redirecionando para auth');
         setLoading(false);
         setError('Você não tem permissão para acessar o painel administrativo. Entre em contato com o administrador.');
         return;
@@ -188,32 +207,50 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
 
       setUserRole(roleData.role);
 
+      if (!ADMIN_PANEL_ROLES.includes(roleData.role as AppRole)) {
+        setPanelAccessDenied(true);
+        setCurrentLaundry(null);
+        setLaundries([]);
+        setIsViewingAllLaundries(false);
+        setLoading(false);
+        setError(null);
+        return;
+      }
+
       // Se super_admin, buscar todas as lavanderias
       if (roleData.role === 'super_admin') {
-        console.log('[LaundryContext] Super admin - buscando todas as lavanderias...');
+        debugLaundry('[LaundryContext] Super admin - buscando todas as lavanderias...');
         const laundriesList = await fetchLaundries();
-        console.log('[LaundryContext] Lavanderias encontradas:', laundriesList.length);
+        debugLaundry('[LaundryContext] Lavanderias encontradas:', laundriesList.length);
         
         if (laundriesList.length === 0) {
           throw new Error('Nenhuma lavanderia cadastrada no sistema.');
         }
         
         setLaundries(laundriesList);
-        
-        // Tentar recuperar última lavanderia selecionada
+
         const savedLaundryId = await getItemWithTimeout('selectedLaundryId', 8000);
-        if (savedLaundryId && laundriesList.find(l => l.id === savedLaundryId)) {
+        if (savedLaundryId === 'all') {
+          setIsViewingAllLaundries(true);
+          if (laundriesList[0]) {
+            const first = await fetchCurrentLaundry(laundriesList[0].id);
+            if (first) setCurrentLaundry(first);
+          }
+        } else if (savedLaundryId && laundriesList.find((l) => l.id === savedLaundryId)) {
+          setIsViewingAllLaundries(false);
           const laundry = await fetchCurrentLaundry(savedLaundryId);
           if (laundry) setCurrentLaundry(laundry);
         } else if (laundriesList.length > 0) {
+          setIsViewingAllLaundries(false);
           setCurrentLaundry(laundriesList[0]);
         }
-      } 
+      }
       // Se admin/operator, buscar apenas sua lavanderia
       else if (roleData.laundry_id) {
-        console.log('[LaundryContext] Admin/Operator - buscando lavanderia específica...');
+        setIsViewingAllLaundries(false);
+        debugLaundry('[LaundryContext] Admin/Operator - buscando lavanderia específica...');
         const laundry = await fetchCurrentLaundry(roleData.laundry_id);
-        console.log('[LaundryContext] Lavanderia encontrada:', laundry?.name);
+        debugLaundry('[LaundryContext] Lavanderia encontrada:', laundry?.name);
         
         if (!laundry) {
           throw new Error('Lavanderia não encontrada. Entre em contato com o administrador.');
@@ -225,7 +262,7 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         throw new Error('Seu perfil não está associado a nenhuma lavanderia. Entre em contato com o administrador.');
       }
 
-      console.log('[LaundryContext] Inicialização concluída com sucesso');
+      debugLaundry('[LaundryContext] Inicialização concluída com sucesso');
       setLoading(false);
     } catch (err) {
       console.error('[LaundryContext] Erro na inicialização:', err);
@@ -245,13 +282,15 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
 
     // Escutar mudanças de autenticação
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('[LaundryContext] Auth state changed:', event);
+      debugLaundry('[LaundryContext] Auth state changed:', event);
       if (event === 'SIGNED_IN' && session) {
         initializeLaundryContext();
       } else if (event === 'SIGNED_OUT') {
         setCurrentLaundry(null);
         setUserRole(null);
         setLaundries([]);
+        setIsViewingAllLaundries(false);
+        setPanelAccessDenied(false);
         setLoading(false);
         setError(null);
       }
@@ -295,7 +334,7 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       });
       setCurrentLaundry(data);
       setLaundries([data]);
-      console.log('[LaundryContext] Totem configurado com sucesso:', data.name);
+      debugLaundry('[LaundryContext] Totem configurado com sucesso:', data.name);
       return true;
     } catch (err) {
       console.error('[LaundryContext] Erro ao configurar totem por CNPJ:', err);
@@ -318,10 +357,13 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         isSuperAdmin,
         isAdmin,
         isOperator,
+        isViewingAllLaundries,
+        panelAccessDenied,
         laundries,
         loading,
         error,
         switchLaundry,
+        switchToAllLaundries,
         refreshLaundries,
         retry,
         configureTotemByCNPJ,

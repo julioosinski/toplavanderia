@@ -134,21 +134,26 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
     }
   }, []);
 
-  // Test PayGO connection
-  const testConnection = useCallback(async (): Promise<boolean> => {
+  // Test PayGO connection (silent: sem toast — uso em polling / teste automático)
+  const testConnection = useCallback(async (options?: { silent?: boolean }): Promise<boolean> => {
+    const silent = options?.silent === true;
     try {
       const result = await PayGO.testConnection();
       setIsConnected(result.success);
-      
-      if (result.success) {
-        toast.success('Teste de conexão PayGO bem-sucedido');
-      } else {
-        toast.error(`Falha no teste: ${result.message}`);
+
+      if (!silent) {
+        if (result.success) {
+          toast.success('Teste de conexão PayGO bem-sucedido');
+        } else {
+          toast.error(`Falha no teste: ${result.message}`);
+        }
       }
-      
+
       return result.success;
     } catch (error) {
-      handlePayGOError(error, 'Erro no teste de conexão');
+      if (!silent) {
+        handlePayGOError(error, 'Erro no teste de conexão');
+      }
       return false;
     }
   }, []);

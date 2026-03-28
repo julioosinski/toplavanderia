@@ -8,11 +8,13 @@ import { MachineDetailsDialog } from "./MachineDetailsDialog";
 interface ConsolidatedMachineStatusProps {
   machinesByLaundry: Record<string, { laundryName: string; machines: Machine[] }>;
   loading?: boolean;
+  onAfterMachineAction?: () => void;
 }
 
 export const ConsolidatedMachineStatus = ({
   machinesByLaundry,
   loading,
+  onAfterMachineAction,
 }: ConsolidatedMachineStatusProps) => {
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
 
@@ -119,6 +121,7 @@ export const ConsolidatedMachineStatus = ({
         machine={selectedMachine}
         open={!!selectedMachine}
         onOpenChange={(open) => !open && setSelectedMachine(null)}
+        onAfterAction={onAfterMachineAction}
       />
     </div>
   );

@@ -9,9 +9,10 @@ import { MachineFilterBar } from "./MachineFilterBar";
 interface MachineStatusGridProps {
   machines: Machine[];
   loading?: boolean;
+  onAfterMachineAction?: () => void;
 }
 
-export const MachineStatusGrid = ({ machines, loading }: MachineStatusGridProps) => {
+export const MachineStatusGrid = ({ machines, loading, onAfterMachineAction }: MachineStatusGridProps) => {
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -133,6 +134,7 @@ export const MachineStatusGrid = ({ machines, loading }: MachineStatusGridProps)
         machine={selectedMachine}
         open={!!selectedMachine}
         onOpenChange={(open) => !open && setSelectedMachine(null)}
+        onAfterAction={onAfterMachineAction}
       />
     </div>
   );

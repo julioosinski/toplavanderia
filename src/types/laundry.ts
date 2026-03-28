@@ -19,6 +19,9 @@ export interface Laundry {
 
 export type AppRole = 'super_admin' | 'admin' | 'operator' | 'user' | 'totem_device';
 
+/** Perfis que podem usar o painel web /admin */
+export const ADMIN_PANEL_ROLES: AppRole[] = ['super_admin', 'admin', 'operator'];
+
 export interface UserRole {
   id: string;
   user_id: string;

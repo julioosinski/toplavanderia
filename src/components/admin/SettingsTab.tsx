@@ -11,7 +11,7 @@ import { ESP32ConfigQRCode } from "./ESP32ConfigQRCode";
 
 export const SettingsTab = () => {
   const { settings, isLoading, updateSettings, isUpdating } = useSystemSettings();
-  const { currentLaundry } = useLaundry();
+  const { currentLaundry, isAdmin } = useLaundry();
 
   if (isLoading) {
     return (
@@ -45,16 +45,18 @@ export const SettingsTab = () => {
         </AlertDescription>
       </Alert>
 
-      {/* ESP32 Pending Approval */}
-      <ESP32PendingApproval />
+      {isAdmin && (
+        <>
+          <ESP32PendingApproval />
+          <ESP32ConfigQRCode />
+        </>
+      )}
 
-      {/* ESP32 Config QR Code */}
-      <ESP32ConfigQRCode />
-
-      <SettingsForm 
-        settings={settings} 
+      <SettingsForm
+        settings={settings}
         onUpdate={updateSettings}
         isUpdating={isUpdating}
+        canEdit={isAdmin}
       />
     </div>
   );

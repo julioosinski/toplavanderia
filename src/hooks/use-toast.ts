@@ -1,9 +1,20 @@
 import * as React from "react"
+import { toast as sonnerToast } from "sonner"
 
 import type {
   ToastActionElement,
   ToastProps,
 } from "@/components/ui/toast"
+
+function reactNodeToDescription(node: React.ReactNode): string | undefined {
+  if (node == null || node === false) return undefined
+  if (typeof node === "string" || typeof node === "number") return String(node)
+  if (Array.isArray(node)) {
+    const parts = node.map(reactNodeToDescription).filter(Boolean) as string[]
+    return parts.length ? parts.join(" ") : undefined
+  }
+  return undefined
+}
 
 const TOAST_LIMIT = 1
 const TOAST_REMOVE_DELAY = 1000000
@@ -21,13 +32,6 @@ const actionTypes = {
   DISMISS_TOAST: "DISMISS_TOAST",
   REMOVE_TOAST: "REMOVE_TOAST",
 } as const
-
-let count = 0
-
-function genId() {
-  count = (count + 1) % Number.MAX_SAFE_INTEGER
-  return count.toString()
-}
 
 type ActionType = typeof actionTypes
 
@@ -139,32 +143,38 @@ function dispatch(action: Action) {
 
 type Toast = Omit<ToasterToast, "id">
 
-function toast({ ...props }: Toast) {
-  const id = genId()
+function toast({ title, description, variant, action }: Toast) {
+  const desc = reactNodeToDescription(description)
 
-  const update = (props: ToasterToast) =>
-    dispatch({
-      type: "UPDATE_TOAST",
-      toast: { ...props, id },
-    })
-  const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId: id })
+  const opts: {
+    description?: string
+    action?: { label: string; onClick: () => void }
+  } = {}
+  if (desc) opts.description = desc
 
-  dispatch({
-    type: "ADD_TOAST",
-    toast: {
-      ...props,
-      id,
-      open: true,
-      onOpenChange: (open) => {
-        if (!open) dismiss()
-      },
-    },
-  })
+  if (action && React.isValidElement(action)) {
+    const p = action.props as { children?: React.ReactNode; onClick?: () => void }
+    const label = reactNodeToDescription(p.children)
+    if (label && typeof p.onClick === "function") {
+      opts.action = { label, onClick: p.onClick }
+    }
+  }
+
+  const message = title ?? ""
+
+  const sonnerId =
+    variant === "destructive"
+      ? sonnerToast.error(message, opts)
+      : sonnerToast(message, opts)
+
+  const id = String(sonnerId)
 
   return {
-    id: id,
-    dismiss,
-    update,
+    id,
+    dismiss: () => sonnerToast.dismiss(sonnerId),
+    update: (_props: ToasterToast) => {
+      /* Sonner não expõe update compatível com o padrão shadcn */
+    },
   }
 }
 
@@ -184,7 +194,10 @@ function useToast() {
   return {
     ...state,
     toast,
-    dismiss: (toastId?: string) => dispatch({ type: "DISMISS_TOAST", toastId }),
+    dismiss: (toastId?: string) => {
+      if (toastId === undefined) sonnerToast.dismiss()
+      else sonnerToast.dismiss(toastId)
+    },
   }
 }
 

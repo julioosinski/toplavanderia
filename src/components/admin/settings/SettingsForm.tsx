@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,9 +18,11 @@ interface SettingsFormProps {
   settings: SystemSettings;
   onUpdate: (updates: Partial<SystemSettings>) => void;
   isUpdating: boolean;
+  /** false = operador: somente leitura (integrações bloqueadas) */
+  canEdit?: boolean;
 }
 
-export const SettingsForm = ({ settings, onUpdate, isUpdating }: SettingsFormProps) => {
+export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }: SettingsFormProps) => {
   const [localSettings, setLocalSettings] = useState(settings);
   const { toast } = useToast();
   const { currentLaundry } = useLaundry();
@@ -29,6 +32,7 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating }: SettingsFormPro
   };
 
   const handleSave = () => {
+    if (!canEdit) return;
     onUpdate(localSettings);
     toast({
       title: "Configurações salvas",
@@ -37,7 +41,7 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating }: SettingsFormPro
   };
 
   const handleESP32ConfigurationsUpdate = async (configs: any[]) => {
-    console.log('🔄 Salvando configurações ESP32:', configs);
+    if (!canEdit) return;
     
     // Atualizar estado local
     updateSetting('esp32_configurations', configs);
@@ -53,7 +57,7 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating }: SettingsFormPro
         .eq('laundry_id', currentLaundry?.id);
 
       if (error) {
-        console.error('❌ Erro ao salvar ESP32 configs:', error);
+        console.error('Erro ao salvar ESP32 configs:', error);
         toast({
           title: "Erro ao salvar",
           description: "Não foi possível salvar as configurações ESP32",
@@ -62,7 +66,6 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating }: SettingsFormPro
         return;
       }
 
-      console.log('✅ Configurações ESP32 salvas com sucesso');
       toast({
         title: "Configurações Salvas",
         description: "ESP32s configurados com sucesso",
@@ -81,6 +84,7 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating }: SettingsFormPro
   };
 
   const addMockTransactions = async () => {
+    if (!canEdit) return;
     try {
       const { data: machines } = await supabase
         .from('machines')
@@ -156,7 +160,17 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating }: SettingsFormPro
   };
 
   return (
-    <div className="space-y-6">
+    <>
+      {!canEdit && (
+        <Alert className="mb-4 border-amber-200 bg-amber-50 dark:bg-amber-950/30">
+          <AlertDescription>
+            Perfil <strong>operador</strong>: visualização das configurações. Para alterar integrações (PayGO,
+            ESP32, NFSe), peça a um <strong>administrador</strong>.
+          </AlertDescription>
+        </Alert>
+      )}
+      <fieldset disabled={!canEdit} className="min-w-0 border-0 p-0 m-0 disabled:opacity-[0.92]">
+        <div className="space-y-6">
       {/* Network Configuration */}
       <Card>
         <CardHeader>
@@ -586,7 +600,7 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating }: SettingsFormPro
       </Card>
 
       {/* NFSe Test Widget */}
-      {localSettings.nfse_enabled && (
+      {canEdit && localSettings.nfse_enabled && (
         <NFSeTestWidget
           webhookUrl={localSettings.zapier_webhook_url || ''}
           companyName={localSettings.company_name || ''}
@@ -625,11 +639,13 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating }: SettingsFormPro
 
       {/* Save Button */}
       <div className="flex justify-end">
-        <Button onClick={handleSave} disabled={isUpdating} className="min-w-32">
+        <Button onClick={handleSave} disabled={isUpdating || !canEdit} className="min-w-32">
           <Save size={16} className="mr-2" />
           {isUpdating ? "Salvando..." : "Salvar Configurações"}
         </Button>
       </div>
-    </div>
+        </div>
+      </fieldset>
+    </>
   );
 };
