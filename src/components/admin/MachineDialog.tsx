@@ -160,10 +160,11 @@ export const MachineDialog = ({
         return;
       }
 
-      // ✅ Filtrar apenas campos válidos da tabela machines
+      // ✅ Mapear tipo para o formato do banco (washing/drying)
+      const dbType = formData.type === 'lavadora' ? 'washing' : 'drying';
       const dataToSave = {
         name: formData.name,
-        type: formData.type,
+        type: dbType,
         location: formData.location,
         capacity_kg: formData.capacity_kg,
         price_per_cycle: formData.price_per_cycle,
