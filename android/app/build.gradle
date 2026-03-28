@@ -4,11 +4,11 @@ plugins {
 
 android {
     namespace "app.lovable.toplavanderia"
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.toplavanderia.app"
-        minSdk 23
+        minSdk 24
         targetSdk 35
         versionCode 2
         versionName "2.0.0"
@@ -29,8 +29,8 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
     }
     
     packagingOptions {
@@ -54,11 +54,6 @@ android {
     }
     
     // Configurações para resolver classes duplicadas
-    configurations.all {
-        resolutionStrategy {
-            force 'org.jetbrains.kotlin:kotlin-stdlib:1.9.10'
-        }
-    }
     
     // Configuração para resolver classes duplicadas
     
@@ -133,13 +128,6 @@ dependencies {
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
 }
 
-configurations.all {
-    resolutionStrategy {
-        force 'org.jetbrains.kotlin:kotlin-stdlib:1.9.10'
-        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.10'
-        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.10'
-    }
-}
 
 apply from: 'capacitor.build.gradle'
 
