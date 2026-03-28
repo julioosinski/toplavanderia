@@ -258,11 +258,11 @@ export const useMachines = (laundryId?: string | null) => {
 
   const updateMachineStatus = async (machineId: string, status: Machine['status']) => {
     try {
-      const { error } = await supabase
-        .from('machines')
-        .update({ status, updated_at: new Date().toISOString() })
-        .eq('id', machineId);
+      const { data, error } = await supabase.functions.invoke('update-machine-status', {
+        body: { machine_id: machineId, status },
+      });
       if (error) throw error;
+      if (data && !data.success) throw new Error(data.error || 'Falha ao atualizar status');
       setMachines(prev => prev.map(m => m.id === machineId ? { ...m, status } : m));
     } catch (error) {
       console.error('Erro ao atualizar status:', error);
