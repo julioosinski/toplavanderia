@@ -215,7 +215,7 @@ export const RealPayGODiagnostics: React.FC<RealPayGODiagnosticsProps> = ({
               <Settings className="h-4 w-4 mr-2" />
               Get Details
             </Button>
-            <Button onClick={testConnection} variant="outline" size="sm">
+            <Button onClick={() => testConnection()} variant="outline" size="sm">
               <TestTube className="h-4 w-4 mr-2" />
               Test Connection
             </Button>
