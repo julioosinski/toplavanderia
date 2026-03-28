@@ -1,7 +1,7 @@
-﻿{
+{
   "app": {
     "name": "Top Lavanderia",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "package": "app.lovable.toplavanderia"
   },
   "paygo": {
@@ -21,8 +21,8 @@
     "admin_panel": true
   },
   "requirements": {
-    "android_version": "5.1",
-    "api_level": 22,
+    "android_version": "6.0",
+    "api_level": 23,
     "usb_support": true,
     "bluetooth_support": true
   }

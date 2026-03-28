@@ -207,7 +207,10 @@ public class RealPayGoManager {
 
             // Extract real data from SaidaTransacao
             String authCode = resultado.obtemCodigoAutorizacao();
-            String nsu = resultado.obtemCodigoControle(); // NSU real
+            String nsu = resultado.obtemNsuLocal();
+            if (nsu == null || nsu.isEmpty()) {
+                nsu = resultado.obtemNsuHost();
+            }
 
             Log.d(TAG, "✅ APPROVED – auth=" + authCode + " nsu=" + nsu);
             isProcessing = false;
@@ -231,7 +234,10 @@ public class RealPayGoManager {
             transacao.resolvePendencia(dadosPendentes, confirmacao);
 
             String authCode = resultado.obtemCodigoAutorizacao();
-            String nsu = resultado.obtemCodigoControle();
+            String nsu = resultado.obtemNsuLocal();
+            if (nsu == null || nsu.isEmpty()) {
+                nsu = resultado.obtemNsuHost();
+            }
 
             Log.d(TAG, "✅ Pending resolved – auth=" + authCode);
             isProcessing = false;

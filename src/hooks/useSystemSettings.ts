@@ -52,6 +52,23 @@ export interface SystemSettings {
   updated_at: string;
 }
 
+const SYSTEM_SETTINGS_QUERY_TIMEOUT_MS = 15000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('system_settings_timeout')), ms);
+    promise
+      .then((v) => {
+        clearTimeout(t);
+        resolve(v);
+      })
+      .catch((e) => {
+        clearTimeout(t);
+        reject(e);
+      });
+  });
+}
+
 // Hook para buscar configurações do sistema
 export const useSystemSettings = () => {
   const queryClient = useQueryClient();
@@ -65,56 +82,69 @@ export const useSystemSettings = () => {
         return null;
       }
 
-      const { data, error } = await supabase
-        .from('system_settings')
-        .select('*')
-        .eq('laundry_id', currentLaundry.id)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error fetching system settings:', error);
-        throw error;
-      }
-
-      // Se não existir configuração para esta lavanderia, criar uma padrão
-      if (!data) {
-        const defaultSettings = {
-          laundry_id: currentLaundry.id,
-          esp32_port: 80,
-          default_cycle_time: 40,
-          default_price: 5.00,
-          auto_mode: false,
-          notifications_enabled: true,
-          heartbeat_interval_seconds: 30,
-          max_offline_duration_minutes: 5,
-          signal_threshold_warning: -70,
-          enable_esp32_monitoring: true,
-          paygo_enabled: false,
-          paygo_port: 8080,
-          paygo_timeout: 30000,
-          paygo_retry_attempts: 3,
-          paygo_retry_delay: 2000,
-          nfse_enabled: false,
-        };
-
-        const { data: newSettings, error: createError } = await supabase
+      const run = async (): Promise<SystemSettings | null> => {
+        const { data, error } = await supabase
           .from('system_settings')
-          .insert(defaultSettings)
-          .select()
-          .single();
+          .select('*')
+          .eq('laundry_id', currentLaundry.id)
+          .maybeSingle();
 
-        if (createError) {
-          console.error('Error creating default settings:', createError);
-          throw createError;
+        if (error) {
+          console.error('Error fetching system settings:', error);
+          throw error;
         }
 
-        return newSettings as SystemSettings;
-      }
+        // Se não existir configuração para esta lavanderia, criar uma padrão
+        if (!data) {
+          const defaultSettings = {
+            laundry_id: currentLaundry.id,
+            esp32_port: 80,
+            default_cycle_time: 40,
+            default_price: 5.00,
+            auto_mode: false,
+            notifications_enabled: true,
+            heartbeat_interval_seconds: 30,
+            max_offline_duration_minutes: 5,
+            signal_threshold_warning: -70,
+            enable_esp32_monitoring: true,
+            paygo_enabled: false,
+            paygo_port: 8080,
+            paygo_timeout: 30000,
+            paygo_retry_attempts: 3,
+            paygo_retry_delay: 2000,
+            nfse_enabled: false,
+          };
 
-      return data as SystemSettings;
+          const { data: newSettings, error: createError } = await supabase
+            .from('system_settings')
+            .insert(defaultSettings)
+            .select()
+            .single();
+
+          if (createError) {
+            // RLS ou permissão: não travar a app; totem usa defaults locais
+            console.error('Error creating default settings:', createError);
+            return null;
+          }
+
+          return newSettings as SystemSettings;
+        }
+
+        return data as SystemSettings;
+      };
+
+      try {
+        return await withTimeout(run(), SYSTEM_SETTINGS_QUERY_TIMEOUT_MS);
+      } catch (e) {
+        if (e instanceof Error && e.message === 'system_settings_timeout') {
+          console.warn('system_settings: timeout — usando sem config remota');
+          return null;
+        }
+        throw e;
+      }
     },
     staleTime: 1000 * 60 * 5, // Cache por 5 minutos
-    retry: 2,
+    retry: 1,
     enabled: !!currentLaundry?.id,
   });
 

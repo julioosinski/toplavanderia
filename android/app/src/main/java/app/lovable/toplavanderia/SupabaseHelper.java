@@ -9,8 +9,12 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
+import java.util.TimeZone;
 
 /**
  * HELPER PARA CONEXÃO COM SUPABASE
@@ -213,17 +217,20 @@ public class SupabaseHelper {
      * Busca lavanderia pelo CNPJ no Supabase
      */
     private Laundry fetchLaundryByCNPJ(String cnpj) {
+        HttpURLConnection connection = null;
         try {
             String url = SUPABASE_URL + "/rest/v1/laundries?select=*&cnpj=eq." + cnpj + "&is_active=eq.true";
             
             Log.d(TAG, "Buscando lavanderia por CNPJ: " + cnpj);
             Log.d(TAG, "URL: " + url);
             
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            connection = (HttpURLConnection) new URL(url).openConnection();
             connection.setRequestMethod("GET");
             connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
             connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
             connection.setRequestProperty("Content-Type", "application/json");
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(10000);
             
             int responseCode = connection.getResponseCode();
             if (responseCode == 200) {
@@ -267,12 +274,17 @@ public class SupabaseHelper {
         } catch (Exception e) {
             Log.e(TAG, "Erro ao buscar lavanderia por CNPJ", e);
             return null;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
     }
     
     private List<Machine> fetchMachinesFromSupabase() {
         List<Machine> machines = new ArrayList<>();
-        
+        HttpURLConnection connection = null;
+
         try {
             if (currentLaundryId == null) {
                 Log.e(TAG, "❌ Lavanderia não configurada - não é possível buscar máquinas");
@@ -285,11 +297,13 @@ public class SupabaseHelper {
             Log.d(TAG, "Buscando máquinas da lavanderia: " + currentLaundryId);
             Log.d(TAG, "URL: " + url);
             
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            connection = (HttpURLConnection) new URL(url).openConnection();
             connection.setRequestMethod("GET");
             connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
             connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
             connection.setRequestProperty("Content-Type", "application/json");
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(10000);
             
             int responseCode = connection.getResponseCode();
             if (responseCode == 200) {
@@ -328,11 +342,13 @@ public class SupabaseHelper {
                 machines = getDefaultMachines();
             }
             
-            connection.disconnect();
-            
         } catch (Exception e) {
             Log.e(TAG, "Erro na comunicação com Supabase", e);
             machines = getDefaultMachines();
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
         
         return machines;

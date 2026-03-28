@@ -86,14 +86,28 @@ export const TotemReconfigureDialog = ({
     }
     setLoading(true);
     setError('');
-    await nativeStorage.removeItem('totem_laundry_id');
-    const success = await configureTotemByCNPJ(clean);
-    setLoading(false);
-    if (success) {
-      handleOpenChange(false);
-      toast({ title: "✅ Totem Reconfigurado", description: "Nova lavanderia carregada com sucesso." });
-    } else {
-      setError('CNPJ não encontrado ou lavanderia inativa.');
+    try {
+      await Promise.race([
+        nativeStorage.removeItem('totem_laundry_id'),
+        new Promise<void>((resolve) => setTimeout(resolve, 3000)),
+      ]);
+
+      const success = await Promise.race([
+        configureTotemByCNPJ(clean),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 15000)),
+      ]);
+
+      if (success) {
+        handleOpenChange(false);
+        toast({ title: "✅ Totem Reconfigurado", description: "Nova lavanderia carregada com sucesso." });
+      } else {
+        setError('CNPJ não encontrado, rede indisponível ou tempo esgotado.');
+      }
+    } catch (err) {
+      console.error('[TotemReconfigureDialog] Erro ao reconfigurar CNPJ:', err);
+      setError('Falha ao reconfigurar. Verifique a conexão e tente novamente.');
+    } finally {
+      setLoading(false);
     }
   };
 

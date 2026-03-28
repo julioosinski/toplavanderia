@@ -103,3 +103,21 @@ export const nativeStorage = {
   },
 };
 
+/** Evita que Preferences.get trave a UI indefinidamente no Android (Promise nunca resolve). */
+export async function getItemWithTimeout(
+  key: string,
+  ms = 8000
+): Promise<string | null> {
+  try {
+    const v = await Promise.race([
+      nativeStorage.getItem(key),
+      new Promise<string | null>((resolve) => setTimeout(() => resolve(null), ms)),
+    ]);
+    if (v != null) return v;
+    // Se a corrida venceu por timeout (getItem pendurado), ainda pode existir backup no localStorage
+    return localStorage.getItem(key);
+  } catch {
+    return localStorage.getItem(key);
+  }
+}
+

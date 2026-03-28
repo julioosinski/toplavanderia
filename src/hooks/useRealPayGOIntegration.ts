@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Capacitor } from '@capacitor/core';
 import PayGO from '@/plugins/paygo';
 import { toast } from 'sonner';
 import { handlePayGOError, formatCurrency, validatePayGOConfig } from '@/utils/paygoHelpers';
@@ -116,9 +117,12 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
   const getSystemStatus = useCallback(async (): Promise<PayGOSystemStatus | null> => {
     try {
       const status = await PayGO.getSystemStatus();
+      // No nativo, usbDeviceDetected usa lista fixa de VIDs; pinpad ainda pode funcionar pelo PayGo Integrado.
       const enhancedStatus = {
         ...status,
-        online: status.clientConnected && status.usbDeviceDetected
+        online: Capacitor.isNativePlatform()
+          ? Boolean(status.initialized)
+          : status.clientConnected && status.usbDeviceDetected,
       };
       setSystemStatus(enhancedStatus);
       setIsConnected(enhancedStatus.online);
@@ -152,11 +156,15 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
   // Process payment
   const processPayment = useCallback(async (transaction: PayGOTransaction): Promise<PayGOPaymentResult> => {
     if (!isInitialized) {
-      throw new Error('PayGO not initialized');
+      throw new Error(
+        'PayGO não está pronto. No tablet: instale o app PayGo Integrado, abra-o e conclua a configuração do estabelecimento.'
+      );
     }
 
     if (!isConnected) {
-      throw new Error('PayGO not connected');
+      throw new Error(
+        'PayGO sem conexão. Verifique se o PayGo Integrado está ativo e o pinpad USB está conectado.'
+      );
     }
 
     setIsProcessing(true);

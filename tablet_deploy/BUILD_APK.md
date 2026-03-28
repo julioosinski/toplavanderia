@@ -3,8 +3,8 @@
 ## Pré-requisitos
 
 - Android Studio instalado
-- Java JDK 8+
-- Android SDK (API 22+ e 34)
+- **Java JDK 17** (alinhado ao `compileOptions` do app)
+- Android SDK (**compileSdk / targetSdk 35**; **minSdk 23** — Capacitor 7)
 - Node.js 18+
 
 ## Passo a Passo
@@ -27,34 +27,9 @@ npx cap sync android
 
 Isso copia o `dist/` para `android/app/src/main/assets/public/`.
 
-### 3. IMPORTANTE: Descomentar dependências do Capacitor
+### 3. Capacitor no `build.gradle`
 
-Abra `android/app/build.gradle` e **descomente** as linhas do Capacitor:
-
-```gradle
-// ANTES (comentado):
-// implementation project(':capacitor-android')
-// implementation project(':capacitor-app')
-// implementation project(':capacitor-device')
-// implementation project(':capacitor-splash-screen')
-// implementation project(':capacitor-status-bar')
-
-// DEPOIS (descomentado):
-implementation project(':capacitor-android')
-implementation project(':capacitor-app')
-implementation project(':capacitor-device')
-implementation project(':capacitor-splash-screen')
-implementation project(':capacitor-status-bar')
-```
-
-Também descomente a última linha:
-```gradle
-// ANTES:
-// apply from: 'capacitor.build.gradle'
-
-// DEPOIS:
-apply from: 'capacitor.build.gradle'
-```
+No repositório atual, `android/app/build.gradle` já inclui as dependências do Capacitor e `apply from: 'capacitor.build.gradle'`. Se estiver restaurando um backup antigo com essas linhas comentadas, descomente-as antes de compilar.
 
 ### 4. Compilar o APK
 
@@ -74,12 +49,15 @@ android/app/build/outputs/apk/release/app-release.apk
 adb install -r android/app/build/outputs/apk/release/app-release.apk
 ```
 
-## Substituindo Arquivos Java
+## Sincronizar código com a pasta `tablet_deploy`
 
-Se precisar atualizar os arquivos Java no projeto Android, copie de `android-src/java/` para:
-```
-android/app/src/main/java/app/lovable/toplavanderia/
-```
+- **Fonte da verdade para build:** `android/app/` (projeto Capacitor completo).
+- A pasta `tablet_deploy/android-src/` é um **espelho** para backup e referência (inclui o mesmo `build.gradle` e as classes Java do pacote `app.lovable.toplavanderia`).
+- Após alterar Java no Android Studio, atualize o espelho copiando de:
+  ```
+  android/app/src/main/java/app/lovable/toplavanderia/
+  ```
+  para `tablet_deploy/android-src/java/` (ou mantenha o espelho via script/controle de versão).
 
 ## Problemas Comuns
 

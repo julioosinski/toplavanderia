@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Laundry, AppRole } from '@/types/laundry';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
-import { nativeStorage } from '@/utils/nativeStorage';
+import { nativeStorage, getItemWithTimeout } from '@/utils/nativeStorage';
 
 interface LaundryContextType {
   currentLaundry: Laundry | null;
@@ -147,18 +147,25 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       if (!user) {
         console.log('[LaundryContext] Nenhum usuário autenticado - verificando modo totem...');
         
-        // Modo totem: verificar se há lavanderia salva no storage nativo (ou localStorage)
-        const totemLaundryId = await nativeStorage.getItem('totem_laundry_id');
+        // Modo totem: verificar se há lavanderia salva no storage nativo (ou localStorage).
+        // getItem sem timeout pode nunca resolver no WebView → laundryLoading infinito.
+        const totemLaundryId = await getItemWithTimeout('totem_laundry_id', 8000);
         if (totemLaundryId) {
           console.log('[LaundryContext] Modo totem: carregando lavanderia', totemLaundryId);
-          const laundry = await fetchCurrentLaundry(totemLaundryId);
+          const laundry = await Promise.race([
+            fetchCurrentLaundry(totemLaundryId),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 15000)),
+          ]);
           if (laundry) {
             setCurrentLaundry(laundry);
             setLaundries([laundry]);
             console.log('[LaundryContext] Modo totem: lavanderia carregada -', laundry.name);
           } else {
             console.warn('[LaundryContext] Modo totem: lavanderia não encontrada, limpando storage');
-            await nativeStorage.removeItem('totem_laundry_id');
+            await Promise.race([
+              nativeStorage.removeItem('totem_laundry_id'),
+              new Promise<void>((r) => setTimeout(r, 4000)),
+            ]);
           }
         }
         
@@ -194,7 +201,7 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         setLaundries(laundriesList);
         
         // Tentar recuperar última lavanderia selecionada
-        const savedLaundryId = await nativeStorage.getItem('selectedLaundryId');
+        const savedLaundryId = await getItemWithTimeout('selectedLaundryId', 8000);
         if (savedLaundryId && laundriesList.find(l => l.id === savedLaundryId)) {
           const laundry = await fetchCurrentLaundry(savedLaundryId);
           if (laundry) setCurrentLaundry(laundry);
@@ -262,25 +269,43 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
   const configureTotemByCNPJ = async (cnpj: string): Promise<boolean> => {
     try {
       const cleanCnpj = cnpj.replace(/\D/g, '');
-      const { data, error } = await supabase
+      // Evita loading infinito quando a rede do tablet está instável.
+      const queryPromise = supabase
         .from('laundries')
         .select('*')
         .eq('cnpj', cleanCnpj)
         .eq('is_active', true)
         .single();
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('cnpj_lookup_timeout')), 12000)
+      );
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as Awaited<typeof queryPromise>;
 
       if (error || !data) {
         console.error('[LaundryContext] CNPJ não encontrado:', cnpj);
         return false;
       }
 
-      await nativeStorage.setItem('totem_laundry_id', data.id);
+      // Evita travar a UI caso o plugin nativo de storage fique pendurado.
+      await Promise.race([
+        nativeStorage.setItem('totem_laundry_id', data.id),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('storage_timeout')), 4000)),
+      ]).catch((storageErr) => {
+        console.warn('[LaundryContext] Falha/timeout ao salvar totem_laundry_id, seguindo com estado em memória:', storageErr);
+      });
       setCurrentLaundry(data);
       setLaundries([data]);
       console.log('[LaundryContext] Totem configurado com sucesso:', data.name);
       return true;
     } catch (err) {
       console.error('[LaundryContext] Erro ao configurar totem por CNPJ:', err);
+      if (err instanceof Error && err.message === 'cnpj_lookup_timeout') {
+        toast({
+          title: "Tempo esgotado",
+          description: "Não foi possível consultar o CNPJ. Verifique a internet do tablet e tente novamente.",
+          variant: "destructive",
+        });
+      }
       return false;
     }
   };

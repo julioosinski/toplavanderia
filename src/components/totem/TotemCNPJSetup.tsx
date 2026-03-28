@@ -31,10 +31,19 @@ export const TotemCNPJSetup = ({ onConfigure }: TotemCNPJSetupProps) => {
     }
     setError('');
     setLoading(true);
-    const success = await onConfigure(cleanDigits);
-    setLoading(false);
-    if (!success) {
-      setError('CNPJ não encontrado ou lavanderia inativa. Verifique e tente novamente.');
+    try {
+      const success = await Promise.race([
+        onConfigure(cleanDigits),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 15000)),
+      ]);
+      if (!success) {
+        setError('CNPJ não encontrado, rede indisponível ou tempo esgotado. Verifique e tente novamente.');
+      }
+    } catch (err) {
+      console.error('[TotemCNPJSetup] Erro ao configurar CNPJ:', err);
+      setError('Falha ao configurar. Verifique a conexão e tente novamente.');
+    } finally {
+      setLoading(false);
     }
   };
 

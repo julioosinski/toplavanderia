@@ -9,7 +9,7 @@ Pasta com todos os arquivos necessários para instalar e configurar o sistema To
 ```
 tablet_deploy/
 ├── android-src/          # Código Java nativo para compilar o APK
-│   ├── java/             # 12 arquivos .java (plugins, managers, helpers)
+│   ├── java/             # Código nativo (plugins PayGo, activities, managers)
 │   ├── libs/             # InterfaceAutomacao-v2.1.0.6.aar
 │   ├── xml/              # device_filter, file_paths, network_security_config
 │   ├── AndroidManifest.xml
@@ -40,7 +40,7 @@ tablet_deploy/
 
 ## Requisitos
 
-- Android 5.1+ (API 22+)
+- Android 6.0+ (API 23+; exigido pelo Capacitor 7)
 - PPC930 conectado via USB/Bluetooth
 - PayGo Integrado APK instalado
 - Conexão de rede para Supabase

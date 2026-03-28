@@ -37,7 +37,7 @@ const Totem = () => {
   const [showReconfigureDialog, setShowReconfigureDialog] = useState(false);
 
   const { mode: deviceMode, isPWA, canProcessPayments } = useDeviceMode();
-  const { settings: systemSettings, isLoading: settingsLoading } = useSystemSettings();
+  const { settings: systemSettings } = useSystemSettings();
   const { toast } = useToast();
   const { currentLaundry, loading: laundryLoading, configureTotemByCNPJ } = useLaundry();
   const { disableSecurity, enableSecurity } = useKioskSecurity();
@@ -59,9 +59,19 @@ const Totem = () => {
 
   // Loading timeout safety
   useEffect(() => {
-    const timer = setTimeout(() => { if (laundryLoading) setLoadingTimeout(true); }, 8000);
+    const timer = setTimeout(() => {
+      if (laundryLoading && !currentLaundry) setLoadingTimeout(true);
+    }, 8000);
     return () => clearTimeout(timer);
-  }, [laundryLoading]);
+  }, [laundryLoading, currentLaundry]);
+
+  // Sempre que houver lavanderia configurada ou loading concluir sem travar,
+  // remover estado de timeout para permitir a navegação normal.
+  useEffect(() => {
+    if (currentLaundry || !laundryLoading) {
+      setLoadingTimeout(false);
+    }
+  }, [currentLaundry, laundryLoading]);
 
   // Clock
   useEffect(() => {
@@ -193,18 +203,38 @@ const Totem = () => {
   }
 
   // CNPJ Setup (no laundry configured or loading timeout)
-  if ((!laundryLoading && !currentLaundry) || loadingTimeout) {
+  if (!currentLaundry && (!laundryLoading || loadingTimeout)) {
     return <TotemCNPJSetup onConfigure={configureTotemByCNPJ} />;
   }
 
-  // Loading
-  if (laundryLoading || loading || settingsLoading) {
+  // Loading: não bloquear pelo system_settings — no totem as configs PayGo/TEF já têm
+  // defaults locais; a query de system_settings pode travar (RLS/rede) e deixaria a tela presa.
+  if (laundryLoading || loading) {
     return (
       <div className="min-h-screen bg-gradient-clean flex items-center justify-center">
         <div className="text-center space-y-4">
           <Loader2 className="mx-auto animate-spin text-primary" size={48} />
-          <h2 className="text-xl font-semibold">{settingsLoading ? "Carregando configurações..." : "Carregando máquinas..."}</h2>
+          <h2 className="text-xl font-semibold">Carregando máquinas...</h2>
           <p className="text-muted-foreground">Conectando com o sistema</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!loading && machines.length === 0) {
+    return (
+      <div className="min-h-screen bg-gradient-clean flex items-center justify-center p-6">
+        <div className="text-center space-y-3 max-w-md">
+          <h2 className="text-xl font-semibold">Nenhuma máquina encontrada</h2>
+          <p className="text-muted-foreground">
+            Verifique o vínculo de máquinas da lavanderia configurada ou a conexão com o Supabase.
+          </p>
+          <button
+            className="px-4 py-2 rounded-md bg-primary text-primary-foreground"
+            onClick={() => window.location.reload()}
+          >
+            Tentar novamente
+          </button>
         </div>
       </div>
     );
