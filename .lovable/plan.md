@@ -1,34 +1,68 @@
 
 
-# Corrigir Detecção de ESP32 sem Máquina Associada
+# Sincronizar Lovable com Repositorio Local + Backend Supabase
 
-## Problema
+## Situacao Atual
 
-O ESP32 "lavadora teste" está na tabela `esp32_status` com `registration_status = 'approved'` e `is_online = true`, mas **não existe uma máquina na tabela `machines`** vinculada a ele. O componente `ESP32PendingApproval` só busca dispositivos com `registration_status = 'pending'`, então esse ESP32 fica invisível.
+Apos analise detalhada, **o codigo React no Lovable ja contem quase todas as alteracoes do commit**:
+- ADMIN_PANEL_ROLES, NoAccess, LaundryGuard, LaundryContext com `isViewingAllLaundries`/`switchToAllLaundries` — presentes
+- useMachines com prioridade BD sobre rele, ciclo+2min, poll 7s nativo, `runningSinceAt` — presente
+- useMachineAutoStatus com intervalo 45s e `mergeRelayIntoEsp32Status` — presente
+- Toasts delegando para Sonner, sem Toaster shadcn — presente
+- Link "Area da equipe" no Totem — presente
+- `machineEsp32Sync.ts`, `paygoPixResponse.ts` — presentes
+- ESP32Diagnostics filtrado por `currentLaundry` — presente
+- LaundrySelector sem `window.location.reload()` — confirmado
 
-## Solução
+**O que falta sao ajustes no Supabase (backend):**
 
-Duas ações:
+---
 
-### 1. Corrigir o registro atual no banco
-- Alterar o `registration_status` do ESP32 "lavadora teste" de `approved` para `pending` via migration, para que ele apareça no painel de aprovação e o admin possa criar a máquina.
+## 1. Ativar Realtime para machines e esp32_status
 
-### 2. Melhorar o componente `ESP32PendingApproval`
-- Além de buscar ESP32s com `registration_status = 'pending'`, também buscar ESP32s com `registration_status = 'approved'` que **não têm máquina associada** na tabela `machines`.
-- Isso previne que o problema se repita: se um ESP32 for aprovado mas a máquina não for criada (por erro ou falha), ele continuará aparecendo no painel.
+A migracao `20260328140000_enable_realtime_machines_esp32.sql` existe no repositorio mas **nao foi aplicada** — as tabelas nao estao na publicacao `supabase_realtime`.
 
-## Alterações
+**Acao:** Executar migracao SQL para adicionar ambas as tabelas a publicacao Realtime. Isso permite que o totem (anon) receba eventos em tempo real quando o admin altera preco, ciclo ou status.
 
-### Arquivo: `src/components/admin/ESP32PendingApproval.tsx`
-- Modificar `fetchPendingDevices` para buscar ESP32s pendentes E ESP32s aprovados sem máquina correspondente
-- Buscar a lista de `esp32_id`s da tabela `machines` para a lavanderia atual
-- Filtrar ESP32s aprovados que não estão vinculados a nenhuma máquina
-- Mostrar ambos os grupos (pendentes e "órfãos") no mesmo painel
+---
 
-### Database: Corrigir registro atual
-- Executar UPDATE para setar `registration_status = 'pending'` no ESP32 "lavadora teste" (solução imediata enquanto o código é melhorado)
+## 2. Corrigir RLS: Totem precisa de UPDATE em machines
 
-## Resultado
-- O ESP32 "lavadora teste" aparecerá imediatamente no painel de Máquinas para ser configurado
-- Futuramente, qualquer ESP32 aprovado sem máquina também será detectado automaticamente
+O totem chama `updateMachineStatus(id, 'running')` apos pagamento, mas a politica atual exige `is_super_admin` ou `has_role('admin')`. Como o totem roda sem autenticacao (anon), o UPDATE falha silenciosamente.
+
+**Acao:** Criar politica RLS que permita ao role `anon` fazer UPDATE **apenas do campo status** em machines. Para limitar o escopo:
+- Permitir UPDATE publico em machines, restrito a alteracoes de status para `'running'` (via check constraint ou politica com `WITH CHECK`)
+- Alternativa mais segura: criar uma Edge Function `update-machine-status` com `service_role` que o totem invoca, validando que so aceita transicoes `available → running`
+
+**Recomendacao:** Edge Function (opcao segura), evitando dar UPDATE direto ao anon.
+
+---
+
+## 3. Liberacao automatica server-side (opcional mas recomendado)
+
+Atualmente a liberacao de maquinas apos fim de ciclo depende de `useMachineAutoStatus` rodando no browser do admin. Se nenhum admin estiver logado, maquinas ficam "running" indefinidamente no banco.
+
+**Acao:** Criar Edge Function `auto-release-machines` invocada por pg_cron (ou pelo proprio ESP32 via `esp32-monitor`) que:
+1. Busca maquinas com `status = 'running'` ha mais de `cycle_time_minutes + 2` minutos
+2. Atualiza para `available`
+3. Espelha `relay_status` no `esp32_status`
+
+Isso garante liberacao confiavel sem depender de nenhum browser aberto.
+
+---
+
+## 4. Edge Functions existentes
+
+`esp32-control` ja aceita o body `{ esp32_id, relay_pin, action, machine_id }` — alinhado com o totem. Nenhuma alteracao necessaria.
+
+---
+
+## Resumo de Implementacao
+
+| # | Acao | Tipo |
+|---|------|------|
+| 1 | Aplicar migracao Realtime (machines + esp32_status) | SQL Migration |
+| 2 | Criar Edge Function `update-machine-status` para totem | Edge Function + codigo |
+| 3 | Criar Edge Function `auto-release-machines` | Edge Function (opcional) |
+| 4 | Atualizar `useMachines.updateMachineStatus` para usar a Edge Function | Codigo React |
 
