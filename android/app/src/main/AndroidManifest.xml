@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!--
+      Android 11+ (package visibility): sem <queries>, o sistema não expõe o PayGo Integrado
+      para getPackageInfo / bind / intents implícitos usados pela InterfaceAutomacao — o
+      pagamento na maquininha deixa de funcionar após upgrades de targetSdk/AGP.
+    -->
+    <queries>
+        <package android:name="br.com.setis.clientepaygoweb.cert" />
+        <package android:name="br.com.setis.clientepaygoweb" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"

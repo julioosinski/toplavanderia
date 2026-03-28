@@ -52,7 +52,9 @@ public class USBPlugin extends Plugin {
             
             if (ACTION_USB_PERMISSION.equals(action)) {
                 synchronized (this) {
-                    UsbDevice device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+                    UsbDevice device = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                        ? intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice.class)
+                        : intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
                     
                     if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
                         if (device != null) {
