@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { DollarSign, WashingMachine, Receipt, TrendingUp, Activity, CheckCircle, AlertTriangle } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { DollarSign, Receipt, Activity, CheckCircle, AlertTriangle } from "lucide-react";
 import { useLaundry } from "@/contexts/LaundryContext";
 import { supabase } from "@/integrations/supabase/client";
 import { LaundryDashboardSelector } from "@/components/admin/LaundryDashboardSelector";
@@ -26,33 +25,22 @@ export default function Dashboard() {
   const laundryIdForMachines = isViewingAll ? undefined : currentLaundry?.id;
   const { machines, loading: machinesLoading, refreshMachines } = useMachines(laundryIdForMachines);
   const [stats, setStats] = useState<Stats>({
-    totalRevenue: 0,
-    activeMachines: 0,
-    totalMachines: 0,
-    todayTransactions: 0,
-    monthlyRevenue: 0,
-    offlineMachines: 0,
-    maintenanceMachines: 0,
+    totalRevenue: 0, activeMachines: 0, totalMachines: 0,
+    todayTransactions: 0, monthlyRevenue: 0, offlineMachines: 0, maintenanceMachines: 0,
   });
-  const [revenueData, setRevenueData] = useState<any[]>([]);
-  const [machineData, setMachineData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [machinesByLaundry, setMachinesByLaundry] = useState<Record<string, { laundryName: string; machines: any[] }>>({});
 
   const loadDashboardData = async () => {
     if (!currentLaundry && !isViewingAll) return;
-
     try {
       setLoading(true);
-
       const machinesQuery = supabase.from('machines').select('*');
       const transactionsQuery = supabase.from('transactions').select('*');
-
       if (!isViewingAll && currentLaundry) {
         machinesQuery.eq('laundry_id', currentLaundry.id);
         transactionsQuery.eq('laundry_id', currentLaundry.id);
       }
-
       const { data: machinesData } = await machinesQuery;
       const { data: transactionsData } = await transactionsQuery;
 
@@ -61,13 +49,8 @@ export default function Dashboard() {
       const offlineMachines = machinesData?.filter(m => m.status === 'offline').length || 0;
       const maintenanceMachines = machinesData?.filter(m => m.status === 'maintenance').length || 0;
 
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const todayTransactions = transactionsData?.filter(t =>
-        new Date(t.created_at) >= today
-      ).length || 0;
-
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const todayTransactions = transactionsData?.filter(t => new Date(t.created_at) >= today).length || 0;
       const totalRevenue = machinesData?.reduce((sum, m) => sum + (Number(m.total_revenue) || 0), 0) || 0;
 
       const currentMonth = new Date().getMonth();
@@ -77,35 +60,7 @@ export default function Dashboard() {
         return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
       }).reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0) || 0;
 
-      // Last 7 days revenue
-      const last7Days = Array.from({ length: 7 }, (_, i) => {
-        const d = new Date();
-        d.setDate(d.getDate() - (6 - i));
-        d.setHours(0, 0, 0, 0);
-        return d;
-      });
-
-      const revenueByDay = last7Days.map(date => {
-        const nextDay = new Date(date);
-        nextDay.setDate(nextDay.getDate() + 1);
-        const dayRevenue = transactionsData?.filter(t => {
-          const transDate = new Date(t.created_at);
-          return transDate >= date && transDate < nextDay;
-        }).reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0) || 0;
-        return {
-          date: date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
-          receita: dayRevenue,
-        };
-      });
-
-      const machineUsage = machinesData?.map(machine => ({
-        name: machine.name,
-        uso: machine.total_uses || 0,
-      })) || [];
-
       setStats({ totalRevenue, activeMachines, totalMachines, todayTransactions, monthlyRevenue, offlineMachines, maintenanceMachines });
-      setRevenueData(revenueByDay);
-      setMachineData(machineUsage);
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
     } finally {
@@ -129,13 +84,10 @@ export default function Dashboard() {
   useEffect(() => {
     loadDashboardData();
     if (isViewingAll) loadConsolidatedMachines();
-
-    // Auto-refresh every 30 seconds
     const interval = setInterval(() => {
       loadDashboardData();
       if (isViewingAll) loadConsolidatedMachines();
     }, 30000);
-
     return () => clearInterval(interval);
   }, [currentLaundry, isViewingAll, isSuperAdmin, laundries]);
 
@@ -162,7 +114,6 @@ export default function Dashboard() {
         <LaundryDashboardSelector />
       </div>
 
-      {/* Alerts */}
       {hasAlerts && (
         <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/20">
           <CardContent className="p-4">
@@ -200,7 +151,6 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
-
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center space-x-4">
@@ -214,7 +164,6 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
-
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center space-x-4">
@@ -228,7 +177,6 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
-
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center space-x-4">
@@ -244,59 +192,18 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* Charts */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Receita - Últimos 7 dias</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <AreaChart data={revenueData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" fontSize={12} />
-                <YAxis fontSize={12} />
-                <Tooltip formatter={(v: number) => [`R$ ${v.toFixed(2)}`, 'Receita']} />
-                <Area type="monotone" dataKey="receita" stroke="hsl(var(--primary))" fill="hsl(var(--primary) / 0.2)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Uso por Máquina</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={machineData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" fontSize={12} />
-                <YAxis fontSize={12} />
-                <Tooltip />
-                <Bar dataKey="uso" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Machine Status Section */}
       {isViewingAll ? (
         <ConsolidatedMachineStatus
           machinesByLaundry={machinesByLaundry}
           loading={machinesLoading}
-          onAfterMachineAction={() => {
-            void loadConsolidatedMachines();
-          }}
+          onAfterMachineAction={() => { void loadConsolidatedMachines(); }}
         />
       ) : (
         <MachineStatusGrid
           machines={machines}
           loading={machinesLoading}
-          onAfterMachineAction={() => {
-            void refreshMachines({ background: true });
-          }}
+          onAfterMachineAction={() => { void refreshMachines({ background: true }); }}
         />
       )}
     </div>

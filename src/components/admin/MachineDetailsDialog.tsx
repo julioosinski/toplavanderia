@@ -81,6 +81,9 @@ export const MachineDetailsDialog = ({
         title: "Ciclo manual iniciado",
         description: `${machine.name} — liberação registrada no relatório.`,
       });
+
+      // Small delay to let the DB update propagate before refreshing
+      await new Promise(r => setTimeout(r, 800));
       onAfterAction?.();
       onOpenChange(false);
     } catch (e) {

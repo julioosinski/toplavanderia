@@ -18,7 +18,7 @@ import Security from "./pages/admin/Security";
 import Settings from "./pages/admin/Settings";
 import Profile from "./pages/admin/Profile";
 import ESP32Diagnostics from "./pages/admin/ESP32Diagnostics";
-import Payments from "./pages/admin/Payments";
+
 import NoAccess from "./pages/NoAccess";
 
 const queryClient = new QueryClient();
@@ -43,7 +43,7 @@ const App = () => (
                 <Route path="users" element={<Users />} />
                 <Route path="laundries" element={<Laundries />} />
                 <Route path="reports" element={<Reports />} />
-                <Route path="payments" element={<Payments />} />
+                <Route path="payments" element={<Navigate to="/admin/dashboard" replace />} />
                 <Route path="security" element={<Security />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="profile" element={<Profile />} />
