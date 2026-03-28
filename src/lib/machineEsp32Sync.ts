@@ -3,6 +3,12 @@ import { supabase } from '@/integrations/supabase/client';
 /** Pino físico padrão no firmware TopLav (GPIO 2) quando `relay_pin` não veio do banco */
 export const DEFAULT_ESP32_RELAY_PIN = 2;
 
+/**
+ * Minutos sem heartbeat após os quais a UI trata o ESP como offline (totem/admin).
+ * Valores maiores atrasavam a indicação de “fora” quando o servidor ainda marcava is_online.
+ */
+export const ESP32_HEARTBEAT_STALE_MINUTES = 2;
+
 function relayKey(pin: number): string {
   return `relay_${pin}`;
 }

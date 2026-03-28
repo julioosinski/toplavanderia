@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useLaundry } from '@/contexts/LaundryContext';
+import { ESP32_HEARTBEAT_STALE_MINUTES } from '@/lib/machineEsp32Sync';
 
 export interface ESP32StatusData {
   esp32_id: string;
@@ -69,7 +70,7 @@ export const useESP32Status = () => {
     const now = new Date();
     const minutesAgo = lastHeartbeat ? (now.getTime() - lastHeartbeat.getTime()) / 60000 : 999999;
 
-    return status.is_online && minutesAgo < 5;
+    return status.is_online && minutesAgo < ESP32_HEARTBEAT_STALE_MINUTES;
   };
 
   return {

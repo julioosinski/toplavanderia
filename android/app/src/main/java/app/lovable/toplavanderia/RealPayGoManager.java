@@ -5,8 +5,10 @@ import android.util.Log;
 import android.os.Handler;
 import android.os.Looper;
 
+import br.com.setis.interfaceautomacao.Cartoes;
 import br.com.setis.interfaceautomacao.DadosAutomacao;
 import br.com.setis.interfaceautomacao.EntradaTransacao;
+import br.com.setis.interfaceautomacao.Financiamentos;
 import br.com.setis.interfaceautomacao.ModalidadesPagamento;
 import br.com.setis.interfaceautomacao.Operacoes;
 import br.com.setis.interfaceautomacao.SaidaTransacao;
@@ -124,31 +126,30 @@ public class RealPayGoManager {
             int amountInCents = (int) (amount * 100);
             String valorString = String.valueOf(amountInCents);
 
-            // Determine operation based on payment type
-            Operacoes operacao;
-            ModalidadesPagamento modalidade;
-
-            if ("pix".equalsIgnoreCase(paymentType)) {
-                // PIX uses a specific operation
-                operacao = Operacoes.VENDA;
-                modalidade = ModalidadesPagamento.PAGAMENTO_DINHEIRO; // PIX mapped; PayGo handles internally
-                // NOTE: Some PayGo versions use Operacoes.PIX directly.
-                // If available, replace operacao with Operacoes.PIX
-                Log.d(TAG, "Payment type: PIX");
-            } else {
-                // Credit and Debit both use PAGAMENTO_CARTAO.
-                // The pinpad itself asks the customer to choose credit or debit.
-                operacao = Operacoes.VENDA;
-                modalidade = ModalidadesPagamento.PAGAMENTO_CARTAO;
-                Log.d(TAG, "Payment type: CARTAO (" + paymentType + ")");
-            }
-
+            Operacoes operacao = Operacoes.VENDA;
             String txnId = (orderId != null && !orderId.isEmpty()) ? orderId : UUID.randomUUID().toString();
 
             EntradaTransacao entrada = new EntradaTransacao(operacao, txnId);
             entrada.informaDocumentoFiscal("1000");
             entrada.informaValorTotal(valorString);
-            entrada.informaModalidadePagamento(modalidade);
+
+            if ("pix".equalsIgnoreCase(paymentType)) {
+                // Doc PayGo: carteira virtual (PIX) — evita fluxo genérico de dinheiro
+                entrada.informaModalidadePagamento(ModalidadesPagamento.PAGAMENTO_CARTEIRA_VIRTUAL);
+                Log.d(TAG, "Payment type: PIX (PAGAMENTO_CARTEIRA_VIRTUAL)");
+            } else {
+                entrada.informaModalidadePagamento(ModalidadesPagamento.PAGAMENTO_CARTAO);
+                if ("debit".equalsIgnoreCase(paymentType)) {
+                    entrada.informaTipoCartao(Cartoes.CARTAO_DEBITO);
+                    Log.d(TAG, "Payment type: débito (cartão definido na automação)");
+                } else {
+                    // crédito à vista — evita menu crédito/débito na pinpad
+                    entrada.informaTipoCartao(Cartoes.CARTAO_CREDITO);
+                    entrada.informaTipoFinanciamento(Financiamentos.A_VISTA);
+                    entrada.informaNumeroParcelas(1);
+                    Log.d(TAG, "Payment type: crédito à vista (cartão + financiamento definidos)");
+                }
+            }
 
             if (callback != null) callback.onPaymentProcessing("Enviando para PPC930...");
 

@@ -6,7 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Droplets, Wind } from 'lucide-react';
 import { useMachineAutoStatus } from './useMachineAutoStatus';
 import { nativeStorage, getItemWithTimeout } from '@/utils/nativeStorage';
-import { resolvedRelayPin } from '@/lib/machineEsp32Sync';
+import { ESP32_HEARTBEAT_STALE_MINUTES, resolvedRelayPin } from '@/lib/machineEsp32Sync';
 
 export interface Machine {
   id: string;
@@ -363,6 +363,7 @@ export const useMachines = (laundryId?: string | null) => {
           event: '*',
           schema: 'public',
           table: 'esp32_status',
+          filter: laundryId ? `laundry_id=eq.${laundryId}` : undefined,
         },
         () => runBg()
       )

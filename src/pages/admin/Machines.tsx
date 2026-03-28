@@ -11,7 +11,12 @@ import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { MachineDialog } from "@/components/admin/MachineDialog";
-import { forceMachineReleased, forceMachineMaintenance, resolvedRelayPin } from "@/lib/machineEsp32Sync";
+import {
+  ESP32_HEARTBEAT_STALE_MINUTES,
+  forceMachineReleased,
+  forceMachineMaintenance,
+  resolvedRelayPin,
+} from "@/lib/machineEsp32Sync";
 import { ESP32ConfigurationDialog } from "@/components/admin/ESP32ConfigurationDialog";
 import { ESP32PendingApproval } from "@/components/admin/ESP32PendingApproval";
 import {
@@ -86,7 +91,7 @@ export default function Machines() {
             const lastHb = esp32.last_heartbeat ? new Date(esp32.last_heartbeat) : null;
             const now = new Date();
             const minAgo = lastHb ? (now.getTime() - lastHb.getTime()) / 60000 : 999999;
-            const recent = lastHb && minAgo < 5;
+            const recent = lastHb && minAgo < ESP32_HEARTBEAT_STALE_MINUTES;
             esp32Online = Boolean(esp32.is_online && recent);
           }
           return {
@@ -128,7 +133,7 @@ export default function Machines() {
         const lastHeartbeat = esp32.last_heartbeat ? new Date(esp32.last_heartbeat) : null;
         const now = new Date();
         const minutesAgo = lastHeartbeat ? (now.getTime() - lastHeartbeat.getTime()) / 60000 : 999999;
-        const isRecent = lastHeartbeat && minutesAgo < 5;
+        const isRecent = lastHeartbeat && minutesAgo < ESP32_HEARTBEAT_STALE_MINUTES;
         esp32Online = Boolean(esp32.is_online && isRecent);
 
         if (!esp32Online) {
