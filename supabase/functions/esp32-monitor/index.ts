@@ -251,6 +251,14 @@ serve(async (req) => {
         });
       }
 
+      // Auto-mark stale ESP32s as offline (heartbeat older than 3 minutes)
+      const staleThreshold = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+      await supabaseClient
+        .from('esp32_status')
+        .update({ is_online: false, updated_at: new Date().toISOString() })
+        .eq('is_online', true)
+        .lt('last_heartbeat', staleThreshold);
+
       return new Response(JSON.stringify({
         success: true, message: 'Heartbeat received', next_interval: 30
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

@@ -44,10 +44,17 @@ export default function Dashboard() {
       const { data: machinesData } = await machinesQuery;
       const { data: transactionsData } = await transactionsQuery;
 
-      const totalMachines = machinesData?.length || 0;
-      const activeMachines = machinesData?.filter(m => m.status === 'available').length || 0;
-      const offlineMachines = machinesData?.filter(m => m.status === 'offline').length || 0;
-      const maintenanceMachines = machinesData?.filter(m => m.status === 'maintenance').length || 0;
+      // Use computed status from useMachines (crosses with ESP32 heartbeat)
+      const totalMachines = machines.length || machinesData?.length || 0;
+      const activeMachines = machines.length > 0 
+        ? machines.filter(m => m.status === 'available').length
+        : machinesData?.filter(m => m.status === 'available').length || 0;
+      const offlineMachines = machines.length > 0
+        ? machines.filter(m => m.status === 'offline').length
+        : machinesData?.filter(m => m.status === 'offline').length || 0;
+      const maintenanceMachines = machines.length > 0
+        ? machines.filter(m => m.status === 'maintenance').length
+        : machinesData?.filter(m => m.status === 'maintenance').length || 0;
 
       const today = new Date(); today.setHours(0, 0, 0, 0);
       const todayTransactions = transactionsData?.filter(t => new Date(t.created_at) >= today).length || 0;
