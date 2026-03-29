@@ -1,59 +1,65 @@
 
 
-## Diagnóstico dos 4 Problemas Encontrados
+## Análise: BLE ESP32 — O que falta para 100% funcional com dados reais
 
-Após investigar o banco de dados, as Edge Functions e o código do frontend, identifiquei as causas-raiz de todos os 4 problemas reportados:
+### Estado Atual
 
-### Problema 1 & 2: Status não muda no app + Liberação manual não chega ao ESP32
+O sistema BLE já está bem estruturado:
+- **Firmware v4.1-BLE**: Implementa BLE server com 3 características (Status, Command, Config), WiFi portal cativo, heartbeat e polling Supabase. UUIDs alinhados com o app.
+- **Hook `useBLEDiagnostics`**: Scan, connect, read status, send command, configure WiFi via BLE.
+- **Página `BLEDiagnostics.tsx`**: UI completa com scan, status, comandos, config WiFi e log.
+- **AndroidManifest**: Todas as permissões BLE necessárias (BLUETOOTH_SCAN, BLUETOOTH_CONNECT, etc.) já estão declaradas.
+- **Rota e menu**: `/admin/ble-diagnostics` registrada e visível no sidebar.
 
-**Causa**: Duas constraints no banco bloqueiam as operações:
+### Gaps identificados para operação real
 
-- `pending_commands_action_check` aceita apenas `'on'` e `'off'`, mas a função `esp32-credit-release` insere `action: 'turn_on'` — o comando é **rejeitado silenciosamente** e nunca chega ao ESP32.
-- `transactions_payment_method_check` aceita apenas `'credit'`, `'pix'`, `'card'`, `'cash'`, mas `esp32-credit-release` insere `'manual_release'` — a transação falha.
+#### 1. Falta de Notificações BLE em tempo real
+O hook lê o status uma única vez após conectar (`BleClient.read`), mas não se inscreve para receber **notificações** quando o ESP32 atualiza o status (ex: relé mudou, WiFi reconectou). O firmware já envia `charStatus->notify()` após cada mudança.
 
-Os logs confirmam exatamente estes erros:
-```
-pending_commands_action_check violated → 'turn_on' not in ('on','off')
-transactions_payment_method_check violated → 'manual_release' not in ('credit','pix','card','cash')
-```
+**Correção**: Usar `BleClient.startNotifications()` na characteristic de Status para receber updates em tempo real e atualizar `esp32Status` automaticamente.
 
-**Correção**:
-1. **Migração SQL**: Adicionar `'manual_release'` e `'totem'` ao check constraint de `transactions.payment_method`. Adicionar `'turn_on'` e `'turn_off'` ao check constraint de `pending_commands.action` (ou alterar a Edge Function para usar `'on'`).
-2. **Edge Function `esp32-credit-release`**: Mudar `action: 'turn_on'` para `action: 'on'` (alinha com o que o firmware e o `esp32-control` já usam).
+#### 2. Falta configurar Laundry ID via BLE
+O firmware aceita `laundry_id` na characteristic CONFIG, mas a UI só envia SSID e senha WiFi. Um ESP32 novo precisa saber qual lavanderia ele pertence.
 
-### Problema 3: Diagnóstico ESP32 mostra 2 online (só 1 está ligado)
+**Correção**: Adicionar campo "Laundry ID" na seção de configuração WiFi do `BLEDiagnostics.tsx`, e enviar junto no payload JSON da CONFIG characteristic.
 
-**Causa**: O ESP32 `"lavadora teste"` tem `is_online: true` no banco, mas seu último heartbeat foi há mais de 18 horas. O heartbeat só marca `is_online = true` — **nunca há nenhum processo que marque `is_online = false`** quando o dispositivo para de enviar heartbeats.
+#### 3. Falta botões para Relé 2
+A UI só tem "Relé 1 ON/OFF". O firmware trata relay_1 e relay_2 como aliases para o mesmo GPIO, mas em ESP32s com 2 relés físicos (futuro), é importante ter controle de ambos.
 
-A página de Diagnóstico ESP32 usa `e.is_online` diretamente, sem verificar a idade do heartbeat.
+**Correção**: Adicionar botões para "Relé 2 ON/OFF" e um botão "Forçar Heartbeat" para sincronizar imediatamente com o Supabase.
 
-**Correção**:
-1. **Edge Function `esp32-monitor`** (heartbeat handler): Adicionar lógica para marcar como offline os ESP32s cujo `last_heartbeat` é mais antigo que 3 minutos (executar ao receber qualquer heartbeat).
-2. **Página de Diagnóstico ESP32**: Usar a mesma lógica de freshness do `useESP32Status` (2 min) para determinar se está realmente online, não confiar no campo `is_online` do banco.
+#### 4. Status BLE não sincronizado com Supabase
+Quando se altera um relé via BLE, o ESP32 muda localmente mas o Supabase só descobre no próximo heartbeat (até 30s). O app BLE deveria poder pedir ao ESP32 para enviar heartbeat imediatamente.
 
-### Problema 4: Dashboard mostra 12/12 disponíveis (só 1 online)
+**Correção**: Adicionar comando "force_heartbeat" no firmware e botão correspondente na UI.
 
-**Causa**: O Dashboard (`loadDashboardData`) conta `activeMachines` como `machine.status === 'available'` diretamente do banco. Todas as 12 máquinas estão com `status: 'available'` no banco. O Dashboard **não** cruza com o status do ESP32 — diferente do `useMachines` que faz essa verificação.
-
-**Correção**: O card "Disponíveis" no Dashboard deve considerar o status do ESP32. Usar a mesma lógica do `useMachines` (já carregado via `MachineStatusGrid`) para contar as máquinas por status computado em vez do status bruto do banco.
+#### 5. Auto-refresh do status após enviar comando
+Após enviar um comando, o hook espera 1 segundo e faz `read()` — mas seria melhor usar as notificações BLE para atualização instantânea.
 
 ---
 
 ## Plano de Implementação
 
-### Passo 1: Migração SQL — Corrigir check constraints
-- Alterar `transactions_payment_method_check` para incluir `'manual_release'` e `'totem'`
-- Manter `pending_commands_action_check` como está (apenas `'on'`/`'off'`) — corrigir o código que envia
+### Passo 1: Atualizar `useBLEDiagnostics` — Adicionar subscrição de notificações BLE
+- Após conectar e ler o status inicial, chamar `BleClient.startNotifications()` no `CHAR_STATUS_UUID`
+- Callback atualiza `esp32Status` em tempo real sempre que o ESP32 envia notify
+- No disconnect, chamar `stopNotifications()`
 
-### Passo 2: Corrigir `esp32-credit-release`
-- Mudar `action: 'turn_on'` para `action: 'on'`
+### Passo 2: Atualizar `BLEDiagnostics.tsx` — Laundry ID + mais comandos
+- Adicionar campo "Laundry ID" na seção de configuração WiFi, enviando no JSON da CONFIG characteristic
+- Adicionar botões: Relé 2 ON/OFF, "Forçar Heartbeat" (`sendCommand("force_heartbeat")`)
+- Adicionar botão "Atualizar Status" que faz read manual da characteristic
 
-### Passo 3: Corrigir `esp32-monitor` — marcar offline automaticamente
-- No handler de heartbeat, antes de retornar, executar UPDATE para marcar `is_online = false` em todos os ESP32s da mesma lavanderia cujo `last_heartbeat` é mais antigo que 3 minutos
+### Passo 3: Atualizar firmware — Comando `force_heartbeat`
+- No `handleBleCommandLine`, adicionar case para `"force_heartbeat"` que chama `sendHeartbeat()` imediatamente
+- Adicionar case para `"relay_2_on"` / `"relay_2_off"` (preparação para multi-relé)
 
-### Passo 4: Corrigir Diagnóstico ESP32 — verificar freshness
-- Em `ESP32Diagnostics.tsx` e `ESP32MonitorTab.tsx`, considerar o ESP32 offline se `last_heartbeat` for mais antigo que 2–3 minutos, independente do campo `is_online`
+### Passo 4: Configuração dinâmica do Laundry ID via CONFIG characteristic
+- O firmware já aceita `laundry_id` no payload JSON da CONFIG — confirmar que funciona e salva no NVS
+- Atualizar o payload JSON enviado pelo app para incluir `laundry_id` quando preenchido
 
-### Passo 5: Corrigir Dashboard — stats baseados no status computado
-- Em `Dashboard.tsx`, usar os dados já computados pelo `useMachines` (que cruza com ESP32) para popular os stats cards, em vez de fazer query separada ao banco
+### Resumo de arquivos alterados
+- `src/hooks/useBLEDiagnostics.ts` — adicionar startNotifications, readStatus manual
+- `src/pages/admin/BLEDiagnostics.tsx` — campo Laundry ID, botões extras, auto-refresh visual
+- `public/arduino/TopLavanderia_v4_BLE/TopLavanderia_v4_BLE.ino` — comando force_heartbeat, relay_2 explícito, laundry_id na CONFIG
 
