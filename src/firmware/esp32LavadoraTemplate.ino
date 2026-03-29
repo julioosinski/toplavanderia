@@ -1,13 +1,9 @@
 /**
- * ESP32 Lavadora Individual - Sistema de Controle
- * Versão: 2.0.4 - CORRIGIDA (+ poll Supabase após pagamento no totem)
+ * ESP32 Lavadora Individual — template gerado pelo admin (Configurar ESP32).
+ * Fonte única: este arquivo. Placeholders __WIFI_SSID__, __ESP32_ID__, etc.
+ * Ao alterar o firmware, sincronize também: public/arduino/ESP32_Lavadora_Individual_CORRIGIDO_v2.ino
  *
- * O download "Configurar ESP32" no admin usa o mesmo firmware a partir de:
- *   src/firmware/esp32LavadoraTemplate.ino (placeholders substituídos no navegador).
- * Mantenha os dois arquivos alinhados ao evoluir o código.
- *
- * CONFIGURAÇÃO OBRIGATÓRIA:
- * - WiFi, LAUNDRY_ID, ESP32_ID (igual ao cadastro da máquina no painel)
+ * Versão: 2.0.4 — heartbeat + poll pending_commands (pagamento totem)
  */
 
 #include <WiFi.h>
@@ -16,20 +12,14 @@
 #include <ArduinoJson.h>
 
 // ================== CONFIGURAÇÕES WIFI ==================
-// ⚠️ IMPORTANTE: Configure aqui suas credenciais WiFi
-const char* ssid = "2G Osinski";              // Nome da sua rede WiFi
-const char* password = "10203040";             // Senha do seu WiFi
+// Preenchido pelo painel Admin → Máquinas → Configurar ESP32 (ou edite manualmente)
+const char* ssid = "__WIFI_SSID__";
+const char* password = "__WIFI_PASSWORD__";
 
 // ================== IDENTIFICAÇÃO ==================
-// ⚠️ CRÍTICO: Configure os IDs corretos antes de fazer upload!
-// Para descobrir seu LAUNDRY_ID:
-// 1. Acesse o painel admin em https://sua-url.lovable.app/admin
-// 2. Vá em Configurações > Lavanderia
-// 3. Copie o ID da lavanderia
-
-#define LAUNDRY_ID "8ace0bcb-83a9-4555-a712-63ef5f52e709"  // ⚠️ ID DA SUA LAVANDERIA
-#define ESP32_ID "lavadora_01"                 // ⚠️ ID ÚNICO: lavadora_01, lavadora_02, secadora_01, etc
-#define MACHINE_NAME "Lavadora 01"             // Nome amigável (para logs)
+#define LAUNDRY_ID "__LAUNDRY_ID__"
+#define ESP32_ID "__ESP32_ID__"
+#define MACHINE_NAME "__MACHINE_NAME__"
 
 // ================== CONFIGURAÇÕES SUPABASE ==================
 const char* supabaseUrl = "https://rkdybjzwiwwqqzjfmerm.supabase.co";
