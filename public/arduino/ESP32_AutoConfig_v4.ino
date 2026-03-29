@@ -373,13 +373,25 @@ void pollCommands() {
 // ============================================
 
 bool executeCommand(String action, int relayPin) {
-  bool validPin = false;
-  for (int i = 0; i < NUM_RELAYS; i++) {
-    if (RELAY_PINS[i] == relayPin) { validPin = true; break; }
+  action.toLowerCase();
+  // Índice lógico 1..N → GPIO em RELAY_PINS (app / esp32-control usam "on"/"off")
+  int gpio = -1;
+  if (relayPin >= 1 && relayPin <= NUM_RELAYS) {
+    gpio = RELAY_PINS[relayPin - 1];
+  } else {
+    for (int i = 0; i < NUM_RELAYS; i++) {
+      if (RELAY_PINS[i] == relayPin) { gpio = relayPin; break; }
+    }
   }
-  if (!validPin) return false;
-  if (action == "activate" || action == "turn_on") { digitalWrite(relayPin, HIGH); return true; }
-  if (action == "deactivate" || action == "turn_off") { digitalWrite(relayPin, LOW); return true; }
+  if (gpio < 0) return false;
+  if (action == "on" || action == "activate" || action == "turn_on") {
+    digitalWrite(gpio, HIGH);
+    return true;
+  }
+  if (action == "off" || action == "deactivate" || action == "turn_off") {
+    digitalWrite(gpio, LOW);
+    return true;
+  }
   return false;
 }
 

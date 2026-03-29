@@ -88,6 +88,16 @@ Resposta: {"success":true,"message":"Heartbeat received","next_interval":30}
 
 **Se não mostrar nada:**
 - O loop pode estar travado
+
+---
+
+## ❌ Pagamento OK no totem, mas o relé não liga (só heartbeats no Serial)
+
+O app enfileira o comando em `pending_commands` via `esp32-control`. O firmware precisa **fazer polling** em `esp32-monitor?action=poll_commands&esp32_id=...` a cada poucos segundos e executar `on`/`off`.
+
+- **Firmware antigo** (`ESP32_Lavadora_Individual_CORRIGIDO_v2` antes da v2.0.4): só heartbeat — **nunca buscava a fila**. Atualize para **v2.0.4+** no repositório (`public/arduino/`) ou use `TopLavanderia_v4_BLE` / `ESP32_AutoConfig_v4`.
+- **`ESP32_ID`**: deve ser **idêntico** ao campo `esp32_id` da máquina no Supabase (ex.: `lavadora_01` ou `esp32_XXXXXX`).
+- **`ESP32_AutoConfig_v4`**: versões antigas só aceitavam `activate`/`turn_on`; o totem envia **`on`/`off`** — use firmware atualizado.
 - Verifique se há erros de compilação
 - Faça upload do código novamente
 

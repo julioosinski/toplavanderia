@@ -1,6 +1,6 @@
 /**
  * ESP32 Lavadora Individual - Sistema de Controle
- * Versão: 2.0.2 - CORRIGIDA
+ * Versão: 2.0.4 - CORRIGIDA (+ poll Supabase após pagamento no totem)
  * 
  * CONFIGURAÇÃO OBRIGATÓRIA:
  * - Configure seu WiFi nas linhas 23-24
@@ -40,7 +40,9 @@ const char* supabaseApiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzd
 // ================== VARIÁVEIS DE CONTROLE ==================
 WebServer server(80);
 unsigned long lastHeartbeat = 0;
+unsigned long lastPoll = 0;
 const unsigned long HEARTBEAT_INTERVAL = 30000;  // 30 segundos
+const unsigned long POLL_INTERVAL = 5000;        // fila pending_commands (esp32-control)
 bool relayState = false;
 unsigned long machineStartTime = 0;
 bool machineRunning = false;
@@ -48,7 +50,7 @@ bool machineRunning = false;
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n========================================");
-  Serial.println("ESP32 Lavadora Individual v2.0.2");
+  Serial.println("ESP32 Lavadora Individual v2.0.4");
   Serial.println("========================================");
   
   // Configurar hardware
@@ -74,12 +76,20 @@ void setup() {
 
 void loop() {
   server.handleClient();
-  
+
+  unsigned long now = millis();
+
+  // Buscar comandos enfileirados pelo totem (esp32-control → pending_commands)
+  if (now - lastPoll >= POLL_INTERVAL) {
+    pollSupabaseCommands();
+    lastPoll = now;
+  }
+
   // Enviar heartbeat periódico
-  if (millis() - lastHeartbeat > HEARTBEAT_INTERVAL) {
+  if (now - lastHeartbeat > HEARTBEAT_INTERVAL) {
     sendHeartbeat();
   }
-  
+
   delay(10);
 }
 
@@ -155,7 +165,7 @@ void handleStatus() {
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
   doc["network_status"] = "connected";
-  doc["firmware_version"] = "v2.0.2";
+  doc["firmware_version"] = "v2.0.4";
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
   doc["relay_status"] = relayState ? "on" : "off";
@@ -196,6 +206,93 @@ void handleNotFound() {
   server.send(404, "application/json", "{\"error\":\"Rota não encontrada\"}");
 }
 
+// ================== POLL (pagamento totem → pending_commands) ==================
+void confirmSupabaseCommand(const String& commandId) {
+  if (WiFi.status() != WL_CONNECTED || commandId.length() == 0) return;
+  HTTPClient http;
+  String url = String(supabaseUrl) + "/functions/v1/esp32-monitor?action=confirm_command";
+  http.begin(url);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("apikey", supabaseApiKey);
+  http.addHeader("Authorization", String("Bearer ") + String(supabaseApiKey));
+  StaticJsonDocument<256> doc;
+  doc["command_id"] = commandId;
+  doc["esp32_id"] = ESP32_ID;
+  String payload;
+  serializeJson(doc, payload);
+  int code = http.POST(payload);
+  if (code == 200) {
+    Serial.println("✅ confirm_command OK: " + commandId);
+  } else {
+    Serial.printf("❌ confirm_command HTTP %d\n", code);
+  }
+  http.end();
+}
+
+void pollSupabaseCommands() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  HTTPClient http;
+  String url = String(supabaseUrl) + "/functions/v1/esp32-monitor?action=poll_commands&esp32_id=" + String(ESP32_ID);
+  http.begin(url);
+  http.addHeader("apikey", supabaseApiKey);
+  http.addHeader("Authorization", String("Bearer ") + String(supabaseApiKey));
+  int code = http.GET();
+  if (code != 200) {
+    Serial.printf("❌ poll_commands HTTP %d\n", code);
+    http.end();
+    return;
+  }
+  String response = http.getString();
+  http.end();
+
+  DynamicJsonDocument doc(4096);
+  if (deserializeJson(doc, response)) {
+    Serial.println("❌ JSON poll inválido");
+    return;
+  }
+  if (!doc["success"].as<bool>()) return;
+
+  JsonArray cmds = doc["commands"].as<JsonArray>();
+  if (cmds.size() == 0) return;
+
+  Serial.printf("📋 poll_commands: %d comando(s)\n", cmds.size());
+
+  for (size_t i = 0; i < cmds.size(); i++) {
+    JsonObject c = cmds[i];
+    String cid = c["id"].as<String>();
+    String action = c["action"].as<String>();
+    action.toLowerCase();
+    int pin = c["relay_pin"] | RELAY_PIN;
+    // App envia relay_pin lógico 1 ou GPIO (ex. 2); placa única: aceitar 1↔primeiro relé
+    bool pinOk = (pin == RELAY_PIN) || (pin == 1 && RELAY_PIN == 2);
+    if (!pinOk) {
+      Serial.printf("⚡ Ignorado relay_pin %d (GPIO físico %d)\n", pin, RELAY_PIN);
+      confirmSupabaseCommand(cid);
+      continue;
+    }
+
+    if (action == "on" || action == "activate" || action == "turn_on") {
+      relayState = true;
+      machineRunning = true;
+      machineStartTime = millis();
+      digitalWrite(RELAY_PIN, HIGH);
+      digitalWrite(LED_PIN, HIGH);
+      Serial.println("⚡ Fila Supabase: ON (pagamento / comando)");
+    } else if (action == "off" || action == "deactivate" || action == "turn_off") {
+      relayState = false;
+      machineRunning = false;
+      digitalWrite(RELAY_PIN, LOW);
+      digitalWrite(LED_PIN, LOW);
+      Serial.println("⚡ Fila Supabase: OFF");
+    } else {
+      Serial.println("⚡ Ação desconhecida: " + action);
+    }
+    confirmSupabaseCommand(cid);
+    sendHeartbeat();
+  }
+}
+
 // ================== HEARTBEAT ==================
 void sendHeartbeat() {
   if (WiFi.status() != WL_CONNECTED) {
@@ -217,7 +314,7 @@ void sendHeartbeat() {
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
   doc["network_status"] = "connected";
-  doc["firmware_version"] = "v2.0.3";
+  doc["firmware_version"] = "v2.0.4";
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
   
