@@ -308,12 +308,9 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
   const configureTotemByCNPJ = async (cnpj: string): Promise<boolean> => {
     try {
       const cleanCnpj = cnpj.replace(/\D/g, '');
-      // Evita loading infinito quando a rede do tablet está instável.
+      // Use security definer RPC to look up laundry by CNPJ (public read removed)
       const queryPromise = supabase
-        .from('laundries')
-        .select('*')
-        .eq('cnpj', cleanCnpj)
-        .eq('is_active', true)
+        .rpc('get_laundry_by_cnpj', { _cnpj: cleanCnpj })
         .single();
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('cnpj_lookup_timeout')), 12000)
@@ -325,6 +322,15 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         return false;
       }
 
+      // Fetch full laundry record by ID (authenticated users have role-based access)
+      const { data: fullLaundry } = await supabase
+        .from('laundries')
+        .select('*')
+        .eq('id', data.id)
+        .single();
+
+      const laundryData = fullLaundry || { ...data, is_active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() } as Laundry;
+
       // Evita travar a UI caso o plugin nativo de storage fique pendurado.
       await Promise.race([
         nativeStorage.setItem('totem_laundry_id', data.id),
@@ -332,9 +338,9 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       ]).catch((storageErr) => {
         console.warn('[LaundryContext] Falha/timeout ao salvar totem_laundry_id, seguindo com estado em memória:', storageErr);
       });
-      setCurrentLaundry(data);
-      setLaundries([data]);
-      debugLaundry('[LaundryContext] Totem configurado com sucesso:', data.name);
+      setCurrentLaundry(laundryData);
+      setLaundries([laundryData]);
+      debugLaundry('[LaundryContext] Totem configurado com sucesso:', laundryData.name);
       return true;
     } catch (err) {
       console.error('[LaundryContext] Erro ao configurar totem por CNPJ:', err);

@@ -20,9 +20,9 @@ export const PaymentDiagnostics = () => {
 
   const testPayGO = async () => {
     try {
-      // Use edge function to get non-sensitive settings (public read removed from system_settings)
+      // Use edge function to get non-sensitive settings
       const { data: result } = await supabase.functions.invoke('totem-settings', {
-        body: { laundry_id: (await supabase.from('laundries').select('id').limit(1).single()).data?.id }
+        body: { laundry_id: null } // Will use default
       });
       const settings = result?.settings;
 
