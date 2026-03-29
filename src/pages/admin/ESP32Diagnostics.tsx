@@ -173,7 +173,11 @@ export default function ESP32Diagnostics() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {esp32List.filter(e => e.is_online).length}
+              {esp32List.filter(e => {
+                if (!e.last_heartbeat) return false;
+                const age = (Date.now() - new Date(e.last_heartbeat).getTime()) / 60000;
+                return age < 3;
+              }).length}
             </div>
           </CardContent>
         </Card>
@@ -187,7 +191,11 @@ export default function ESP32Diagnostics() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">
-              {esp32List.filter(e => !e.is_online).length}
+              {esp32List.filter(e => {
+                if (!e.last_heartbeat) return true;
+                const age = (Date.now() - new Date(e.last_heartbeat).getTime()) / 60000;
+                return age >= 3;
+              }).length}
             </div>
           </CardContent>
         </Card>
@@ -220,9 +228,16 @@ export default function ESP32Diagnostics() {
                   <div className="space-y-1">
                     <CardTitle className="flex items-center gap-2">
                       <code className="text-lg">{esp32.esp32_id}</code>
-                      <Badge variant={esp32.is_online ? "default" : "secondary"}>
-                        {esp32.is_online ? "Online" : "Offline"}
-                      </Badge>
+                      {(() => {
+                        const isReallyOnline = esp32.last_heartbeat 
+                          ? (Date.now() - new Date(esp32.last_heartbeat).getTime()) / 60000 < 3
+                          : false;
+                        return (
+                          <Badge variant={isReallyOnline ? "default" : "secondary"}>
+                            {isReallyOnline ? "Online" : "Offline"}
+                          </Badge>
+                        );
+                      })()}
                       <Badge variant="outline">{getLaundryName(esp32.laundry_id)}</Badge>
                       {hasConflicts && (
                         <Badge variant="destructive" className="flex items-center gap-1">

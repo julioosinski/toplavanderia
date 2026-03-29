@@ -254,8 +254,14 @@ const ESP32MonitorTab: React.FC = () => {
     return <Signal className="w-4 h-4 text-red-500" />;
   };
 
+  const isESP32ReallyOnline = (status: ESP32Status): boolean => {
+    if (!status.last_heartbeat) return false;
+    const age = (Date.now() - new Date(status.last_heartbeat).getTime()) / 60000;
+    return age < 3;
+  };
+
   const getStatusBadge = (status: ESP32Status) => {
-    if (status.is_online) {
+    if (isESP32ReallyOnline(status)) {
       return <Badge variant="secondary" className="bg-green-100 text-green-800">Online</Badge>;
     }
     return <Badge variant="destructive">Offline</Badge>;

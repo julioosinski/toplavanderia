@@ -68,7 +68,7 @@ serve(async (req) => {
             esp32_id: machine.esp32_id || targetESP32Id,
             machine_id: machineId,
             relay_pin: machine.relay_pin || 1,
-            action: 'turn_on',
+            action: 'on',
             status: 'pending',
           });
 
