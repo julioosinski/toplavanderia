@@ -322,6 +322,15 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         return false;
       }
 
+      // Fetch full laundry record by ID (authenticated users have role-based access)
+      const { data: fullLaundry } = await supabase
+        .from('laundries')
+        .select('*')
+        .eq('id', data.id)
+        .single();
+
+      const laundryData = fullLaundry || { ...data, is_active: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() } as Laundry;
+
       // Evita travar a UI caso o plugin nativo de storage fique pendurado.
       await Promise.race([
         nativeStorage.setItem('totem_laundry_id', data.id),
@@ -329,9 +338,9 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       ]).catch((storageErr) => {
         console.warn('[LaundryContext] Falha/timeout ao salvar totem_laundry_id, seguindo com estado em memória:', storageErr);
       });
-      setCurrentLaundry(data);
-      setLaundries([data]);
-      debugLaundry('[LaundryContext] Totem configurado com sucesso:', data.name);
+      setCurrentLaundry(laundryData);
+      setLaundries([laundryData]);
+      debugLaundry('[LaundryContext] Totem configurado com sucesso:', laundryData.name);
       return true;
     } catch (err) {
       console.error('[LaundryContext] Erro ao configurar totem por CNPJ:', err);
