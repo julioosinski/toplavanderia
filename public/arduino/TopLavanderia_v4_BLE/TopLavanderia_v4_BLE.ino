@@ -313,6 +313,15 @@ void handleBleCommandLine(const String& line) {
   } else if (s == "relay_1_off" || s == "relay_off") {
     setRelay(false);
     Serial.println("⚡ BLE: relay_1_off");
+  } else if (s == "relay_2_on") {
+    setRelay(true);  // Mesmo GPIO por enquanto; preparado para multi-relé futuro
+    Serial.println("⚡ BLE: relay_2_on");
+  } else if (s == "relay_2_off") {
+    setRelay(false);
+    Serial.println("⚡ BLE: relay_2_off");
+  } else if (s == "force_heartbeat") {
+    Serial.println("💓 BLE: force_heartbeat");
+    sendHeartbeat();
   } else if (s == "restart" || s == "reset") {
     Serial.println("⚡ BLE: restart");
     delay(200);

@@ -19,6 +19,8 @@ import {
   Terminal,
   Signal,
   Cpu,
+  Heart,
+  Download,
 } from "lucide-react";
 import { useBLEDiagnostics, type BLEDevice } from "@/hooks/useBLEDiagnostics";
 
@@ -35,11 +37,13 @@ export default function BLEDiagnostics() {
     connect,
     disconnect,
     sendCommand,
-    configureWiFi,
+    configureDevice,
+    readStatus,
   } = useBLEDiagnostics();
 
   const [wifiSSID, setWifiSSID] = useState("");
   const [wifiPassword, setWifiPassword] = useState("");
+  const [laundryId, setLaundryId] = useState("");
   const [customCommand, setCustomCommand] = useState("");
 
   if (!isNative) {
@@ -98,11 +102,7 @@ export default function BLEDiagnostics() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button
-              onClick={scan}
-              disabled={state === "scanning"}
-              className="w-full"
-            >
+            <Button onClick={scan} disabled={state === "scanning"} className="w-full">
               {state === "scanning" ? (
                 <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Escaneando...</>
               ) : (
@@ -145,11 +145,18 @@ export default function BLEDiagnostics() {
                   <Cpu size={20} />
                   {connectedDevice.name || connectedDevice.deviceId}
                 </CardTitle>
-                <Button variant="outline" size="sm" onClick={disconnect}>
-                  Desconectar
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={readStatus}>
+                    <RefreshCw className="mr-1 h-3 w-3" /> Atualizar
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={disconnect}>
+                    Desconectar
+                  </Button>
+                </div>
               </div>
-              <CardDescription>ESP32 ID: {esp32Status.esp32_id || "—"}</CardDescription>
+              <CardDescription>
+                ESP32 ID: {esp32Status.esp32_id || "—"} | Laundry: {esp32Status.laundry_id || "—"}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -230,6 +237,21 @@ export default function BLEDiagnostics() {
                 </Button>
               </div>
 
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <Button variant="outline" size="sm" onClick={() => sendCommand("relay_2_on")}>
+                  <Zap className="mr-1 h-3 w-3" /> Relé 2 ON
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => sendCommand("relay_2_off")}>
+                  <ZapOff className="mr-1 h-3 w-3" /> Relé 2 OFF
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => sendCommand("force_heartbeat")}>
+                  <Heart className="mr-1 h-3 w-3" /> Forçar Heartbeat
+                </Button>
+                <Button variant="outline" size="sm" onClick={readStatus}>
+                  <Download className="mr-1 h-3 w-3" /> Ler Status
+                </Button>
+              </div>
+
               <Separator />
 
               <div className="flex gap-2">
@@ -259,17 +281,17 @@ export default function BLEDiagnostics() {
             </CardContent>
           </Card>
 
-          {/* WiFi Configuration */}
+          {/* Device Configuration */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Settings size={20} />
-                Configurar WiFi
+                Configuração do Dispositivo
               </CardTitle>
-              <CardDescription>Configure a rede WiFi do ESP32 via Bluetooth</CardDescription>
+              <CardDescription>Configure WiFi e Laundry ID do ESP32 via Bluetooth</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label>SSID da Rede</Label>
                   <Input
@@ -287,20 +309,37 @@ export default function BLEDiagnostics() {
                     onChange={(e) => setWifiPassword(e.target.value)}
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label>Laundry ID (UUID)</Label>
+                  <Input
+                    placeholder="UUID da lavanderia"
+                    value={laundryId}
+                    onChange={(e) => setLaundryId(e.target.value)}
+                  />
+                </div>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Preencha apenas os campos que deseja alterar. O ESP32 reiniciará após receber a configuração WiFi.
+              </p>
               <Button
                 onClick={() => {
-                  if (wifiSSID.trim()) {
-                    configureWiFi(wifiSSID.trim(), wifiPassword);
-                    setWifiSSID("");
-                    setWifiPassword("");
-                  }
+                  const config: Record<string, string> = {};
+                  if (wifiSSID.trim()) config.ssid = wifiSSID.trim();
+                  if (wifiPassword) config.password = wifiPassword;
+                  if (laundryId.trim()) config.laundry_id = laundryId.trim();
+
+                  if (Object.keys(config).length === 0) return;
+
+                  configureDevice(config);
+                  setWifiSSID("");
+                  setWifiPassword("");
+                  setLaundryId("");
                 }}
-                disabled={!wifiSSID.trim()}
+                disabled={!wifiSSID.trim() && !laundryId.trim()}
                 className="w-full"
               >
                 <Wifi className="mr-2 h-4 w-4" />
-                Enviar Configuração WiFi
+                Enviar Configuração
               </Button>
             </CardContent>
           </Card>
