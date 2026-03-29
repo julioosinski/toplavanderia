@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "supabase:deploy:update-machine-status": "npx supabase functions deploy update-machine-status --project-ref rkdybjzwiwwqqzjfmerm --no-verify-jwt",
     "supabase:deploy:esp32-control": "npx supabase functions deploy esp32-control --project-ref rkdybjzwiwwqqzjfmerm --no-verify-jwt",
-    "supabase:deploy:totem-functions": "npm run supabase:deploy:update-machine-status && npm run supabase:deploy:esp32-control"
+    "supabase:deploy:esp32-monitor": "npx supabase functions deploy esp32-monitor --project-ref rkdybjzwiwwqqzjfmerm --no-verify-jwt",
+    "supabase:deploy:totem-functions": "npm run supabase:deploy:update-machine-status && npm run supabase:deploy:esp32-control && npm run supabase:deploy:esp32-monitor"
   },
   "dependencies": {
     "@capacitor-community/bluetooth-le": "^8.1.3",

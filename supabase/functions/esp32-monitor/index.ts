@@ -77,11 +77,23 @@ serve(async (req) => {
         });
       }
 
-      // Mark as executed
-      await supabaseClient
+      // CHECK (status) permite completed, não "executed"
+      const { error: updErr } = await supabaseClient
         .from('pending_commands')
-        .update({ status: 'executed', executed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .update({
+          status: 'completed',
+          executed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', command_id);
+
+      if (updErr) {
+        console.error('pending_commands update failed:', updErr);
+        return new Response(JSON.stringify({ success: false, error: updErr.message }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
 
       // Update machine status
       const newStatus = command.action === 'on' ? 'running' : 'available';

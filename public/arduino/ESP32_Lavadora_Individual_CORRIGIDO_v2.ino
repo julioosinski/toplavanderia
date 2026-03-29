@@ -1,6 +1,6 @@
 /**
  * ESP32 Lavadora Individual - Sistema de Controle
- * Versão: 2.0.4 - CORRIGIDA (+ poll Supabase após pagamento no totem)
+ * Versão: 2.0.5 - poll aceita qualquer relay_pin (placa 1 relé; filtro é esp32_id)
  *
  * O download "Configurar ESP32" no admin usa o mesmo firmware a partir de:
  *   src/firmware/esp32LavadoraTemplate.ino (placeholders substituídos no navegador).
@@ -52,7 +52,7 @@ bool machineRunning = false;
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n========================================");
-  Serial.println("ESP32 Lavadora Individual v2.0.4");
+  Serial.println("ESP32 Lavadora Individual v2.0.5");
   Serial.println("========================================");
   
   // Configurar hardware
@@ -167,7 +167,7 @@ void handleStatus() {
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
   doc["network_status"] = "connected";
-  doc["firmware_version"] = "v2.0.4";
+  doc["firmware_version"] = "v2.0.5";
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
   doc["relay_status"] = relayState ? "on" : "off";
@@ -266,13 +266,10 @@ void pollSupabaseCommands() {
     String action = c["action"].as<String>();
     action.toLowerCase();
     int pin = c["relay_pin"] | RELAY_PIN;
-    // App envia relay_pin lógico 1 ou GPIO (ex. 2); placa única: aceitar 1↔primeiro relé
-    bool pinOk = (pin == RELAY_PIN) || (pin == 1 && RELAY_PIN == 2);
-    if (!pinOk) {
-      Serial.printf("⚡ Ignorado relay_pin %d (GPIO físico %d)\n", pin, RELAY_PIN);
-      confirmSupabaseCommand(cid);
-      continue;
-    }
+    // Placa lavadora individual: o backend já filtra por esp32_id. O relay_pin no banco
+    // pode ser 1, 2, 3… (índice ou GPIO); o hardware usa sempre RELAY_PIN.
+    (void)pin;
+    Serial.printf("📌 Comando relay_pin=%d → GPIO físico %d\n", pin, RELAY_PIN);
 
     if (action == "on" || action == "activate" || action == "turn_on") {
       relayState = true;
@@ -316,7 +313,7 @@ void sendHeartbeat() {
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
   doc["network_status"] = "connected";
-  doc["firmware_version"] = "v2.0.4";
+  doc["firmware_version"] = "v2.0.5";
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
   
