@@ -272,3 +272,4 @@ public class RealPayGoManager {
         if (callback != null) callback.onPaymentSuccess("TESTE_OK", "TEST_" + System.currentTimeMillis());
     }
 }
+

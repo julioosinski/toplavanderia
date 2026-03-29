@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
 import { toast } from 'sonner';
 import { useLaundry } from '@/contexts/LaundryContext';
+import { nativeStorage } from '@/utils/nativeStorage';
 
 export interface SystemSettings {
   id: string;
@@ -54,6 +55,30 @@ export interface SystemSettings {
 }
 
 const SYSTEM_SETTINGS_QUERY_TIMEOUT_MS = 15000;
+const SETTINGS_CACHE_PREFIX = 'system_settings_cache:';
+
+const settingsCacheKey = (laundryId: string) => `${SETTINGS_CACHE_PREFIX}${laundryId}`;
+
+async function readCachedSettings(laundryId: string): Promise<SystemSettings | null> {
+  try {
+    const raw = await nativeStorage.getItem(settingsCacheKey(laundryId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as SystemSettings;
+    if (!parsed?.id) return null;
+    return parsed;
+  } catch (e) {
+    console.warn('[useSystemSettings] cache read failed:', e);
+    return null;
+  }
+}
+
+async function writeCachedSettings(laundryId: string, data: SystemSettings): Promise<void> {
+  try {
+    await nativeStorage.setItem(settingsCacheKey(laundryId), JSON.stringify(data));
+  } catch (e) {
+    console.warn('[useSystemSettings] cache write failed:', e);
+  }
+}
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -125,23 +150,28 @@ export const useSystemSettings = () => {
           if (createError) {
             // RLS ou permissão: não travar a app; totem usa defaults locais
             console.error('Error creating default settings:', createError);
-            return null;
+            return await readCachedSettings(currentLaundry.id);
           }
 
-          return newSettings as SystemSettings;
+          const created = newSettings as SystemSettings;
+          await writeCachedSettings(currentLaundry.id, created);
+          return created;
         }
 
-        return data as SystemSettings;
+        const current = data as SystemSettings;
+        await writeCachedSettings(currentLaundry.id, current);
+        return current;
       };
 
       try {
         return await withTimeout(run(), SYSTEM_SETTINGS_QUERY_TIMEOUT_MS);
       } catch (e) {
         if (e instanceof Error && e.message === 'system_settings_timeout') {
-          console.warn('system_settings: timeout — usando sem config remota');
-          return null;
+          console.warn('system_settings: timeout — usando cache local');
+          return await readCachedSettings(currentLaundry.id);
         }
-        throw e;
+        console.error('system_settings: erro remoto — fallback para cache local', e);
+        return await readCachedSettings(currentLaundry.id);
       }
     },
     staleTime: 1000 * 60 * 5, // Cache por 5 minutos
@@ -171,6 +201,9 @@ export const useSystemSettings = () => {
     },
     onSuccess: (data) => {
       queryClient.setQueryData(['system-settings', currentLaundry?.id], data);
+      if (currentLaundry?.id) {
+        void writeCachedSettings(currentLaundry.id, data);
+      }
       toast.success('Configurações atualizadas com sucesso');
     },
     onError: (error) => {
