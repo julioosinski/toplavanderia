@@ -261,9 +261,13 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
       const result = await PayGO.detectPinpad();
       
       if (result.detected) {
-        toast.success(`PPC930 detectado: ${result.deviceName}`);
+        toast.success(
+          result.deviceName
+            ? `Pinpad: ${result.deviceName}`
+            : result.message || 'Pinpad / PayGO disponível'
+        );
       } else {
-        toast.warning('Dispositivo PPC930 não detectado');
+        toast.warning(result.message || 'Pinpad não detectado — verifique PayGo Integrado e USB');
       }
       
       return result;

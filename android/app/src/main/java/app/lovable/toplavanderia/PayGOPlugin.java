@@ -207,10 +207,13 @@ public class PayGOPlugin extends Plugin {
     @PluginMethod
     public void getSystemStatus(PluginCall call) {
         JSObject result = new JSObject();
-        result.put("initialized", payGoManager.isInitialized());
-        result.put("online", payGoManager.isInitialized());
-        result.put("clientConnected", payGoManager.isInitialized());
-        result.put("usbDeviceDetected", detectUsbPinpad());
+        boolean init = payGoManager.isInitialized();
+        boolean usbListed = detectUsbPinpad();
+        result.put("initialized", init);
+        result.put("online", init);
+        result.put("clientConnected", init);
+        // Pinpad pode estar OK via PayGo Integrado mesmo sem o VID aparecer na lista abaixo
+        result.put("usbDeviceDetected", usbListed || init);
         result.put("libraryVersion", "InterfaceAutomacao-v2.1.0.6");
         result.put("timestamp", System.currentTimeMillis());
         call.resolve(result);
@@ -228,14 +231,66 @@ public class PayGOPlugin extends Plugin {
 
     @PluginMethod
     public void detectPinpad(PluginCall call) {
-        boolean detected = detectUsbPinpad();
+        boolean usbListed = detectUsbPinpad();
+        boolean init = payGoManager.isInitialized();
+        boolean detected = usbListed || init;
+
         JSObject result = new JSObject();
         result.put("detected", detected);
-        result.put("message", detected ? "Pinpad USB detectado" : "Nenhum pinpad USB detectado");
+        if (usbListed) {
+            result.put("message", "Pinpad USB detectado");
+            putFirstMatchingUsbDevice(result);
+        } else if (init) {
+            result.put("message", "PayGO ativo — terminal disponível via PayGo Integrado");
+            result.put("deviceName", "PayGo Integrado");
+        } else {
+            result.put("message", "Nenhum pinpad detectado. Abra o PayGo Integrado, conecte o USB e tente de novo.");
+        }
         call.resolve(result);
     }
 
     // ==================== HELPERS ====================
+
+    /** Preenche deviceName/vendorId/productId do primeiro USB que parece pinpad. */
+    private void putFirstMatchingUsbDevice(JSObject result) {
+        try {
+            UsbManager usbManager = (UsbManager) getContext().getSystemService(Context.USB_SERVICE);
+            if (usbManager == null) return;
+            for (UsbDevice device : usbManager.getDeviceList().values()) {
+                if (isLikelyPinpadUsb(device.getVendorId(), device.getProductId())) {
+                    result.put("deviceName", device.getDeviceName());
+                    result.put("vendorId", String.format("0x%04X", device.getVendorId()));
+                    result.put("productId", String.format("0x%04X", device.getProductId()));
+                    return;
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "putFirstMatchingUsbDevice", e);
+        }
+    }
+
+    /**
+     * Heurística ampla: muitos pinpads usam bridge serial (FTDI, CH340, CP210x) ou chips dedicados.
+     * PayGo Integrado pode segurar o dispositivo — nesse caso {@link RealPayGoManager#isInitialized()} cobre o fluxo real.
+     */
+    private boolean isLikelyPinpadUsb(int vid, int pid) {
+        // PPC930 / família Positivo (product id comum)
+        if (pid == 0x0930) return true;
+        // Positivo Tecnologia, NXP em vários terminais, FTDI, STM VCOM, TI
+        if (vid == 0x2BF9 || vid == 0x2C09 || vid == 0x1FC9 || vid == 0x0403
+                || vid == 0x0483 || vid == 0x0451) return true;
+        // Prolific PL2303
+        if (vid == 0x067B) return true;
+        // Silicon Labs CP210x
+        if (vid == 0x10C4 && (pid == 0xEA60 || pid == 0xEA61 || pid == 0xEA70)) return true;
+        // WCH CH340/CH341 (comum em bases USB)
+        if (vid == 0x1A86 && (pid == 0x7523 || pid == 0x5523 || pid == 0xE010)) return true;
+        // Ingenico / leitores em alguns deployments
+        if (vid == 0x079B) return true;
+        // Verifone / Gertec aparecem em relatórios de campo (hex variados)
+        if (vid == 0x11CA || vid == 0x2912) return true;
+        return false;
+    }
 
     private boolean detectUsbPinpad() {
         try {
@@ -244,11 +299,7 @@ public class PayGOPlugin extends Plugin {
 
             HashMap<String, UsbDevice> devices = usbManager.getDeviceList();
             for (UsbDevice device : devices.values()) {
-                int vid = device.getVendorId();
-                int pid = device.getProductId();
-                // Known pinpad vendor/product IDs
-                if (vid == 0x1FC9 || vid == 0x0403 || vid == 0x0483 ||
-                    vid == 0x2BF9 || vid == 0x2C09 || vid == 0x0451) {
+                if (isLikelyPinpadUsb(device.getVendorId(), device.getProductId())) {
                     return true;
                 }
             }
