@@ -140,7 +140,10 @@ public class RealPayGoManager {
                 entrada.informaModalidadePagamento(ModalidadesPagamento.PAGAMENTO_CARTAO);
                 if ("debit".equalsIgnoreCase(paymentType)) {
                     entrada.informaTipoCartao(Cartoes.CARTAO_DEBITO);
-                    Log.d(TAG, "Payment type: débito (cartão definido na automação)");
+                    // Mesmo no débito, fixar à vista + 1 parcela evita tela extra na pinpad (sempre à vista).
+                    entrada.informaTipoFinanciamento(Financiamentos.A_VISTA);
+                    entrada.informaNumeroParcelas(1);
+                    Log.d(TAG, "Payment type: débito à vista (cartão + financiamento definidos)");
                 } else {
                     entrada.informaTipoCartao(Cartoes.CARTAO_CREDITO);
                     entrada.informaTipoFinanciamento(Financiamentos.A_VISTA);
