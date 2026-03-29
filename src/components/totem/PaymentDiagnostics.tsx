@@ -20,10 +20,11 @@ export const PaymentDiagnostics = () => {
 
   const testPayGO = async () => {
     try {
-      const { data: settings } = await supabase
-        .from('system_settings')
-        .select('paygo_host, paygo_port, paygo_enabled')
-        .single();
+      // Use edge function to get non-sensitive settings (public read removed from system_settings)
+      const { data: result } = await supabase.functions.invoke('totem-settings', {
+        body: { laundry_id: (await supabase.from('laundries').select('id').limit(1).single()).data?.id }
+      });
+      const settings = result?.settings;
 
       if (!settings?.paygo_enabled) {
         return false;
