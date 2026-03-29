@@ -23,6 +23,9 @@
         <domain includeSubdomains="true">192.168.43.0</domain>
         <domain includeSubdomains="true">192.168.100.0</domain>
         <domain includeSubdomains="true">169.254.0.0</domain>
+
+        <!-- PayGO automação em nuvem (HTTP) — PIX / endpoints em tpgweb.io -->
+        <domain includeSubdomains="true">tpgweb.io</domain>
     </domain-config>
     
     <!-- Configuração base para HTTPS -->

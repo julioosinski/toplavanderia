@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRealPayGOIntegration, RealPayGOConfig } from './useRealPayGOIntegration';
 import { useTEFIntegration } from './useTEFIntegration';
 import { usePixPayment } from './usePixPayment';
@@ -46,6 +46,8 @@ export interface UniversalPaymentConfig {
     timeout: number;
     retryAttempts: number;
     retryDelay: number;
+    /** ID do terminal TEF (campo `terminal` na venda); não confundir com porta HTTP */
+    terminalId?: string;
   };
   /** When true, skip TEF/PIX HTTP tests and force PayGO as only method (Smart POS mode) */
   smartPosMode?: boolean;
@@ -62,15 +64,42 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
     { method: 'manual', available: true, connected: true, priority: 4 }
   ]);
 
-  // Real integrations
+  // Real integrations — usar callbacks estáveis nas deps (o objeto do hook muda a cada render)
   const paygoIntegration = useRealPayGOIntegration(config.paygo);
-  const tefIntegration = useTEFIntegration(config.tef);
-  const pixIntegration = usePixPayment({
-    host: config.paygo.host,
-    port: config.paygo.port,
-    automationKey: config.paygo.automationKey,
-    timeout: config.paygo.timeout,
-  });
+  const pixPaygoOpts = useMemo(
+    () => ({
+      host: config.paygo.host,
+      port: config.paygo.port,
+      automationKey: config.paygo.automationKey,
+      timeout: config.paygo.timeout,
+    }),
+    [config.paygo.host, config.paygo.port, config.paygo.automationKey, config.paygo.timeout]
+  );
+  const pixIntegration = usePixPayment(pixPaygoOpts);
+
+  const tefHttpConfig = useMemo(
+    () => ({
+      host: config.tef.host,
+      port: config.tef.port,
+      timeout: config.tef.timeout,
+      retryAttempts: config.tef.retryAttempts,
+      retryDelay: config.tef.retryDelay,
+    }),
+    [
+      config.tef.host,
+      config.tef.port,
+      config.tef.timeout,
+      config.tef.retryAttempts,
+      config.tef.retryDelay,
+    ]
+  );
+  const tefIntegration = useTEFIntegration(tefHttpConfig);
+
+  const testPaygoConnection = paygoIntegration.testConnection;
+  const processPaygoPayment = paygoIntegration.processPayment;
+  const testTefConnection = tefIntegration.testConnection;
+  const processTefPayment = tefIntegration.processTEFPayment;
+  const generatePixQR = pixIntegration.generatePixQR;
 
   const defaultMethodsStatus = (): PaymentMethodStatus[] => [
     { method: 'paygo', available: false, connected: false, priority: 1 },
@@ -97,7 +126,7 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
       const newStatus = defaultMethodsStatus();
 
       try {
-        const paygoAvailable = await paygoIntegration.testConnection({ silent });
+        const paygoAvailable = await testPaygoConnection({ silent });
         const idx = newStatus.findIndex((s) => s.method === 'paygo');
         if (idx >= 0) {
           newStatus[idx] = {
@@ -122,7 +151,7 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
       }
 
       try {
-        const tefAvailable = await tefIntegration.testConnection({ silent });
+        const tefAvailable = await testTefConnection({ silent });
         const idx = newStatus.findIndex((s) => s.method === 'tef');
         if (idx >= 0) {
           newStatus[idx] = {
@@ -160,7 +189,7 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
 
       setMethodsStatus(newStatus);
     },
-    [config.smartPosMode, paygoIntegration, tefIntegration]
+    [config.smartPosMode, testPaygoConnection, testTefConnection]
   );
 
   // Find best available method
@@ -197,7 +226,7 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
 
       switch (methodToUse) {
         case 'paygo': {
-          const result = await paygoIntegration.processPayment({
+          const result = await processPaygoPayment({
             paymentType: transaction.type as 'credit' | 'debit' | 'pix',
             amount: transaction.amount,
             orderId: transaction.orderId || Date.now().toString()
@@ -212,13 +241,13 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
         }
 
         case 'tef': {
-          const tefResult = await tefIntegration.processTEFPayment({
+          const tefResult = await processTefPayment({
             transacao: 'venda',
             valor: (transaction.amount * 100).toString(),
             cupomFiscal: transaction.orderId || Date.now().toString(),
             dataHora: new Date().toISOString().slice(0, 19).replace('T', ' '),
             estabelecimento: 'Top Lavanderia',
-            terminal: '001'
+            terminal: (config.tef.terminalId && config.tef.terminalId.trim()) || '001',
           });
 
           return {
@@ -231,7 +260,7 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
 
         case 'pix': {
           const orderId = transaction.orderId || `ORDER_${Date.now()}`;
-          const pixResult = await pixIntegration.generatePixQR({
+          const pixResult = await generatePixQR({
             amount: transaction.amount,
             orderId,
           });
@@ -273,7 +302,16 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
       setIsProcessing(false);
       setCurrentMethod(null);
     }
-  }, [methodsStatus, getBestAvailableMethod, paygoIntegration, tefIntegration, pixIntegration, currentMethod, toast]);
+  }, [
+    methodsStatus,
+    getBestAvailableMethod,
+    processPaygoPayment,
+    processTefPayment,
+    generatePixQR,
+    currentMethod,
+    toast,
+    config.tef.terminalId,
+  ]);
 
   useEffect(() => {
     void testAllMethods();

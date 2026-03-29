@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Wifi, Shield, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -55,27 +55,47 @@ const Totem = () => {
 
   // Configs
   const [tefConfig, setTefConfig] = useState({
-    host: "127.0.0.1", port: "4321", timeout: 60000, retryAttempts: 3, retryDelay: 2000
+    host: "127.0.0.1",
+    port: "4321",
+    terminalId: "001",
+    timeout: 60000,
+    retryAttempts: 3,
+    retryDelay: 2000,
   });
   const [paygoConfig, setPaygoConfig] = useState({
     host: 'localhost', port: 8080, automationKey: '', timeout: 30000, retryAttempts: 3
   });
 
-  const universalConfig: UniversalPaymentConfig = {
-    paygo: {
-      ...paygoConfig,
-      port: Number(paygoConfig.port) || 31735,
-    },
-    tef: tefConfig,
-    smartPosMode: deviceMode === 'smartpos',
-  };
+  const universalConfig: UniversalPaymentConfig = useMemo(
+    () => ({
+      paygo: {
+        ...paygoConfig,
+        port: Number(paygoConfig.port) || 31735,
+      },
+      tef: {
+        host: tefConfig.host,
+        port: tefConfig.port,
+        terminalId: tefConfig.terminalId,
+        timeout: tefConfig.timeout,
+        retryAttempts: tefConfig.retryAttempts,
+        retryDelay: tefConfig.retryDelay,
+      },
+      smartPosMode: deviceMode === 'smartpos',
+    }),
+    [paygoConfig, tefConfig, deviceMode]
+  );
 
-  const { checkPixPaymentStatus } = usePixPayment({
-    host: paygoConfig.host,
-    port: Number(paygoConfig.port) || 31735,
-    automationKey: paygoConfig.automationKey,
-    timeout: paygoConfig.timeout,
-  });
+  const pixHookConfig = useMemo(
+    () => ({
+      host: paygoConfig.host,
+      port: Number(paygoConfig.port) || 31735,
+      automationKey: paygoConfig.automationKey,
+      timeout: paygoConfig.timeout,
+    }),
+    [paygoConfig.host, paygoConfig.port, paygoConfig.automationKey, paygoConfig.timeout]
+  );
+
+  const { checkPixPaymentStatus } = usePixPayment(pixHookConfig);
 
   // Loading timeout safety
   useEffect(() => {
@@ -118,12 +138,30 @@ const Totem = () => {
   // Sync system settings
   useEffect(() => {
     if (systemSettings) {
+      const defaultHost = systemSettings.paygo_host || "pos-transac-sb.tpgweb.io";
+      let tefHost = defaultHost;
+      let tefPort = "8080";
+      try {
+        const raw = systemSettings.tef_config?.trim();
+        if (raw) {
+          const j = JSON.parse(raw) as Record<string, unknown>;
+          if (typeof j.host === "string" && j.host.trim()) tefHost = j.host.trim();
+          if (typeof j.port === "number" && Number.isFinite(j.port)) tefPort = String(j.port);
+          else if (typeof j.port === "string" && j.port.trim()) tefPort = j.port.trim();
+        }
+      } catch {
+        /* JSON inválido: manter defaults */
+      }
+      const terminalId =
+        (systemSettings.tef_terminal_id && String(systemSettings.tef_terminal_id).trim()) || "001";
+
       setTefConfig({
-        host: systemSettings.paygo_host || "pos-transac-sb.tpgweb.io",
-        port: systemSettings.tef_terminal_id || "102251",
+        host: tefHost,
+        port: tefPort,
+        terminalId,
         timeout: systemSettings.paygo_timeout || 30000,
         retryAttempts: systemSettings.paygo_retry_attempts || 3,
-        retryDelay: systemSettings.paygo_retry_delay || 2000
+        retryDelay: systemSettings.paygo_retry_delay || 2000,
       });
       setPaygoConfig({
         host: systemSettings.paygo_host || 'pos-transac-sb.tpgweb.io',
@@ -341,7 +379,19 @@ const Totem = () => {
   // === RENDER ===
 
   if (showConfig) {
-    return <SecureTEFConfig config={tefConfig} onConfigChange={setTefConfig} onClose={() => setShowConfig(false)} />;
+    return (
+      <SecureTEFConfig
+        config={{
+          host: tefConfig.host,
+          port: tefConfig.port,
+          timeout: tefConfig.timeout,
+          retryAttempts: tefConfig.retryAttempts,
+          retryDelay: tefConfig.retryDelay,
+        }}
+        onConfigChange={(c) => setTefConfig((prev) => ({ ...prev, ...c }))}
+        onClose={() => setShowConfig(false)}
+      />
+    );
   }
 
   // CNPJ Setup (no laundry configured or loading timeout)
