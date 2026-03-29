@@ -50,6 +50,63 @@ export function useBLEDiagnostics() {
     return bleRef.current;
   }, []);
 
+  const parseStatusData = useCallback((data: DataView | ArrayBuffer | string): ESP32BLEStatus | null => {
+    try {
+      const text = typeof data === "string" ? data : new TextDecoder().decode(data);
+      return JSON.parse(text) as ESP32BLEStatus;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const subscribeNotifications = useCallback(async (deviceId: string) => {
+    try {
+      const BleClient = await getBLE();
+      await BleClient.startNotifications(
+        deviceId,
+        TOPLAV_SERVICE_UUID,
+        TOPLAV_CHAR_STATUS_UUID,
+        (value: DataView) => {
+          const parsed = parseStatusData(value);
+          if (parsed) {
+            setEsp32Status(parsed);
+            addLog("📡 Status atualizado via notificação BLE");
+          }
+        }
+      );
+      addLog("🔔 Notificações BLE ativadas (tempo real)");
+    } catch (e: any) {
+      addLog(`⚠️ Falha ao ativar notificações: ${e.message}`);
+    }
+  }, [getBLE, parseStatusData, addLog]);
+
+  const unsubscribeNotifications = useCallback(async (deviceId: string) => {
+    try {
+      const BleClient = await getBLE();
+      await BleClient.stopNotifications(deviceId, TOPLAV_SERVICE_UUID, TOPLAV_CHAR_STATUS_UUID);
+    } catch { /* ignore */ }
+  }, [getBLE]);
+
+  const readStatus = useCallback(async () => {
+    if (!connectedDevice) return;
+    try {
+      addLog("📖 Lendo status manualmente...");
+      const BleClient = await getBLE();
+      const statusResult = await BleClient.read(
+        connectedDevice.deviceId,
+        TOPLAV_SERVICE_UUID,
+        TOPLAV_CHAR_STATUS_UUID
+      );
+      const parsed = parseStatusData(statusResult);
+      if (parsed) {
+        setEsp32Status(parsed);
+        addLog(`Status: ESP32 ID=${parsed.esp32_id}, WiFi=${parsed.wifi_connected ? "Sim" : "Não"}`);
+      }
+    } catch (e: any) {
+      addLog(`Erro ao ler status: ${e.message}`);
+    }
+  }, [connectedDevice, getBLE, parseStatusData, addLog]);
+
   const scan = useCallback(async () => {
     if (!isNative) {
       setError("Bluetooth só funciona no app Android/iOS nativo.");
@@ -80,7 +137,6 @@ export function useBLEDiagnostics() {
         }
       );
 
-      // Stop scan after 10s
       setTimeout(async () => {
         try {
           const BleClient = await getBLE();
@@ -114,30 +170,35 @@ export function useBLEDiagnostics() {
       setState("connected");
       addLog("Conectado! Lendo status...");
 
-      // Read status characteristic
+      // Read initial status
       try {
         const statusResult = await BleClient.read(
           device.deviceId,
           TOPLAV_SERVICE_UUID,
           TOPLAV_CHAR_STATUS_UUID
         );
-        const statusText = new TextDecoder().decode(statusResult);
-        const parsed = JSON.parse(statusText) as ESP32BLEStatus;
-        setEsp32Status(parsed);
-        addLog(`Status: ESP32 ID=${parsed.esp32_id}, WiFi=${parsed.wifi_connected ? "Sim" : "Não"}`);
+        const parsed = parseStatusData(statusResult);
+        if (parsed) {
+          setEsp32Status(parsed);
+          addLog(`Status: ESP32 ID=${parsed.esp32_id}, WiFi=${parsed.wifi_connected ? "Sim" : "Não"}`);
+        }
       } catch (readErr: any) {
         addLog(`Aviso: Não foi possível ler status: ${readErr.message}`);
       }
+
+      // Subscribe to real-time notifications
+      await subscribeNotifications(device.deviceId);
     } catch (e: any) {
       setError(e.message || "Erro ao conectar");
       addLog(`Erro conexão: ${e.message}`);
       setState("error");
     }
-  }, [addLog, getBLE]);
+  }, [addLog, getBLE, parseStatusData, subscribeNotifications]);
 
   const disconnect = useCallback(async () => {
     if (!connectedDevice) return;
     try {
+      await unsubscribeNotifications(connectedDevice.deviceId);
       const BleClient = await getBLE();
       await BleClient.disconnect(connectedDevice.deviceId);
       addLog("Desconectado.");
@@ -145,7 +206,7 @@ export function useBLEDiagnostics() {
     setConnectedDevice(null);
     setEsp32Status(null);
     setState("idle");
-  }, [connectedDevice, addLog, getBLE]);
+  }, [connectedDevice, addLog, getBLE, unsubscribeNotifications]);
 
   const sendCommand = useCallback(async (command: string) => {
     if (!connectedDevice) return;
@@ -160,45 +221,41 @@ export function useBLEDiagnostics() {
         encoded
       );
       addLog(`Comando enviado: ${command}`);
-
-      // Re-read status after command
-      await new Promise(r => setTimeout(r, 1000));
-      try {
-        const statusResult = await BleClient.read(
-          connectedDevice.deviceId,
-          TOPLAV_SERVICE_UUID,
-          TOPLAV_CHAR_STATUS_UUID
-        );
-        const statusText = new TextDecoder().decode(statusResult);
-        const parsed = JSON.parse(statusText) as ESP32BLEStatus;
-        setEsp32Status(parsed);
-        addLog("Status atualizado após comando.");
-      } catch { /* ignore */ }
+      // Status will auto-update via BLE notifications
     } catch (e: any) {
       setError(e.message || "Erro ao enviar comando");
       addLog(`Erro comando: ${e.message}`);
     }
   }, [connectedDevice, addLog, getBLE]);
 
-  const configureWiFi = useCallback(async (ssid: string, password: string) => {
+  const configureDevice = useCallback(async (config: { ssid?: string; password?: string; laundry_id?: string }) => {
     if (!connectedDevice) return;
     try {
-      addLog(`Configurando WiFi: ${ssid}`);
+      const payload: Record<string, string> = {};
+      if (config.ssid) payload.ssid = config.ssid;
+      if (config.password !== undefined) payload.password = config.password;
+      if (config.laundry_id) payload.laundry_id = config.laundry_id;
+
+      addLog(`Enviando configuração: ${Object.keys(payload).join(", ")}`);
       const BleClient = await getBLE();
-      const config = JSON.stringify({ ssid, password });
-      const encoded = new TextEncoder().encode(config);
+      const encoded = new TextEncoder().encode(JSON.stringify(payload));
       await BleClient.write(
         connectedDevice.deviceId,
         TOPLAV_SERVICE_UUID,
         TOPLAV_CHAR_CONFIG_UUID,
         encoded
       );
-      addLog("Configuração WiFi enviada. ESP32 irá reiniciar...");
+      addLog("Configuração enviada. ESP32 irá reiniciar...");
     } catch (e: any) {
-      setError(e.message || "Erro ao configurar WiFi");
-      addLog(`Erro WiFi config: ${e.message}`);
+      setError(e.message || "Erro ao enviar configuração");
+      addLog(`Erro config: ${e.message}`);
     }
   }, [connectedDevice, addLog, getBLE]);
+
+  // Keep backward-compatible configureWiFi
+  const configureWiFi = useCallback(async (ssid: string, password: string) => {
+    await configureDevice({ ssid, password });
+  }, [configureDevice]);
 
   return {
     state,
@@ -213,5 +270,7 @@ export function useBLEDiagnostics() {
     disconnect,
     sendCommand,
     configureWiFi,
+    configureDevice,
+    readStatus,
   };
 }

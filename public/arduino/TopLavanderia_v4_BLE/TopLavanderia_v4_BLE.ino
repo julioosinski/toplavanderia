@@ -313,6 +313,15 @@ void handleBleCommandLine(const String& line) {
   } else if (s == "relay_1_off" || s == "relay_off") {
     setRelay(false);
     Serial.println("⚡ BLE: relay_1_off");
+  } else if (s == "relay_2_on") {
+    setRelay(true);  // Mesmo GPIO por enquanto; preparado para multi-relé futuro
+    Serial.println("⚡ BLE: relay_2_on");
+  } else if (s == "relay_2_off") {
+    setRelay(false);
+    Serial.println("⚡ BLE: relay_2_off");
+  } else if (s == "force_heartbeat") {
+    Serial.println("💓 BLE: force_heartbeat");
+    sendHeartbeat();
   } else if (s == "restart" || s == "reset") {
     Serial.println("⚡ BLE: restart");
     delay(200);
@@ -335,6 +344,15 @@ void handleBleConfigPayload(const String& raw) {
     return;
   }
 
+  // Laundry ID (pode ser enviado sozinho, sem WiFi)
+  String lid;
+  if (jd["laundry_id"].is<const char*>()) lid = jd["laundry_id"].as<String>();
+  if (lid.length() > 0) {
+    saveLaundryPref(lid);
+    Serial.println("💾 Laundry ID salvo via BLE: " + lid);
+    pushBleStatusNotify();
+  }
+
   String ssid, pass;
   if (jd["wifi_ssid"].is<const char*>()) ssid = jd["wifi_ssid"].as<String>();
   if (jd["wifi_password"].is<const char*>()) pass = jd["wifi_password"].as<String>();
@@ -343,7 +361,9 @@ void handleBleConfigPayload(const String& raw) {
   if (pass.length() == 0 && jd["password"].is<const char*>()) pass = jd["password"].as<String>();
 
   if (ssid.length() == 0) {
-    Serial.println("❌ CONFIG sem SSID");
+    // Sem SSID = só atualizou laundry_id, não reiniciar
+    if (lid.length() > 0) return;
+    Serial.println("❌ CONFIG sem SSID e sem laundry_id");
     return;
   }
 
