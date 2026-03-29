@@ -11,26 +11,53 @@ import { UniversalPaymentConfig } from '@/hooks/useUniversalPayment';
 
 interface ProcessingScreenProps {
   onCancel: () => void;
+  /** Padrão: fluxo na maquininha */
+  variant?: 'payment' | 'activating';
 }
 
-export const ProcessingScreen = ({ onCancel }: ProcessingScreenProps) => (
-  <div className="min-h-screen bg-gradient-clean flex items-center justify-center p-4">
-    <Card className="w-full max-w-md shadow-glow">
-      <CardContent className="pt-6 text-center space-y-6">
-        <div className="w-16 h-16 bg-gradient-primary rounded-full flex items-center justify-center mx-auto animate-pulse">
-          <CreditCard className="text-primary-foreground" size={24} />
-        </div>
-        <h2 className="text-2xl font-bold">Processando Pagamento</h2>
-        <p className="text-muted-foreground">Passe ou insira o cartão na maquininha...<br />Aguarde a conclusão da transação.</p>
-        <Progress value={50} className="w-full" />
-        <div className="flex space-x-2">
-          <Button onClick={onCancel} variant="outline" className="flex-1">Cancelar Pagamento</Button>
-          <Button onClick={onCancel} variant="destructive" className="flex-1">Cancelar Tudo</Button>
-        </div>
-      </CardContent>
-    </Card>
-  </div>
-);
+export const ProcessingScreen = ({ onCancel, variant = 'payment' }: ProcessingScreenProps) => {
+  const isActivating = variant === 'activating';
+  return (
+    <div className="min-h-screen bg-gradient-clean flex items-center justify-center p-4">
+      <Card className="w-full max-w-md shadow-glow">
+        <CardContent className="pt-6 text-center space-y-6">
+          <div className="w-16 h-16 bg-gradient-primary rounded-full flex items-center justify-center mx-auto animate-pulse">
+            <CreditCard className="text-primary-foreground" size={24} />
+          </div>
+          <h2 className="text-2xl font-bold">
+            {isActivating ? 'Ativando máquina' : 'Processando Pagamento'}
+          </h2>
+          <p className="text-muted-foreground">
+            {isActivating ? (
+              <>
+                Registrando o pagamento e enviando o comando ao equipamento.
+                <br />
+                Aguarde um instante…
+              </>
+            ) : (
+              <>
+                Passe ou insira o cartão na maquininha…
+                <br />
+                Aguarde a conclusão da transação.
+              </>
+            )}
+          </p>
+          <Progress value={50} className="w-full" />
+          <div className="flex space-x-2">
+            <Button onClick={onCancel} variant="outline" className="flex-1">
+              {isActivating ? 'Voltar ao início' : 'Cancelar Pagamento'}
+            </Button>
+            {!isActivating && (
+              <Button onClick={onCancel} variant="destructive" className="flex-1">
+                Cancelar Tudo
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
 
 interface ErrorScreenProps {
   onRetry: () => void;
@@ -77,8 +104,10 @@ interface SuccessScreenProps {
   onReset: () => void;
 }
 
+const SUCCESS_SCREEN_SECONDS = 5;
+
 export const SuccessScreen = ({ machine, transactionData, onReset }: SuccessScreenProps) => {
-  const [countdown, setCountdown] = useState(20);
+  const [countdown, setCountdown] = useState(SUCCESS_SCREEN_SECONDS);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -119,8 +148,8 @@ export const SuccessScreen = ({ machine, transactionData, onReset }: SuccessScre
             )}
             <Badge variant="secondary" className="bg-green-100 text-green-800">Máquina Iniciada</Badge>
           </div>
-          <p className="text-sm text-muted-foreground">Tela inicial em {countdown}s</p>
-          <Progress value={(20 - countdown) / 20 * 100} className="w-full" />
+          <p className="text-sm text-muted-foreground">Nova transação em {countdown}s</p>
+          <Progress value={(SUCCESS_SCREEN_SECONDS - countdown) / SUCCESS_SCREEN_SECONDS * 100} className="w-full" />
           <Button onClick={onReset} variant="fresh" className="w-full">Nova Transação</Button>
         </CardContent>
       </Card>

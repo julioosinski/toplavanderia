@@ -26,7 +26,9 @@ import { ProcessingScreen, ErrorScreen, SuccessScreen, PaymentScreen } from "@/c
 
 const Totem = () => {
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
-  const [paymentStep, setPaymentStep] = useState<"select" | "confirm" | "payment" | "processing" | "success" | "error" | "pix_qr">("select");
+  const [paymentStep, setPaymentStep] = useState<
+    "select" | "confirm" | "payment" | "processing" | "activating" | "success" | "error" | "pix_qr"
+  >("select");
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showConfig, setShowConfig] = useState(false);
   const [transactionData, setTransactionData] = useState<any>(null);
@@ -174,7 +176,7 @@ const Totem = () => {
       if (!selectedMachine || !currentLaundry) return;
       try {
         rememberRunningAfterPayment(selectedMachine.id, selectedMachine.duration);
-        await updateMachineStatus(selectedMachine.id, 'running');
+        await updateMachineStatus(selectedMachine.id, 'running', { suppressErrorToast: true });
         await supabase.from('transactions').insert({
           machine_id: selectedMachine.id,
           total_amount: selectedMachine.price,
@@ -281,6 +283,7 @@ const Totem = () => {
         const st = await checkPixPaymentStatus(orderId);
         if (st.status === 'paid') {
           pixPollDoneRef.current = true;
+          setPaymentStep('activating');
           await activateMachine('PIX');
           setTransactionData({
             paymentMethod: 'PIX',
@@ -381,6 +384,9 @@ const Totem = () => {
 
   // Payment flow screens
   if (paymentStep === "processing") return <ProcessingScreen onCancel={resetTotem} />;
+  if (paymentStep === "activating") {
+    return <ProcessingScreen variant="activating" onCancel={resetTotem} />;
+  }
   if (paymentStep === "error") return <ErrorScreen onRetry={() => setPaymentStep("payment")} onCancel={resetTotem} />;
 
   if (paymentStep === "pix_qr" && pixPaymentData) {
@@ -408,10 +414,11 @@ const Totem = () => {
         machine={selectedMachine}
         config={universalConfig}
         deviceMode={deviceMode}
-        onSuccess={async (result) => { 
-          await activateMachine(`Universal - ${result.method.toUpperCase()}`); 
+        onSuccess={async (result) => {
+          setPaymentStep('activating');
+          await activateMachine(`Universal - ${result.method.toUpperCase()}`);
           setTransactionData(result.data);
-          setPaymentStep("success"); 
+          setPaymentStep('success');
         }}
         onError={(err) => { toast({ title: "Erro no Pagamento", description: err, variant: "destructive" }); setPaymentStep('error'); }}
         onCancel={resetTotem}

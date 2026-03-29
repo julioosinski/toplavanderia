@@ -75,6 +75,9 @@ verify_jwt = false
 [functions.update-machine-status]
 verify_jwt = false
 
+[functions.esp32-control]
+verify_jwt = false
+
 [functions.auto-release-machines]
 verify_jwt = false
 

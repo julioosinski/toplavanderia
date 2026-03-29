@@ -312,22 +312,44 @@ export const useMachines = (laundryId?: string | null) => {
     [applyLocalMachineStatus]
   );
 
-  const updateMachineStatus = async (machineId: string, status: Machine['status']): Promise<boolean> => {
+  const updateMachineStatus = async (
+    machineId: string,
+    status: Machine['status'],
+    opts?: { suppressErrorToast?: boolean }
+  ): Promise<boolean> => {
     try {
       const { data, error } = await supabase.functions.invoke('update-machine-status', {
         body: { machine_id: machineId, status },
       });
       if (error) throw error;
-      if (data && !data.success) throw new Error(data.error || 'Falha ao atualizar status');
+      if (data && typeof data === 'object' && 'success' in data && data.success === false) {
+        throw new Error(
+          typeof (data as { error?: string }).error === 'string'
+            ? (data as { error: string }).error
+            : 'Falha ao atualizar status'
+        );
+      }
       applyLocalMachineStatus(machineId, status);
       return true;
     } catch (error) {
       console.error('Erro ao atualizar status:', error);
-      toast({
-        title: 'Erro',
-        description: 'Não foi possível gravar o status no servidor (ex.: permissão RLS).',
-        variant: 'destructive',
-      });
+      let description = 'Não foi possível sincronizar o status da máquina com o servidor.';
+      try {
+        const ctx = (error as { context?: Response })?.context;
+        if (ctx && typeof ctx.json === 'function') {
+          const body = (await ctx.json()) as { error?: string };
+          if (body?.error) description = body.error;
+        }
+      } catch {
+        /* ignore parse errors */
+      }
+      if (!opts?.suppressErrorToast) {
+        toast({
+          title: 'Status da máquina',
+          description,
+          variant: 'destructive',
+        });
+      }
       return false;
     }
   };

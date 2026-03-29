@@ -49,10 +49,34 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (status === "running" && machine.status !== "available") {
+    // Idempotente: totem pode reenviar "running" se já estiver em ciclo (evita 409 e toast falso de "RLS")
+    if (status === "running" && machine.status !== "available" && machine.status !== "running") {
       return new Response(
         JSON.stringify({ error: `Cannot transition from '${machine.status}' to 'running'` }),
         { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (status === "available" && machine.status === "available") {
+      return new Response(
+        JSON.stringify({ success: true, machine_id, status, noop: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (status === "running" && machine.status === "running") {
+      const now = new Date().toISOString();
+      const { error: touchErr } = await supabase
+        .from("machines")
+        .update({ updated_at: now })
+        .eq("id", machine_id);
+      if (touchErr) {
+        return new Response(
+          JSON.stringify({ error: touchErr.message }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      return new Response(
+        JSON.stringify({ success: true, machine_id, status, noop: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 

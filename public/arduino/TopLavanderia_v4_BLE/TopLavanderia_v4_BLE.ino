@@ -233,12 +233,17 @@ void pollCommands() {
   if (!doc["success"].as<bool>()) return;
 
   JsonArray cmds = doc["commands"].as<JsonArray>();
+  if (cmds.size() > 0) {
+    Serial.printf("📋 poll_commands: %d comando(s) na fila\n", cmds.size());
+  }
   for (JsonObject c : cmds) {
     String id = c["id"].as<String>();
     int pin = c["relay_pin"] | RELAY_PIN;
     String action = c["action"].as<String>();
-    if (pin != RELAY_PIN) {
-      Serial.printf("⚡ Ignorado: relay_pin %d (esperado %d)\n", pin, RELAY_PIN);
+    // App pode gravar relay_pin 1 no banco; hardware único costuma ser GPIO RELAY_PIN (ex.: 2).
+    const bool pinOk = (pin == RELAY_PIN) || (RELAY_PIN == 2 && pin == 1);
+    if (!pinOk) {
+      Serial.printf("⚡ Ignorado: relay_pin %d (físico %d)\n", pin, RELAY_PIN);
       confirmCommand(id);
       continue;
     }
