@@ -5,6 +5,17 @@
  * Alinhado ao app React/Capacitor (useBLEDiagnostics) e à função esp32-monitor.
  *
  * Bibliotecas: WiFi, WebServer, DNSServer, HTTPClient, Preferences, BLE*, ArduinoJson 7+
+ *
+ * ---------- OBRIGATÓRIO NO ARDUINO IDE (evita "Sketch too big" ~139%) ----------
+ * Ferramentas → Placa → modelo com flash >= 4 MB (ex.: "ESP32 Dev Module").
+ * Ferramentas → Esquema de partições (Tools → Partition Scheme) → APP >= ~2 MB, ex.:
+ *   • "Huge APP (3MB No OTA/1MB SPIFFS)"  OU
+ *   • "No OTA (2MB APP/2MB SPIFFS)"       OU
+ *   • "Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)"
+ * NÃO use o esquema padrão que deixa só ~1,3 MB para o programa (BLE + WiFi + HTTP
+ * + JSON ultrapassam esse limite).
+ *
+ * ArduinoJson 7: use JsonDocument doc;  (sem capacidade no construtor).
  */
 
 #include <WiFi.h>
@@ -223,7 +234,8 @@ void pollCommands() {
   String response = http.getString();
   http.end();
 
-  JsonDocument doc(4096);
+  // ArduinoJson 7+: JsonDocument não aceita capacidade no construtor (cresce conforme uso)
+  JsonDocument doc;
   DeserializationError err = deserializeJson(doc, response);
   if (err) {
     Serial.println("❌ JSON poll inválido");

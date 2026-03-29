@@ -75,6 +75,29 @@ ESP32_AutoConfig_v3.ino e configurar pelo celular.
 
 ================================================================
 
+📌 TopLavanderia_v4_BLE.ino — compilação (Arduino IDE + pacote ESP32 3.x)
+
+• Erro "Sketch too big" / "text section exceeds available space"
+  → Ferramentas → Esquema de partições → Huge APP (3MB No OTA) ou No OTA (2MB APP)
+     (o padrão ~1,3 MB de APP não cabe WiFi + BLE Bluedroid + HTTP + ArduinoJson).
+
+• Erro JsonDocument(4096) com ArduinoJson 7
+  → Use: JsonDocument doc;  (sem número no construtor).
+
+• Upload falha: "The chip stopped responding" / StopIteration no esptool
+  (gravação para no meio — não é erro do sketch)
+  → Feche o Monitor Serial e qualquer app que use a mesma COM.
+  → Ferramentas → Velocidade de upload → 115200 (ou 460800; evite 921600 se instável).
+  → Cabo USB com dados (não só carga); porta USB direta no PC, sem hub fraco.
+  → Se precisar: segure BOOT, clique Upload, solte BOOT ao começar a gravar (algumas placas).
+  → Alimentação: fonte 5 V estável no VIN se o USB oscilar; desligue periféricos que puxem muito 3,3 V.
+  → Outro cabo/porta USB; reinicie o PC e o ESP32 (unplug 10 s).
+
+• Linhas "note: #pragma message: BT: forcing BR/EDR..." no log
+  → Aviso do SDK Bluetooth, pode ignorar (não impede compilar nem gravar).
+
+================================================================
+
 📚 DOCUMENTAÇÃO:
 - Troubleshooting: public/arduino/TROUBLESHOOTING_ESP32.md
 - Código antigo (manual): ESP32_Lavadora_Individual_CORRIGIDO_v2.ino
