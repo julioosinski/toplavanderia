@@ -308,12 +308,9 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
   const configureTotemByCNPJ = async (cnpj: string): Promise<boolean> => {
     try {
       const cleanCnpj = cnpj.replace(/\D/g, '');
-      // Evita loading infinito quando a rede do tablet está instável.
+      // Use security definer RPC to look up laundry by CNPJ (public read removed)
       const queryPromise = supabase
-        .from('laundries')
-        .select('*')
-        .eq('cnpj', cleanCnpj)
-        .eq('is_active', true)
+        .rpc('get_laundry_by_cnpj', { _cnpj: cleanCnpj })
         .single();
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('cnpj_lookup_timeout')), 12000)
