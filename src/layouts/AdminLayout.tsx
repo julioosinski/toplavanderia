@@ -298,8 +298,9 @@ export default function AdminLayout() {
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild>
-                      <PasswordChangeDialog />
+                    <DropdownMenuItem onClick={() => setPasswordDialogOpen(true)}>
+                      <Key className="mr-2 h-4 w-4" />
+                      Trocar Senha
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => navigate("/admin/settings")}>
                       <Settings className="mr-2 h-4 w-4" />

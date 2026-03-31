@@ -113,7 +113,7 @@ export const PasswordChangeDialog = ({ open, onOpenChange }: PasswordChangeDialo
             <Button
               type="button"
               variant="outline"
-              onClick={() => setOpen(false)}
+              onClick={() => onOpenChange(false)}
               disabled={loading}
             >
               Cancelar
