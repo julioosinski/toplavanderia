@@ -32,7 +32,7 @@ const App = () => (
           <Sonner />
           <BrowserRouter>
             <Routes>
-              <Route path="/" element={<Navigate to="/totem" replace />} />
+              <Route path="/" element={<Home />} />
               <Route path="/totem" element={<Totem />} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/no-access" element={<NoAccess />} />
