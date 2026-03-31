@@ -87,7 +87,8 @@ serve(async (req) => {
       )
     }
 
-    // Criar o usuário usando admin API (não faz autologin)
+    // Tentar criar o usuário usando admin API
+    let userId: string
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
@@ -97,15 +98,28 @@ serve(async (req) => {
       }
     })
 
-    if (createError) throw createError
-    if (!newUser.user) throw new Error('Erro ao criar usuário')
+    if (createError) {
+      // Se o usuário já existe, buscar o ID dele para atribuir a role
+      if (createError.message?.includes('already been registered')) {
+        const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers()
+        if (listError) throw listError
+        const existingUser = users?.find(u => u.email === email)
+        if (!existingUser) throw new Error('Usuário existe mas não foi encontrado')
+        userId = existingUser.id
+      } else {
+        throw createError
+      }
+    } else {
+      if (!newUser.user) throw new Error('Erro ao criar usuário')
+      userId = newUser.user.id
+    }
 
     // Aguardar trigger criar o perfil
     await new Promise(resolve => setTimeout(resolve, 1000))
 
     // Criar role do usuário
     const roleData: any = {
-      user_id: newUser.user.id,
+      user_id: userId,
       role: role,
     }
 
@@ -114,22 +128,33 @@ serve(async (req) => {
       roleData.laundry_id = laundry_id || (isAdmin ? roles.laundry_id : null)
     }
 
+    // Verificar se já existe essa role para o usuário
+    const { data: existingRole } = await supabaseAdmin
+      .from('user_roles')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('role', role)
+      .maybeSingle()
+
+    if (existingRole) {
+      return new Response(
+        JSON.stringify({ error: 'Este usuário já possui essa função' }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const { error: roleError2 } = await supabaseAdmin
       .from('user_roles')
       .insert([roleData])
 
-    if (roleError2) {
-      // Se falhou ao criar role, deletar o usuário criado
-      await supabaseAdmin.auth.admin.deleteUser(newUser.user.id)
-      throw roleError2
-    }
+    if (roleError2) throw roleError2
 
     return new Response(
       JSON.stringify({ 
         success: true, 
         user: {
-          id: newUser.user.id,
-          email: newUser.user.email
+          id: userId,
+          email: email
         }
       }),
       { 
