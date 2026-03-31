@@ -258,7 +258,7 @@ export default function Home() {
         <div className="container mx-auto flex flex-col items-center justify-between gap-4 px-4 text-sm text-muted-foreground md:flex-row">
           <div className="flex items-center gap-2">
             <Droplets className="h-5 w-5 text-primary" />
-            <span className="font-semibold text-foreground">Top Lavanderia</span>
+            <span className="font-semibold text-foreground">Top Automações</span>
           </div>
           <p>© {new Date().getFullYear()} Top Lavanderia. Todos os direitos reservados.</p>
           <div className="flex gap-4">
