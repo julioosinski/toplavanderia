@@ -233,7 +233,7 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         
         setLaundries(laundriesList);
 
-        const savedLaundryId = await getItemWithTimeout('selectedLaundryId', 8000);
+        const savedLaundryId = await getItemWithTimeout('selectedLaundryId', 3000);
         if (savedLaundryId === 'all') {
           setIsViewingAllLaundries(true);
           if (laundriesList[0]) {
