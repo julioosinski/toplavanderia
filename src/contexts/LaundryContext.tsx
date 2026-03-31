@@ -140,20 +140,26 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
+  const initializingRef = useRef(false);
+
   const initializeLaundryContext = async () => {
+    if (initializingRef.current) {
+      debugLaundry('[LaundryContext] Inicialização já em andamento, ignorando chamada duplicada');
+      return;
+    }
+    initializingRef.current = true;
+
     try {
       debugLaundry('[LaundryContext] Iniciando inicialização...');
       setLoading(true);
       setError(null);
       setPanelAccessDenied(false);
       
-      // Envolver getUser() em try/catch separado para capturar erros de rede
-      // (timeout, DNS failure) sem bloquear o fluxo do modo totem
       let user = null;
       try {
         const authPromise = supabase.auth.getUser();
         const timeoutPromise = new Promise<null>((_, reject) =>
-          setTimeout(() => reject(new Error('auth_timeout')), 5000)
+          setTimeout(() => reject(new Error('auth_timeout')), 3000)
         );
         const result = await Promise.race([authPromise, timeoutPromise]) as Awaited<ReturnType<typeof supabase.auth.getUser>>;
         if (result && !result.error) user = result.data.user;
