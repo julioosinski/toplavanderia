@@ -7,6 +7,7 @@ import { ThemeProvider } from "next-themes";
 import NotFound from "./pages/NotFound";
 import Totem from "./pages/Totem";
 import Auth from "./pages/Auth";
+import Home from "./pages/Home";
 import AdminLayout from "./layouts/AdminLayout";
 import Dashboard from "./pages/admin/Dashboard";
 import Machines from "./pages/admin/Machines";
