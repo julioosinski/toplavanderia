@@ -74,7 +74,7 @@ function AdminSidebar() {
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel className="text-lg font-bold px-4 py-6">
-            Top Lavanderia
+            Top Automações
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
