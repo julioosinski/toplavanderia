@@ -87,7 +87,8 @@ serve(async (req) => {
       )
     }
 
-    // Criar o usuário usando admin API (não faz autologin)
+    // Tentar criar o usuário usando admin API
+    let userId: string
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
@@ -97,8 +98,21 @@ serve(async (req) => {
       }
     })
 
-    if (createError) throw createError
-    if (!newUser.user) throw new Error('Erro ao criar usuário')
+    if (createError) {
+      // Se o usuário já existe, buscar o ID dele para atribuir a role
+      if (createError.message?.includes('already been registered')) {
+        const { data: { users }, error: listError } = await supabaseAdmin.auth.admin.listUsers()
+        if (listError) throw listError
+        const existingUser = users?.find(u => u.email === email)
+        if (!existingUser) throw new Error('Usuário existe mas não foi encontrado')
+        userId = existingUser.id
+      } else {
+        throw createError
+      }
+    } else {
+      if (!newUser.user) throw new Error('Erro ao criar usuário')
+      userId = newUser.user.id
+    }
 
     // Aguardar trigger criar o perfil
     await new Promise(resolve => setTimeout(resolve, 1000))
