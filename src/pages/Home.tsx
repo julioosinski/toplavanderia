@@ -260,7 +260,7 @@ export default function Home() {
             <Droplets className="h-5 w-5 text-primary" />
             <span className="font-semibold text-foreground">Top Automações</span>
           </div>
-          <p>© {new Date().getFullYear()} Top Lavanderia. Todos os direitos reservados.</p>
+          <p>© {new Date().getFullYear()} Top Automações. Todos os direitos reservados.</p>
           <div className="flex gap-4">
             <Link to="/totem" className="hover:text-foreground transition-colors">Totem</Link>
             <Link to="/auth" className="hover:text-foreground transition-colors">Login</Link>
