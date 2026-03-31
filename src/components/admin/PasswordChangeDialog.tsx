@@ -62,7 +62,7 @@ export const PasswordChangeDialog = ({ open, onOpenChange }: PasswordChangeDialo
 
       setNewPassword("");
       setConfirmPassword("");
-      setOpen(false);
+      onOpenChange(false);
     } catch (error: any) {
       console.error("Error changing password:", error);
       toast({
