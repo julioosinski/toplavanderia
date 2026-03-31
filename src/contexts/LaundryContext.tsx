@@ -60,11 +60,9 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
 
     if (!data || data.length === 0) return null;
 
-    // Se usuário tem apenas super_admin (sem laundry_id), é super_admin
-    const superAdminRole = data.find(r => r.role === 'super_admin' && !r.laundry_id);
-    const hasOnlySuperAdmin = data.length === 1 && superAdminRole;
-    
-    if (hasOnlySuperAdmin) {
+    // Se usuário tem role super_admin, sempre priorizar
+    const superAdminRole = data.find(r => r.role === 'super_admin');
+    if (superAdminRole) {
       return superAdminRole;
     }
 
