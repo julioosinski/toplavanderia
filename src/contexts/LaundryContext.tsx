@@ -278,6 +278,8 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         description: errorMessage,
         variant: "destructive",
       });
+    } finally {
+      initializingRef.current = false;
     }
   };
 
