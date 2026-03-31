@@ -174,7 +174,7 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         
         // Modo totem: verificar se há lavanderia salva no storage nativo (ou localStorage).
         // getItem sem timeout pode nunca resolver no WebView → laundryLoading infinito.
-        const totemLaundryId = await getItemWithTimeout('totem_laundry_id', 8000);
+        const totemLaundryId = await getItemWithTimeout('totem_laundry_id', 3000);
         if (totemLaundryId) {
           debugLaundry('[LaundryContext] Modo totem: carregando lavanderia', totemLaundryId);
           const laundry = await Promise.race([
