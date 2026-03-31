@@ -18,6 +18,7 @@ import {
   Sun,
   Activity,
   Bluetooth,
+  Home,
 } from "lucide-react";
 import {
   Sidebar,
