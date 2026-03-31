@@ -107,6 +107,7 @@ export default function AdminLayout() {
   const [user, setUser] = useState<any>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const { theme, setTheme } = useTheme();
 
   const getRoleLabel = () => {

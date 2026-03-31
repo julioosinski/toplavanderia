@@ -14,9 +14,13 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Key } from "lucide-react";
 
-export const PasswordChangeDialog = () => {
+interface PasswordChangeDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export const PasswordChangeDialog = ({ open, onOpenChange }: PasswordChangeDialogProps) => {
   const { toast } = useToast();
-  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
