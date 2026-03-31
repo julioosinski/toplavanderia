@@ -7,6 +7,7 @@ import { ThemeProvider } from "next-themes";
 import NotFound from "./pages/NotFound";
 import Totem from "./pages/Totem";
 import Auth from "./pages/Auth";
+import Home from "./pages/Home";
 import AdminLayout from "./layouts/AdminLayout";
 import Dashboard from "./pages/admin/Dashboard";
 import Machines from "./pages/admin/Machines";
@@ -31,7 +32,7 @@ const App = () => (
           <Sonner />
           <BrowserRouter>
             <Routes>
-              <Route path="/" element={<Navigate to="/totem" replace />} />
+              <Route path="/" element={<Home />} />
               <Route path="/totem" element={<Totem />} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/no-access" element={<NoAccess />} />
