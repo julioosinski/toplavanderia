@@ -289,9 +289,12 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
     // Escutar mudanças de autenticação
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       debugLaundry('[LaundryContext] Auth state changed:', event);
+      // Ignorar INITIAL_SESSION — o useEffect mount já cobre a inicialização
+      if (event === 'INITIAL_SESSION') return;
       if (event === 'SIGNED_IN' && session) {
         initializeLaundryContext();
       } else if (event === 'SIGNED_OUT') {
+        initializingRef.current = false;
         setCurrentLaundry(null);
         setUserRole(null);
         setLaundries([]);
