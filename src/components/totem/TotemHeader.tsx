@@ -1,5 +1,7 @@
+import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Monitor, Smartphone, WifiOff } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Sparkles, Monitor, Smartphone, WifiOff, Home } from "lucide-react";
 
 interface TotemHeaderProps {
   currentTime: Date;
