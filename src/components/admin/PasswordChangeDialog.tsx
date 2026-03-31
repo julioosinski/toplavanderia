@@ -76,13 +76,7 @@ export const PasswordChangeDialog = ({ open, onOpenChange }: PasswordChangeDialo
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" className="w-full justify-start">
-          <Key className="mr-2 h-4 w-4" />
-          Trocar Senha
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Alterar Senha</DialogTitle>
