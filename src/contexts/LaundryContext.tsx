@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Laundry, AppRole, ADMIN_PANEL_ROLES } from '@/types/laundry';
 
@@ -140,20 +140,26 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
+  const initializingRef = useRef(false);
+
   const initializeLaundryContext = async () => {
+    if (initializingRef.current) {
+      debugLaundry('[LaundryContext] Inicialização já em andamento, ignorando chamada duplicada');
+      return;
+    }
+    initializingRef.current = true;
+
     try {
       debugLaundry('[LaundryContext] Iniciando inicialização...');
       setLoading(true);
       setError(null);
       setPanelAccessDenied(false);
       
-      // Envolver getUser() em try/catch separado para capturar erros de rede
-      // (timeout, DNS failure) sem bloquear o fluxo do modo totem
       let user = null;
       try {
         const authPromise = supabase.auth.getUser();
         const timeoutPromise = new Promise<null>((_, reject) =>
-          setTimeout(() => reject(new Error('auth_timeout')), 5000)
+          setTimeout(() => reject(new Error('auth_timeout')), 3000)
         );
         const result = await Promise.race([authPromise, timeoutPromise]) as Awaited<ReturnType<typeof supabase.auth.getUser>>;
         if (result && !result.error) user = result.data.user;
@@ -168,7 +174,7 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         
         // Modo totem: verificar se há lavanderia salva no storage nativo (ou localStorage).
         // getItem sem timeout pode nunca resolver no WebView → laundryLoading infinito.
-        const totemLaundryId = await getItemWithTimeout('totem_laundry_id', 8000);
+        const totemLaundryId = await getItemWithTimeout('totem_laundry_id', 3000);
         if (totemLaundryId) {
           debugLaundry('[LaundryContext] Modo totem: carregando lavanderia', totemLaundryId);
           const laundry = await Promise.race([
@@ -227,7 +233,7 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         
         setLaundries(laundriesList);
 
-        const savedLaundryId = await getItemWithTimeout('selectedLaundryId', 8000);
+        const savedLaundryId = await getItemWithTimeout('selectedLaundryId', 3000);
         if (savedLaundryId === 'all') {
           setIsViewingAllLaundries(true);
           if (laundriesList[0]) {
@@ -272,6 +278,8 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         description: errorMessage,
         variant: "destructive",
       });
+    } finally {
+      initializingRef.current = false;
     }
   };
 
@@ -281,9 +289,12 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
     // Escutar mudanças de autenticação
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       debugLaundry('[LaundryContext] Auth state changed:', event);
+      // Ignorar INITIAL_SESSION — o useEffect mount já cobre a inicialização
+      if (event === 'INITIAL_SESSION') return;
       if (event === 'SIGNED_IN' && session) {
         initializeLaundryContext();
       } else if (event === 'SIGNED_OUT') {
+        initializingRef.current = false;
         setCurrentLaundry(null);
         setUserRole(null);
         setLaundries([]);
