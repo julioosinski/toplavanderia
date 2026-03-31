@@ -88,7 +88,7 @@ export default function Home() {
           <Link to="/" className="flex items-center gap-2">
             <Droplets className="h-7 w-7 text-primary" />
             <span className="text-xl font-bold tracking-tight text-foreground">
-              Top Lavanderia
+              Top Automações
             </span>
           </Link>
 
