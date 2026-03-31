@@ -88,7 +88,7 @@ export default function Home() {
           <Link to="/" className="flex items-center gap-2">
             <Droplets className="h-7 w-7 text-primary" />
             <span className="text-xl font-bold tracking-tight text-foreground">
-              Top Lavanderia
+              Top Automações
             </span>
           </Link>
 
@@ -258,9 +258,9 @@ export default function Home() {
         <div className="container mx-auto flex flex-col items-center justify-between gap-4 px-4 text-sm text-muted-foreground md:flex-row">
           <div className="flex items-center gap-2">
             <Droplets className="h-5 w-5 text-primary" />
-            <span className="font-semibold text-foreground">Top Lavanderia</span>
+            <span className="font-semibold text-foreground">Top Automações</span>
           </div>
-          <p>© {new Date().getFullYear()} Top Lavanderia. Todos os direitos reservados.</p>
+          <p>© {new Date().getFullYear()} Top Automações. Todos os direitos reservados.</p>
           <div className="flex gap-4">
             <Link to="/totem" className="hover:text-foreground transition-colors">Totem</Link>
             <Link to="/auth" className="hover:text-foreground transition-colors">Login</Link>

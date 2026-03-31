@@ -1,5 +1,7 @@
+import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Monitor, Smartphone, WifiOff } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Sparkles, Monitor, Smartphone, WifiOff, Home } from "lucide-react";
 
 interface TotemHeaderProps {
   currentTime: Date;
@@ -34,6 +36,11 @@ export const TotemHeader = ({ currentTime, deviceMode, isOffline, laundryName, o
           )}
         </div>
         <div className="flex items-center space-x-2">
+          <Link to="/">
+            <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" title="Início">
+              <Home className="h-4 w-4" />
+            </Button>
+          </Link>
           {isOffline && (
             <Badge variant="secondary" className="text-xs bg-amber-500/20 text-amber-100 border-0">
               <WifiOff className="mr-1 h-3 w-3" />Offline
