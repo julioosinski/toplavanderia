@@ -313,6 +313,7 @@ export default function AdminLayout() {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+                <PasswordChangeDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} />
               </div>
             </div>
           </header>
