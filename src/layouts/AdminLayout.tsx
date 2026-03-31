@@ -19,6 +19,7 @@ import {
   Activity,
   Bluetooth,
   Home,
+  Key,
 } from "lucide-react";
 import {
   Sidebar,
@@ -107,6 +108,7 @@ export default function AdminLayout() {
   const [user, setUser] = useState<any>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const { theme, setTheme } = useTheme();
 
   const getRoleLabel = () => {
@@ -297,8 +299,9 @@ export default function AdminLayout() {
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild>
-                      <PasswordChangeDialog />
+                    <DropdownMenuItem onClick={() => setPasswordDialogOpen(true)}>
+                      <Key className="mr-2 h-4 w-4" />
+                      Trocar Senha
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => navigate("/admin/settings")}>
                       <Settings className="mr-2 h-4 w-4" />
@@ -310,6 +313,7 @@ export default function AdminLayout() {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+                <PasswordChangeDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} />
               </div>
             </div>
           </header>

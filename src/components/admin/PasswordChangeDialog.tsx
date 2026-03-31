@@ -14,9 +14,13 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Key } from "lucide-react";
 
-export const PasswordChangeDialog = () => {
+interface PasswordChangeDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export const PasswordChangeDialog = ({ open, onOpenChange }: PasswordChangeDialogProps) => {
   const { toast } = useToast();
-  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -58,7 +62,7 @@ export const PasswordChangeDialog = () => {
 
       setNewPassword("");
       setConfirmPassword("");
-      setOpen(false);
+      onOpenChange(false);
     } catch (error: any) {
       console.error("Error changing password:", error);
       toast({
@@ -72,13 +76,7 @@ export const PasswordChangeDialog = () => {
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" className="w-full justify-start">
-          <Key className="mr-2 h-4 w-4" />
-          Trocar Senha
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Alterar Senha</DialogTitle>
@@ -115,7 +113,7 @@ export const PasswordChangeDialog = () => {
             <Button
               type="button"
               variant="outline"
-              onClick={() => setOpen(false)}
+              onClick={() => onOpenChange(false)}
               disabled={loading}
             >
               Cancelar
