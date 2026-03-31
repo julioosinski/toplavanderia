@@ -19,6 +19,7 @@ import {
   Activity,
   Bluetooth,
   Home,
+  Key,
 } from "lucide-react";
 import {
   Sidebar,
