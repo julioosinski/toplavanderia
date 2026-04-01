@@ -298,7 +298,7 @@ serve(async (req) => {
       message: 'Action must be "status", "heartbeat", "poll_commands", or "confirm_command"'
     }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in ESP32 monitor:', error);
     return new Response(JSON.stringify({
       success: false, error: error.message, message: 'Error in ESP32 monitoring'

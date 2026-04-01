@@ -92,7 +92,7 @@ serve(async (req) => {
       }
     );
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('ESP32 Network Test Error:', error);
     return new Response(
       JSON.stringify({
@@ -149,7 +149,7 @@ async function testNodeConnectivity(node: any, testType: string): Promise<TestRe
       result.tests.throughput = throughputResult.throughput;
     }
 
-  } catch (error) {
+  } catch (error: any) {
     console.error(`Error testing node ${node.id}:`, error);
     result.lastError = error.message;
   }
@@ -184,7 +184,7 @@ async function testPing(host: string, port: number): Promise<{ success: boolean;
       throw new Error('Host not reachable');
     }
 
-  } catch (error) {
+  } catch (error: any) {
     return {
       success: false,
       responseTime: Date.now() - startTime,

@@ -88,7 +88,7 @@ serve(async (req) => {
       }
     );
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('ESP32 Load Balancer Error:', error);
     return new Response(
       JSON.stringify({ 

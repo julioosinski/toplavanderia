@@ -33,7 +33,7 @@ serve(async (req) => {
     return new Response(JSON.stringify({ success: true, settings: data }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching totem settings:', error);
     return new Response(JSON.stringify({
       success: false, error: error.message

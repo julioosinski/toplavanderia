@@ -154,7 +154,7 @@ serve(async (req) => {
       }
     );
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in NFSe automation:', error);
     return new Response(
       JSON.stringify({ error: error.message }),
