@@ -31,7 +31,7 @@ export interface Machine {
 const CACHE_KEY_PREFIX = 'machines_cache_';
 const FETCH_MACHINES_TIMEOUT_MS = 20000;
 /** Fallback se Realtime não estiver habilitado na tabela no Supabase */
-const POLL_MACHINES_MS = 15000;
+const POLL_MACHINES_MS = 5000;
 /** Tablet: refetch mais frequente para alinhar status após fim de ciclo / Realtime. */
 const POLL_MACHINES_NATIVE_MS = 2500;
 /** Minutos extra após o fim do ciclo antes de mostrar “disponível” (0 = assim que acaba o tempo do ciclo). */

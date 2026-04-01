@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { DollarSign, Receipt, Activity, CheckCircle, AlertTriangle } from "lucide-react";
 import { useLaundry } from "@/contexts/LaundryContext";
@@ -9,52 +9,43 @@ import { ConsolidatedMachineStatus } from "@/components/admin/ConsolidatedMachin
 import { useMachines } from "@/hooks/useMachines";
 import { Badge } from "@/components/ui/badge";
 
-interface Stats {
-  totalRevenue: number;
-  activeMachines: number;
-  totalMachines: number;
-  todayTransactions: number;
-  monthlyRevenue: number;
-  offlineMachines: number;
-  maintenanceMachines: number;
-}
-
 export default function Dashboard() {
   const { currentLaundry, isSuperAdmin, laundries, isViewingAllLaundries } = useLaundry();
   const isViewingAll = isSuperAdmin && isViewingAllLaundries;
   const laundryIdForMachines = isViewingAll ? undefined : currentLaundry?.id;
   const { machines, loading: machinesLoading, refreshMachines } = useMachines(laundryIdForMachines);
-  const [stats, setStats] = useState<Stats>({
-    totalRevenue: 0, activeMachines: 0, totalMachines: 0,
-    todayTransactions: 0, monthlyRevenue: 0, offlineMachines: 0, maintenanceMachines: 0,
-  });
-  const [loading, setLoading] = useState(true);
+
+  // Revenue/transaction stats — fetched independently at a slower cadence
+  const [revenueStats, setRevenueStats] = useState({ totalRevenue: 0, monthlyRevenue: 0, todayTransactions: 0 });
+  const [revenueLoading, setRevenueLoading] = useState(true);
+  const initialLoadDone = useRef(false);
+
   const [machinesByLaundry, setMachinesByLaundry] = useState<Record<string, { laundryName: string; machines: any[] }>>({});
 
-  const loadDashboardData = async () => {
+  // Machine stats derived reactively from useMachines — updates in ≤5s
+  const machineStats = useMemo(() => ({
+    totalMachines: machines.length,
+    activeMachines: machines.filter(m => m.status === 'available').length,
+    offlineMachines: machines.filter(m => m.status === 'offline').length,
+    maintenanceMachines: machines.filter(m => m.status === 'maintenance').length,
+  }), [machines]);
+
+  const loadRevenueData = async () => {
     if (!currentLaundry && !isViewingAll) return;
     try {
-      setLoading(true);
-      const machinesQuery = supabase.from('machines').select('*');
-      const transactionsQuery = supabase.from('transactions').select('*');
-      if (!isViewingAll && currentLaundry) {
-        machinesQuery.eq('laundry_id', currentLaundry.id);
-        transactionsQuery.eq('laundry_id', currentLaundry.id);
-      }
-      const { data: machinesData } = await machinesQuery;
-      const { data: transactionsData } = await transactionsQuery;
+      // Only show skeleton on first load
+      if (!initialLoadDone.current) setRevenueLoading(true);
 
-      // Use computed status from useMachines (crosses with ESP32 heartbeat)
-      const totalMachines = machines.length || machinesData?.length || 0;
-      const activeMachines = machines.length > 0 
-        ? machines.filter(m => m.status === 'available').length
-        : machinesData?.filter(m => m.status === 'available').length || 0;
-      const offlineMachines = machines.length > 0
-        ? machines.filter(m => m.status === 'offline').length
-        : machinesData?.filter(m => m.status === 'offline').length || 0;
-      const maintenanceMachines = machines.length > 0
-        ? machines.filter(m => m.status === 'maintenance').length
-        : machinesData?.filter(m => m.status === 'maintenance').length || 0;
+      const transactionsQuery = supabase.from('transactions').select('*');
+      const machinesQuery = supabase.from('machines').select('total_revenue');
+      if (!isViewingAll && currentLaundry) {
+        transactionsQuery.eq('laundry_id', currentLaundry.id);
+        machinesQuery.eq('laundry_id', currentLaundry.id);
+      }
+      const [{ data: transactionsData }, { data: machinesData }] = await Promise.all([
+        transactionsQuery,
+        machinesQuery,
+      ]);
 
       const today = new Date(); today.setHours(0, 0, 0, 0);
       const todayTransactions = transactionsData?.filter(t => new Date(t.created_at) >= today).length || 0;
@@ -67,11 +58,12 @@ export default function Dashboard() {
         return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
       }).reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0) || 0;
 
-      setStats({ totalRevenue, activeMachines, totalMachines, todayTransactions, monthlyRevenue, offlineMachines, maintenanceMachines });
+      setRevenueStats({ totalRevenue, monthlyRevenue, todayTransactions });
+      initialLoadDone.current = true;
     } catch (error) {
-      console.error("Erro ao carregar dados:", error);
+      console.error("Erro ao carregar dados de receita:", error);
     } finally {
-      setLoading(false);
+      setRevenueLoading(false);
     }
   };
 
@@ -89,16 +81,16 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    loadDashboardData();
+    loadRevenueData();
     if (isViewingAll) loadConsolidatedMachines();
     const interval = setInterval(() => {
-      loadDashboardData();
+      loadRevenueData();
       if (isViewingAll) loadConsolidatedMachines();
-    }, 30000);
+    }, 15000);
     return () => clearInterval(interval);
   }, [currentLaundry, isViewingAll, isSuperAdmin, laundries]);
 
-  if (loading) {
+  if (revenueLoading && !initialLoadDone.current) {
     return (
       <div className="space-y-6 animate-pulse">
         <div className="h-8 bg-muted rounded w-64" />
@@ -109,7 +101,7 @@ export default function Dashboard() {
     );
   }
 
-  const hasAlerts = stats.offlineMachines > 0 || stats.maintenanceMachines > 0;
+  const hasAlerts = machineStats.offlineMachines > 0 || machineStats.maintenanceMachines > 0;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -127,14 +119,14 @@ export default function Dashboard() {
             <div className="flex items-center gap-3">
               <AlertTriangle className="text-amber-600 flex-shrink-0" size={20} />
               <div className="flex flex-wrap gap-2">
-                {stats.offlineMachines > 0 && (
+                {machineStats.offlineMachines > 0 && (
                   <Badge variant="outline" className="border-red-300 text-red-700 bg-red-50">
-                    {stats.offlineMachines} máquina{stats.offlineMachines > 1 ? 's' : ''} offline
+                    {machineStats.offlineMachines} máquina{machineStats.offlineMachines > 1 ? 's' : ''} offline
                   </Badge>
                 )}
-                {stats.maintenanceMachines > 0 && (
+                {machineStats.maintenanceMachines > 0 && (
                   <Badge variant="outline" className="border-amber-300 text-amber-700 bg-amber-50">
-                    {stats.maintenanceMachines} em manutenção
+                    {machineStats.maintenanceMachines} em manutenção
                   </Badge>
                 )}
               </div>
@@ -153,7 +145,7 @@ export default function Dashboard() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Receita Total</p>
-                <p className="text-2xl font-bold">R$ {stats.totalRevenue.toFixed(2)}</p>
+                <p className="text-2xl font-bold">R$ {revenueStats.totalRevenue.toFixed(2)}</p>
               </div>
             </div>
           </CardContent>
@@ -166,7 +158,7 @@ export default function Dashboard() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Receita Mensal</p>
-                <p className="text-2xl font-bold">R$ {stats.monthlyRevenue.toFixed(2)}</p>
+                <p className="text-2xl font-bold">R$ {revenueStats.monthlyRevenue.toFixed(2)}</p>
               </div>
             </div>
           </CardContent>
@@ -179,7 +171,7 @@ export default function Dashboard() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Transações Hoje</p>
-                <p className="text-2xl font-bold">{stats.todayTransactions}</p>
+                <p className="text-2xl font-bold">{revenueStats.todayTransactions}</p>
               </div>
             </div>
           </CardContent>
@@ -192,7 +184,7 @@ export default function Dashboard() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Disponíveis</p>
-                <p className="text-2xl font-bold">{stats.activeMachines} / {stats.totalMachines}</p>
+                <p className="text-2xl font-bold">{machineStats.activeMachines} / {machineStats.totalMachines}</p>
               </div>
             </div>
           </CardContent>
