@@ -213,8 +213,9 @@ const Totem = () => {
     async (paymentMethod: string = 'TEF') => {
       if (!selectedMachine || !currentLaundry) return;
       try {
-        rememberRunningAfterPayment(selectedMachine.id, selectedMachine.duration);
-        await updateMachineStatus(selectedMachine.id, 'running', { suppressErrorToast: true });
+        const esp32Id = selectedMachine.esp32_id || 'main';
+        const relayPin = resolvedRelayPin(selectedMachine.relay_pin);
+
         await supabase.from('transactions').insert({
           machine_id: selectedMachine.id,
           total_amount: selectedMachine.price,
@@ -225,40 +226,27 @@ const Totem = () => {
           started_at: new Date().toISOString(),
         }).select().single();
 
-        if (selectedMachine.esp32_id) {
-          try {
-            const relayPin = resolvedRelayPin(selectedMachine.relay_pin);
-            const { data: espData, error: espErr } = await supabase.functions.invoke('esp32-control', {
-              body: {
-                esp32_id: selectedMachine.esp32_id,
-                relay_pin: relayPin,
-                action: 'on',
-                machine_id: selectedMachine.id,
-              },
-            });
-            if (espErr) throw espErr;
-            if (espData && typeof espData === 'object' && 'success' in espData && espData.success === false) {
-              console.warn('esp32-control:', (espData as { error?: string }).error);
-              toast({
-                title: 'Relé ESP32',
-                description: 'Comando não enfileirado. Verifique pending_commands e o ESP32 online.',
-                variant: 'destructive',
-              });
-            }
-          } catch (e) {
-            console.warn('⚠️ ESP32 communication error:', e);
-            toast({
-              title: 'ESP32',
-              description: 'Falha ao enfileirar acionamento do relé.',
-              variant: 'destructive',
-            });
-          }
+        const { data: espData, error: espErr } = await supabase.functions.invoke('esp32-control', {
+          body: {
+            esp32_id: esp32Id,
+            relay_pin: relayPin,
+            action: 'on',
+            machine_id: selectedMachine.id,
+          },
+        });
+        if (espErr) throw espErr;
+        if (espData && typeof espData === 'object' && 'success' in espData && espData.success === false) {
+          const msg = (espData as { error?: string }).error || 'Comando não enfileirado';
+          throw new Error(msg);
         }
+
+        rememberRunningAfterPayment(selectedMachine.id, selectedMachine.duration);
+        await updateMachineStatus(selectedMachine.id, 'running', { suppressErrorToast: true });
       } catch (error) {
         console.error('Erro ao ativar máquina:', error);
         toast({
           title: 'Atenção',
-          description: 'Pagamento aprovado, mas houve erro na ativação.',
+          description: 'Pagamento aprovado, mas o comando do ESP32 falhou. Verifique esp32_id e fila pending_commands.',
           variant: 'destructive',
         });
       }

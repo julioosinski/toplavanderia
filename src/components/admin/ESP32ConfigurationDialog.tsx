@@ -60,7 +60,7 @@ export const ESP32ConfigurationDialog = () => {
 
     toast({
       title: "Arquivo gerado!",
-      description: "Firmware v2.0.4 (heartbeat + fila pending_commands) — compile no Arduino IDE"
+      description: "Firmware v2.0.5 (heartbeat + fila pending_commands) — compile no Arduino IDE"
     });
   };
 
@@ -99,7 +99,7 @@ export const ESP32ConfigurationDialog = () => {
         <DialogHeader>
           <DialogTitle>Gerar Configuração ESP32</DialogTitle>
           <DialogDescription>
-            Baixa o firmware alinhado ao repositório (v2.0.4): heartbeat, servidor local e
+            Baixa o firmware alinhado ao repositório (v2.0.5): heartbeat, servidor local e
             <strong> polling da fila Supabase</strong> (pagamento no totem via <code className="text-xs">pending_commands</code>).
           </DialogDescription>
         </DialogHeader>
