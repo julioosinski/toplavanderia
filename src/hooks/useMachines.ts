@@ -96,8 +96,9 @@ export const useMachines = (laundryId?: string | null) => {
       timeRemaining = Math.max(0, Math.round(cycleTime - minutesSinceUpdate));
       runningSinceAt = machine.updated_at;
 
-      // If cycle has ended, show available (fallback when DB hasn't been updated yet)
-      if (minutesSinceUpdate >= cycleTime + CYCLE_END_GRACE_MINUTES) {
+      // If cycle has ended AND relay is OFF, show available (fallback when DB hasn't been updated yet)
+      // Never override to available if ESP32 relay is still ON — hardware is the authority
+      if (minutesSinceUpdate >= cycleTime + CYCLE_END_GRACE_MINUTES && !computed.relayOn) {
         machineStatus = 'available';
         timeRemaining = undefined;
         runningSinceAt = undefined;
