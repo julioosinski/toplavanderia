@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Clock, Wrench } from "lucide-react";
+import { Clock, Wrench, WifiOff } from "lucide-react";
 import type { Machine } from "@/hooks/useMachines";
 
 interface TotemMachineCardProps {
@@ -38,6 +38,7 @@ export const TotemMachineCard = ({ machine, deviceMode, isViewOnly, colorScheme,
   const isAvailable = machine.status === "available";
   const isRunning = machine.status === "running";
   const isMaintenance = machine.status === "maintenance";
+  const hardwareLost = Boolean(machine.hardwareLinkLost && isRunning);
 
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -103,7 +104,7 @@ export const TotemMachineCard = ({ machine, deviceMode, isViewOnly, colorScheme,
           </p>
         </div>
 
-        <div className="flex items-center justify-center mb-2">
+        <div className="flex flex-col items-center justify-center mb-2 gap-1">
           <Badge
             variant={machine.status === "available" ? "default" : "secondary"}
             className={`text-xs px-2 py-0.5 ${
@@ -114,6 +115,12 @@ export const TotemMachineCard = ({ machine, deviceMode, isViewOnly, colorScheme,
           >
             {getStatusText(machine.status)}
           </Badge>
+          {hardwareLost && (
+            <span className="flex items-center gap-0.5 text-[10px] text-amber-700 font-medium">
+              <WifiOff className="h-3 w-3 shrink-0" />
+              Sem link — tempo continua
+            </span>
+          )}
         </div>
 
         {isRunning && displayRemaining > 0 && (

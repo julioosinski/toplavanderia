@@ -4,10 +4,15 @@ import { supabase } from '@/integrations/supabase/client';
 export const DEFAULT_ESP32_RELAY_PIN = 2;
 
 /**
- * Minutos sem heartbeat após os quais a UI trata o ESP como offline (totem/admin).
- * Valores maiores atrasavam a indicação de “fora” quando o servidor ainda marcava is_online.
+ * Minutos sem heartbeat após os quais a UI trata o ESP como offline (admin / visão geral).
  */
-export const ESP32_HEARTBEAT_STALE_MINUTES = 2;
+export const ESP32_HEARTBEAT_STALE_MINUTES = 1;
+
+/**
+ * Totem: tempo sem heartbeat para considerar o link com o ESP perdido (mais rápido que o servidor).
+ * Firmware envia heartbeat ~30s; 55s ≈ um ciclo perdido.
+ */
+export const ESP32_TOTEM_HEARTBEAT_STALE_MS = 55_000;
 
 function relayKey(pin: number): string {
   return `relay_${pin}`;

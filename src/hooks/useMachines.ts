@@ -6,7 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Droplets, Wind } from 'lucide-react';
 import { useMachineAutoStatus } from './useMachineAutoStatus';
 import { nativeStorage, getItemWithTimeout } from '@/utils/nativeStorage';
-import { ESP32_HEARTBEAT_STALE_MINUTES, resolvedRelayPin } from '@/lib/machineEsp32Sync';
+import { ESP32_TOTEM_HEARTBEAT_STALE_MS, resolvedRelayPin } from '@/lib/machineEsp32Sync';
 
 export interface Machine {
   id: string;
@@ -24,6 +24,8 @@ export interface Machine {
   relay_pin?: number;
   location?: string;
   ip_address?: string;
+  /** Ciclo em andamento no banco mas sem heartbeat recente do ESP (ex.: queda de energia no hardware). */
+  hardwareLinkLost?: boolean;
 }
 
 const CACHE_KEY_PREFIX = 'machines_cache_';
@@ -31,7 +33,7 @@ const FETCH_MACHINES_TIMEOUT_MS = 20000;
 /** Fallback se Realtime não estiver habilitado na tabela no Supabase */
 const POLL_MACHINES_MS = 15000;
 /** Tablet: refetch mais frequente para alinhar status após fim de ciclo / Realtime. */
-const POLL_MACHINES_NATIVE_MS = 4000;
+const POLL_MACHINES_NATIVE_MS = 2500;
 /** Minutos extra após o fim do ciclo antes de mostrar “disponível” (0 = assim que acaba o tempo do ciclo). */
 const CYCLE_END_GRACE_MINUTES = 0;
 
@@ -93,17 +95,30 @@ export const useMachines = (laundryId?: string | null) => {
     }
 
     let machineStatus = machine.status as any;
-    
+    let hardwareLinkLost = false;
+
     if (machine.esp32_id) {
       const esp32Status = esp32Map.get(machine.esp32_id);
-      const now = new Date();
+      const nowMs = Date.now();
       const lastHeartbeat = esp32Status?.last_heartbeat ? new Date(esp32Status.last_heartbeat) : null;
-      const minutesSinceHeartbeat = lastHeartbeat 
-        ? (now.getTime() - lastHeartbeat.getTime()) / (1000 * 60) : 999999;
-      const maxOfflineMinutes = 5;
-      
-      if (!esp32Status || !esp32Status.is_online || minutesSinceHeartbeat > maxOfflineMinutes) {
-        machineStatus = 'offline';
+      const hbAgeMs = lastHeartbeat ? nowMs - lastHeartbeat.getTime() : Number.POSITIVE_INFINITY;
+      const heartbeatStale = hbAgeMs > ESP32_TOTEM_HEARTBEAT_STALE_MS;
+      /** Link “vivo”: linha no banco + online + heartbeat recente (detecção rápida). */
+      const espReachable =
+        Boolean(esp32Status) &&
+        esp32Status.is_online !== false &&
+        !heartbeatStale;
+
+      if (!espReachable) {
+        // Ciclo pago em andamento: não zerar o tempo — continua a partir de machines.updated_at quando o ESP voltar.
+        if (machine.status === 'running') {
+          machineStatus = 'running';
+          hardwareLinkLost = true;
+        } else if (machine.status === 'maintenance') {
+          machineStatus = 'maintenance';
+        } else {
+          machineStatus = 'offline';
+        }
       } else {
         // Banco como fonte de verdade: após liberação (timeout/admin), não forçar "em uso" só pelo relé
         if (machine.status === 'available') {
@@ -112,11 +127,11 @@ export const useMachines = (laundryId?: string | null) => {
           const relayObj = esp32Status.relay_status as any;
           const relayKey = `relay_${resolvedRelayPin(machine.relay_pin)}`;
           let relayStatus: string | boolean | number | undefined;
-          
+
           if (relayObj[relayKey] !== undefined) relayStatus = relayObj[relayKey];
           else if (relayObj.status && typeof relayObj.status === 'object') relayStatus = relayObj.status[relayKey];
           else if (relayObj.status !== undefined) relayStatus = relayObj.status;
-          
+
           if (relayStatus === 'on' || relayStatus === true || relayStatus === 1) {
             machineStatus = 'running';
           } else if (machine.status !== 'running' && machine.status !== 'maintenance') {
@@ -172,7 +187,8 @@ export const useMachines = (laundryId?: string | null) => {
       esp32_id: machine.esp32_id,
       relay_pin: machine.relay_pin,
       location: machine.location,
-      ip_address: esp32?.ip_address
+      ip_address: esp32?.ip_address,
+      ...(hardwareLinkLost ? { hardwareLinkLost: true } : {}),
     };
   };
 
