@@ -85,19 +85,32 @@ export const LaundryManagement = () => {
 
   const loadLaundryAdmins = async (laundryId: string) => {
     try {
-      const { data, error } = await supabase
+      // Fetch admin roles for this laundry
+      const { data: rolesData, error } = await supabase
         .from('user_roles')
-        .select(`
-          id,
-          user_id,
-          role,
-          profiles:user_id (
-            full_name,
-            user_id
-          )
-        `)
+        .select('id, user_id, role')
         .eq('laundry_id', laundryId)
         .eq('role', 'admin');
+
+      if (error) throw error;
+
+      // Fetch profile names separately (no FK between user_roles and profiles)
+      const userIds = (rolesData || []).map(r => r.user_id);
+      let profilesMap: Record<string, string> = {};
+      if (userIds.length > 0) {
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('user_id, full_name')
+          .in('user_id', userIds);
+        profilesMap = Object.fromEntries(
+          (profilesData || []).map(p => [p.user_id, p.full_name || ''])
+        );
+      }
+
+      const data = (rolesData || []).map(r => ({
+        ...r,
+        profiles: { full_name: profilesMap[r.user_id] || null, user_id: r.user_id },
+      }));
 
       if (error) throw error;
 
