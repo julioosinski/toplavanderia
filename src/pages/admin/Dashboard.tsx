@@ -71,11 +71,30 @@ export default function Dashboard() {
   const loadConsolidatedMachines = async () => {
     if (!isViewingAll) return;
     const groupedMachines: Record<string, { laundryName: string; machines: any[] }> = {};
+
+    // Fetch all ESP32 status once
+    const { data: allEsp32 } = await supabase
+      .from('esp32_status')
+      .select('esp32_id, ip_address, is_online, relay_status, last_heartbeat, signal_strength, network_status, laundry_id');
+    const esp32ByLaundry = new Map<string, Esp32StatusRow[]>();
+    (allEsp32 || []).forEach((e: any) => {
+      const arr = esp32ByLaundry.get(e.laundry_id) || [];
+      arr.push(e);
+      esp32ByLaundry.set(e.laundry_id, arr);
+    });
+
     for (const laundry of laundries) {
       const { data: laundryMachines } = await supabase
         .from('machines').select('*').eq('laundry_id', laundry.id);
       if (laundryMachines && laundryMachines.length > 0) {
-        groupedMachines[laundry.id] = { laundryName: laundry.name, machines: laundryMachines };
+        const esp32List = esp32ByLaundry.get(laundry.id) || [];
+        const esp32Map = new Map(esp32List.map(e => [e.esp32_id, e]));
+        const enriched = laundryMachines.map((m: any) => {
+          const esp32 = esp32Map.get(m.esp32_id || '') as Esp32StatusRow | undefined;
+          const computed = computeMachineStatus(m, esp32);
+          return { ...m, status: computed.status };
+        });
+        groupedMachines[laundry.id] = { laundryName: laundry.name, machines: enriched };
       }
     }
     setMachinesByLaundry(groupedMachines);
