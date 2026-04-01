@@ -72,83 +72,21 @@ export const useMachines = (laundryId?: string | null) => {
     Map<string, { until: number; startedAt: string; durationMin: number }>
   >(new Map());
 
-  const transformMachine = (machine: any, esp32Map: Map<string, any>): Machine => {
-    const esp32 = esp32Map.get(machine.esp32_id || 'main');
-    
+  const transformMachine = (machine: any, esp32Map: Map<string, Esp32StatusRow>): Machine => {
+    const esp32: Esp32StatusRow | undefined = esp32Map.get(machine.esp32_id || '');
+
     const typeMapping: Record<string, 'lavadora' | 'secadora'> = {
       'washing': 'lavadora', 'drying': 'secadora',
       'lavadora': 'lavadora', 'secadora': 'secadora'
     };
     const mappedType = typeMapping[machine.type] || 'lavadora';
 
-    if (machine.status === 'maintenance') {
-      return {
-        id: machine.id,
-        name: machine.name,
-        type: mappedType,
-        title: machine.name,
-        price: Number(machine.price_per_cycle) || 18.0,
-        duration: machine.cycle_time_minutes || 40,
-        status: 'maintenance' as const,
-        icon: mappedType === 'lavadora' ? Droplets : Wind,
-        runningSinceAt: undefined,
-        esp32_id: machine.esp32_id,
-        relay_pin: machine.relay_pin,
-        location: machine.location,
-        ip_address: esp32?.ip_address,
-      };
-    }
+    // Use unified status computation — ESP32 relay is the authority
+    const computed = computeMachineStatus(machine as any, esp32);
+    let machineStatus: Machine['status'] = computed.status;
+    let hardwareLinkLost = computed.hardwareLinkLost;
 
-    let machineStatus = machine.status as any;
-    let hardwareLinkLost = false;
-
-    if (machine.esp32_id) {
-      const esp32Status = esp32Map.get(machine.esp32_id);
-      const nowMs = Date.now();
-      const lastHeartbeat = esp32Status?.last_heartbeat ? new Date(esp32Status.last_heartbeat) : null;
-      const hbAgeMs = lastHeartbeat ? nowMs - lastHeartbeat.getTime() : Number.POSITIVE_INFINITY;
-      const heartbeatStale = hbAgeMs > ESP32_TOTEM_HEARTBEAT_STALE_MS;
-      /** Link “vivo”: linha no banco + online + heartbeat recente (detecção rápida). */
-      const espReachable =
-        Boolean(esp32Status) &&
-        esp32Status.is_online !== false &&
-        !heartbeatStale;
-
-      if (!espReachable) {
-        // Ciclo pago em andamento: não zerar o tempo — continua a partir de machines.updated_at quando o ESP voltar.
-        if (machine.status === 'running') {
-          machineStatus = 'running';
-          hardwareLinkLost = true;
-        } else if (machine.status === 'maintenance') {
-          machineStatus = 'maintenance';
-        } else {
-          machineStatus = 'offline';
-        }
-      } else {
-        // Banco como fonte de verdade: após liberação (timeout/admin), não forçar "em uso" só pelo relé
-        if (machine.status === 'available') {
-          machineStatus = 'available';
-        } else if (esp32Status.relay_status && typeof esp32Status.relay_status === 'object') {
-          const relayObj = esp32Status.relay_status as any;
-          const relayKey = `relay_${resolvedRelayPin(machine.relay_pin)}`;
-          let relayStatus: string | boolean | number | undefined;
-
-          if (relayObj[relayKey] !== undefined) relayStatus = relayObj[relayKey];
-          else if (relayObj.status && typeof relayObj.status === 'object') relayStatus = relayObj.status[relayKey];
-          else if (relayObj.status !== undefined) relayStatus = relayObj.status;
-
-          if (relayStatus === 'on' || relayStatus === true || relayStatus === 1) {
-            machineStatus = 'running';
-          } else if (machine.status !== 'running' && machine.status !== 'maintenance') {
-            machineStatus = 'available';
-          }
-        } else if (machine.status !== 'running' && machine.status !== 'maintenance') {
-          machineStatus = 'available';
-        }
-      }
-    }
-    
-    // Fim do ciclo na UI: após duração + pequena margem, mostrar disponível mesmo se o banco ainda disser "running" (ex.: totem sem permissão de UPDATE)
+    // Calculate time remaining for running machines
     let timeRemaining: number | undefined;
     let runningSinceAt: string | undefined;
     if (machineStatus === 'running' && machine.updated_at) {
@@ -158,6 +96,7 @@ export const useMachines = (laundryId?: string | null) => {
       timeRemaining = Math.max(0, Math.round(cycleTime - minutesSinceUpdate));
       runningSinceAt = machine.updated_at;
 
+      // If cycle has ended, show available (fallback when DB hasn't been updated yet)
       if (minutesSinceUpdate >= cycleTime + CYCLE_END_GRACE_MINUTES) {
         machineStatus = 'available';
         timeRemaining = undefined;
@@ -165,9 +104,9 @@ export const useMachines = (laundryId?: string | null) => {
       }
     }
 
+    // Post-payment override (keeps UI showing "running" until ESP32 confirms relay)
     const payOv = postPaymentRunningRef.current.get(machine.id);
     if (payOv) {
-      // Clear override if expired OR if DB already says available/maintenance (admin released)
       if (Date.now() >= payOv.until || machine.status === 'available' || machine.status === 'maintenance') {
         postPaymentRunningRef.current.delete(machine.id);
       } else if (machineStatus !== 'maintenance') {

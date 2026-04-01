@@ -12,10 +12,12 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { MachineDialog } from "@/components/admin/MachineDialog";
 import {
-  ESP32_HEARTBEAT_STALE_MINUTES,
   forceMachineReleased,
   forceMachineMaintenance,
-  resolvedRelayPin,
+  computeMachineStatus,
+  isEsp32Reachable,
+  ESP32_HEARTBEAT_STALE_MINUTES,
+  type Esp32StatusRow,
 } from "@/lib/machineEsp32Sync";
 import { ESP32ConfigurationDialog } from "@/components/admin/ESP32ConfigurationDialog";
 import { ESP32PendingApproval } from "@/components/admin/ESP32PendingApproval";
