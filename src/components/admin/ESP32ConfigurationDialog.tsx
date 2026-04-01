@@ -18,6 +18,10 @@ export const ESP32ConfigurationDialog = () => {
   const [copied, setCopied] = useState(false);
   const [copiedLaundryId, setCopiedLaundryId] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  /** Índice relay_N igual ao campo relay_pin da máquina no cadastro */
+  const [relayLogicalPin, setRelayLogicalPin] = useState(1);
+  /** Igual a cycle_time_minutes da máquina */
+  const [cycleTimeMinutes, setCycleTimeMinutes] = useState(40);
 
   const wifiSsid = "2G Osinski";
   const wifiPassword = "10203040";
@@ -43,6 +47,8 @@ export const ESP32ConfigurationDialog = () => {
       laundryId,
       esp32Id,
       machineName: name,
+      relayLogicalPin,
+      cycleTimeMinutes,
     });
   };
 
@@ -60,7 +66,7 @@ export const ESP32ConfigurationDialog = () => {
 
     toast({
       title: "Arquivo gerado!",
-      description: "Firmware v2.0.6 (heartbeat + fila pending_commands) — compile no Arduino IDE"
+      description: "Firmware v2.0.7 (relay_pin + tempo de ciclo do painel, heartbeat alinhado ao dashboard) — compile no Arduino IDE"
     });
   };
 
@@ -99,7 +105,8 @@ export const ESP32ConfigurationDialog = () => {
         <DialogHeader>
           <DialogTitle>Gerar Configuração ESP32</DialogTitle>
           <DialogDescription>
-            Baixa o firmware alinhado ao repositório (v2.0.6): heartbeat, servidor local e
+            Baixa o firmware alinhado ao repositório (v2.0.7): heartbeat com <code className="text-xs">relay_N</code> igual ao cadastro da máquina,
+            tempo de ciclo configurável, servidor local e
             <strong> polling da fila Supabase</strong> (pagamento no totem via <code className="text-xs">pending_commands</code>).
           </DialogDescription>
         </DialogHeader>
@@ -163,6 +170,33 @@ export const ESP32ConfigurationDialog = () => {
               placeholder={`Deixe em branco para: "${currentLaundry?.name ?? 'Lavanderia'} — [ID]"`}
               className="font-mono text-sm"
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="relay_pin">Relay no painel (relay_pin)</Label>
+              <Input
+                id="relay_pin"
+                type="number"
+                min={1}
+                max={16}
+                value={relayLogicalPin}
+                onChange={(e) => setRelayLogicalPin(Math.max(1, Math.min(16, Number(e.target.value) || 1)))}
+              />
+              <p className="text-xs text-muted-foreground">Deve ser o mesmo número da máquina em Máquinas → relay_pin.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cycle_min">Tempo de ciclo (min)</Label>
+              <Input
+                id="cycle_min"
+                type="number"
+                min={1}
+                max={1440}
+                value={cycleTimeMinutes}
+                onChange={(e) => setCycleTimeMinutes(Math.max(1, Math.min(1440, Number(e.target.value) || 40)))}
+              />
+              <p className="text-xs text-muted-foreground">Igual a cycle_time_minutes; o ESP desliga o relé ao fim.</p>
+            </div>
           </div>
 
           <div className="flex gap-2">

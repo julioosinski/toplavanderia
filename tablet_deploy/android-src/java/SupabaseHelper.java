@@ -217,17 +217,20 @@ public class SupabaseHelper {
      * Busca lavanderia pelo CNPJ no Supabase
      */
     private Laundry fetchLaundryByCNPJ(String cnpj) {
+        HttpURLConnection connection = null;
         try {
             String url = SUPABASE_URL + "/rest/v1/laundries?select=*&cnpj=eq." + cnpj + "&is_active=eq.true";
             
             Log.d(TAG, "Buscando lavanderia por CNPJ: " + cnpj);
             Log.d(TAG, "URL: " + url);
             
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            connection = (HttpURLConnection) new URL(url).openConnection();
             connection.setRequestMethod("GET");
             connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
             connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
             connection.setRequestProperty("Content-Type", "application/json");
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(10000);
             
             int responseCode = connection.getResponseCode();
             if (responseCode == 200) {
@@ -271,12 +274,17 @@ public class SupabaseHelper {
         } catch (Exception e) {
             Log.e(TAG, "Erro ao buscar lavanderia por CNPJ", e);
             return null;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
     }
     
     private List<Machine> fetchMachinesFromSupabase() {
         List<Machine> machines = new ArrayList<>();
-        
+        HttpURLConnection connection = null;
+
         try {
             if (currentLaundryId == null) {
                 Log.e(TAG, "❌ Lavanderia não configurada - não é possível buscar máquinas");
@@ -289,11 +297,13 @@ public class SupabaseHelper {
             Log.d(TAG, "Buscando máquinas da lavanderia: " + currentLaundryId);
             Log.d(TAG, "URL: " + url);
             
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            connection = (HttpURLConnection) new URL(url).openConnection();
             connection.setRequestMethod("GET");
             connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
             connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
             connection.setRequestProperty("Content-Type", "application/json");
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(10000);
             
             int responseCode = connection.getResponseCode();
             if (responseCode == 200) {
@@ -332,11 +342,13 @@ public class SupabaseHelper {
                 machines = getDefaultMachines();
             }
             
-            connection.disconnect();
-            
         } catch (Exception e) {
             Log.e(TAG, "Erro na comunicação com Supabase", e);
             machines = getDefaultMachines();
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
         
         return machines;
@@ -345,67 +357,115 @@ public class SupabaseHelper {
     private void loadEsp32Status(List<Machine> machines) {
         try {
             Log.d(TAG, "=== CARREGANDO STATUS DOS ESP32s ===");
-            
-            // CORRIGIDO: Campos corretos e filtro por lavanderia
-            String url = SUPABASE_URL + "/rest/v1/esp32_status?select=esp32_id,is_online,network_status,last_heartbeat,relay_status&laundry_id=eq." + currentLaundryId;
-            
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+
+            JSONArray esp32Array = fetchEsp32StatusJsonArray();
+            if (esp32Array == null) {
+                esp32Array = new JSONArray();
+            }
+
+            java.util.Map<String, JSONObject> esp32StatusMap = new java.util.HashMap<>();
+            for (int i = 0; i < esp32Array.length(); i++) {
+                JSONObject esp32Json = esp32Array.getJSONObject(i);
+                String esp32Id = esp32Json.getString("esp32_id");
+                esp32StatusMap.put(esp32Id, esp32Json);
+                Log.d(TAG, "ESP32 " + esp32Id + " loaded");
+            }
+
+            for (Machine machine : machines) {
+                String esp32Id = machine.getEsp32Id();
+                JSONObject esp32Status = esp32StatusMap.get(esp32Id);
+                boolean esp32Online = isEsp32ReallyOnline(esp32Status);
+                machine.setEsp32Online(esp32Online);
+                Log.d(TAG, "Máquina " + machine.getName() + " - ESP32 " + esp32Id + " (Online: " + esp32Online + ")");
+            }
+
+            Log.d(TAG, "Status dos ESP32s carregado: " + esp32StatusMap.size() + " dispositivos para lavanderia " + currentLaundryId);
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao carregar status dos ESP32s", e);
+            for (Machine machine : machines) {
+                machine.setEsp32Online(false);
+            }
+        }
+    }
+
+    /**
+     * SELECT em esp32_status; se vazio (RLS anon), usa RPC get_esp32_heartbeats — mesmo fallback do totem web.
+     */
+    private JSONArray fetchEsp32StatusJsonArray() {
+        HttpURLConnection connection = null;
+        try {
+            String url = SUPABASE_URL + "/rest/v1/esp32_status?select=esp32_id,is_online,network_status,last_heartbeat,relay_status,ip_address&laundry_id=eq." + currentLaundryId;
+            connection = (HttpURLConnection) new URL(url).openConnection();
             connection.setRequestMethod("GET");
             connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
             connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
             connection.setRequestProperty("Content-Type", "application/json");
-            
+
             int responseCode = connection.getResponseCode();
             if (responseCode == 200) {
                 BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
                 StringBuilder response = new StringBuilder();
                 String line;
-                
                 while ((line = reader.readLine()) != null) {
                     response.append(line);
                 }
                 reader.close();
-                
-                JSONArray esp32Array = new JSONArray(response.toString());
-                
-                // Criar mapa de status dos ESP32s com validação de timeout
-                java.util.Map<String, JSONObject> esp32StatusMap = new java.util.HashMap<>();
-                for (int i = 0; i < esp32Array.length(); i++) {
-                    JSONObject esp32Json = esp32Array.getJSONObject(i);
-                    String esp32Id = esp32Json.getString("esp32_id");
-                    esp32StatusMap.put(esp32Id, esp32Json);
-                    
-                    Log.d(TAG, "ESP32 " + esp32Id + " loaded");
-                }
-                
-                // Atualizar status das máquinas com validação de heartbeat
-                for (Machine machine : machines) {
-                    String esp32Id = machine.getEsp32Id();
-                    JSONObject esp32Status = esp32StatusMap.get(esp32Id);
-                    boolean esp32Online = isEsp32ReallyOnline(esp32Status);
-                    machine.setEsp32Online(esp32Online);
-                    
-                    Log.d(TAG, "Máquina " + machine.getName() + " - ESP32 " + esp32Id + " (Online: " + esp32Online + ")");
-                }
-                
-                Log.d(TAG, "Status dos ESP32s carregado: " + esp32StatusMap.size() + " dispositivos para lavanderia " + currentLaundryId);
-            } else {
-                Log.w(TAG, "Erro ao buscar status dos ESP32s: " + responseCode);
-                // Se não conseguir carregar status, marcar todos como offline
-                for (Machine machine : machines) {
-                    machine.setEsp32Online(false);
+                JSONArray arr = new JSONArray(response.toString());
+                if (arr.length() > 0) {
+                    return arr;
                 }
             }
-            
             connection.disconnect();
-            
+            connection = null;
+
+            Log.d(TAG, "esp32_status vazio ou bloqueado — RPC get_esp32_heartbeats");
+            return fetchEsp32StatusViaRpc();
         } catch (Exception e) {
-            Log.e(TAG, "Erro ao carregar status dos ESP32s", e);
-            // Se houver erro, marcar todos como offline
-            for (Machine machine : machines) {
-                machine.setEsp32Online(false);
+            Log.e(TAG, "fetchEsp32StatusJsonArray", e);
+            try {
+                return fetchEsp32StatusViaRpc();
+            } catch (Exception e2) {
+                Log.e(TAG, "fetchEsp32StatusViaRpc falhou", e2);
+                return new JSONArray();
+            }
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
             }
         }
+    }
+
+    private JSONArray fetchEsp32StatusViaRpc() throws Exception {
+        URL url = new URL(SUPABASE_URL + "/rest/v1/rpc/get_esp32_heartbeats");
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("apikey", SUPABASE_ANON_KEY);
+        conn.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
+        conn.setRequestProperty("Content-Type", "application/json");
+        conn.setDoOutput(true);
+        conn.setConnectTimeout(10000);
+        conn.setReadTimeout(10000);
+
+        JSONObject body = new JSONObject();
+        body.put("_laundry_id", currentLaundryId);
+        OutputStream os = conn.getOutputStream();
+        os.write(body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        os.close();
+
+        int code = conn.getResponseCode();
+        if (code != 200) {
+            conn.disconnect();
+            return new JSONArray();
+        }
+        BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+        StringBuilder response = new StringBuilder();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            response.append(line);
+        }
+        reader.close();
+        conn.disconnect();
+        return new JSONArray(response.toString());
     }
     
     /**
@@ -424,17 +484,22 @@ public class SupabaseHelper {
                 return false;
             }
             
-            // Verificar se heartbeat é recente (menos de 5 minutos)
+            // Heartbeat recente — alinhado ao painel (ESP32_HEARTBEAT_STALE_MINUTES = 1)
             SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US);
             sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
-            Date heartbeatDate = sdf.parse(lastHeartbeat.replace("Z", "").split("\\.")[0]);
+            String hb = lastHeartbeat.replace("Z", "");
+            int dot = hb.indexOf('.');
+            if (dot > 0) {
+                hb = hb.substring(0, dot);
+            }
+            Date heartbeatDate = sdf.parse(hb.length() >= 19 ? hb.substring(0, 19) : hb);
             
             if (heartbeatDate == null) {
                 return false;
             }
             
             long minutesSince = (System.currentTimeMillis() - heartbeatDate.getTime()) / (1000 * 60);
-            boolean isRecent = minutesSince <= 5;
+            boolean isRecent = minutesSince <= 1;
             
             Log.d(TAG, "ESP32 " + esp32Status.getString("esp32_id") + 
                   " - Heartbeat: " + minutesSince + " min ago, Online: " + isRecent);
@@ -495,6 +560,7 @@ public class SupabaseHelper {
         switch (supabaseStatus) {
             case "available":
                 return "LIVRE";
+            case "running":
             case "in_use":
                 return "OCUPADA";
             case "maintenance":
@@ -800,7 +866,7 @@ public class SupabaseHelper {
             case "LIVRE":
                 return "available";
             case "OCUPADA":
-                return "in_use";
+                return "running";
             case "MANUTENCAO":
                 return "maintenance";
             case "OFFLINE":

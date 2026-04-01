@@ -1,6 +1,6 @@
 /**
  * ESP32 Lavadora Individual - Sistema de Controle
- * Versão: 2.0.6 - poll_commands: URL-encoding do esp32_id (evita HTTP 400 com espaços no ID)
+ * Versão: 2.0.7 - relay_pin e tempo de ciclo alinhados ao painel; desliga relé ao fim do ciclo
  *
  * O download "Configurar ESP32" no admin usa o mesmo firmware a partir de:
  *   src/firmware/esp32LavadoraTemplate.ino (placeholders substituídos no navegador).
@@ -37,8 +37,12 @@ const char* supabaseUrl = "https://rkdybjzwiwwqqzjfmerm.supabase.co";
 const char* supabaseApiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg";
 
 // ================== CONFIGURAÇÕES HARDWARE ==================
-#define RELAY_PIN 2                // Pino do relé (GPIO2)
+#define RELAY_PIN 2                // GPIO físico do relé na placa
 #define LED_PIN 2                  // LED embutido (GPIO2)
+/** Índice lógico no Supabase (relay_1, relay_2…) — igual ao relay_pin da máquina no painel */
+#define RELAY_LOGICAL_PIN 1
+/** Minutos — igual a cycle_time_minutes no cadastro da máquina */
+#define CYCLE_TIME_MINUTES 40
 
 // ================== VARIÁVEIS DE CONTROLE ==================
 WebServer server(80);
@@ -68,7 +72,7 @@ String urlEncodeQueryValue(const char* in) {
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n========================================");
-  Serial.println("ESP32 Lavadora Individual v2.0.6");
+  Serial.println("ESP32 Lavadora Individual v2.0.7");
   Serial.println("========================================");
   
   // Configurar hardware
@@ -96,6 +100,18 @@ void loop() {
   server.handleClient();
 
   unsigned long now = millis();
+
+  if (machineRunning && relayState && CYCLE_TIME_MINUTES > 0) {
+    unsigned long cycleMs = (unsigned long)CYCLE_TIME_MINUTES * 60UL * 1000UL;
+    if (now - machineStartTime >= cycleMs) {
+      Serial.println("⏱️ Ciclo concluído (painel); desligando relé");
+      relayState = false;
+      machineRunning = false;
+      digitalWrite(RELAY_PIN, LOW);
+      digitalWrite(LED_PIN, LOW);
+      sendHeartbeat();
+    }
+  }
 
   // Buscar comandos enfileirados pelo totem (esp32-control → pending_commands)
   if (now - lastPoll >= POLL_INTERVAL) {
@@ -183,7 +199,7 @@ void handleStatus() {
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
   doc["network_status"] = "connected";
-  doc["firmware_version"] = "v2.0.6";
+  doc["firmware_version"] = "v2.0.7";
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
   doc["relay_status"] = relayState ? "on" : "off";
@@ -282,11 +298,13 @@ void pollSupabaseCommands() {
     String cid = c["id"].as<String>();
     String action = c["action"].as<String>();
     action.toLowerCase();
-    int pin = c["relay_pin"] | RELAY_PIN;
-    // Placa lavadora individual: o backend já filtra por esp32_id. O relay_pin no banco
-    // pode ser 1, 2, 3… (índice ou GPIO); o hardware usa sempre RELAY_PIN.
-    (void)pin;
-    Serial.printf("📌 Comando relay_pin=%d → GPIO físico %d\n", pin, RELAY_PIN);
+    int cmdRelay = c["relay_pin"] | RELAY_LOGICAL_PIN;
+    if (cmdRelay != RELAY_LOGICAL_PIN) {
+      Serial.printf("📌 Ignorando comando relay_%d (este firmware é relay_%d)\n", cmdRelay, RELAY_LOGICAL_PIN);
+      confirmSupabaseCommand(cid);
+      continue;
+    }
+    Serial.printf("📌 Comando relay_%d → GPIO físico %d\n", RELAY_LOGICAL_PIN, RELAY_PIN);
 
     if (action == "on" || action == "activate" || action == "turn_on") {
       relayState = true;
@@ -330,14 +348,13 @@ void sendHeartbeat() {
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
   doc["network_status"] = "connected";
-  doc["firmware_version"] = "v2.0.6";
+  doc["firmware_version"] = "v2.0.7";
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
   
-  // Formato correto do relay_status: {"relay_1": "on/off", "relay_2": "on/off"}
   JsonObject relayStatusObj = doc.createNestedObject("relay_status");
-  relayStatusObj["relay_1"] = relayState ? "on" : "off";
-  relayStatusObj["relay_2"] = "off";  // Adicione mais relés conforme necessário
+  String relayKey = "relay_" + String(RELAY_LOGICAL_PIN);
+  relayStatusObj[relayKey] = relayState ? "on" : "off";
   
   String payload;
   serializeJson(doc, payload);

@@ -1,7 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 
-/** Pino físico padrão no firmware TopLav (GPIO 2) quando `relay_pin` não veio do banco */
-export const DEFAULT_ESP32_RELAY_PIN = 2;
+/** Índice lógico padrão (`relay_1` no JSON) quando `relay_pin` não veio do banco — alinhado ao firmware individual (heartbeat usa relay_1). */
+export const DEFAULT_ESP32_RELAY_PIN = 1;
 
 /**
  * Minutos sem heartbeat após os quais a UI trata o ESP como offline (admin / visão geral).
@@ -107,6 +107,10 @@ export function isEsp32Reachable(
  *  5. ESP32 online + relay OFF + DB=running + time remaining > 0 → running (pending transition)
  *  6. Otherwise → available
  */
+function dbSaysRunning(status: string | undefined | null): boolean {
+  return status === 'running' || status === 'in_use';
+}
+
 export function computeMachineStatus(
   machine: MachineRow,
   esp32: Esp32StatusRow | undefined | null,
@@ -122,7 +126,7 @@ export function computeMachineStatus(
 
   // 2. No ESP32 configured — fall back to DB
   if (!machine.esp32_id) {
-    const s = machine.status === 'running' ? 'running' : machine.status === 'offline' ? 'offline' : 'available';
+    const s = dbSaysRunning(machine.status) ? 'running' : machine.status === 'offline' ? 'offline' : 'available';
     return { status: s as ComputedStatus['status'], hardwareLinkLost: false, espReachable: false, relayOn: false };
   }
 
@@ -132,7 +136,7 @@ export function computeMachineStatus(
   // 3. ESP32 offline
   if (!reachable) {
     // If DB says running and there's time left, keep running with hardwareLinkLost flag
-    if (machine.status === 'running' && machine.updated_at) {
+    if (dbSaysRunning(machine.status) && machine.updated_at) {
       const cycleTime = machine.cycle_time_minutes || 40;
       const elapsed = (Date.now() - new Date(machine.updated_at).getTime()) / 60000;
       if (elapsed < cycleTime) {
@@ -148,7 +152,7 @@ export function computeMachineStatus(
   }
 
   // 5. Relay OFF but DB says running with time remaining → running (pending relay off command)
-  if (machine.status === 'running' && machine.updated_at) {
+  if (dbSaysRunning(machine.status) && machine.updated_at) {
     const cycleTime = machine.cycle_time_minutes || 40;
     const elapsed = (Date.now() - new Date(machine.updated_at).getTime()) / 60000;
     if (elapsed < cycleTime) {
