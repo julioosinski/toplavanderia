@@ -1,6 +1,6 @@
 /**
  * ESP32 Lavadora Individual - Sistema de Controle
- * Versão: 2.0.5 - poll aceita qualquer relay_pin (placa 1 relé; filtro é esp32_id)
+ * Versão: 2.0.6 - poll_commands: URL-encoding do esp32_id (evita HTTP 400 com espaços no ID)
  *
  * O download "Configurar ESP32" no admin usa o mesmo firmware a partir de:
  *   src/firmware/esp32LavadoraTemplate.ino (placeholders substituídos no navegador).
@@ -14,6 +14,7 @@
 #include <WebServer.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <cstdio>
 
 // ================== CONFIGURAÇÕES WIFI ==================
 // ⚠️ IMPORTANTE: Configure aqui suas credenciais WiFi
@@ -49,10 +50,25 @@ bool relayState = false;
 unsigned long machineStartTime = 0;
 bool machineRunning = false;
 
+String urlEncodeQueryValue(const char* in) {
+  String out;
+  for (size_t i = 0; in[i]; i++) {
+    unsigned char c = (unsigned char)in[i];
+    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~') {
+      out += (char)c;
+    } else {
+      char buf[4];
+      snprintf(buf, sizeof(buf), "%%%02X", c);
+      out += buf;
+    }
+  }
+  return out;
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n========================================");
-  Serial.println("ESP32 Lavadora Individual v2.0.5");
+  Serial.println("ESP32 Lavadora Individual v2.0.6");
   Serial.println("========================================");
   
   // Configurar hardware
@@ -167,7 +183,7 @@ void handleStatus() {
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
   doc["network_status"] = "connected";
-  doc["firmware_version"] = "v2.0.5";
+  doc["firmware_version"] = "v2.0.6";
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
   doc["relay_status"] = relayState ? "on" : "off";
@@ -235,7 +251,8 @@ void pollSupabaseCommands() {
   if (WiFi.status() != WL_CONNECTED) return;
 
   HTTPClient http;
-  String url = String(supabaseUrl) + "/functions/v1/esp32-monitor?action=poll_commands&esp32_id=" + String(ESP32_ID);
+  String enc = urlEncodeQueryValue(ESP32_ID);
+  String url = String(supabaseUrl) + "/functions/v1/esp32-monitor?action=poll_commands&esp32_id=" + enc;
   http.begin(url);
   http.addHeader("apikey", supabaseApiKey);
   http.addHeader("Authorization", String("Bearer ") + String(supabaseApiKey));
@@ -313,7 +330,7 @@ void sendHeartbeat() {
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
   doc["network_status"] = "connected";
-  doc["firmware_version"] = "v2.0.5";
+  doc["firmware_version"] = "v2.0.6";
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
   
