@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Clock, Wrench, WifiOff } from "lucide-react";
@@ -29,7 +28,7 @@ const getStatusText = (status: string) => {
     case "running": return "Em uso";
     case "maintenance": return "Manutenção";
     case "offline": return "Offline";
-    default: return "Desconhecido";
+    default: return "—";
   }
 };
 
@@ -59,88 +58,87 @@ export const TotemMachineCard = ({ machine, deviceMode, isViewOnly, colorScheme,
     }
     return machine.timeRemaining ?? 0;
   }, [isRunning, machine.runningSinceAt, machine.duration, machine.timeRemaining, tick]);
-  const colors = colorScheme === 'blue' 
-    ? { gradient: 'from-blue-500 to-blue-600', text: 'text-blue-600', border: 'border-blue-200 hover:border-blue-400', btn: 'bg-blue-600 hover:bg-blue-700' }
-    : { gradient: 'from-orange-500 to-orange-600', text: 'text-orange-600', border: 'border-orange-200 hover:border-orange-400', btn: 'bg-orange-600 hover:bg-orange-700' };
+
+  const colors = colorScheme === 'blue'
+    ? { gradient: 'from-blue-500 to-blue-600', text: 'text-blue-600', border: 'border-blue-300 hover:border-blue-500', btn: 'bg-blue-600' }
+    : { gradient: 'from-orange-500 to-orange-600', text: 'text-orange-600', border: 'border-orange-300 hover:border-orange-500', btn: 'bg-orange-600' };
 
   return (
-    <Card
-      className={`relative overflow-hidden transition-all duration-300 ${
-        isAvailable && !isViewOnly ? 'cursor-pointer' : isViewOnly ? 'cursor-default' : 'cursor-not-allowed'
-      } bg-white ${
-        isAvailable && !isViewOnly ? `hover:shadow-lg hover:scale-105 border ${colors.border}` : 'opacity-70 border border-gray-200'
-      } shadow-md rounded-lg h-full flex flex-col`}
+    <div
+      className={`relative rounded-lg border p-1.5 flex flex-col items-center justify-center transition-all duration-200 ${
+        isAvailable && !isViewOnly
+          ? `cursor-pointer bg-white hover:shadow-md hover:scale-[1.03] ${colors.border}`
+          : isViewOnly
+          ? 'cursor-default bg-white border-gray-200'
+          : 'cursor-not-allowed bg-gray-50 border-gray-200 opacity-60'
+      } h-full min-h-0 overflow-hidden`}
       onClick={() => isAvailable && onSelect(machine.id)}
     >
-      <div className="absolute top-2 right-2 z-10">
-        <div className={`w-3 h-3 rounded-full ${getStatusColor(machine.status)} shadow border border-white ${isRunning ? 'animate-pulse' : ''}`} />
+      {/* Status dot */}
+      <div className="absolute top-1 right-1">
+        <div className={`w-2.5 h-2.5 rounded-full ${getStatusColor(machine.status)} border border-white ${isRunning ? 'animate-pulse' : ''}`} />
       </div>
 
       {isMaintenance && (
-        <div className="absolute top-2 left-2 z-10">
-          <Wrench size={14} className="text-red-500" />
+        <div className="absolute top-1 left-1">
+          <Wrench size={10} className="text-red-500" />
         </div>
       )}
 
-      <CardHeader className={`text-center ${deviceMode === 'smartpos' ? 'p-3 pb-2' : 'p-2 pb-1'} flex-shrink-0`}>
-        <div className={`${deviceMode === 'smartpos' ? 'w-12 h-12' : 'w-10 h-10'} bg-gradient-to-br ${colors.gradient} rounded-full flex items-center justify-center mx-auto mb-1 shadow`}>
-          <IconComponent className="text-white" size={deviceMode === 'smartpos' ? 20 : 16} />
+      {/* Icon */}
+      <div className={`w-8 h-8 bg-gradient-to-br ${colors.gradient} rounded-full flex items-center justify-center mb-0.5 shrink-0`}>
+        <IconComponent className="text-white" size={14} />
+      </div>
+
+      {/* Name */}
+      <p className="text-[11px] font-bold text-gray-800 leading-tight text-center truncate w-full">
+        {machine.title}
+      </p>
+
+      {/* Price + Duration */}
+      <p className={`text-xs font-bold ${colors.text} leading-tight`}>
+        R$ {machine.price.toFixed(2).replace('.', ',')}
+      </p>
+      <p className="text-[9px] text-gray-500 flex items-center gap-0.5">
+        <Clock size={8} />{machine.duration}min
+      </p>
+
+      {/* Status badge */}
+      <Badge
+        variant="secondary"
+        className={`text-[9px] px-1.5 py-0 leading-relaxed mt-0.5 ${
+          isAvailable ? "bg-green-100 text-green-700"
+          : isRunning ? "bg-blue-100 text-blue-700"
+          : "bg-red-100 text-red-700"
+        }`}
+      >
+        {getStatusText(machine.status)}
+      </Badge>
+
+      {/* Hardware lost */}
+      {hardwareLost && (
+        <span className="flex items-center gap-0.5 text-[8px] text-amber-700 font-medium mt-0.5">
+          <WifiOff className="h-2 w-2 shrink-0" />Sem link
+        </span>
+      )}
+
+      {/* Running progress */}
+      {isRunning && displayRemaining > 0 && (
+        <div className="w-full mt-0.5 space-y-0.5">
+          <Progress
+            value={((machine.duration - displayRemaining) / machine.duration) * 100}
+            className="h-1"
+          />
+          <p className="text-[9px] text-gray-500 text-center">{displayRemaining}min</p>
         </div>
-        <CardTitle className={`${deviceMode === 'smartpos' ? 'text-sm' : 'text-xs'} font-bold text-gray-800 leading-tight`}>
-          {machine.title}
-        </CardTitle>
-      </CardHeader>
+      )}
 
-      <CardContent className={`flex-1 ${deviceMode === 'smartpos' ? 'p-3 pt-0' : 'p-2 pt-0'} flex flex-col justify-between`}>
-        <div className="text-center mb-2">
-          <div className="flex items-center justify-center space-x-1 mb-1">
-            <span className={`${deviceMode === 'smartpos' ? 'text-base' : 'text-sm'} font-bold ${colors.text}`}>
-              R$ {machine.price.toFixed(2).replace('.', ',')}
-            </span>
-          </div>
-          <p className="text-xs text-gray-600 flex items-center justify-center">
-            <Clock className="mr-1" size={10} />
-            {machine.duration}min
-          </p>
-        </div>
-
-        <div className="flex flex-col items-center justify-center mb-2 gap-1">
-          <Badge
-            variant={machine.status === "available" ? "default" : "secondary"}
-            className={`text-xs px-2 py-0.5 ${
-              machine.status === "available" ? "bg-green-100 text-green-700"
-              : machine.status === "running" ? "bg-blue-100 text-blue-700"
-              : "bg-red-100 text-red-700"
-            }`}
-          >
-            {getStatusText(machine.status)}
-          </Badge>
-          {hardwareLost && (
-            <span className="flex items-center gap-0.5 text-[10px] text-amber-700 font-medium">
-              <WifiOff className="h-3 w-3 shrink-0" />
-              Sem link — tempo continua
-            </span>
-          )}
-        </div>
-
-        {isRunning && displayRemaining > 0 && (
-          <div className="space-y-1 mb-2">
-            <Progress
-              value={((machine.duration - displayRemaining) / machine.duration) * 100}
-              className="h-1"
-            />
-            <div className="text-center text-xs text-gray-600">
-              {displayRemaining}min restantes
-            </div>
-          </div>
-        )}
-
-        {isAvailable && !isViewOnly && (
-          <div className={`w-full text-center text-xs ${colors.text} font-semibold ${deviceMode === 'smartpos' ? 'py-2' : 'py-1'}`}>
-            Toque para selecionar
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      {/* CTA */}
+      {isAvailable && !isViewOnly && (
+        <p className={`text-[9px] ${colors.text} font-semibold mt-0.5`}>
+          Toque para usar
+        </p>
+      )}
+    </div>
   );
 };

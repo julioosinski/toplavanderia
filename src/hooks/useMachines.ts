@@ -162,7 +162,8 @@ export const useMachines = (laundryId?: string | null) => {
 
     const payOv = postPaymentRunningRef.current.get(machine.id);
     if (payOv) {
-      if (Date.now() >= payOv.until) {
+      // Clear override if expired OR if DB already says available/maintenance (admin released)
+      if (Date.now() >= payOv.until || machine.status === 'available' || machine.status === 'maintenance') {
         postPaymentRunningRef.current.delete(machine.id);
       } else if (machineStatus !== 'maintenance') {
         machineStatus = 'running';

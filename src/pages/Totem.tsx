@@ -469,7 +469,7 @@ const Totem = () => {
 
   // Main screen
   return (
-    <div className={`h-screen bg-white flex flex-col ${deviceMode === 'smartpos' ? 'overflow-auto' : 'overflow-hidden'}`}>
+    <div className="h-screen bg-white flex flex-col overflow-hidden">
       <TotemHeader
         currentTime={currentTime}
         deviceMode={deviceMode}
@@ -480,43 +480,33 @@ const Totem = () => {
       />
 
       {isViewOnly && (
-        <div className="container mx-auto px-2 pb-2">
-          <div className="flex items-center gap-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
-            <Shield className="h-4 w-4 text-amber-600 flex-shrink-0" />
-            <p className="text-xs text-amber-700">Modo Visualização — Pagamentos disponíveis apenas no totem físico (Android)</p>
+        <div className="px-2 shrink-0">
+          <div className="flex items-center gap-1.5 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
+            <Shield className="h-3 w-3 flex-shrink-0" />
+            Modo Visualização — Pagamentos no totem físico
           </div>
-        </div>
-      )}
-
-      {!isViewOnly && (
-        <div className="container mx-auto px-2 pb-1">
-          <p className="text-center text-sm text-muted-foreground">Toque em uma máquina disponível para iniciar</p>
         </div>
       )}
 
       <TotemMachineGrid machines={machines} deviceMode={deviceMode} isViewOnly={isViewOnly} onSelect={handleMachineSelect} />
 
-      {/* Footer */}
-      <div className="container mx-auto px-2 py-2 text-center">
-        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-gray-500">
-          <div className="flex items-center space-x-2">
-            <Wifi size={12} />
-            <span className="text-xs cursor-pointer select-none" onClick={handleAdminAccess}>
-              Sistema Online — {currentLaundry?.name || 'Lavanderia'}
-            </span>
-            {adminClickCount >= 3 && (
-              <div className="flex space-x-0.5 ml-1">
-                {Array.from({ length: adminClickCount - 2 }, (_, i) => (
-                  <div key={i} className="w-1 h-1 rounded-full bg-gray-400 animate-scale-in" />
-                ))}
-              </div>
-            )}
-          </div>
-          <span className="text-[10px] text-gray-400 opacity-80 hover:opacity-100">
-            <Link to="/auth" className="underline-offset-2 hover:underline">
-              Área da equipe
-            </Link>
+      {/* Compact footer */}
+      <div className="px-2 py-1 text-center shrink-0">
+        <div className="flex items-center justify-center gap-2 text-gray-400 text-[10px]">
+          <Wifi size={10} />
+          <span className="cursor-pointer select-none" onClick={handleAdminAccess}>
+            {currentLaundry?.name || 'Lavanderia'}
           </span>
+          {adminClickCount >= 3 && (
+            <div className="flex space-x-0.5">
+              {Array.from({ length: adminClickCount - 2 }, (_, i) => (
+                <div key={i} className="w-1 h-1 rounded-full bg-gray-400 animate-scale-in" />
+              ))}
+            </div>
+          )}
+          <Link to="/auth" className="underline-offset-2 hover:underline text-gray-300">
+            Equipe
+          </Link>
         </div>
       </div>
 
