@@ -6,8 +6,8 @@ import {
   resolvedRelayPin,
 } from '@/lib/machineEsp32Sync';
 
-/** Margem alinhada ao totem (useMachines) após o fim do ciclo */
-const CYCLE_END_GRACE_MINUTES = 2;
+/** Alinhado a useMachines: 0 = liberar no servidor logo após o tempo do ciclo. */
+const CYCLE_END_GRACE_MINUTES = 0;
 
 /**
  * Libera máquinas cujo ciclo já expirou. Usa a Edge Function `update-machine-status`
@@ -78,7 +78,7 @@ export const useMachineAutoStatus = () => {
       }
     };
 
-    const interval = setInterval(checkMachineTimeouts, 45_000);
+    const interval = setInterval(checkMachineTimeouts, 15_000);
     checkMachineTimeouts();
 
     return () => clearInterval(interval);

@@ -42,7 +42,7 @@ export const TotemMachineCard = ({ machine, deviceMode, isViewOnly, colorScheme,
   const [tick, setTick] = useState(0);
   useEffect(() => {
     if (!isRunning || !machine.runningSinceAt) return;
-    const id = window.setInterval(() => setTick((t) => t + 1), 15000);
+    const id = window.setInterval(() => setTick((t) => t + 1), 1000);
     return () => window.clearInterval(id);
   }, [isRunning, machine.runningSinceAt]);
 
