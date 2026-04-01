@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { DollarSign, Receipt, Activity, CheckCircle, AlertTriangle } from "lucide-react";
 import { useLaundry } from "@/contexts/LaundryContext";
 import { supabase } from "@/integrations/supabase/client";
+import { computeMachineStatus, type Esp32StatusRow } from "@/lib/machineEsp32Sync";
 import { LaundryDashboardSelector } from "@/components/admin/LaundryDashboardSelector";
 import { MachineStatusGrid } from "@/components/admin/MachineStatusGrid";
 import { ConsolidatedMachineStatus } from "@/components/admin/ConsolidatedMachineStatus";
