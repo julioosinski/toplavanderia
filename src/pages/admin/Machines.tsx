@@ -12,10 +12,12 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { MachineDialog } from "@/components/admin/MachineDialog";
 import {
-  ESP32_HEARTBEAT_STALE_MINUTES,
   forceMachineReleased,
   forceMachineMaintenance,
-  resolvedRelayPin,
+  computeMachineStatus,
+  isEsp32Reachable,
+  ESP32_HEARTBEAT_STALE_MINUTES,
+  type Esp32StatusRow,
 } from "@/lib/machineEsp32Sync";
 import { ESP32ConfigurationDialog } from "@/components/admin/ESP32ConfigurationDialog";
 import { ESP32PendingApproval } from "@/components/admin/ESP32PendingApproval";
@@ -82,89 +84,21 @@ export default function Machines() {
         esp32Data?.filter((esp) => esp.laundry_id === currentLaundry.id) ?? [];
 
       const enrichedMachines = (machinesData || []).map((machine) => {
-        if (machine.status === 'maintenance') {
-          const esp32 = machine.esp32_id
-            ? esp32ForLaundry.find((esp) => esp.esp32_id === machine.esp32_id)
-            : undefined;
-          let esp32Online = false;
-          if (esp32) {
-            const lastHb = esp32.last_heartbeat ? new Date(esp32.last_heartbeat) : null;
-            const now = new Date();
-            const minAgo = lastHb ? (now.getTime() - lastHb.getTime()) / 60000 : 999999;
-            const recent = lastHb && minAgo < ESP32_HEARTBEAT_STALE_MINUTES;
-            esp32Online = Boolean(esp32.is_online && recent);
-          }
-          return {
-            ...machine,
-            realStatus: 'maintenance' as const,
-            esp32_online: esp32Online,
-            signal_strength: esp32?.signal_strength || null,
-            last_heartbeat: esp32?.last_heartbeat || null,
-            network_status: esp32?.network_status || 'unknown',
-          };
-        }
+        const esp32: Esp32StatusRow | undefined = machine.esp32_id
+          ? esp32ForLaundry.find((esp) => esp.esp32_id === machine.esp32_id) as Esp32StatusRow | undefined
+          : undefined;
 
-        if (!machine.esp32_id) {
-          return {
-            ...machine,
-            realStatus: machine.status,
-            esp32_online: false,
-            signal_strength: null,
-            last_heartbeat: null,
-            network_status: 'unknown',
-          };
-        }
-
-        const esp32 = esp32ForLaundry.find((esp) => esp.esp32_id === machine.esp32_id);
-        let realStatus: string = machine.status;
-        let esp32Online = false;
-
-        if (!esp32) {
-          return {
-            ...machine,
-            realStatus: 'offline',
-            esp32_online: false,
-            signal_strength: null,
-            last_heartbeat: null,
-            network_status: 'unknown',
-          };
-        }
-
-        const lastHeartbeat = esp32.last_heartbeat ? new Date(esp32.last_heartbeat) : null;
-        const now = new Date();
-        const minutesAgo = lastHeartbeat ? (now.getTime() - lastHeartbeat.getTime()) / 60000 : 999999;
-        const isRecent = lastHeartbeat && minutesAgo < ESP32_HEARTBEAT_STALE_MINUTES;
-        esp32Online = Boolean(esp32.is_online && isRecent);
-
-        if (!esp32Online) {
-          realStatus = 'offline';
-        } else {
-          let relayOn = false;
-          const relayStatus = esp32.relay_status as Record<string, unknown> | string | null;
-          if (typeof relayStatus === 'string') {
-            relayOn = relayStatus === 'on';
-          } else if (relayStatus && typeof relayStatus === 'object') {
-            const relayKey = `relay_${resolvedRelayPin(machine.relay_pin)}`;
-            const rs = relayStatus as Record<string, unknown>;
-            if (rs[relayKey] !== undefined) {
-              relayOn = rs[relayKey] === 'on';
-            } else if (rs.status && typeof rs.status === 'object') {
-              relayOn = (rs.status as Record<string, unknown>)[relayKey] === 'on';
-            } else if (rs.status !== undefined) {
-              relayOn = rs.status === 'on';
-            }
-          }
-          const dbRunning = machine.status === 'running';
-          realStatus = dbRunning || relayOn ? 'running' : 'available';
-        }
+        const staleMs = ESP32_HEARTBEAT_STALE_MINUTES * 60_000;
+        const computed = computeMachineStatus(machine as any, esp32, { staleMs });
+        const espReachable = isEsp32Reachable(esp32, staleMs);
 
         return {
           ...machine,
-          realStatus,
-          esp32_online: esp32Online,
-          signal_strength: esp32?.signal_strength || null,
+          realStatus: computed.status,
+          esp32_online: espReachable,
+          signal_strength: (esp32 as any)?.signal_strength || null,
           last_heartbeat: esp32?.last_heartbeat || null,
-          network_status: esp32?.network_status || 'unknown',
+          network_status: (esp32 as any)?.network_status || 'unknown',
         };
       });
 
