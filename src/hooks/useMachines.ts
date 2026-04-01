@@ -226,11 +226,22 @@ export const useMachines = (laundryId?: string | null) => {
           }
         }
 
-        let esp32Query = supabase
-          .from('esp32_status')
-          .select('esp32_id, ip_address, is_online, relay_status, last_heartbeat, laundry_id');
-        if (laundryId) esp32Query = esp32Query.eq('laundry_id', laundryId);
-        const { data: esp32Data } = await esp32Query;
+        // Try direct table read (authenticated admins); fallback to RPC for totem/anon
+        let esp32Data: any[] | null = null;
+        {
+          let esp32Query = supabase
+            .from('esp32_status')
+            .select('esp32_id, ip_address, is_online, relay_status, last_heartbeat, laundry_id');
+          if (laundryId) esp32Query = esp32Query.eq('laundry_id', laundryId);
+          const { data, error: esp32Err } = await esp32Query;
+          if (!esp32Err && data) {
+            esp32Data = data;
+          } else if (laundryId) {
+            // Fallback: use secure RPC (returns only esp32_id, is_online, last_heartbeat)
+            const { data: rpcData } = await supabase.rpc('get_esp32_heartbeats', { _laundry_id: laundryId });
+            esp32Data = rpcData || [];
+          }
+        }
 
         const esp32Map = new Map(esp32Data?.map(e => [e.esp32_id, e]) || []);
         const transformedMachines = machinesData?.map(m => transformMachine(m, esp32Map)) || [];

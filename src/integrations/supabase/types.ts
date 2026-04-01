@@ -810,6 +810,14 @@ export type Database = {
         Args: { _laundry_id: string }
         Returns: string
       }
+      get_esp32_heartbeats: {
+        Args: { _laundry_id: string }
+        Returns: {
+          esp32_id: string
+          is_online: boolean
+          last_heartbeat: string
+        }[]
+      }
       get_laundry_by_cnpj: {
         Args: { _cnpj: string }
         Returns: {
