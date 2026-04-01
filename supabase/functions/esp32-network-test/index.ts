@@ -184,7 +184,7 @@ async function testPing(host: string, port: number): Promise<{ success: boolean;
       throw new Error('Host not reachable');
     }
 
-  } catch (error) {
+  } catch (error: any) {
     return {
       success: false,
       responseTime: Date.now() - startTime,
