@@ -6,7 +6,12 @@ import { useToast } from '@/hooks/use-toast';
 import { Droplets, Wind } from 'lucide-react';
 import { useMachineAutoStatus } from './useMachineAutoStatus';
 import { nativeStorage, getItemWithTimeout } from '@/utils/nativeStorage';
-import { ESP32_TOTEM_HEARTBEAT_STALE_MS, resolvedRelayPin } from '@/lib/machineEsp32Sync';
+import {
+  ESP32_TOTEM_HEARTBEAT_STALE_MS,
+  resolvedRelayPin,
+  computeMachineStatus,
+  type Esp32StatusRow,
+} from '@/lib/machineEsp32Sync';
 
 export interface Machine {
   id: string;
