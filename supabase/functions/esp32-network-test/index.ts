@@ -149,7 +149,7 @@ async function testNodeConnectivity(node: any, testType: string): Promise<TestRe
       result.tests.throughput = throughputResult.throughput;
     }
 
-  } catch (error) {
+  } catch (error: any) {
     console.error(`Error testing node ${node.id}:`, error);
     result.lastError = error.message;
   }
