@@ -208,7 +208,7 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
     setIsProcessing(true);
 
     try {
-      const methodToUse =
+      let methodToUse =
         preferredMethod &&
         methodsStatus.find((s) => s.method === preferredMethod && s.available && s.connected)
           ? preferredMethod
