@@ -1,62 +1,48 @@
 
 
-## Plano: Corrigir PIX no PPC930 (Smart POS)
+## Plano: Mostrar ESP32s pendentes no diálogo de Nova Máquina + corrigir re-registro
 
-### Problema
+### Problemas identificados
 
-Quando o usuário toca "PIX" no Totem, o widget força `preferredMethod = 'pix'` (linha 49 do `UniversalPaymentWidget.tsx`). No hook `useUniversalPayment.ts`, isso cai no `case 'pix'` (linha 261) que chama `generatePixQR()` via HTTP — um endpoint que **não existe** no PPC930.
+**1. ESP32 rejeitado não pode ser re-aprovado**
+O `lavadora_02` foi rejeitado anteriormente e agora está online (`is_online: true`). Quando envia heartbeat com `auto_register: true`, o código na Edge Function retorna "Device rejected" e ignora. Não há como "resetar" um ESP32 rejeitado para `pending`.
 
-O código Java (`RealPayGoManager.java`) já suporta PIX nativamente via `PAGAMENTO_CARTEIRA_VIRTUAL`. O PayGo Integrado exibe o QR na própria tela do pinpad. Basta rotear para o `case 'paygo'` em vez do `case 'pix'`.
+**2. MachineDialog usa campo de texto livre para ESP32 ID**
+O campo "ESP32 ID" é um `<Input>` onde o admin digita manualmente. O admin não sabe quais ESP32s estão disponíveis. Deveria ser um `<Select>` mostrando ESP32s detectados (pendentes, aprovados sem máquina, ou online).
 
-### Correção
+### Correções
 
-**2 mudanças simples, sem alterar nada que já funciona:**
+#### 1. `src/components/admin/MachineDialog.tsx` — dropdown de ESP32s disponíveis
 
-#### 1. `src/hooks/useUniversalPayment.ts` — rotear PIX via PayGO nativo em smartPosMode
+Substituir o `<Input>` do ESP32 ID por um `<Select>` que busca da tabela `esp32_status`:
+- ESP32s com `registration_status = 'pending'` (novos, aguardando)
+- ESP32s com `registration_status = 'approved'` que não têm máquina vinculada (órfãos)
+- ESP32s com `registration_status = 'rejected'` mas `is_online = true` (re-conectados)
+- Manter opção "Outro (digitar manualmente)" para casos especiais
 
-No `processPayment`, antes do `switch`, interceptar: se `config.smartPosMode` e o tipo for `pix`, forçar `methodToUse = 'paygo'`. O `case 'paygo'` já passa `transaction.type` (`'pix'`) para o plugin nativo, que chama `PAGAMENTO_CARTEIRA_VIRTUAL`.
+Ao selecionar um ESP32 pendente/rejeitado, o sistema automaticamente atualiza o `registration_status` para `approved` ao salvar a máquina.
 
-```typescript
-// Após determinar methodToUse (linha ~215), adicionar:
-if (config.smartPosMode && transaction.type === 'pix') {
-  methodToUse = 'paygo';  // PIX handled natively by PayGo Integrado
-}
-```
+#### 2. `src/components/admin/MachineDialog.tsx` — aprovar ESP32 ao criar máquina
 
-#### 2. `src/components/payment/UniversalPaymentWidget.tsx` — não forçar method 'pix'
+No `handleSubmit`, após criar a máquina com sucesso, atualizar o `esp32_status` correspondente para `registration_status: 'approved'`.
 
-Linha 49: remover o override que força `preferredMethod = 'pix'`. O hook agora roteia corretamente baseado no `transaction.type`.
+#### 3. `supabase/functions/esp32-monitor/index.ts` — permitir re-registro de rejeitados
 
-```typescript
-// De:
-const method: PaymentMethod | undefined = type === 'pix' ? 'pix' : undefined;
-// Para:
-const method: PaymentMethod | undefined = undefined;
-```
-
-### Fluxo corrigido
-
-```text
-Usuário toca "PIX"
-  → Widget: processPayment({ type: 'pix' }, undefined)
-  → Hook: smartPosMode + type=pix → methodToUse = 'paygo'
-  → case 'paygo': processPaygoPayment({ paymentType: 'pix', ... })
-  → Plugin nativo: PayGOPlugin.java → RealPayGoManager
-  → Java: PAGAMENTO_CARTEIRA_VIRTUAL
-  → PayGo Integrado exibe QR no PPC930
-  → Cliente paga → resultado volta ao React
-```
+Quando um ESP32 rejeitado envia heartbeat com `auto_register: true`, em vez de bloquear, atualizar para `pending` novamente. Isso permite que o admin re-aprove.
 
 ### Arquivos editados
 
 | Arquivo | Mudança |
 |---|---|
-| `src/hooks/useUniversalPayment.ts` | Adicionar interceptação smartPosMode+pix → paygo |
-| `src/components/payment/UniversalPaymentWidget.tsx` | Remover override de method para 'pix' |
+| `src/components/admin/MachineDialog.tsx` | ESP32 ID vira Select com ESP32s disponíveis; aprova ESP32 ao criar máquina |
+| `supabase/functions/esp32-monitor/index.ts` | ESP32 rejeitado volta a `pending` quando re-conecta com `auto_register` |
 
-### Impacto
+### Fluxo corrigido
 
-- Crédito e Débito continuam funcionando exatamente como antes
-- PIX agora passa pelo mesmo caminho nativo (PayGo Integrado → PPC930)
-- Nenhuma mudança no Java — o `RealPayGoManager` já trata PIX corretamente
+```text
+ESP32 novo conecta → heartbeat com auto_register → inserido como "pending"
+ESP32 rejeitado re-conecta → heartbeat com auto_register → atualizado para "pending"
+Admin clica "Nova Máquina" → Select mostra ESP32s pendentes/órfãos
+Admin seleciona ESP32, preenche dados, salva → máquina criada + ESP32 aprovado
+```
 
