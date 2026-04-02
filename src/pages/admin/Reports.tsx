@@ -11,8 +11,8 @@ export default function Reports() {
     return (
       <div className="space-y-6 animate-in fade-in duration-500">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Relatórios</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Relatórios</h1>
+          <p className="text-sm text-muted-foreground">
             Visão consolidada de todas as lavanderias. Para relatórios por unidade, selecione uma lavanderia no
             menu superior.
           </p>
@@ -26,8 +26,8 @@ export default function Reports() {
     <LaundryGuard>
       <div className="space-y-6 animate-in fade-in duration-500">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Relatórios</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Relatórios</h1>
+          <p className="text-sm text-muted-foreground">
             {isSuperAdmin
               ? "Análises e relatórios consolidados de todas as lavanderias"
               : "Análises e relatórios da sua lavanderia"}
