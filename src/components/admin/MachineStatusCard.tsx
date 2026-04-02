@@ -69,9 +69,9 @@ export const MachineStatusCard = ({ machine, onClick }: MachineStatusCardProps) 
         <div className={`w-3 h-3 rounded-full ${getStatusColor(machine.status)} shadow border-2 border-background`} />
       </div>
 
-      <CardHeader className="text-center p-4 pb-2 flex-shrink-0">
+      <CardHeader className="text-center p-3 sm:p-4 pb-2 flex-shrink-0">
         <div
-          className={`w-12 h-12 bg-gradient-to-br ${
+          className={`w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br ${
             colorScheme === "blue"
               ? "from-blue-500 to-blue-600"
               : "from-orange-500 to-orange-600"
@@ -82,7 +82,7 @@ export const MachineStatusCard = ({ machine, onClick }: MachineStatusCardProps) 
         <CardTitle className="text-sm font-bold leading-tight">{machine.name}</CardTitle>
       </CardHeader>
 
-      <CardContent className="flex-1 p-4 pt-0 flex flex-col justify-between">
+      <CardContent className="flex-1 p-3 sm:p-4 pt-0 flex flex-col justify-between">
         <div className="text-center mb-3">
           <div className="flex items-center justify-center space-x-1 mb-1">
             <span className={`text-base font-bold ${colorScheme === "blue" ? "text-blue-600" : "text-orange-600"}`}>

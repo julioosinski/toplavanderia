@@ -208,9 +208,9 @@ export const UserManagement = () => {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
             Gerenciar Usuários
             {users.length > 0 && (
               <Badge variant="secondary">
@@ -340,9 +340,9 @@ export const UserManagement = () => {
             </div>
           ) : (
             users.map((user) => (
-              <div
+                <div
                 key={user.id}
-                className="flex items-center justify-between p-4 border rounded-lg"
+                className="flex items-center justify-between p-3 sm:p-4 border rounded-lg gap-2"
               >
                 <div>
                   <h3 className="font-semibold">
