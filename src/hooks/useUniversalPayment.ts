@@ -214,6 +214,11 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
           ? preferredMethod
           : getBestAvailableMethod();
 
+      // Smart POS: PIX is handled natively by PayGo Integrado (no HTTP endpoint)
+      if (config.smartPosMode && transaction.type === 'pix' && methodToUse !== 'paygo') {
+        methodToUse = 'paygo';
+      }
+
       if (!methodToUse) {
         return {
           success: false,

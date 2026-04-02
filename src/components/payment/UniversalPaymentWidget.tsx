@@ -46,7 +46,7 @@ export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
       if (isProcessing || !hasAvailableMethods) return;
       setActiveType(type);
       try {
-        const method: PaymentMethod | undefined = type === 'pix' ? 'pix' : undefined;
+        const method: PaymentMethod | undefined = undefined;
         const result = await processPayment(
           {
             amount,
