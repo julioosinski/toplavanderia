@@ -1,53 +1,62 @@
 
 
-## Plano: Corrigir erros de build e restaurar pré-visualização
+## Plano: Corrigir PIX no PPC930 (Smart POS)
 
 ### Problema
 
-Dois problemas impedem o build:
+Quando o usuário toca "PIX" no Totem, o widget força `preferredMethod = 'pix'` (linha 49 do `UniversalPaymentWidget.tsx`). No hook `useUniversalPayment.ts`, isso cai no `case 'pix'` (linha 261) que chama `generatePixQR()` via HTTP — um endpoint que **não existe** no PPC930.
 
-1. **Vite não inicia** — `Failed to load native binding` no `@swc/core`. O pacote `@swc/core-linux-x64-gnu` não está no `package.json`, causando falha no ambiente Linux do Lovable.
+O código Java (`RealPayGoManager.java`) já suporta PIX nativamente via `PAGAMENTO_CARTEIRA_VIRTUAL`. O PayGo Integrado exibe o QR na própria tela do pinpad. Basta rotear para o `case 'paygo'` em vez do `case 'pix'`.
 
-2. **12 erros TypeScript nas Edge Functions** — Todas as funções usam `error.message` em blocos `catch`, mas o TypeScript (Deno strict) trata `error`/`e` como `unknown`. Precisa de cast para `(error as Error).message` ou `(e as Error).message`.
+### Correção
 
-### Solução
+**2 mudanças simples, sem alterar nada que já funciona:**
 
-#### 1. Adicionar dependências nativas no `package.json`
+#### 1. `src/hooks/useUniversalPayment.ts` — rotear PIX via PayGO nativo em smartPosMode
 
-Adicionar em `devDependencies`:
-- `@swc/core-linux-x64-gnu`: `"1.7.39"`
-- `@rollup/rollup-linux-x64-gnu`: `"^4.24.0"`
+No `processPayment`, antes do `switch`, interceptar: se `config.smartPosMode` e o tipo for `pix`, forçar `methodToUse = 'paygo'`. O `case 'paygo'` já passa `transaction.type` (`'pix'`) para o plugin nativo, que chama `PAGAMENTO_CARTEIRA_VIRTUAL`.
 
-Isso corrige o erro de binding nativo e restaura a pré-visualização.
+```typescript
+// Após determinar methodToUse (linha ~215), adicionar:
+if (config.smartPosMode && transaction.type === 'pix') {
+  methodToUse = 'paygo';  // PIX handled natively by PayGo Integrado
+}
+```
 
-#### 2. Corrigir `catch` blocks em 11 Edge Functions
+#### 2. `src/components/payment/UniversalPaymentWidget.tsx` — não forçar method 'pix'
 
-Cada `catch (error)` ou `catch (e)` que acessa `.message` precisa de cast. A função `esp32-health-check` já usa `catch (error: any)`, então não precisa de correção. As 11 restantes:
+Linha 49: remover o override que força `preferredMethod = 'pix'`. O hook agora roteia corretamente baseado no `transaction.type`.
 
-| Arquivo | Linha | Correção |
-|---|---|---|
-| `auto-release-machines/index.ts` | 86 | `catch (e)` → `catch (e: any)` |
-| `create-user/index.ts` | 165 | `catch (error)` → `catch (error: any)` |
-| `esp32-control/index.ts` | 68 | `catch (error)` → `catch (error: any)` |
-| `esp32-credit-release/index.ts` | 128 | `catch (error)` → `catch (error: any)` |
-| `esp32-load-balancer/index.ts` | 91 | `catch (error)` → `catch (error: any)` |
-| `esp32-monitor/index.ts` | 301 | `catch (error)` → `catch (error: any)` |
-| `esp32-network-test/index.ts` | 95, 152, 187 | 3 blocos `catch` → `catch (error: any)` |
-| `nfse-automation/index.ts` | 157 | `catch (error)` → `catch (error: any)` |
-| `totem-settings/index.ts` | 35 | `catch (error)` → `catch (error: any)` |
-| `transaction-webhook/index.ts` | TBD | `catch (error)` → `catch (error: any)` |
-| `update-machine-status/index.ts` | 100 | `catch (e)` → `catch (e: any)` |
+```typescript
+// De:
+const method: PaymentMethod | undefined = type === 'pix' ? 'pix' : undefined;
+// Para:
+const method: PaymentMethod | undefined = undefined;
+```
 
-#### 3. Arquivos editados
+### Fluxo corrigido
+
+```text
+Usuário toca "PIX"
+  → Widget: processPayment({ type: 'pix' }, undefined)
+  → Hook: smartPosMode + type=pix → methodToUse = 'paygo'
+  → case 'paygo': processPaygoPayment({ paymentType: 'pix', ... })
+  → Plugin nativo: PayGOPlugin.java → RealPayGoManager
+  → Java: PAGAMENTO_CARTEIRA_VIRTUAL
+  → PayGo Integrado exibe QR no PPC930
+  → Cliente paga → resultado volta ao React
+```
+
+### Arquivos editados
 
 | Arquivo | Mudança |
 |---|---|
-| `package.json` | Adicionar 2 dependências nativas em devDependencies |
-| 11 arquivos em `supabase/functions/` | Adicionar `: any` nos blocos catch |
+| `src/hooks/useUniversalPayment.ts` | Adicionar interceptação smartPosMode+pix → paygo |
+| `src/components/payment/UniversalPaymentWidget.tsx` | Remover override de method para 'pix' |
 
 ### Impacto
 
-- Restaura a pré-visualização do projeto (Vite volta a funcionar)
-- Elimina todos os 12 erros de TypeScript no build
-- Nenhuma mudança de lógica — apenas tipagem e dependências de runtime
+- Crédito e Débito continuam funcionando exatamente como antes
+- PIX agora passa pelo mesmo caminho nativo (PayGo Integrado → PPC930)
+- Nenhuma mudança no Java — o `RealPayGoManager` já trata PIX corretamente
 
