@@ -57,12 +57,13 @@ export default function Machines() {
   const [editingMachine, setEditingMachine] = useState<Machine | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const loadMachinesRef = useRef<() => Promise<void>>(async () => {});
+  const initialLoadDone = useRef(false);
 
   const loadMachines = async () => {
     if (!currentLaundry) return;
 
     try {
-      setLoading(true);
+      if (!initialLoadDone.current) setLoading(true);
       
       // Fetch machines with ESP32 status
       const { data: machinesData, error: machinesError } = await supabase
@@ -112,6 +113,7 @@ export default function Machines() {
       });
     } finally {
       setLoading(false);
+      initialLoadDone.current = true;
     }
   };
 
