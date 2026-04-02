@@ -208,11 +208,16 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
     setIsProcessing(true);
 
     try {
-      const methodToUse =
+      let methodToUse =
         preferredMethod &&
         methodsStatus.find((s) => s.method === preferredMethod && s.available && s.connected)
           ? preferredMethod
           : getBestAvailableMethod();
+
+      // Smart POS: PIX is handled natively by PayGo Integrado (no HTTP endpoint)
+      if (config.smartPosMode && transaction.type === 'pix' && methodToUse !== 'paygo') {
+        methodToUse = 'paygo';
+      }
 
       if (!methodToUse) {
         return {
