@@ -125,10 +125,10 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">Visão geral da lavanderia</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-sm text-muted-foreground">Visão geral da lavanderia</p>
         </div>
         <LaundryDashboardSelector />
       </div>
@@ -156,55 +156,55 @@ export default function Dashboard() {
       )}
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-                <DollarSign className="text-primary" size={24} />
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-center space-x-3 sm:space-x-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
+                <DollarSign className="text-primary" size={20} />
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Receita Total</p>
-                <p className="text-2xl font-bold">R$ {revenueStats.totalRevenue.toFixed(2)}</p>
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-muted-foreground truncate">Receita Total</p>
+                <p className="text-lg sm:text-2xl font-bold truncate">R$ {revenueStats.totalRevenue.toFixed(2)}</p>
               </div>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-                <Receipt className="text-primary" size={24} />
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-center space-x-3 sm:space-x-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
+                <Receipt className="text-primary" size={20} />
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Receita Mensal</p>
-                <p className="text-2xl font-bold">R$ {revenueStats.monthlyRevenue.toFixed(2)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-                <Activity className="text-primary" size={24} />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Transações Hoje</p>
-                <p className="text-2xl font-bold">{revenueStats.todayTransactions}</p>
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-muted-foreground truncate">Receita Mensal</p>
+                <p className="text-lg sm:text-2xl font-bold truncate">R$ {revenueStats.monthlyRevenue.toFixed(2)}</p>
               </div>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-                <CheckCircle className="text-primary" size={24} />
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-center space-x-3 sm:space-x-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
+                <Activity className="text-primary" size={20} />
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Disponíveis</p>
-                <p className="text-2xl font-bold">{machineStats.activeMachines} / {machineStats.totalMachines}</p>
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-muted-foreground truncate">Transações Hoje</p>
+                <p className="text-lg sm:text-2xl font-bold">{revenueStats.todayTransactions}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-center space-x-3 sm:space-x-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
+                <CheckCircle className="text-primary" size={20} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm text-muted-foreground truncate">Disponíveis</p>
+                <p className="text-lg sm:text-2xl font-bold">{machineStats.activeMachines} / {machineStats.totalMachines}</p>
               </div>
             </div>
           </CardContent>
