@@ -7,7 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useLaundry } from "@/contexts/LaundryContext";
-import { Plus, Edit } from "lucide-react";
+import { Plus, Edit, Wifi, WifiOff, Clock } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 interface Machine {
   id?: string;
@@ -23,6 +24,14 @@ interface Machine {
   relay_pin?: number;
 }
 
+interface ESP32Option {
+  esp32_id: string;
+  is_online: boolean;
+  registration_status: string | null;
+  device_name: string | null;
+  has_machine: boolean;
+}
+
 export interface MachineDialogProps {
   machine?: Machine | null;
   onSuccess?: () => void;
@@ -30,6 +39,8 @@ export interface MachineDialogProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
+
+const MANUAL_ENTRY_VALUE = '__manual__';
 
 export const MachineDialog = ({ 
   machine, 
@@ -47,6 +58,8 @@ export const MachineDialog = ({
 
   const [loading, setLoading] = useState(false);
   const [availableRelayPins, setAvailableRelayPins] = useState<number[]>([]);
+  const [esp32Options, setEsp32Options] = useState<ESP32Option[]>([]);
+  const [useManualEsp32, setUseManualEsp32] = useState(false);
   const [formData, setFormData] = useState<Machine>({
     name: "",
     type: "lavadora",
@@ -58,6 +71,57 @@ export const MachineDialog = ({
     esp32_id: "",
     relay_pin: 1
   });
+
+  // Fetch available ESP32s
+  useEffect(() => {
+    const fetchESP32s = async () => {
+      if (!currentLaundry?.id || !open) return;
+
+      // Get all ESP32s for this laundry
+      const { data: esp32s, error: esp32Error } = await supabase
+        .from('esp32_status')
+        .select('esp32_id, is_online, registration_status, device_name')
+        .eq('laundry_id', currentLaundry.id);
+
+      if (esp32Error) {
+        console.error('Error fetching ESP32s:', esp32Error);
+        return;
+      }
+
+      // Get ESP32 IDs that already have machines
+      const { data: machines, error: machError } = await supabase
+        .from('machines')
+        .select('esp32_id')
+        .eq('laundry_id', currentLaundry.id);
+
+      if (machError) {
+        console.error('Error fetching machines:', machError);
+        return;
+      }
+
+      const esp32sWithMachines = new Set(machines?.map(m => m.esp32_id).filter(Boolean) || []);
+
+      const options: ESP32Option[] = (esp32s || [])
+        .filter(e => {
+          // Show: pending, approved orphans, rejected but online
+          if (e.registration_status === 'pending') return true;
+          if (e.registration_status === 'approved') return true; // show all approved (can have multiple machines)
+          if (e.registration_status === 'rejected' && e.is_online) return true;
+          return false;
+        })
+        .map(e => ({
+          esp32_id: e.esp32_id,
+          is_online: e.is_online ?? false,
+          registration_status: e.registration_status,
+          device_name: e.device_name,
+          has_machine: esp32sWithMachines.has(e.esp32_id),
+        }));
+
+      setEsp32Options(options);
+    };
+
+    fetchESP32s();
+  }, [currentLaundry?.id, open]);
 
   // Buscar relay_pins disponíveis quando esp32_id mudar
   useEffect(() => {
@@ -78,7 +142,6 @@ export const MachineDialog = ({
         return;
       }
 
-      // Filtrar máquina atual se estiver editando
       const usedPins = data
         ?.filter(m => m.relay_pin && (!machine?.id || m.name !== machine.name))
         .map(m => m.relay_pin) || [];
@@ -96,8 +159,8 @@ export const MachineDialog = ({
         ...machine,
         cycle_time_minutes: machine.cycle_time_minutes || 40
       });
+      setUseManualEsp32(false);
     } else {
-      // Reset form quando não há máquina
       setFormData({
         name: "",
         type: "lavadora",
@@ -109,35 +172,50 @@ export const MachineDialog = ({
         esp32_id: "",
         relay_pin: 1
       });
+      setUseManualEsp32(false);
     }
   }, [machine, open]);
+
+  const handleEsp32Select = (value: string) => {
+    if (value === MANUAL_ENTRY_VALUE) {
+      setUseManualEsp32(true);
+      setFormData({ ...formData, esp32_id: '' });
+    } else {
+      setUseManualEsp32(false);
+      setFormData({ ...formData, esp32_id: value });
+    }
+  };
+
+  const getStatusBadge = (opt: ESP32Option) => {
+    if (opt.registration_status === 'pending') {
+      return <Badge variant="outline" className="ml-auto text-xs bg-yellow-500/10 text-yellow-600 border-yellow-500/30"><Clock className="h-3 w-3 mr-1" />Pendente</Badge>;
+    }
+    if (opt.registration_status === 'rejected') {
+      return <Badge variant="outline" className="ml-auto text-xs bg-orange-500/10 text-orange-600 border-orange-500/30">Rejeitado</Badge>;
+    }
+    if (!opt.has_machine) {
+      return <Badge variant="outline" className="ml-auto text-xs bg-blue-500/10 text-blue-600 border-blue-500/30">Órfão</Badge>;
+    }
+    return null;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!currentLaundry) {
-      toast({
-        title: "Erro",
-        description: "Nenhuma lavanderia selecionada",
-        variant: "destructive"
-      });
+      toast({ title: "Erro", description: "Nenhuma lavanderia selecionada", variant: "destructive" });
       return;
     }
 
-    // Validate esp32_id and relay_pin
     if (!formData.esp32_id || !formData.relay_pin) {
-      toast({
-        title: "Erro",
-        description: "ESP32 ID e Pino do Relé são obrigatórios",
-        variant: "destructive",
-      });
+      toast({ title: "Erro", description: "ESP32 ID e Pino do Relé são obrigatórios", variant: "destructive" });
       return;
     }
 
     setLoading(true);
 
     try {
-      // Check for conflicts (same esp32_id + relay_pin)
+      // Check for conflicts
       const { data: existingMachines, error: checkError } = await supabase
         .from("machines")
         .select("id, name, esp32_id, relay_pin")
@@ -147,7 +225,6 @@ export const MachineDialog = ({
 
       if (checkError) throw checkError;
 
-      // Filter out current machine if editing
       const conflicts = existingMachines?.filter(m => m.id !== machine?.id) || [];
       
       if (conflicts.length > 0) {
@@ -160,7 +237,6 @@ export const MachineDialog = ({
         return;
       }
 
-      // ✅ Mapear tipo para o formato do banco (washing/drying)
       const dbType = formData.type === 'lavadora' ? 'washing' : 'drying';
       const dataToSave = {
         name: formData.name,
@@ -176,49 +252,35 @@ export const MachineDialog = ({
       };
 
       if (machine?.id) {
-        // Update existing machine
         const { error } = await supabase
           .from('machines')
-          .update({
-            ...dataToSave,
-            updated_at: new Date().toISOString()
-          })
+          .update({ ...dataToSave, updated_at: new Date().toISOString() })
           .eq('id', machine.id);
-
         if (error) throw error;
-
-        toast({
-          title: "Máquina atualizada",
-          description: "As informações da máquina foram atualizadas com sucesso",
-        });
+        toast({ title: "Máquina atualizada", description: "As informações da máquina foram atualizadas com sucesso" });
       } else {
-        // Create new machine
         const { error } = await supabase
           .from('machines')
-          .insert([{
-            ...dataToSave,
-            status: 'available',
-            total_uses: 0,
-            total_revenue: 0
-          }]);
-
+          .insert([{ ...dataToSave, status: 'available', total_uses: 0, total_revenue: 0 }]);
         if (error) throw error;
+        toast({ title: "Máquina cadastrada", description: "Nova máquina foi cadastrada com sucesso" });
+      }
 
-        toast({
-          title: "Máquina cadastrada",
-          description: "Nova máquina foi cadastrada com sucesso",
-        });
+      // Auto-approve ESP32 if pending or rejected
+      const selectedOpt = esp32Options.find(o => o.esp32_id === formData.esp32_id);
+      if (selectedOpt && (selectedOpt.registration_status === 'pending' || selectedOpt.registration_status === 'rejected')) {
+        await supabase
+          .from('esp32_status')
+          .update({ registration_status: 'approved', updated_at: new Date().toISOString() })
+          .eq('esp32_id', formData.esp32_id)
+          .eq('laundry_id', currentLaundry.id);
       }
 
       setOpen(false);
       if (onSuccess) onSuccess();
     } catch (error) {
       console.error('Error saving machine:', error);
-      toast({
-        title: "Erro",
-        description: "Falha ao salvar máquina",
-        variant: "destructive"
-      });
+      toast({ title: "Erro", description: "Falha ao salvar máquina", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -235,6 +297,8 @@ export const MachineDialog = ({
       Nova Máquina
     </Button>
   );
+
+  const isEditingWithExistingEsp32 = !!machine?.esp32_id;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -293,17 +357,60 @@ export const MachineDialog = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="esp32_id">ESP32 ID *</Label>
-              <Input
-                id="esp32_id"
-                value={formData.esp32_id || ''}
-                onChange={(e) => setFormData({ ...formData, esp32_id: e.target.value })}
-                placeholder="Ex: main, Cj01, Cj02"
-                required
-                className="font-mono"
-              />
+              <Label htmlFor="esp32_id">ESP32 *</Label>
+              {useManualEsp32 ? (
+                <div className="flex gap-2">
+                  <Input
+                    id="esp32_id"
+                    value={formData.esp32_id || ''}
+                    onChange={(e) => setFormData({ ...formData, esp32_id: e.target.value })}
+                    placeholder="Digitar ID manualmente"
+                    required
+                    className="font-mono"
+                  />
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setUseManualEsp32(false)}>
+                    ✕
+                  </Button>
+                </div>
+              ) : (
+                <Select
+                  value={formData.esp32_id || ''}
+                  onValueChange={handleEsp32Select}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione um ESP32" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {esp32Options.map(opt => (
+                      <SelectItem key={opt.esp32_id} value={opt.esp32_id}>
+                        <div className="flex items-center gap-2 w-full">
+                          {opt.is_online ? (
+                            <Wifi className="h-3 w-3 text-green-500 shrink-0" />
+                          ) : (
+                            <WifiOff className="h-3 w-3 text-muted-foreground shrink-0" />
+                          )}
+                          <span className="font-mono text-sm">{opt.device_name || opt.esp32_id}</span>
+                          {getStatusBadge(opt)}
+                        </div>
+                      </SelectItem>
+                    ))}
+                    {esp32Options.length === 0 && (
+                      <SelectItem value={MANUAL_ENTRY_VALUE} className="text-muted-foreground">
+                        Nenhum ESP32 detectado — digitar manualmente
+                      </SelectItem>
+                    )}
+                    {esp32Options.length > 0 && (
+                      <SelectItem value={MANUAL_ENTRY_VALUE} className="text-muted-foreground">
+                        Outro (digitar manualmente)
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              )}
               <p className="text-xs text-muted-foreground">
-                Use o mesmo ID configurado no ESP32
+                {esp32Options.length > 0 
+                  ? `${esp32Options.filter(o => o.registration_status === 'pending').length} pendente(s) detectado(s)`
+                  : 'Nenhum ESP32 detectado na rede'}
               </p>
             </div>
 
@@ -322,7 +429,6 @@ export const MachineDialog = ({
                       Relay {pin}
                     </SelectItem>
                   ))}
-                  {/* Mostrar pin atual mesmo se usado (para edição) */}
                   {formData.relay_pin && !availableRelayPins.includes(formData.relay_pin) && (
                     <SelectItem value={String(formData.relay_pin)}>
                       Relay {formData.relay_pin} (atual)
