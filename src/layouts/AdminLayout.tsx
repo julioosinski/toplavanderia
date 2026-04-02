@@ -237,16 +237,16 @@ export default function AdminLayout() {
         <div className="flex-1 flex flex-col">
           {/* Header */}
           <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="flex h-16 items-center gap-4 px-6">
+            <div className="flex h-14 sm:h-16 items-center gap-2 sm:gap-4 px-3 sm:px-6">
               <SidebarTrigger />
-              <Link to="/">
+              <Link to="/" className="hidden sm:block">
                 <Button variant="ghost" size="icon" title="Início">
                   <Home className="h-4 w-4" />
                 </Button>
               </Link>
               
-              {/* Breadcrumbs */}
-              <nav className="flex items-center gap-2 text-sm text-muted-foreground" aria-label="Breadcrumb">
+              {/* Breadcrumbs - hidden on mobile */}
+              <nav className="hidden md:flex items-center gap-2 text-sm text-muted-foreground" aria-label="Breadcrumb">
                 {getBreadcrumbItems().map((item, index, arr) => (
                   <div key={item.path} className="flex items-center gap-2">
                     {index > 0 && <ChevronRight className="h-4 w-4 shrink-0" />}
@@ -264,12 +264,12 @@ export default function AdminLayout() {
               <div className="flex-1" />
               
               {/* Role Badge */}
-              <Badge variant={getRoleBadgeVariant() as any} className="hidden md:flex">
+              <Badge variant={getRoleBadgeVariant() as any} className="hidden lg:flex">
                 {getRoleLabel()}
               </Badge>
 
-              <div className="flex items-center gap-3">
-                <LaundrySelector />
+              <div className="flex items-center gap-1 sm:gap-3">
+                <div className="hidden sm:block"><LaundrySelector /></div>
                 <NotificationsWidget />
                 
                 <Button
@@ -319,7 +319,7 @@ export default function AdminLayout() {
           </header>
 
           {/* Main Content */}
-          <main className="flex-1 p-6 overflow-auto">
+          <main className="flex-1 p-3 sm:p-6 overflow-auto">
             <Outlet />
           </main>
         </div>

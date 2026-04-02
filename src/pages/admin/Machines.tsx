@@ -401,21 +401,22 @@ export default function Machines() {
   return (
     <LaundryGuard>
       <div className="space-y-6 animate-in fade-in duration-500">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Máquinas</h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Máquinas</h1>
+            <p className="text-sm text-muted-foreground">
               Gerencie todas as máquinas de lavar e secar
             </p>
           </div>
           <div className="flex gap-2">
             <ESP32ConfigurationDialog />
-            <Button onClick={() => {
+            <Button size="sm" className="sm:size-default" onClick={() => {
               setEditingMachine(null);
               setDialogOpen(true);
             }}>
-              <Plus className="mr-2 h-4 w-4" />
-              Nova Máquina
+              <Plus className="mr-1 sm:mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Nova Máquina</span>
+              <span className="sm:hidden">Nova</span>
             </Button>
           </div>
         </div>
