@@ -135,23 +135,23 @@ export default function ESP32Diagnostics() {
   return (
     <LaundryGuard>
       {loading ? (
-        <div className="container mx-auto p-6">
+        <div className="space-y-6">
           <div className="animate-pulse space-y-4">
             <div className="h-8 bg-muted rounded w-1/3"></div>
             <div className="h-64 bg-muted rounded"></div>
           </div>
         </div>
       ) : (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Diagnóstico ESP32</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Diagnóstico ESP32</h1>
         <p className="text-muted-foreground">
           ESP32s e máquinas vinculadas à unidade atual ({currentLaundry?.name ?? '—'})
         </p>
       </div>
 
       {/* Resumo Geral */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -288,7 +288,7 @@ export default function ESP32Diagnostics() {
                     <h4 className="text-sm font-medium text-muted-foreground">
                       Máquinas Vinculadas ({machines.length}):
                     </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {machines.map(machine => (
                         <div
                           key={machine.id}

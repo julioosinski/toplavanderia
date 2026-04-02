@@ -51,9 +51,9 @@ export const MachineStatusGrid = ({ machines, loading, onAfterMachineAction }: M
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold">Status das Máquinas</h2>
+          <h2 className="text-xl sm:text-2xl font-bold">Status das Máquinas</h2>
           <p className="text-sm text-muted-foreground">
             {stats.available} disponíveis • {stats.running} em uso • {stats.offline} offline
           </p>
@@ -81,7 +81,7 @@ export const MachineStatusGrid = ({ machines, loading, onAfterMachineAction }: M
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
               {washers.map((machine) => (
                 <MachineStatusCard
                   key={machine.id}
@@ -109,7 +109,7 @@ export const MachineStatusGrid = ({ machines, loading, onAfterMachineAction }: M
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
               {dryers.map((machine) => (
                 <MachineStatusCard
                   key={machine.id}

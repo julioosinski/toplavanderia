@@ -342,8 +342,8 @@ export const LaundryManagement = () => {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Gerenciar Lavanderias</CardTitle>
+      <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <CardTitle className="text-base sm:text-lg">Gerenciar Lavanderias</CardTitle>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button onClick={resetForm}>
@@ -564,7 +564,7 @@ export const LaundryManagement = () => {
           {laundries.map((laundry) => (
             <div
               key={laundry.id}
-              className="flex items-center justify-between p-4 border rounded-lg"
+              className="flex items-center justify-between p-3 sm:p-4 border rounded-lg gap-2"
             >
               <div>
                 <h3 className="font-semibold">{laundry.name}</h3>

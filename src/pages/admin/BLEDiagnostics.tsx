@@ -50,8 +50,8 @@ export default function BLEDiagnostics() {
     return (
       <div className="space-y-6 animate-in fade-in duration-500">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Bluetooth ESP32</h1>
-          <p className="text-muted-foreground">Diagnóstico e configuração via Bluetooth</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Bluetooth ESP32</h1>
+          <p className="text-sm text-muted-foreground">Diagnóstico e configuração via Bluetooth</p>
         </div>
         <Card>
           <CardContent className="p-8 text-center">
@@ -69,10 +69,10 @@ export default function BLEDiagnostics() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Bluetooth ESP32</h1>
-          <p className="text-muted-foreground">Diagnóstico e configuração via BLE</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Bluetooth ESP32</h1>
+          <p className="text-sm text-muted-foreground">Diagnóstico e configuração via BLE</p>
         </div>
         <Badge variant={state === "connected" ? "default" : "secondary"} className="text-sm">
           {state === "idle" && "Pronto"}
@@ -159,7 +159,7 @@ export default function BLEDiagnostics() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 <StatusItem
                   icon={esp32Status.wifi_connected ? <Wifi size={16} className="text-green-600" /> : <WifiOff size={16} className="text-red-500" />}
                   label="WiFi"
@@ -222,7 +222,7 @@ export default function BLEDiagnostics() {
               <CardDescription>Envie comandos diretamente ao ESP32 via Bluetooth</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <Button variant="outline" size="sm" onClick={() => sendCommand("status")}>
                   <RefreshCw className="mr-1 h-3 w-3" /> Status
                 </Button>
@@ -237,7 +237,7 @@ export default function BLEDiagnostics() {
                 </Button>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <Button variant="outline" size="sm" onClick={() => sendCommand("relay_2_on")}>
                   <Zap className="mr-1 h-3 w-3" /> Relé 2 ON
                 </Button>

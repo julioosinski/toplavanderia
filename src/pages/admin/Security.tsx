@@ -8,8 +8,8 @@ export default function Security() {
     <LaundryGuard>
     <div className="space-y-6 animate-in fade-in duration-500">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Segurança</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Segurança</h1>
+        <p className="text-sm text-muted-foreground">
           Auditoria e eventos de segurança
         </p>
       </div>

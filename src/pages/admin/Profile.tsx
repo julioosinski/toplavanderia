@@ -123,13 +123,13 @@ export default function Profile() {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Meu Perfil</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Meu Perfil</h1>
+        <p className="text-sm text-muted-foreground">
           Gerencie suas informações pessoais
         </p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-4 sm:gap-6 md:grid-cols-2">
         {/* Informações do Perfil */}
         <Card>
           <CardHeader>

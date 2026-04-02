@@ -82,7 +82,7 @@ export const ConsolidatedMachineStatus = ({
                     <Droplets size={16} className="text-blue-600" />
                     <h4 className="font-semibold text-sm">Lavadoras ({washers.length})</h4>
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
                     {washers.map((machine) => (
                       <MachineStatusCard
                         key={machine.id}
@@ -101,7 +101,7 @@ export const ConsolidatedMachineStatus = ({
                     <Wind size={16} className="text-orange-600" />
                     <h4 className="font-semibold text-sm">Secadoras ({dryers.length})</h4>
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
                     {dryers.map((machine) => (
                       <MachineStatusCard
                         key={machine.id}
