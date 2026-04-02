@@ -37,18 +37,21 @@ serve(async (req) => {
     }
 
     // Verificar se o usuário tem permissão (super_admin ou admin)
-    const { data: roles, error: roleError } = await supabaseAdmin
+    const { data: rolesData, error: roleError } = await supabaseAdmin
       .from('user_roles')
       .select('role, laundry_id')
       .eq('user_id', user.id)
-      .single()
 
-    if (roleError || !roles) {
+    if (roleError || !rolesData || rolesData.length === 0) {
       return new Response(
         JSON.stringify({ error: 'Usuário sem permissões' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+
+    // Usar a role de maior privilégio
+    const roleOrder = ['super_admin', 'admin', 'operator', 'user', 'totem_device']
+    const roles = rolesData.sort((a, b) => roleOrder.indexOf(a.role) - roleOrder.indexOf(b.role))[0]
 
     const isSuperAdmin = roles.role === 'super_admin'
     const isAdmin = roles.role === 'admin'
