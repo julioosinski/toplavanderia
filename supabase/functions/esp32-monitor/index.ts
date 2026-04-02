@@ -174,9 +174,24 @@ serve(async (req) => {
         }
 
         if (existing.registration_status === 'rejected') {
+          // Allow re-registration: reset to pending so admin can re-approve
+          console.log(`🔄 Rejected ESP32 ${heartbeatData.esp32_id} re-connecting, resetting to pending`);
+          await supabaseClient
+            .from('esp32_status')
+            .update({
+              registration_status: 'pending',
+              is_online: true,
+              last_heartbeat: new Date().toISOString(),
+              ip_address: heartbeatData.ip_address,
+              signal_strength: heartbeatData.signal_strength,
+              firmware_version: heartbeatData.firmware_version,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', existing.id);
+
           return new Response(JSON.stringify({
-            success: false, message: 'Device rejected',
-            status: 'rejected', next_interval: 300,
+            success: true, message: 'Re-registered as pending',
+            status: 'pending_approval', next_interval: 30,
           }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
       }
