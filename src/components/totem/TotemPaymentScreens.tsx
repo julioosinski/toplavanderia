@@ -6,6 +6,7 @@ import { CreditCard, CheckCircle, XCircle, Clock } from "lucide-react";
 import type { Machine } from "@/hooks/useMachines";
 import { UniversalPaymentWidget } from '@/components/payment/UniversalPaymentWidget';
 import { UniversalPaymentConfig } from '@/hooks/useUniversalPayment';
+import { TotemScreenBackBar } from '@/components/totem/TotemScreenBackBar';
 
 interface ProcessingScreenProps {
   onCancel: () => void;
@@ -15,7 +16,9 @@ interface ProcessingScreenProps {
 export const ProcessingScreen = ({ onCancel, variant = 'payment' }: ProcessingScreenProps) => {
   const isActivating = variant === 'activating';
   return (
-    <div className="h-screen flex items-center justify-center p-4 bg-white">
+    <div className="h-screen flex flex-col bg-white">
+      <TotemScreenBackBar onBack={onCancel} />
+      <div className="flex-1 flex items-center justify-center p-4">
       <div className="text-center space-y-4 max-w-sm w-full">
         <div className="w-14 h-14 bg-primary rounded-full flex items-center justify-center mx-auto animate-pulse">
           <CreditCard className="text-primary-foreground" size={22} />
@@ -30,8 +33,9 @@ export const ProcessingScreen = ({ onCancel, variant = 'payment' }: ProcessingSc
         </p>
         <Progress value={50} className="w-full h-2" />
         <Button onClick={onCancel} variant="outline" className="w-full">
-          {isActivating ? 'Voltar ao início' : 'Cancelar'}
+          {isActivating ? 'Voltar ao início' : 'Voltar'}
         </Button>
+      </div>
       </div>
     </div>
   );
@@ -56,7 +60,9 @@ export const ErrorScreen = ({ onRetry, onCancel }: ErrorScreenProps) => {
   }, [onCancel]);
 
   return (
-    <div className="h-screen flex items-center justify-center p-4 bg-white">
+    <div className="h-screen flex flex-col bg-white">
+      <TotemScreenBackBar onBack={onCancel} />
+      <div className="flex-1 flex items-center justify-center p-4">
       <div className="text-center space-y-4 max-w-sm w-full">
         <div className="w-14 h-14 bg-destructive rounded-full flex items-center justify-center mx-auto">
           <XCircle className="text-white" size={22} />
@@ -67,8 +73,9 @@ export const ErrorScreen = ({ onRetry, onCancel }: ErrorScreenProps) => {
         <Progress value={(30 - countdown) / 30 * 100} className="w-full h-2" />
         <div className="flex gap-2">
           <Button onClick={onRetry} className="flex-1">Tentar Novamente</Button>
-          <Button onClick={onCancel} variant="outline" className="flex-1">Cancelar</Button>
+          <Button onClick={onCancel} variant="outline" className="flex-1">Voltar</Button>
         </div>
+      </div>
       </div>
     </div>
   );
@@ -99,7 +106,9 @@ export const SuccessScreen = ({ machine, transactionData, onReset }: SuccessScre
   estimatedEnd.setMinutes(estimatedEnd.getMinutes() + (machine?.duration || 0));
 
   return (
-    <div className="h-screen flex items-center justify-center p-4 bg-white">
+    <div className="h-screen flex flex-col bg-white">
+      <TotemScreenBackBar onBack={onReset} />
+      <div className="flex-1 flex items-center justify-center p-4">
       <div className="text-center space-y-3 max-w-sm w-full">
         <div className="w-14 h-14 bg-green-500 rounded-full flex items-center justify-center mx-auto">
           <CheckCircle className="text-white" size={22} />
@@ -126,6 +135,7 @@ export const SuccessScreen = ({ machine, transactionData, onReset }: SuccessScre
         <p className="text-xs text-muted-foreground">Nova transação em {countdown}s</p>
         <Progress value={(SUCCESS_SCREEN_SECONDS - countdown) / SUCCESS_SCREEN_SECONDS * 100} className="w-full h-2" />
         <Button onClick={onReset} className="w-full">Nova Transação</Button>
+      </div>
       </div>
     </div>
   );
@@ -190,6 +200,7 @@ export const PaymentScreen = ({ machine, config, deviceMode, onSuccess, onError,
 
   return (
     <div className="h-screen flex flex-col bg-white">
+      <TotemScreenBackBar onBack={onCancel} />
       {/* Compact header with machine info */}
       <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white shrink-0">
         <div className="flex items-center gap-3">
@@ -220,13 +231,16 @@ export const PaymentScreen = ({ machine, config, deviceMode, onSuccess, onError,
             onCancel={onCancel}
             onPixQR={onPixQR}
             compactMode={deviceMode === 'smartpos'}
+            showFooterBack={false}
           />
         </div>
       </div>
 
-      {/* Cancel button pinned at bottom */}
+      {/* Voltar extra na área inferior (área de polegar) */}
       <div className="px-4 pb-3 shrink-0">
-        <Button onClick={onCancel} variant="outline" className="w-full">Cancelar</Button>
+        <Button onClick={onCancel} variant="outline" className="w-full h-12 text-base">
+          Voltar
+        </Button>
       </div>
     </div>
   );

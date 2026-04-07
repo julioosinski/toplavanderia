@@ -33,6 +33,7 @@ const getStatusText = (status: string) => {
 };
 
 export const TotemMachineCard = ({ machine, deviceMode, isViewOnly, colorScheme, onSelect }: TotemMachineCardProps) => {
+  const isSmart = deviceMode === 'smartpos';
   const IconComponent = machine.icon;
   const isAvailable = machine.status === "available";
   const isRunning = machine.status === "running";
@@ -65,9 +66,11 @@ export const TotemMachineCard = ({ machine, deviceMode, isViewOnly, colorScheme,
 
   return (
     <div
-      className={`relative rounded-lg border p-1.5 flex flex-col items-center justify-center transition-all duration-200 ${
+      className={`relative rounded-xl border flex flex-col items-center justify-center transition-all duration-200 ${
+        isSmart ? 'p-3 min-h-[148px]' : 'p-1.5'
+      } ${
         isAvailable && !isViewOnly
-          ? `cursor-pointer bg-white hover:shadow-md hover:scale-[1.03] ${colors.border}`
+          ? `cursor-pointer bg-white hover:shadow-md hover:scale-[1.02] ${colors.border}`
           : isViewOnly
           ? 'cursor-default bg-white border-gray-200'
           : 'cursor-not-allowed bg-gray-50 border-gray-200 opacity-60'
@@ -86,27 +89,27 @@ export const TotemMachineCard = ({ machine, deviceMode, isViewOnly, colorScheme,
       )}
 
       {/* Icon */}
-      <div className={`w-8 h-8 bg-gradient-to-br ${colors.gradient} rounded-full flex items-center justify-center mb-0.5 shrink-0`}>
-        <IconComponent className="text-white" size={14} />
+      <div className={`${isSmart ? 'w-14 h-14 mb-1' : 'w-8 h-8 mb-0.5'} bg-gradient-to-br ${colors.gradient} rounded-full flex items-center justify-center shrink-0`}>
+        <IconComponent className="text-white" size={isSmart ? 26 : 14} />
       </div>
 
       {/* Name */}
-      <p className="text-[11px] font-bold text-gray-800 leading-tight text-center truncate w-full">
+      <p className={`${isSmart ? 'text-sm' : 'text-[11px]'} font-bold text-gray-800 leading-tight text-center truncate w-full`}>
         {machine.title}
       </p>
 
       {/* Price + Duration */}
-      <p className={`text-xs font-bold ${colors.text} leading-tight`}>
+      <p className={`${isSmart ? 'text-lg' : 'text-xs'} font-bold ${colors.text} leading-tight`}>
         R$ {machine.price.toFixed(2).replace('.', ',')}
       </p>
-      <p className="text-[9px] text-gray-500 flex items-center gap-0.5">
-        <Clock size={8} />{machine.duration}min
+      <p className={`${isSmart ? 'text-xs' : 'text-[9px]'} text-gray-500 flex items-center gap-0.5`}>
+        <Clock size={isSmart ? 12 : 8} />{machine.duration}min
       </p>
 
       {/* Status badge */}
       <Badge
         variant="secondary"
-        className={`text-[9px] px-1.5 py-0 leading-relaxed mt-0.5 ${
+        className={`${isSmart ? 'text-[11px] px-2 py-0.5' : 'text-[9px] px-1.5 py-0'} leading-relaxed mt-0.5 ${
           isAvailable ? "bg-green-100 text-green-700"
           : isRunning ? "bg-blue-100 text-blue-700"
           : "bg-red-100 text-red-700"
@@ -135,7 +138,7 @@ export const TotemMachineCard = ({ machine, deviceMode, isViewOnly, colorScheme,
 
       {/* CTA */}
       {isAvailable && !isViewOnly && (
-        <p className={`text-[9px] ${colors.text} font-semibold mt-0.5`}>
+        <p className={`${isSmart ? 'text-xs' : 'text-[9px]'} ${colors.text} font-semibold mt-0.5`}>
           Toque para usar
         </p>
       )}

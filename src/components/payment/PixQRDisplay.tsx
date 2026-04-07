@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { QrCode, Copy, Clock, Smartphone, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import QRCodeLib from 'qrcode';
+import { TotemScreenBackBar } from '@/components/totem/TotemScreenBackBar';
 
 interface PixQRDisplayProps {
   /** Payload copia-e-cola (EMV); opcional se só houver imagem base64 */
@@ -68,7 +69,9 @@ export const PixQRDisplay: React.FC<PixQRDisplayProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-clean flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-clean flex flex-col">
+      <TotemScreenBackBar onBack={onCancel} />
+      <div className="flex-1 flex items-center justify-center p-4">
       <Card className="w-full max-w-md shadow-glow">
         <CardHeader className="text-center">
           <div className="w-16 h-16 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-4">
@@ -167,7 +170,7 @@ export const PixQRDisplay: React.FC<PixQRDisplayProps> = ({
               variant="outline" 
               className="flex-1"
             >
-              Cancelar
+              Voltar
             </Button>
             <Button 
               variant="secondary" 
@@ -184,6 +187,7 @@ export const PixQRDisplay: React.FC<PixQRDisplayProps> = ({
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 };

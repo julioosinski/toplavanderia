@@ -65,6 +65,45 @@ const SETTINGS_CACHE_PREFIX = 'system_settings_cache:';
 
 const settingsCacheKey = (laundryId: string) => `${SETTINGS_CACHE_PREFIX}${laundryId}`;
 
+const totemSettingsDefaults = (laundryId: string): SystemSettings => ({
+  id: `totem-${laundryId}`,
+  esp32_port: 80,
+  esp32_host: null,
+  enable_esp32_monitoring: true,
+  heartbeat_interval_seconds: 30,
+  max_offline_duration_minutes: 5,
+  signal_threshold_warning: -70,
+  esp32_configurations: [],
+  default_cycle_time: 40,
+  default_price: 5,
+  auto_mode: false,
+  paygo_enabled: false,
+  paygo_host: null,
+  paygo_port: 8080,
+  paygo_timeout: 30000,
+  paygo_retry_attempts: 3,
+  paygo_retry_delay: 2000,
+  paygo_automation_key: null,
+  paygo_cnpj_cpf: null,
+  paygo_provedor: null,
+  cielo_client_id: null,
+  cielo_access_token: null,
+  cielo_merchant_code: null,
+  cielo_environment: 'sandbox',
+  tef_config: null,
+  tef_terminal_id: null,
+  nfse_enabled: false,
+  company_cnpj: null,
+  company_name: null,
+  company_email: null,
+  wifi_ssid: null,
+  wifi_password: null,
+  notifications_enabled: true,
+  zapier_webhook_url: null,
+  created_at: new Date(0).toISOString(),
+  updated_at: new Date(0).toISOString(),
+});
+
 async function readCachedSettings(laundryId: string): Promise<SystemSettings | null> {
   try {
     const raw = await nativeStorage.getItem(settingsCacheKey(laundryId));
@@ -83,6 +122,26 @@ async function writeCachedSettings(laundryId: string, data: SystemSettings): Pro
     await nativeStorage.setItem(settingsCacheKey(laundryId), JSON.stringify(data));
   } catch (e) {
     console.warn('[useSystemSettings] cache write failed:', e);
+  }
+}
+
+async function fetchTotemSettingsViaRpc(laundryId: string): Promise<SystemSettings | null> {
+  try {
+    const { data, error } = await supabase.rpc('get_totem_settings', { _laundry_id: laundryId });
+    if (error || !data) return null;
+
+    const base = totemSettingsDefaults(laundryId);
+    const rpcData = data as Partial<SystemSettings>;
+    return {
+      ...base,
+      ...rpcData,
+      // keep deterministic synthetic id for cache/query stability
+      id: base.id,
+      updated_at: new Date().toISOString(),
+    };
+  } catch (e) {
+    console.warn('[useSystemSettings] RPC get_totem_settings failed:', e);
+    return null;
   }
 }
 
@@ -123,11 +182,23 @@ export const useSystemSettings = () => {
 
         if (error) {
           console.error('Error fetching system settings:', error);
+          // Public totem flow may not have direct SELECT due to RLS.
+          const rpcSettings = await fetchTotemSettingsViaRpc(currentLaundry.id);
+          if (rpcSettings) {
+            await writeCachedSettings(currentLaundry.id, rpcSettings);
+            return rpcSettings;
+          }
           throw error;
         }
 
         // Se não existir configuração para esta lavanderia, criar uma padrão
         if (!data) {
+          const rpcSettings = await fetchTotemSettingsViaRpc(currentLaundry.id);
+          if (rpcSettings) {
+            await writeCachedSettings(currentLaundry.id, rpcSettings);
+            return rpcSettings;
+          }
+
           const defaultSettings = {
             laundry_id: currentLaundry.id,
             esp32_port: 80,
@@ -174,9 +245,19 @@ export const useSystemSettings = () => {
       } catch (e) {
         if (e instanceof Error && e.message === 'system_settings_timeout') {
           console.warn('system_settings: timeout — usando cache local');
+          const rpcSettings = await fetchTotemSettingsViaRpc(currentLaundry.id);
+          if (rpcSettings) {
+            await writeCachedSettings(currentLaundry.id, rpcSettings);
+            return rpcSettings;
+          }
           return await readCachedSettings(currentLaundry.id);
         }
         console.error('system_settings: erro remoto — fallback para cache local', e);
+        const rpcSettings = await fetchTotemSettingsViaRpc(currentLaundry.id);
+        if (rpcSettings) {
+          await writeCachedSettings(currentLaundry.id, rpcSettings);
+          return rpcSettings;
+        }
         return await readCachedSettings(currentLaundry.id);
       }
     },

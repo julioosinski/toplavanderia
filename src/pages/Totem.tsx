@@ -22,6 +22,8 @@ import { TotemHeader } from "@/components/totem/TotemHeader";
 import { TotemMachineGrid } from "@/components/totem/TotemMachineGrid";
 import { TotemCNPJSetup } from "@/components/totem/TotemCNPJSetup";
 import { TotemReconfigureDialog } from "@/components/totem/TotemReconfigureDialog";
+import { TotemOperationSelect } from "@/components/totem/TotemOperationSelect";
+import { TotemScreenBackBar } from "@/components/totem/TotemScreenBackBar";
 import { ProcessingScreen, ErrorScreen, SuccessScreen, PaymentScreen } from "@/components/totem/TotemPaymentScreens";
 
 const Totem = () => {
@@ -42,9 +44,17 @@ const Totem = () => {
   const [logoTapCount, setLogoTapCount] = useState(0);
   const [showReconfigureDialog, setShowReconfigureDialog] = useState(false);
   const [forceCnpjSetup, setForceCnpjSetup] = useState(false);
+  const [selectedOperation, setSelectedOperation] = useState<"lavadora" | "secadora" | null>(null);
+  const [runtimePaymentOverrides, setRuntimePaymentOverrides] = useState<{
+    provider?: string;
+    cieloClientId?: string;
+    cieloAccessToken?: string;
+    cieloMerchantCode?: string;
+    cieloEnvironment?: string;
+  } | null>(null);
 
   const { mode: deviceMode, isPWA, canProcessPayments } = useDeviceMode();
-  const { settings: systemSettings, refetch: refetchSystemSettings, isLoading: systemSettingsLoading } = useSystemSettings();
+  const { settings: systemSettings, refetch: refetchSystemSettings } = useSystemSettings();
   const { toast } = useToast();
   const { currentLaundry, loading: laundryLoading, configureTotemByCNPJ } = useLaundry();
   const { disableSecurity, enableSecurity } = useKioskSecurity();
@@ -52,7 +62,7 @@ const Totem = () => {
   const { machines, loading, isOffline, updateMachineStatus, rememberRunningAfterPayment, refreshMachines } = useMachines(currentLaundry?.id);
   const refreshMachinesRef = useRef(refreshMachines);
   refreshMachinesRef.current = refreshMachines;
-  const { isNative, deviceInfo, isReady, enableKioskMode } = useCapacitorIntegration();
+  const { isNative, deviceInfo, isReady, enableKioskMode, exitApp } = useCapacitorIntegration();
 
   // Tablet/native flow: always ask CNPJ on app launch before showing machines.
   useEffect(() => {
@@ -80,11 +90,11 @@ const Totem = () => {
         ...paygoConfig,
         port: Number(paygoConfig.port) || 31735,
         // SmartPOS (Cielo terminal) defaults to Cielo to avoid accidental PayGO fallback.
-        provider: systemSettings?.paygo_provedor || (deviceMode === 'smartpos' ? 'cielo' : 'paygo'),
-        cieloClientId: systemSettings?.cielo_client_id || '',
-        cieloAccessToken: systemSettings?.cielo_access_token || '',
-        cieloMerchantCode: systemSettings?.cielo_merchant_code || '',
-        cieloEnvironment: systemSettings?.cielo_environment || 'sandbox',
+        provider: runtimePaymentOverrides?.provider || systemSettings?.paygo_provedor || (deviceMode === 'smartpos' ? 'cielo' : 'paygo'),
+        cieloClientId: runtimePaymentOverrides?.cieloClientId || systemSettings?.cielo_client_id || '',
+        cieloAccessToken: runtimePaymentOverrides?.cieloAccessToken || systemSettings?.cielo_access_token || '',
+        cieloMerchantCode: runtimePaymentOverrides?.cieloMerchantCode || systemSettings?.cielo_merchant_code || '',
+        cieloEnvironment: runtimePaymentOverrides?.cieloEnvironment || systemSettings?.cielo_environment || 'sandbox',
       },
       tef: {
         host: tefConfig.host,
@@ -95,9 +105,10 @@ const Totem = () => {
         retryDelay: tefConfig.retryDelay,
       },
       smartPosMode: deviceMode === 'smartpos',
-      provider: systemSettings?.paygo_provedor || (deviceMode === 'smartpos' ? 'cielo' : 'paygo'),
+      provider: runtimePaymentOverrides?.provider || systemSettings?.paygo_provedor || (deviceMode === 'smartpos' ? 'cielo' : 'paygo'),
     }),
-    [paygoConfig, tefConfig, deviceMode, systemSettings?.paygo_provedor,
+    [paygoConfig, tefConfig, deviceMode, runtimePaymentOverrides,
+     systemSettings?.paygo_provedor,
      systemSettings?.cielo_client_id, systemSettings?.cielo_access_token,
      systemSettings?.cielo_merchant_code, systemSettings?.cielo_environment]
   );
@@ -190,39 +201,101 @@ const Totem = () => {
     }
   }, [systemSettings]);
 
-  const handleMachineSelect = async (machineId: string) => {
-    if (!canProcessPayments) return;
-    const machine = machines.find(m => m.id === machineId);
-    if (!machine || machine.status !== "available") return;
+  const handleMachineSelect = useCallback(
+    (machineId: string) => {
+      if (!canProcessPayments) return;
+      const machine = machines.find((m) => m.id === machineId);
+      if (!machine || machine.status !== "available") return;
 
-    const provider = (systemSettings?.paygo_provedor || (deviceMode === 'smartpos' ? 'cielo' : 'paygo')).toLowerCase();
-    if (provider === 'cielo') {
+      const provider = (
+        systemSettings?.paygo_provedor || (deviceMode === "smartpos" ? "cielo" : "paygo")
+      ).toLowerCase();
       const hasCieloCreds = Boolean(
         systemSettings?.cielo_client_id?.trim() && systemSettings?.cielo_access_token?.trim()
       );
 
-      if (!hasCieloCreds) {
-        // Force a fresh fetch for current laundry before opening payment.
-        const refreshed = await refetchSystemSettings();
-        const refreshedSettings = refreshed.data;
-        const hasRefreshedCreds = Boolean(
-          refreshedSettings?.cielo_client_id?.trim() && refreshedSettings?.cielo_access_token?.trim()
-        );
+      // Transição imediata — antes o fluxo Cielo aguardava refetch/RPC e atrasava o setState.
+      setSelectedMachine(machine);
+      setPaymentStep("payment");
 
-        if (!hasRefreshedCreds) {
+      if (provider !== "cielo" || hasCieloCreds) {
+        return;
+      }
+
+      void (async () => {
+        try {
+          const byRefetch = await Promise.race([
+            refetchSystemSettings(),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("settings_sync_timeout")), 2500)
+            ),
+          ]).catch(() => null);
+
+          const refreshedSettings = byRefetch?.data;
+          let hasRefreshedCreds = Boolean(
+            refreshedSettings?.cielo_client_id?.trim() && refreshedSettings?.cielo_access_token?.trim()
+          );
+
+          if (!hasRefreshedCreds && currentLaundry?.id) {
+            const rpcResult = await Promise.race([
+              supabase.rpc("get_totem_settings", { _laundry_id: currentLaundry.id }),
+              new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error("rpc_sync_timeout")), 4000)
+              ),
+            ]);
+
+            if (rpcResult && typeof rpcResult === "object" && "data" in rpcResult) {
+              const data = (rpcResult as { data: Record<string, unknown> }).data;
+              hasRefreshedCreds = Boolean(
+                String(data?.cielo_client_id ?? "").trim() &&
+                  String(data?.cielo_access_token ?? "").trim()
+              );
+              if (hasRefreshedCreds) {
+                setRuntimePaymentOverrides({
+                  provider: String(data?.paygo_provedor ?? "cielo"),
+                  cieloClientId: String(data?.cielo_client_id ?? ""),
+                  cieloAccessToken: String(data?.cielo_access_token ?? ""),
+                  cieloMerchantCode: String(data?.cielo_merchant_code ?? ""),
+                  cieloEnvironment: String(data?.cielo_environment ?? "sandbox"),
+                });
+              }
+            }
+          }
+
+          if (!hasRefreshedCreds) {
+            setSelectedMachine(null);
+            setPaymentStep("select");
+            toast({
+              title: "Credenciais Cielo nao encontradas para esta lavanderia",
+              description: `Lavanderia atual: ${currentLaundry?.name || "N/D"}. Verifique no painel se o provider esta em Cielo e se o Client ID/Access Token foram salvos para este CNPJ.`,
+              variant: "destructive",
+            });
+          }
+        } catch {
+          setSelectedMachine(null);
+          setPaymentStep("select");
           toast({
-            title: "Credenciais Cielo ausentes nesta lavanderia",
-            description: "O tablet nao encontrou Client ID/Access Token para a lavanderia configurada. Salve as credenciais no painel para este CNPJ e sincronize novamente.",
+            title: "Falha ao sincronizar credenciais",
+            description:
+              "Nao foi possivel sincronizar em tempo habil. Verifique internet do tablet e tente novamente.",
             variant: "destructive",
           });
-          return;
         }
-      }
-    }
-
-    setSelectedMachine(machine);
-    setPaymentStep("payment");
-  };
+      })();
+    },
+    [
+      canProcessPayments,
+      machines,
+      systemSettings?.paygo_provedor,
+      systemSettings?.cielo_client_id,
+      systemSettings?.cielo_access_token,
+      deviceMode,
+      refetchSystemSettings,
+      currentLaundry?.id,
+      currentLaundry?.name,
+      toast,
+    ]
+  );
 
   /** Ao voltar à grade, puxar preços/status frescos (útil no tablet com Realtime instável) */
   useEffect(() => {
@@ -301,6 +374,7 @@ const Totem = () => {
     setPaymentStep("select");
     setTransactionData(null);
     setPixPaymentData(null);
+    setSelectedOperation(null);
   }, []);
 
   // Admin footer gesture (7 clicks)
@@ -439,7 +513,7 @@ const Totem = () => {
 
   // Loading: não bloquear pelo system_settings — no totem as configs PayGo/TEF já têm
   // defaults locais; a query de system_settings pode travar (RLS/rede) e deixaria a tela presa.
-  if (laundryLoading || loading || systemSettingsLoading) {
+  if (laundryLoading || loading) {
     return (
       <div className="min-h-screen bg-gradient-clean flex items-center justify-center">
         <div className="text-center space-y-4">
@@ -516,8 +590,23 @@ const Totem = () => {
   }
 
   const isViewOnly = isPWA;
+  const shouldShowOperationSelect = deviceMode === 'smartpos' && paymentStep === "select" && !selectedOperation;
 
   // Main screen
+  if (shouldShowOperationSelect) {
+    return (
+      <TotemOperationSelect
+        onChoose={(operation) => setSelectedOperation(operation)}
+        onBack={isNative ? () => void exitApp() : undefined}
+      />
+    );
+  }
+
+  const visibleMachines =
+    deviceMode === 'smartpos' && selectedOperation
+      ? machines.filter((m) => m.type === selectedOperation)
+      : machines;
+
   return (
     <div className="h-screen bg-white flex flex-col overflow-hidden">
       <TotemHeader
@@ -538,7 +627,28 @@ const Totem = () => {
         </div>
       )}
 
-      <TotemMachineGrid machines={machines} deviceMode={deviceMode} isViewOnly={isViewOnly} onSelect={handleMachineSelect} />
+      {deviceMode === 'smartpos' && selectedOperation && (
+        <div className="shrink-0">
+          <TotemScreenBackBar
+            onBack={() => setSelectedOperation(null)}
+            label="Voltar"
+          />
+          <p className="px-3 py-1.5 text-center text-xs text-gray-600 border-b border-gray-50">
+            Mostrando:{" "}
+            <span className="font-semibold text-gray-800">
+              {selectedOperation === "lavadora" ? "Lavadora" : "Secadora"}
+            </span>
+          </p>
+        </div>
+      )}
+
+      <TotemMachineGrid
+        machines={visibleMachines}
+        deviceMode={deviceMode}
+        isViewOnly={isViewOnly}
+        onSelect={handleMachineSelect}
+        operationFilter={selectedOperation}
+      />
 
       {/* Compact footer */}
       <div className="px-2 py-1 text-center shrink-0">

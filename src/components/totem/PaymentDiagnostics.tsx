@@ -1,59 +1,79 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Wifi, CheckCircle2, XCircle, Loader2, CreditCard, Cpu } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { CapacitorHttp } from '@capacitor/core';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
+import PayGO from '@/plugins/paygo';
+import { useLaundry } from '@/contexts/LaundryContext';
+import { useSystemSettings } from '@/hooks/useSystemSettings';
+import { useDeviceMode } from '@/hooks/useDeviceMode';
 
 export const PaymentDiagnostics = () => {
+  const { currentLaundry } = useLaundry();
+  const { settings } = useSystemSettings();
+  const { mode: deviceMode } = useDeviceMode();
   const [testing, setTesting] = useState(false);
   const [results, setResults] = useState<{
-    paygo: boolean | null;
-    pinpad: boolean | null;
+    gateway: boolean | null;
+    peripheral: boolean | null;
     esp32s: Record<string, boolean>;
   }>({
-    paygo: null,
-    pinpad: null,
-    esp32s: {}
+    gateway: null,
+    peripheral: null,
+    esp32s: {},
   });
 
-  const testPayGO = async () => {
-    try {
-      // Use edge function to get non-sensitive settings
-      const { data: result } = await supabase.functions.invoke('totem-settings', {
-        body: { laundry_id: null } // Will use default
-      });
-      const settings = result?.settings;
+  const paymentProvider = useMemo(
+    () => (settings?.paygo_provedor || (deviceMode === 'smartpos' ? 'cielo' : 'paygo')).toLowerCase(),
+    [settings?.paygo_provedor, deviceMode]
+  );
+  const gatewayBrand = paymentProvider === 'cielo' ? 'Cielo LIO' : 'PayGO';
 
+  /** Alinhado ao totem: integração real via plugin nativo; HTTP só para PayGO em ambiente web/dev. */
+  const testGateway = async (): Promise<boolean> => {
+    try {
       if (!settings?.paygo_enabled) {
         return false;
       }
 
+      if (Capacitor.isNativePlatform()) {
+        const result = await PayGO.testConnection({ provider: paymentProvider as 'paygo' | 'cielo' });
+        return result.success === true;
+      }
+
+      if (paymentProvider === 'cielo') {
+        return false;
+      }
+
+      const host = settings.paygo_host;
+      const port = settings.paygo_port;
+      if (!host || port == null) return false;
+
       const response = await CapacitorHttp.request({
-        url: `http://${settings.paygo_host}:${settings.paygo_port}/status`,
+        url: `http://${host}:${port}/status`,
         method: 'GET',
         connectTimeout: 5000,
-        readTimeout: 5000
+        readTimeout: 5000,
       });
 
       return response.status === 200;
     } catch (error) {
-      console.error('Erro teste PayGO:', error);
+      console.error('Erro teste integração de pagamento:', error);
       return false;
     }
   };
 
-  const testPinpad = async () => {
+  const testPeripheral = async (): Promise<boolean> => {
     try {
-      // @ts-ignore - PayGO plugin
-      if (!window.PayGO) return false;
-
-      // @ts-ignore
-      const result = await window.PayGO.detectPinpad();
+      if (!Capacitor.isNativePlatform()) {
+        return false;
+      }
+      const result = await PayGO.detectPinpad({ provider: paymentProvider as 'paygo' | 'cielo' });
       return result.detected === true;
     } catch (error) {
-      console.error('Erro teste Pinpad:', error);
+      console.error('Erro teste pinpad/terminal:', error);
       return false;
     }
   };
@@ -74,7 +94,7 @@ export const PaymentDiagnostics = () => {
             url: `http://${esp32.ip_address}/status`,
             method: 'GET',
             connectTimeout: 3000,
-            readTimeout: 3000
+            readTimeout: 3000,
           });
 
           results[esp32.esp32_id] = response.status === 200;
@@ -91,24 +111,32 @@ export const PaymentDiagnostics = () => {
   };
 
   const runAllTests = async () => {
+    if (!currentLaundry?.id) {
+      toast.error('Configure a lavanderia (CNPJ no totem) antes de diagnosticar.');
+      return;
+    }
+
     setTesting(true);
     toast.info('Iniciando diagnóstico...');
 
     try {
-      const [paygoResult, pinpadResult, esp32Results] = await Promise.all([
-        testPayGO(),
-        testPinpad(),
-        testESP32s()
+      const [gatewayResult, peripheralResult, esp32Results] = await Promise.all([
+        testGateway(),
+        testPeripheral(),
+        testESP32s(),
       ]);
 
       setResults({
-        paygo: paygoResult,
-        pinpad: pinpadResult,
-        esp32s: esp32Results
+        gateway: gatewayResult,
+        peripheral: peripheralResult,
+        esp32s: esp32Results,
       });
 
-      const allPassed = paygoResult && pinpadResult && Object.values(esp32Results).every(r => r);
-      
+      const allPassed =
+        gatewayResult &&
+        peripheralResult &&
+        Object.values(esp32Results).every((r) => r);
+
       if (allPassed) {
         toast.success('✅ Todos os testes passaram!');
       } else {
@@ -131,6 +159,9 @@ export const PaymentDiagnostics = () => {
     );
   };
 
+  const peripheralLabel =
+    paymentProvider === 'cielo' ? 'Terminal Cielo Smart / pinpad' : 'Pinpad PPC930';
+
   return (
     <Card className="w-full max-w-2xl mx-auto">
       <CardHeader>
@@ -140,11 +171,12 @@ export const PaymentDiagnostics = () => {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Button
-          onClick={runAllTests}
-          disabled={testing}
-          className="w-full"
-        >
+        {!currentLaundry?.id && (
+          <p className="text-sm text-muted-foreground">
+            Associe uma lavanderia ao totem para carregar o provedor de pagamento e executar os testes.
+          </p>
+        )}
+        <Button onClick={runAllTests} disabled={testing || !currentLaundry?.id} className="w-full">
           {testing ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -162,17 +194,23 @@ export const PaymentDiagnostics = () => {
           <div className="flex items-center justify-between p-3 bg-secondary rounded-lg">
             <div className="flex items-center gap-2">
               <CreditCard className="h-5 w-5" />
-              <span className="font-medium">PayGO</span>
+              <div className="flex flex-col">
+                <span className="font-medium">{gatewayBrand}</span>
+                <span className="text-xs text-muted-foreground">Integração de pagamento</span>
+              </div>
             </div>
-            <StatusIcon status={results.paygo} />
+            <StatusIcon status={results.gateway} />
           </div>
 
           <div className="flex items-center justify-between p-3 bg-secondary rounded-lg">
             <div className="flex items-center gap-2">
               <CreditCard className="h-5 w-5" />
-              <span className="font-medium">Pinpad PPC930</span>
+              <div className="flex flex-col">
+                <span className="font-medium">{peripheralLabel}</span>
+                <span className="text-xs text-muted-foreground">Detecção no dispositivo</span>
+              </div>
             </div>
-            <StatusIcon status={results.pinpad} />
+            <StatusIcon status={results.peripheral} />
           </div>
 
           <div className="space-y-2">

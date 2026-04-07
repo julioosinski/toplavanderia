@@ -1,9 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
+import { flushSync } from 'react-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useUniversalPayment, PaymentType, PaymentMethod, UniversalPaymentConfig } from '@/hooks/useUniversalPayment';
-import { Loader2, CreditCard, Smartphone, AlertCircle, QrCode } from 'lucide-react';
+import { Loader2, CreditCard, Wallet, AlertCircle, QrCode } from 'lucide-react';
 import { formatPayGOAmount } from '@/lib/paygoUtils';
 
 interface UniversalPaymentWidgetProps {
@@ -15,6 +16,8 @@ interface UniversalPaymentWidgetProps {
   onPixQR?: (data: any) => void;
   /** Smart POS: mantém o mesmo fluxo direto, apenas ajusta tamanhos */
   compactMode?: boolean;
+  /** Quando false, oculta o botão "Voltar" no rodapé (ex.: totem já tem barra superior). */
+  showFooterBack?: boolean;
 }
 
 export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
@@ -25,8 +28,10 @@ export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
   onCancel,
   onPixQR,
   compactMode = false,
+  showFooterBack = true,
 }) => {
-  const [activeType, setActiveType] = useState<PaymentType | null>(null);
+  /** Tipo em processamento — atualizado com flushSync para não “piscar” crédito/débito ao escolher PIX */
+  const [pendingChoice, setPendingChoice] = useState<PaymentType | null>(null);
 
   const {
     isProcessing,
@@ -36,15 +41,30 @@ export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
     getBestAvailableMethod,
   } = useUniversalPayment(config);
 
+  /** Provedor configurado no sistema (PayGO pinpad vs Cielo Smart/LIO via deep link) */
+  const paymentProvider = useMemo(
+    () => (config.provider || config.paygo.provider || 'paygo').toLowerCase(),
+    [config.provider, config.paygo.provider]
+  );
+  const gatewayBrand = paymentProvider === 'cielo' ? 'Cielo LIO' : 'PayGO';
+
   const hasAvailableMethods = methodsStatus.some((s) => s.available && s.method !== 'manual');
   const bestMethod = getBestAvailableMethod();
-  const bestLabel =
-    bestMethod === 'paygo' ? 'PayGO' : bestMethod === 'tef' ? 'TEF' : bestMethod === 'pix' ? 'PIX' : bestMethod || '';
+  const bestLabel = useMemo(() => {
+    if (!bestMethod) return '';
+    if (bestMethod === 'tef') return 'TEF';
+    if (bestMethod === 'pix') return 'PIX';
+    // Canal interno continua sendo "paygo" no hook; o rótulo segue o provedor real.
+    if (bestMethod === 'paygo') return gatewayBrand;
+    return bestMethod;
+  }, [bestMethod, gatewayBrand]);
 
   const payWithType = useCallback(
     async (type: PaymentType) => {
       if (isProcessing || !hasAvailableMethods) return;
-      setActiveType(type);
+      flushSync(() => {
+        setPendingChoice(type);
+      });
       try {
         const method: PaymentMethod | undefined = undefined;
         const result = await processPayment(
@@ -73,7 +93,7 @@ export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
       } catch (error) {
         onError(error instanceof Error ? error.message : 'Erro inesperado');
       } finally {
-        setActiveType(null);
+        setPendingChoice(null);
       }
     },
     [
@@ -91,11 +111,11 @@ export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
   const iconClass = compactMode ? 'h-6 w-6 mr-3' : 'h-5 w-5 mr-2';
 
   const waitingCard =
-    isProcessing && (activeType === 'credit' || activeType === 'debit');
-  const waitingPix = isProcessing && activeType === 'pix';
+    isProcessing && (pendingChoice === 'credit' || pendingChoice === 'debit');
+  const waitingPix = isProcessing && pendingChoice === 'pix';
 
   const typeButton = (type: PaymentType, label: string, Icon: typeof CreditCard) => {
-    const busy = isProcessing && activeType === type;
+    const busy = isProcessing && pendingChoice === type;
     return (
       <Button
         variant="outline"
@@ -114,7 +134,7 @@ export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
   };
 
   const cardFlowTitle =
-    activeType === 'credit' ? 'Crédito' : activeType === 'debit' ? 'Débito' : '';
+    pendingChoice === 'credit' ? 'Crédito' : pendingChoice === 'debit' ? 'Débito' : '';
 
   const inner = (
     <>
@@ -128,8 +148,9 @@ export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
               {cardFlowTitle ? `Pagamento — ${cardFlowTitle}` : 'Pagamento com cartão'}
             </p>
             <p className="text-sm text-muted-foreground max-w-sm">
-              Aproxime, insira ou passe o cartão na maquininha e aguarde a conclusão na pinpad.
-              Não é necessário escolher de novo na tela.
+              {paymentProvider === 'cielo'
+                ? 'Siga as instruções no terminal Cielo Smart. O pagamento é concluído na própria maquininha.'
+                : 'Aproxime, insira ou passe o cartão na maquininha e aguarde a conclusão na pinpad. Não é necessário escolher de novo na tela.'}
             </p>
           </div>
         </div>
@@ -139,20 +160,24 @@ export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
             className={`${compactMode ? 'h-14 w-14' : 'h-12 w-12'} animate-spin text-primary`}
           />
           <div className="space-y-2">
-            <p className={`font-semibold ${compactMode ? 'text-xl' : 'text-lg'}`}>PIX</p>
+            <p className={`font-semibold ${compactMode ? 'text-xl' : 'text-lg'}`}>Pagamento — PIX</p>
             <p className="text-sm text-muted-foreground max-w-sm">
-              Gerando o código PIX. Em seguida use a câmera do celular ou confirme no app do banco.
+              {paymentProvider === 'cielo' || compactMode
+                ? 'Use o terminal para concluir o PIX quando ele solicitar. Não é necessário escolher débito na tela.'
+                : 'Gerando o código PIX. Em seguida use a câmera do celular ou confirme no app do banco.'}
             </p>
           </div>
         </div>
       ) : (
         <div className="space-y-2">
           <p className="text-sm text-muted-foreground text-center">
-            Toque na forma de pagamento para iniciar na maquininha
+            {paymentProvider === 'cielo'
+              ? `Toque para iniciar o pagamento via ${gatewayBrand}`
+              : 'Toque na forma de pagamento para iniciar na maquininha'}
           </p>
           <div className={`grid grid-cols-1 ${compactMode ? 'gap-3' : 'gap-2'}`}>
             {typeButton('credit', 'Crédito', CreditCard)}
-            {typeButton('debit', 'Débito', Smartphone)}
+            {typeButton('debit', 'Débito', Wallet)}
             {typeButton('pix', 'PIX', QrCode)}
           </div>
         </div>
@@ -162,20 +187,24 @@ export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
         <div className="flex items-center gap-2 p-3 bg-destructive/10 rounded-lg">
           <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
           <p className="text-sm text-destructive">
-            Nenhum método de pagamento disponível. Verifique PayGo Integrado e o pinpad.
+            {paymentProvider === 'cielo'
+              ? `Nenhum método disponível. Verifique credenciais ${gatewayBrand} e o app do terminal Cielo.`
+              : 'Nenhum método de pagamento disponível. Verifique PayGo Integrado e o pinpad.'}
           </p>
         </div>
       )}
 
       {bestMethod && hasAvailableMethods && (
         <p className="text-xs text-center text-muted-foreground">
-          Método: <Badge variant="secondary">{bestLabel}</Badge>
+          Integração: <Badge variant="secondary">{bestLabel}</Badge>
         </p>
       )}
 
-      <Button variant="outline" onClick={onCancel} disabled={isProcessing} className="w-full">
-        Voltar
-      </Button>
+      {showFooterBack && (
+        <Button variant="outline" onClick={onCancel} disabled={isProcessing} className="w-full">
+          Voltar
+        </Button>
+      )}
 
       <Button
         variant="ghost"

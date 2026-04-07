@@ -224,128 +224,210 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
     return available.length > 0 ? available[0].method : null;
   }, [methodsStatus]);
 
-  // Process payment with automatic fallback
-  const processPayment = useCallback(async (
-    transaction: UniversalTransaction,
-    preferredMethod?: PaymentMethod
-  ): Promise<UniversalPaymentResponse> => {
-    setIsProcessing(true);
+  // Process payment — PIX e cartão não podem compartilhar o mesmo "melhor método" (evita PIX abrir como débito/cartão).
+  const processPayment = useCallback(
+    async (
+      transaction: UniversalTransaction,
+      preferredMethod?: PaymentMethod
+    ): Promise<UniversalPaymentResponse> => {
+      setIsProcessing(true);
+      let resolvedMethod: PaymentMethod | null = null;
 
-    try {
-      let methodToUse =
-        preferredMethod &&
-        methodsStatus.find((s) => s.method === preferredMethod && s.available && s.connected)
-          ? preferredMethod
-          : getBestAvailableMethod();
+      try {
+        const provider = (config.provider || config.paygo.provider || 'paygo').toLowerCase();
+        const pixNoTerminalNativo = provider === 'cielo' || config.smartPosMode === true;
 
-      // Smart POS: PIX is handled natively by PayGo Integrado (no HTTP endpoint)
-      if (config.smartPosMode && transaction.type === 'pix' && methodToUse !== 'paygo') {
-        methodToUse = 'paygo';
-      }
+        const isReady = (m: PaymentMethod) =>
+          Boolean(methodsStatus.find((s) => s.method === m && s.available && s.connected));
 
-      if (!methodToUse) {
-        return {
-          success: false,
-          method: 'manual',
-          error: 'Nenhum método de pagamento disponível'
+        const firstAvailable = (...order: PaymentMethod[]): PaymentMethod | null => {
+          for (const m of order) {
+            if (isReady(m)) return m;
+          }
+          return null;
         };
-      }
 
-      setCurrentMethod(methodToUse);
+        // --- PIX: Cielo / SmartPOS = sempre fluxo no terminal (plugin PayGO com paymentType pix), não QR HTTP na tela ---
+        if (transaction.type === 'pix') {
+          if (pixNoTerminalNativo) {
+            if (!isReady('paygo')) {
+              return {
+                success: false,
+                method: 'manual',
+                error: 'PIX no terminal indisponível. Verifique credenciais e o app no equipamento.',
+              };
+            }
+            resolvedMethod = 'paygo';
+            setCurrentMethod('paygo');
+            const result = await processPaygoPayment({
+              paymentType: 'pix',
+              amount: transaction.amount,
+              orderId: transaction.orderId || Date.now().toString(),
+            });
+            return {
+              success: result.success,
+              method: 'paygo',
+              data: result,
+              transactionId: result.transactionId,
+            };
+          }
 
-      switch (methodToUse) {
-        case 'paygo': {
-          const result = await processPaygoPayment({
-            paymentType: transaction.type as 'credit' | 'debit' | 'pix',
-            amount: transaction.amount,
-            orderId: transaction.orderId || Date.now().toString()
-          });
+          if (isReady('pix')) {
+            resolvedMethod = 'pix';
+            setCurrentMethod('pix');
+            const orderId = transaction.orderId || `ORDER_${Date.now()}`;
+            const pixResult = await generatePixQR({
+              amount: transaction.amount,
+              orderId,
+            });
+            return {
+              success: pixResult.success,
+              method: 'pix',
+              data: pixResult,
+              transactionId: pixResult.transactionId,
+              orderId: pixResult.orderId || orderId,
+              qrCode: pixResult.qrCode,
+              qrCodeBase64: pixResult.qrCodeBase64,
+              pixKey: pixResult.pixKey,
+              expiresIn: pixResult.expiresIn,
+              error: pixResult.success ? undefined : pixResult.errorMessage,
+            };
+          }
 
-          return {
-            success: result.success,
-            method: 'paygo',
-            data: result,
-            transactionId: result.transactionId
-          };
-        }
+          if (isReady('paygo')) {
+            resolvedMethod = 'paygo';
+            setCurrentMethod('paygo');
+            const result = await processPaygoPayment({
+              paymentType: 'pix',
+              amount: transaction.amount,
+              orderId: transaction.orderId || Date.now().toString(),
+            });
+            return {
+              success: result.success,
+              method: 'paygo',
+              data: result,
+              transactionId: result.transactionId,
+            };
+          }
 
-        case 'tef': {
-          const tefResult = await processTefPayment({
-            transacao: 'venda',
-            valor: (transaction.amount * 100).toString(),
-            cupomFiscal: transaction.orderId || Date.now().toString(),
-            dataHora: new Date().toISOString().slice(0, 19).replace('T', ' '),
-            estabelecimento: 'Top Lavanderia',
-            terminal: (config.tef.terminalId && config.tef.terminalId.trim()) || '001',
-          });
-
-          return {
-            success: tefResult?.retorno === '0',
-            method: 'tef',
-            data: tefResult,
-            transactionId: tefResult?.nsu
-          };
-        }
-
-        case 'pix': {
-          const orderId = transaction.orderId || `ORDER_${Date.now()}`;
-          const pixResult = await generatePixQR({
-            amount: transaction.amount,
-            orderId,
-          });
-
-          return {
-            success: pixResult.success,
-            method: 'pix',
-            data: pixResult,
-            transactionId: pixResult.transactionId,
-            orderId: pixResult.orderId || orderId,
-            qrCode: pixResult.qrCode,
-            qrCodeBase64: pixResult.qrCodeBase64,
-            pixKey: pixResult.pixKey,
-            expiresIn: pixResult.expiresIn,
-            error: pixResult.success ? undefined : pixResult.errorMessage,
-          };
-        }
-
-        default:
           return {
             success: false,
             method: 'manual',
-            error: 'Método de pagamento não suportado'
+            error: 'PIX indisponível. Verifique PayGO e a automação.',
           };
-      }
-    } catch (error) {
-      toast({
-        title: "Erro no Pagamento",
-        description: error instanceof Error ? error.message : "Erro desconhecido",
-        variant: "destructive"
-      });
+        }
 
-      return {
-        success: false,
-        method: currentMethod || 'manual',
-        error: error instanceof Error ? error.message : 'Erro desconhecido'
-      };
-    } finally {
-      setIsProcessing(false);
-      setCurrentMethod(null);
-    }
-  }, [
-    methodsStatus,
-    getBestAvailableMethod,
-    processPaygoPayment,
-    processTefPayment,
-    generatePixQR,
-    currentMethod,
-    toast,
-    config.tef.terminalId,
-  ]);
+        // --- Crédito / Débito: nunca usar canal HTTP de QR (método "pix") ---
+        let methodToUse: PaymentMethod | null =
+          preferredMethod && isReady(preferredMethod) ? preferredMethod : null;
+
+        if (!methodToUse) {
+          methodToUse = firstAvailable('paygo', 'tef');
+        }
+        if (!methodToUse) {
+          methodToUse = getBestAvailableMethod();
+        }
+        if (methodToUse === 'pix') {
+          methodToUse = firstAvailable('paygo', 'tef');
+        }
+
+        if (!methodToUse) {
+          return {
+            success: false,
+            method: 'manual',
+            error: 'Nenhum método de pagamento disponível para cartão.',
+          };
+        }
+
+        resolvedMethod = methodToUse;
+        setCurrentMethod(methodToUse);
+
+        switch (methodToUse) {
+          case 'paygo': {
+            const result = await processPaygoPayment({
+              paymentType: transaction.type as 'credit' | 'debit' | 'pix',
+              amount: transaction.amount,
+              orderId: transaction.orderId || Date.now().toString(),
+            });
+
+            return {
+              success: result.success,
+              method: 'paygo',
+              data: result,
+              transactionId: result.transactionId,
+            };
+          }
+
+          case 'tef': {
+            const tefResult = await processTefPayment({
+              transacao: 'venda',
+              valor: (transaction.amount * 100).toString(),
+              cupomFiscal: transaction.orderId || Date.now().toString(),
+              dataHora: new Date().toISOString().slice(0, 19).replace('T', ' '),
+              estabelecimento: 'Top Lavanderia',
+              terminal: (config.tef.terminalId && config.tef.terminalId.trim()) || '001',
+            });
+
+            return {
+              success: tefResult?.retorno === '0',
+              method: 'tef',
+              data: tefResult,
+              transactionId: tefResult?.nsu,
+            };
+          }
+
+          default:
+            return {
+              success: false,
+              method: 'manual',
+              error: 'Método de pagamento não suportado',
+            };
+        }
+      } catch (error) {
+        toast({
+          title: 'Erro no Pagamento',
+          description: error instanceof Error ? error.message : 'Erro desconhecido',
+          variant: 'destructive',
+        });
+
+        return {
+          success: false,
+          method: resolvedMethod || 'manual',
+          error: error instanceof Error ? error.message : 'Erro desconhecido',
+        };
+      } finally {
+        setIsProcessing(false);
+        setCurrentMethod(null);
+      }
+    },
+    [
+      methodsStatus,
+      getBestAvailableMethod,
+      processPaygoPayment,
+      processTefPayment,
+      generatePixQR,
+      toast,
+      config.tef.terminalId,
+      config.provider,
+      config.paygo.provider,
+      config.smartPosMode,
+    ]
+  );
 
   useEffect(() => {
-    void testAllMethods();
-    const interval = setInterval(() => void testAllMethods(), 30000);
-    return () => clearInterval(interval);
+    let cancelled = false;
+    // Deixa a tela de pagamento pintar antes de testar pinpad/TEF/PIX (trabalho nativo/HTTP).
+    const first = window.setTimeout(() => {
+      if (!cancelled) void testAllMethods();
+    }, 0);
+    const interval = setInterval(() => {
+      if (!cancelled) void testAllMethods();
+    }, 30000);
+    return () => {
+      cancelled = true;
+      clearTimeout(first);
+      clearInterval(interval);
+    };
   }, [testAllMethods]);
 
   return {
