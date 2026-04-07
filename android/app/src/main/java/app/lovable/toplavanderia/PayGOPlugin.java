@@ -50,18 +50,29 @@ public class PayGOPlugin extends Plugin {
     @PluginMethod
     public void initialize(PluginCall call) {
         try {
-            // RealPayGoManager auto-initializes in constructor, but we can
-            // re-initialize if config changed
-            if (!payGoManager.isInitialized()) {
-                // Try re-creating the manager
+            String provider = call.getString("provider", "paygo");
+
+            // Configure Cielo if credentials provided
+            String cieloClientId = call.getString("cieloClientId", "");
+            String cieloAccessToken = call.getString("cieloAccessToken", "");
+            String cieloMerchantCode = call.getString("cieloMerchantCode", "");
+            String cieloEnvironment = call.getString("cieloEnvironment", "sandbox");
+            if (cieloClientId != null && !cieloClientId.isEmpty()) {
+                cieloManager.configure(cieloClientId, cieloAccessToken, cieloMerchantCode, cieloEnvironment);
+            }
+
+            PaymentManager manager = getManager(provider);
+
+            if (!manager.isInitialized() && "paygo".equalsIgnoreCase(provider)) {
                 payGoManager = new RealPayGoManager(getContext());
+                manager = payGoManager;
             }
 
             JSObject result = new JSObject();
-            result.put("success", payGoManager.isInitialized());
-            result.put("message", payGoManager.isInitialized()
-                    ? "PayGO inicializado com sucesso (InterfaceAutomacao)"
-                    : "Falha ao inicializar PayGO. Verifique se o PayGo Integrado está instalado.");
+            result.put("success", manager.isInitialized());
+            result.put("message", manager.isInitialized()
+                    ? "Provedor " + provider + " inicializado com sucesso"
+                    : "Falha ao inicializar provedor " + provider);
             call.resolve(result);
 
         } catch (Exception e) {
@@ -75,12 +86,14 @@ public class PayGOPlugin extends Plugin {
 
     @PluginMethod
     public void checkStatus(PluginCall call) {
+        String provider = call.getString("provider", "paygo");
+        PaymentManager manager = getManager(provider);
         JSObject result = new JSObject();
-        result.put("initialized", payGoManager.isInitialized());
-        result.put("processing", payGoManager.isProcessing());
-        result.put("connected", payGoManager.isInitialized());
-        result.put("online", payGoManager.isInitialized());
-        result.put("status", payGoManager.isInitialized() ? "ready" : "not_initialized");
+        result.put("initialized", manager.isInitialized());
+        result.put("processing", manager.isProcessing());
+        result.put("connected", manager.isInitialized());
+        result.put("online", manager.isInitialized());
+        result.put("status", manager.isInitialized() ? "ready" : "not_initialized");
         call.resolve(result);
     }
 
