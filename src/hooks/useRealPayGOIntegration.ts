@@ -69,6 +69,10 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
     timestamp: Date.now()
   });
   const [lastError, setLastError] = useState<string | null>(null);
+  const isCieloProvider = (config.provider || 'paygo').toLowerCase() === 'cielo';
+  const hasCieloCredentials = Boolean(
+    config.cieloClientId?.trim() && config.cieloAccessToken?.trim()
+  );
 
   // Validate config on mount
   const isConfigValid = useMemo(() => {
@@ -78,7 +82,7 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
   // Check connection status
   const checkStatus = useCallback(async (): Promise<boolean> => {
     try {
-      const result = await PayGO.checkStatus();
+      const result = await PayGO.checkStatus({ provider: (config.provider as 'paygo' | 'cielo') || 'paygo' });
       setIsConnected(result.connected);
       return result.connected;
     } catch (error) {
@@ -87,12 +91,12 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
       setIsConnected(false);
       return false;
     }
-  }, []);
+  }, [config.provider]);
 
   // Get detailed system status
   const getSystemStatus = useCallback(async (): Promise<PayGOSystemStatus | null> => {
     try {
-      const status = await PayGO.getSystemStatus();
+      const status = await PayGO.getSystemStatus({ provider: (config.provider as 'paygo' | 'cielo') || 'paygo' });
       // No nativo, usbDeviceDetected usa lista fixa de VIDs; pinpad ainda pode funcionar pelo PayGo Integrado.
       const enhancedStatus = {
         ...status,
@@ -108,11 +112,21 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
       setLastError(errorMsg);
       return null;
     }
-  }, []);
+  }, [config.provider]);
 
   // Initialize PayGO
   const initialize = useCallback(async (options?: { silent?: boolean }): Promise<boolean> => {
     if (!isConfigValid) return false;
+
+    if (isCieloProvider && !hasCieloCredentials) {
+      const msg = 'Credenciais Cielo pendentes (Client ID / Access Token)';
+      setLastError(msg);
+      // During startup, avoid noisy errors while settings are still loading.
+      if (!options?.silent) {
+        toast.error(msg);
+      }
+      return false;
+    }
 
     try {
       setLastError(null);
@@ -131,7 +145,7 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
       if (result.success) {
         setIsInitialized(true);
         if (!options?.silent) {
-          toast.success('PayGO inicializado com sucesso');
+          toast.success(config.provider === 'cielo' ? 'Cielo inicializado com sucesso' : 'PayGO inicializado com sucesso');
         }
         await getSystemStatus();
         return true;
@@ -139,27 +153,27 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
         const errorMsg = result.message;
         setLastError(errorMsg);
         if (!options?.silent) {
-          toast.error(`Falha ao inicializar PayGO: ${errorMsg}`);
+          toast.error(config.provider === 'cielo' ? `Falha ao inicializar Cielo: ${errorMsg}` : `Falha ao inicializar PayGO: ${errorMsg}`);
         }
         return false;
       }
     } catch (error) {
-      const errorMsg = handlePayGOError(error, 'Erro ao inicializar PayGO');
+      const errorMsg = handlePayGOError(error, config.provider === 'cielo' ? 'Erro ao inicializar Cielo' : 'Erro ao inicializar PayGO');
       setLastError(errorMsg);
       return false;
     }
-  }, [config, isConfigValid, getSystemStatus]);
+  }, [config, isConfigValid, getSystemStatus, isCieloProvider, hasCieloCredentials]);
 
   // Test PayGO connection (silent: sem toast — uso em polling / teste automático)
   const testConnection = useCallback(async (options?: { silent?: boolean }): Promise<boolean> => {
     const silent = options?.silent === true;
     try {
-      const result = await PayGO.testConnection();
+      const result = await PayGO.testConnection({ provider: (config.provider as 'paygo' | 'cielo') || 'paygo' });
       setIsConnected(result.success);
 
       if (!silent) {
         if (result.success) {
-          toast.success('Teste de conexão PayGO bem-sucedido');
+          toast.success(config.provider === 'cielo' ? 'Teste de conexão Cielo bem-sucedido' : 'Teste de conexão PayGO bem-sucedido');
         } else {
           toast.error(`Falha no teste: ${result.message}`);
         }
@@ -172,7 +186,7 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
       }
       return false;
     }
-  }, []);
+  }, [config.provider]);
 
   // Process payment
   const processPayment = useCallback(async (transaction: PayGOTransaction): Promise<PayGOPaymentResult> => {
@@ -271,7 +285,7 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
   // Detect pinpad device
   const detectPinpad = useCallback(async () => {
     try {
-      const result = await PayGO.detectPinpad();
+      const result = await PayGO.detectPinpad({ provider: (config.provider as 'paygo' | 'cielo') || 'paygo' });
       
       if (result.detected) {
         toast.success(
@@ -292,15 +306,15 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
         error: errorMsg
       };
     }
-  }, []);
+  }, [config.provider]);
 
   // Auto-initialize on mount
   useEffect(() => {
     if (isConfigValid) {
-      initialize();
+      void initialize({ silent: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConfigValid]);
+  }, [isConfigValid, isCieloProvider, hasCieloCredentials]);
 
   // Periodic status check
   useEffect(() => {

@@ -9,6 +9,8 @@
     <queries>
         <package android:name="br.com.setis.clientepaygoweb.cert" />
         <package android:name="br.com.setis.clientepaygoweb" />
+        <!-- Cielo Smart UriApp (Deep Link integration) -->
+        <package android:name="com.ads.lio.uriappclient" />
     </queries>
 
     <application
@@ -20,6 +22,10 @@
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security_config">
+        <!-- Required metadata for Cielo Smart Deep Link integration -->
+        <meta-data
+            android:name="cs_integration_type"
+            android:value="uri" />
 
         <!-- MAIN ACTIVITY - Capacitor BridgeActivity (React WebView) -->
         <activity
@@ -64,6 +70,20 @@
             android:exported="false"
             android:name="app.lovable.toplavanderia.SimpleMainActivity"
             android:theme="@style/AppTheme" />
+
+        <!-- Receives Cielo callback: order://response -->
+        <activity
+            android:name="app.lovable.toplavanderia.CieloResponseActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="order" android:host="response" />
+            </intent-filter>
+        </activity>
 
         <!-- Provider required for Capacitor and file sharing -->
         <provider

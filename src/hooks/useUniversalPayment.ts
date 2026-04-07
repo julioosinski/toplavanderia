@@ -114,6 +114,28 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
   const testAllMethods = useCallback(
     async (options?: { interactive?: boolean }) => {
       const silent = options?.interactive !== true;
+      const provider = (config.provider || config.paygo.provider || 'paygo').toLowerCase();
+
+      // Cielo mode: Smart terminal does checkout itself (no external pinpad/TEF dependency).
+      if (provider === 'cielo') {
+        try {
+          const cieloReady = await testPaygoConnection({ silent });
+          setMethodsStatus([
+            { method: 'paygo', available: cieloReady, connected: cieloReady, priority: 1, lastTest: new Date(), error: cieloReady ? undefined : 'Cielo não inicializado' },
+            { method: 'tef', available: false, connected: false, priority: 2, error: 'TEF desabilitado no modo Cielo' },
+            { method: 'pix', available: cieloReady, connected: cieloReady, priority: 3, lastTest: new Date(), error: cieloReady ? undefined : 'PIX via Cielo indisponível' },
+            { method: 'manual', available: true, connected: true, priority: 4 },
+          ]);
+        } catch {
+          setMethodsStatus([
+            { method: 'paygo', available: false, connected: false, priority: 1, lastTest: new Date(), error: 'Cielo não inicializado' },
+            { method: 'tef', available: false, connected: false, priority: 2, error: 'TEF desabilitado no modo Cielo' },
+            { method: 'pix', available: false, connected: false, priority: 3, lastTest: new Date(), error: 'PIX via Cielo indisponível' },
+            { method: 'manual', available: true, connected: true, priority: 4 },
+          ]);
+        }
+        return;
+      }
 
       if (config.smartPosMode) {
         setMethodsStatus([
@@ -191,7 +213,7 @@ export const useUniversalPayment = (config: UniversalPaymentConfig) => {
 
       setMethodsStatus(newStatus);
     },
-    [config.smartPosMode, testPaygoConnection, testTefConnection]
+    [config.provider, config.paygo.provider, config.smartPosMode, testPaygoConnection, testTefConnection]
   );
 
   // Find best available method

@@ -4,12 +4,21 @@ export interface PayGOPlugin {
   /**
    * Inicializar PayGo com configurações
    */
-  initialize(config?: { host: string; port: number; automationKey: string }): Promise<PayGOResult>;
+  initialize(config?: {
+    host: string;
+    port: number;
+    automationKey: string;
+    provider?: 'paygo' | 'cielo';
+    cieloClientId?: string;
+    cieloAccessToken?: string;
+    cieloMerchantCode?: string;
+    cieloEnvironment?: 'sandbox' | 'production';
+  }): Promise<PayGOResult>;
   
   /**
    * Verificar status do PayGo
    */
-  checkStatus(): Promise<PayGOStatus>;
+  checkStatus(options?: { provider?: 'paygo' | 'cielo' }): Promise<PayGOStatus>;
   
   /**
    * Processar pagamento
@@ -29,22 +38,22 @@ export interface PayGOPlugin {
   /**
    * Testar PayGo
    */
-  testPayGo(): Promise<PayGOResult>;
+  testPayGo(options?: { provider?: 'paygo' | 'cielo' }): Promise<PayGOResult>;
   
   /**
    * Obter status do sistema
    */
-  getSystemStatus(): Promise<PayGOSystemStatus>;
+  getSystemStatus(options?: { provider?: 'paygo' | 'cielo' }): Promise<PayGOSystemStatus>;
   
   /**
    * Testar conexão
    */
-  testConnection(): Promise<PayGOResult>;
+  testConnection(options?: { provider?: 'paygo' | 'cielo' }): Promise<PayGOResult>;
   
   /**
    * Detectar pinpad PPC930
    */
-  detectPinpad(): Promise<PinpadDetection>;
+  detectPinpad(options?: { provider?: 'paygo' | 'cielo' }): Promise<PinpadDetection>;
   
   /**
    * Adicionar listener para eventos de pagamento

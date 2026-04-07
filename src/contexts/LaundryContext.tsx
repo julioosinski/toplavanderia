@@ -347,6 +347,15 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       ]).catch((storageErr) => {
         console.warn('[LaundryContext] Falha/timeout ao salvar totem_laundry_id, seguindo com estado em memória:', storageErr);
       });
+
+      // Keep admin-selected laundry in sync with totem selection.
+      // This avoids reverting to a previously selected "main" laundry after app resume/payment callback.
+      await Promise.race([
+        nativeStorage.setItem('selectedLaundryId', data.id),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('storage_timeout')), 4000)),
+      ]).catch((storageErr) => {
+        console.warn('[LaundryContext] Falha/timeout ao salvar selectedLaundryId:', storageErr);
+      });
       setCurrentLaundry(laundryData);
       setLaundries([laundryData]);
       debugLaundry('[LaundryContext] Totem configurado com sucesso:', laundryData.name);

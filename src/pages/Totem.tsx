@@ -41,9 +41,10 @@ const Totem = () => {
   // Logo tap gesture for reconfiguration
   const [logoTapCount, setLogoTapCount] = useState(0);
   const [showReconfigureDialog, setShowReconfigureDialog] = useState(false);
+  const [forceCnpjSetup, setForceCnpjSetup] = useState(false);
 
   const { mode: deviceMode, isPWA, canProcessPayments } = useDeviceMode();
-  const { settings: systemSettings } = useSystemSettings();
+  const { settings: systemSettings, refetch: refetchSystemSettings, isLoading: systemSettingsLoading } = useSystemSettings();
   const { toast } = useToast();
   const { currentLaundry, loading: laundryLoading, configureTotemByCNPJ } = useLaundry();
   const { disableSecurity, enableSecurity } = useKioskSecurity();
@@ -52,6 +53,13 @@ const Totem = () => {
   const refreshMachinesRef = useRef(refreshMachines);
   refreshMachinesRef.current = refreshMachines;
   const { isNative, deviceInfo, isReady, enableKioskMode } = useCapacitorIntegration();
+
+  // Tablet/native flow: always ask CNPJ on app launch before showing machines.
+  useEffect(() => {
+    if (isNative) {
+      setForceCnpjSetup(true);
+    }
+  }, [isNative]);
 
   // Configs
   const [tefConfig, setTefConfig] = useState({
@@ -71,7 +79,8 @@ const Totem = () => {
       paygo: {
         ...paygoConfig,
         port: Number(paygoConfig.port) || 31735,
-        provider: systemSettings?.paygo_provedor || 'paygo',
+        // SmartPOS (Cielo terminal) defaults to Cielo to avoid accidental PayGO fallback.
+        provider: systemSettings?.paygo_provedor || (deviceMode === 'smartpos' ? 'cielo' : 'paygo'),
         cieloClientId: systemSettings?.cielo_client_id || '',
         cieloAccessToken: systemSettings?.cielo_access_token || '',
         cieloMerchantCode: systemSettings?.cielo_merchant_code || '',
@@ -86,7 +95,7 @@ const Totem = () => {
         retryDelay: tefConfig.retryDelay,
       },
       smartPosMode: deviceMode === 'smartpos',
-      provider: systemSettings?.paygo_provedor || 'paygo',
+      provider: systemSettings?.paygo_provedor || (deviceMode === 'smartpos' ? 'cielo' : 'paygo'),
     }),
     [paygoConfig, tefConfig, deviceMode, systemSettings?.paygo_provedor,
      systemSettings?.cielo_client_id, systemSettings?.cielo_access_token,
@@ -181,13 +190,38 @@ const Totem = () => {
     }
   }, [systemSettings]);
 
-  const handleMachineSelect = (machineId: string) => {
+  const handleMachineSelect = async (machineId: string) => {
     if (!canProcessPayments) return;
     const machine = machines.find(m => m.id === machineId);
-    if (machine && machine.status === "available") {
-      setSelectedMachine(machine);
-      setPaymentStep("payment");
+    if (!machine || machine.status !== "available") return;
+
+    const provider = (systemSettings?.paygo_provedor || (deviceMode === 'smartpos' ? 'cielo' : 'paygo')).toLowerCase();
+    if (provider === 'cielo') {
+      const hasCieloCreds = Boolean(
+        systemSettings?.cielo_client_id?.trim() && systemSettings?.cielo_access_token?.trim()
+      );
+
+      if (!hasCieloCreds) {
+        // Force a fresh fetch for current laundry before opening payment.
+        const refreshed = await refetchSystemSettings();
+        const refreshedSettings = refreshed.data;
+        const hasRefreshedCreds = Boolean(
+          refreshedSettings?.cielo_client_id?.trim() && refreshedSettings?.cielo_access_token?.trim()
+        );
+
+        if (!hasRefreshedCreds) {
+          toast({
+            title: "Credenciais Cielo ausentes nesta lavanderia",
+            description: "O tablet nao encontrou Client ID/Access Token para a lavanderia configurada. Salve as credenciais no painel para este CNPJ e sincronize novamente.",
+            variant: "destructive",
+          });
+          return;
+        }
+      }
     }
+
+    setSelectedMachine(machine);
+    setPaymentStep("payment");
   };
 
   /** Ao voltar à grade, puxar preços/status frescos (útil no tablet com Realtime instável) */
@@ -391,13 +425,21 @@ const Totem = () => {
   }
 
   // CNPJ Setup (no laundry configured or loading timeout)
-  if (!currentLaundry && (!laundryLoading || loadingTimeout)) {
-    return <TotemCNPJSetup onConfigure={configureTotemByCNPJ} />;
+  if ((forceCnpjSetup || !currentLaundry) && (!laundryLoading || loadingTimeout)) {
+    return (
+      <TotemCNPJSetup
+        onConfigure={async (cnpj) => {
+          const ok = await configureTotemByCNPJ(cnpj);
+          if (ok) setForceCnpjSetup(false);
+          return ok;
+        }}
+      />
+    );
   }
 
   // Loading: não bloquear pelo system_settings — no totem as configs PayGo/TEF já têm
   // defaults locais; a query de system_settings pode travar (RLS/rede) e deixaria a tela presa.
-  if (laundryLoading || loading) {
+  if (laundryLoading || loading || systemSettingsLoading) {
     return (
       <div className="min-h-screen bg-gradient-clean flex items-center justify-center">
         <div className="text-center space-y-4">

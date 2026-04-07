@@ -115,12 +115,7 @@ dependencies {
         implementation 'org.apache.commons:commons-lang3:3.9'
         implementation 'com.google.code.gson:gson:2.10.1'
 
-        // Cielo LIO SDK v2.5.4 - Integração de pagamentos Cielo
-        implementation(name: 'order-manager-2.5.4', ext: 'aar')
-        implementation(name: 'event-tracker-1.0.0', ext: 'aar')
-        implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.9.20'
-        implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0'
-        implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0'
+        // Cielo integration via Deep Link (UriApp) does not require SDK AAR dependencies
     
     // Capacitor
     implementation project(':capacitor-android')

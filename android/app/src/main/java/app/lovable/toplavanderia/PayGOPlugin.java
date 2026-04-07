@@ -222,41 +222,78 @@ public class PayGOPlugin extends Plugin {
 
     @PluginMethod
     public void testPayGo(PluginCall call) {
+        String provider = call.getString("provider", "paygo");
+        PaymentManager manager = getManager(provider);
         JSObject result = new JSObject();
-        result.put("success", payGoManager.isInitialized());
-        result.put("message", payGoManager.isInitialized()
-                ? "PayGo inicializado – InterfaceAutomacao REAL ativa"
-                : "PayGo NÃO inicializado – verifique PayGo Integrado APK");
+        result.put("success", manager.isInitialized());
+        if ("cielo".equalsIgnoreCase(provider)) {
+            result.put("message", manager.isInitialized()
+                    ? "Cielo inicializado"
+                    : "Cielo não inicializado – verifique credenciais");
+        } else {
+            result.put("message", manager.isInitialized()
+                    ? "PayGo inicializado – InterfaceAutomacao REAL ativa"
+                    : "PayGo NÃO inicializado – verifique PayGo Integrado APK");
+        }
         call.resolve(result);
     }
 
     @PluginMethod
     public void getSystemStatus(PluginCall call) {
+        String provider = call.getString("provider", "paygo");
+        PaymentManager manager = getManager(provider);
         JSObject result = new JSObject();
-        boolean init = payGoManager.isInitialized();
+        boolean init = manager.isInitialized();
         boolean usbListed = detectUsbPinpad();
         result.put("initialized", init);
         result.put("online", init);
         result.put("clientConnected", init);
-        // Pinpad pode estar OK via PayGo Integrado mesmo sem o VID aparecer na lista abaixo
-        result.put("usbDeviceDetected", usbListed || init);
-        result.put("libraryVersion", "InterfaceAutomacao-v2.1.0.6");
+        if ("cielo".equalsIgnoreCase(provider)) {
+            // Cielo em Smart POS não depende de USB pinpad externo
+            result.put("usbDeviceDetected", true);
+            result.put("libraryVersion", "Cielo-DeepLink");
+        } else {
+            // Pinpad pode estar OK via PayGo Integrado mesmo sem VID em lista local
+            result.put("usbDeviceDetected", usbListed || init);
+            result.put("libraryVersion", "InterfaceAutomacao-v2.1.0.6");
+        }
         result.put("timestamp", System.currentTimeMillis());
         call.resolve(result);
     }
 
     @PluginMethod
     public void testConnection(PluginCall call) {
+        String provider = call.getString("provider", "paygo");
+        PaymentManager manager = getManager(provider);
         JSObject result = new JSObject();
-        result.put("success", payGoManager.isInitialized());
-        result.put("message", payGoManager.isInitialized()
-                ? "Conexão OK – InterfaceAutomacao ativa"
-                : "Falha – PayGo Integrado não disponível");
+        result.put("success", manager.isInitialized());
+        if ("cielo".equalsIgnoreCase(provider)) {
+            result.put("message", manager.isInitialized()
+                    ? "Conexão OK – Cielo configurado"
+                    : "Falha – credenciais Cielo ausentes ou inválidas");
+        } else {
+            result.put("message", manager.isInitialized()
+                    ? "Conexão OK – InterfaceAutomacao ativa"
+                    : "Falha – PayGo Integrado não disponível");
+        }
         call.resolve(result);
     }
 
     @PluginMethod
     public void detectPinpad(PluginCall call) {
+        String provider = call.getString("provider", "paygo");
+        PaymentManager manager = getManager(provider);
+        if ("cielo".equalsIgnoreCase(provider)) {
+            JSObject result = new JSObject();
+            result.put("detected", manager.isInitialized());
+            result.put("message", manager.isInitialized()
+                    ? "Cielo Smart ativo (pinpad integrado no terminal)"
+                    : "Cielo não inicializado");
+            result.put("deviceName", "Cielo Smart");
+            call.resolve(result);
+            return;
+        }
+
         boolean usbListed = detectUsbPinpad();
         boolean init = payGoManager.isInitialized();
         boolean detected = usbListed || init;
