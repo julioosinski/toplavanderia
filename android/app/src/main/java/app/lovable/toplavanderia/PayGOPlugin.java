@@ -101,7 +101,12 @@ public class PayGOPlugin extends Plugin {
     public void processPayment(PluginCall call) {
         try {
             double amount = call.getDouble("amount", 0.0);
-            String paymentType = call.getString("paymentType", "credit");
+            String paymentTypeRaw = call.getString("paymentType", "credit");
+            String pt = paymentTypeRaw != null ? paymentTypeRaw.trim().toLowerCase() : "credit";
+            if (pt.isEmpty()) {
+                pt = "credit";
+            }
+            final String paymentType = pt;
             String orderId = call.getString("orderId", "");
             String description = call.getString("description", "Top Lavanderia");
             String provider = call.getString("provider", "paygo");

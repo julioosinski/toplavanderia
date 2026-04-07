@@ -212,11 +212,15 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
     setLastError(null);
 
     try {
+      const raw = (transaction.paymentType || 'credit').toString().trim().toLowerCase();
+      const paymentType: 'credit' | 'debit' | 'pix' =
+        raw === 'pix' || raw === 'wallet' || raw === 'carteira' ? 'pix' : raw === 'debit' || raw === 'debito' ? 'debit' : 'credit';
+
       const result = await PayGO.processPayment({
-        paymentType: transaction.paymentType,
+        paymentType,
         amount: transaction.amount,
         orderId: transaction.orderId,
-        provider: config.provider || 'paygo',
+        provider: (config.provider || 'paygo').toLowerCase(),
       });
 
       const stRaw = result.status;
@@ -262,7 +266,7 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
     } finally {
       setIsProcessing(false);
     }
-  }, [isInitialized, isConnected, isConfigValid, initialize]);
+  }, [isInitialized, isConnected, isConfigValid, initialize, config.provider]);
 
   // Cancel transaction
   const cancelTransaction = useCallback(async (transactionId?: string): Promise<boolean> => {

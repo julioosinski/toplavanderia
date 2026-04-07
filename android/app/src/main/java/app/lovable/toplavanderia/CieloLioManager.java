@@ -85,6 +85,7 @@ public class CieloLioManager implements PaymentManager {
             long amountCents = Math.round(amount * 100.0d);
             String reference = (orderId != null && !orderId.isEmpty()) ? orderId : UUID.randomUUID().toString();
             String paymentCode = resolvePaymentCode(paymentType);
+            Log.d(TAG, "Cielo checkout: jsType=" + paymentType + " -> paymentCode=" + paymentCode + " cents=" + amountCents);
 
             JSONObject payload = buildPaymentPayload(amountCents, paymentCode, description, reference);
             String base64 = Base64.encodeToString(payload.toString().getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
@@ -188,7 +189,11 @@ public class CieloLioManager implements PaymentManager {
         payload.put("reference", reference);
         payload.put("value", String.valueOf(amountCents));
         payload.put("paymentCode", paymentCode);
-        payload.put("installments", 0);
+        // Doc Cielo: parcelas "não precisa informar" à vista. installments=0 no emulador costuma abrir fluxo de
+        // cartão com débito pré-selecionado; para PIX omitimos o campo para forçar fluxo carteira digital.
+        if (!"PIX".equalsIgnoreCase(paymentCode)) {
+            payload.put("installments", 0);
+        }
         payload.put("email", "cliente@toplavanderia.local");
 
         if (merchantCode != null && !merchantCode.isEmpty()) {
@@ -209,10 +214,19 @@ public class CieloLioManager implements PaymentManager {
     }
 
     private String resolvePaymentCode(String paymentType) {
-        if ("pix".equalsIgnoreCase(paymentType)) {
+        if (paymentType == null || paymentType.isEmpty()) {
+            Log.w(TAG, "resolvePaymentCode: tipo vazio, usando CREDITO_AVISTA");
+            return "CREDITO_AVISTA";
+        }
+        String t = paymentType.trim();
+        if ("pix".equalsIgnoreCase(t)
+                || "wallet".equalsIgnoreCase(t)
+                || "carteira".equalsIgnoreCase(t)
+                || "carteira_virtual".equalsIgnoreCase(t)
+                || "pagamento_carteira_virtual".equalsIgnoreCase(t)) {
             return "PIX";
         }
-        if ("debit".equalsIgnoreCase(paymentType) || "debito".equalsIgnoreCase(paymentType)) {
+        if ("debit".equalsIgnoreCase(t) || "debito".equalsIgnoreCase(t)) {
             return "DEBITO_AVISTA";
         }
         return "CREDITO_AVISTA";
