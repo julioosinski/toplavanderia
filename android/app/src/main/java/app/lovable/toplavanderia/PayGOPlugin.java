@@ -26,13 +26,23 @@ public class PayGOPlugin extends Plugin {
     private static final String TAG = "PayGOPlugin";
 
     private RealPayGoManager payGoManager;
+    private CieloLioManager cieloManager;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @Override
     public void load() {
         super.load();
-        Log.d(TAG, "PayGOPlugin loaded – creating RealPayGoManager");
+        Log.d(TAG, "PayGOPlugin loaded – creating RealPayGoManager + CieloLioManager");
         payGoManager = new RealPayGoManager(getContext());
+        cieloManager = new CieloLioManager(getContext());
+    }
+
+    /** Returns the appropriate PaymentManager based on provider string. */
+    private PaymentManager getManager(String provider) {
+        if ("cielo".equalsIgnoreCase(provider)) {
+            return cieloManager;
+        }
+        return payGoManager;
     }
 
     // ==================== PLUGIN METHODS ====================
