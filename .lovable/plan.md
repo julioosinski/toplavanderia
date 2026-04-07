@@ -1,42 +1,87 @@
 
 
-## Resposta às suas perguntas
+## Plano: Suporte a Múltiplos Provedores de Pagamento (PayGo + Cielo LIO)
 
-### 1. Posso apenas trocar as credenciais e já funciona?
+### Resumo
 
-**Sim, em grande parte.** O sistema já está preparado para o SiTef/TPGWeb. O mapeamento dos campos é:
+Adicionar suporte ao provedor Cielo LIO sem alterar nenhum fluxo existente. O campo `paygo_provedor` já existe no banco de dados — basta conectá-lo ao fluxo de pagamento para que o Android decida qual SDK usar.
 
-| Dado recebido | Campo no banco | Valor atual | Novo valor |
-|---|---|---|---|
-| Ponto de Captura | `tef_terminal_id` | `positivo_l4` | `109728` |
-| Endereço servidor | `paygo_host` | `localhost` | `pos-transac-sb.tpgweb.io` |
-| Porta | `paygo_port` | `8080` | `31735` |
-| CNPJ | `paygo_cnpj_cpf` | `43.652.666/0001-37` | `43652666000137` (sem formatação) |
-| Senha Técnica | `paygo_automation_key` | `314159` | `314159` (mantém - não veio nova) |
+### O que já existe
 
-### 2. Para o PIX funcionar corretamente
+- Campo `paygo_provedor` na tabela `system_settings` (já no banco e nos types)
+- Hook `useSystemSettings` já lê `paygo_provedor`
+- PayGOPlugin.java recebe `processPayment` via Capacitor mas **não passa** o provider ao RealPayGoManager
 
-O PIX no sandbox funciona assim:
-- O sistema já roteia transações PIX pelo PayGO nativo no tablet (Smart POS / PPC930)
-- No sandbox, após iniciar uma transação PIX, o **QR Code é gerado automaticamente** e a **aprovação acontece sozinha** após alguns segundos
-- **Restrição importante**: o sandbox **só aceita valores inteiros** (ex: R$ 5,00 = ok; R$ 5,50 = negado). Precisamos garantir que os preços das máquinas sejam valores inteiros
+### Alterações
 
-### 3. O que será alterado
+#### 1. Propagar `provider` no fluxo TypeScript
 
-Atualizar as credenciais SiTef/TPGWeb nas duas lavanderias:
+**`src/hooks/useUniversalPayment.ts`**
+- Adicionar campo `provider` ao `UniversalPaymentConfig` (default: `'paygo'`)
+- No `processPayment`, passar `provider` como parâmetro ao chamar `processPaygoPayment`
 
-- **TOP LAVANDERIA SINUELO** (`8ace0bcb...`): configurar do zero (está vazia) e habilitar PayGO
-- **Lavanderia Principal** (`567a7bb6...`): atualizar credenciais existentes com os novos dados
+**`src/hooks/useRealPayGOIntegration.ts`**
+- Adicionar `provider` ao `RealPayGOConfig`
+- Na chamada `PayGO.processPayment(...)`, incluir o campo `provider`
 
-Campos atualizados em ambas:
-- `tef_terminal_id` → `109728`
-- `paygo_host` → `pos-transac-sb.tpgweb.io`
-- `paygo_port` → `31735`
-- `paygo_cnpj_cpf` → `43652666000137`
-- `paygo_automation_key` → `314159`
-- `paygo_enabled` → `true`
+**`src/plugins/paygo.ts`**
+- Adicionar `provider?: string` ao `PaymentOptions`
 
-### Observação sobre ambiente
+#### 2. Configurar `provider` a partir das settings
 
-Estas são credenciais de **sandbox (homologação)**. Para produção futura, a TPGWeb enviará novas credenciais com endereço de produção diferente.
+**`src/pages/Totem.tsx`**
+- Ler `systemSettings.paygo_provedor` e passá-lo no `paygoConfig` / `universalConfig`
+- Default: `'paygo'` quando vazio
+
+#### 3. Seletor de provedor no painel admin
+
+**`src/components/admin/settings/SettingsForm.tsx`**
+- Adicionar dropdown no bloco PayGO para escolher provedor: "PayGo (padrão)" ou "Cielo LIO"
+- Salvar no campo `paygo_provedor` existente
+
+#### 4. Android: receber e logar o provider
+
+**`android/app/src/main/java/app/lovable/toplavanderia/PayGOPlugin.java`**
+- Ler `call.getString("provider", "paygo")` em `processPayment`
+- Logar o provider para futura implementação do SDK Cielo
+- Passar ao `RealPayGoManager` (campo novo)
+- Estrutura `if/else` preparada: `paygo` → fluxo atual; `cielo` → placeholder que loga e retorna erro "Cielo LIO ainda não implementado no nativo"
+
+**`android/app/src/main/java/app/lovable/toplavanderia/RealPayGoManager.java`**
+- Adicionar parâmetro `provider` ao método `processPayment`
+- Se `provider.equals("cielo")` → callback com erro informativo (SDK Cielo será integrado futuramente)
+- Se `provider.equals("paygo")` ou qualquer outro → fluxo atual intacto
+
+#### 5. Funções globais `window.Android.pagar` (compatibilidade)
+
+**`android/app/src/main/java/app/lovable/toplavanderia/MainActivity.java`** (ou TotemActivity)
+- Adicionar sobrecarga: `pagar(valor, descricao, provider)`
+- Se `provider` não informado → `"paygo"` (compatibilidade retroativa)
+
+### O que NÃO será alterado
+
+- Lógica de acionamento ESP32
+- Backend/Edge Functions
+- Fluxo de PIX (continua via PayGO nativo)
+- Nenhuma remoção de funcionalidade existente
+
+### Detalhes técnicos
+
+```text
+Fluxo atualizado:
+
+  Totem (React)
+    │
+    ├─ systemSettings.paygo_provedor → "paygo" | "cielo"
+    │
+    ├─ UniversalPaymentWidget
+    │   └─ useUniversalPayment.processPayment(tx)
+    │       └─ useRealPayGOIntegration.processPayment({...tx, provider})
+    │           └─ PayGO.processPayment({...opts, provider})  ← Capacitor
+    │               └─ PayGOPlugin.java
+    │                   ├─ if "paygo" → RealPayGoManager (InterfaceAutomacao) ✅
+    │                   └─ if "cielo" → placeholder / futuro Cielo SDK
+    │
+    └─ window.Android.pagar(valor, desc, provider)  ← WebView fallback
+```
 
