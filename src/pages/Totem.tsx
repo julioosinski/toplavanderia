@@ -72,6 +72,10 @@ const Totem = () => {
         ...paygoConfig,
         port: Number(paygoConfig.port) || 31735,
         provider: systemSettings?.paygo_provedor || 'paygo',
+        cieloClientId: (systemSettings as any)?.cielo_client_id || '',
+        cieloAccessToken: (systemSettings as any)?.cielo_access_token || '',
+        cieloMerchantCode: (systemSettings as any)?.cielo_merchant_code || '',
+        cieloEnvironment: (systemSettings as any)?.cielo_environment || 'sandbox',
       },
       tef: {
         host: tefConfig.host,
@@ -84,7 +88,9 @@ const Totem = () => {
       smartPosMode: deviceMode === 'smartpos',
       provider: systemSettings?.paygo_provedor || 'paygo',
     }),
-    [paygoConfig, tefConfig, deviceMode, systemSettings?.paygo_provedor]
+    [paygoConfig, tefConfig, deviceMode, systemSettings?.paygo_provedor,
+     (systemSettings as any)?.cielo_client_id, (systemSettings as any)?.cielo_access_token,
+     (systemSettings as any)?.cielo_merchant_code, (systemSettings as any)?.cielo_environment]
   );
 
   const pixHookConfig = useMemo(
