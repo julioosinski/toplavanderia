@@ -460,6 +460,10 @@ export type Database = {
       system_settings: {
         Row: {
           auto_mode: boolean | null
+          cielo_access_token: string | null
+          cielo_client_id: string | null
+          cielo_environment: string | null
+          cielo_merchant_code: string | null
           company_cnpj: string | null
           company_email: string | null
           company_name: string | null
@@ -495,6 +499,10 @@ export type Database = {
         }
         Insert: {
           auto_mode?: boolean | null
+          cielo_access_token?: string | null
+          cielo_client_id?: string | null
+          cielo_environment?: string | null
+          cielo_merchant_code?: string | null
           company_cnpj?: string | null
           company_email?: string | null
           company_name?: string | null
@@ -530,6 +538,10 @@ export type Database = {
         }
         Update: {
           auto_mode?: boolean | null
+          cielo_access_token?: string | null
+          cielo_client_id?: string | null
+          cielo_environment?: string | null
+          cielo_merchant_code?: string | null
           company_cnpj?: string | null
           company_email?: string | null
           company_name?: string | null
