@@ -409,6 +409,63 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
               </p>
             </div>
           </div>
+
+          {/* Cielo LIO Credentials — visible only when provider = cielo */}
+          {(localSettings.paygo_provedor === 'cielo') && (
+            <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
+              <h4 className="text-sm font-semibold">Credenciais Cielo LIO</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="cielo-client-id">Client ID</Label>
+                  <Input
+                    id="cielo-client-id"
+                    value={(localSettings as any).cielo_client_id || ''}
+                    onChange={(e) => updateSetting('cielo_client_id' as any, e.target.value)}
+                    placeholder="Cielo Client ID"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Obtido no portal de desenvolvedores Cielo
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cielo-access-token">Access Token</Label>
+                  <Input
+                    id="cielo-access-token"
+                    type="password"
+                    value={(localSettings as any).cielo_access_token || ''}
+                    onChange={(e) => updateSetting('cielo_access_token' as any, e.target.value)}
+                    placeholder="Token de acesso"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="cielo-merchant-code">Código do Estabelecimento (EC)</Label>
+                  <Input
+                    id="cielo-merchant-code"
+                    value={(localSettings as any).cielo_merchant_code || ''}
+                    onChange={(e) => updateSetting('cielo_merchant_code' as any, e.target.value)}
+                    placeholder="Ex: 1234567890"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cielo-environment">Ambiente</Label>
+                  <Select
+                    value={(localSettings as any).cielo_environment || 'sandbox'}
+                    onValueChange={(value) => updateSetting('cielo_environment' as any, value)}
+                  >
+                    <SelectTrigger id="cielo-environment">
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="sandbox">Sandbox (teste)</SelectItem>
+                      <SelectItem value="production">Produção</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
