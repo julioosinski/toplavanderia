@@ -1,75 +1,115 @@
 
 
-## Análise: O que falta para Cielo LIO funcionar
+## Análise: SDK Cielo 2.5.4 e o que falta
 
-### Status Atual
+### O que o SDK-2.5.4.zip contém
 
-O sistema já tem a **infraestrutura de roteamento** pronta (TypeScript → Capacitor → Java), mas o lado Android retorna erro placeholder quando `provider=cielo`. Falta a implementação real.
+Este é o **Cielo LIO Order Manager SDK v2.5.4**, que inclui o arquivo `.aar` (ou `.jar`) necessário para integrar pagamentos em terminais Cielo LIO. O SDK fornece as classes `OrderManager`, `Credentials`, `Order`, `PaymentListener`, etc.
 
-### O que precisa ser implementado
+### Status atual do sistema
 
-#### 1. CieloLioManager.java (PRINCIPAL — lado Android)
+| Componente | Status |
+|---|---|
+| `PaymentManager.java` (interface) | Pronto |
+| `PaymentCallback.java` (interface) | Pronto |
+| `CieloLioManager.java` (classe) | Existe, mas em **modo placeholder** — todo o código real está comentado |
+| `PayGOPlugin.java` (roteamento) | Pronto — roteia para `cieloManager` quando `provider=cielo` |
+| Campos Cielo no banco (`system_settings`) | Prontos — `cielo_client_id`, `cielo_access_token`, `cielo_merchant_code`, `cielo_environment` |
+| Formulário admin (SettingsForm) | Pronto — campos visíveis quando provedor = cielo |
+| Propagação TS → Android | Pronta — credenciais passam via Capacitor `initialize()` |
+| SDK no build.gradle | **Falta** — linha comentada |
+| Código real no CieloLioManager | **Falta** — precisa descomentar/implementar |
+| TotemActivity.java | Usa `RealPayGoManager` diretamente — **não roteia** para `CieloLioManager` |
 
-Criar classe `CieloLioManager.java` que integra com o SDK Cielo LIO (`cielo-lio-order-manager`). Esta classe precisa:
+### O que será feito
 
-- Inicializar o `OrderManager` do SDK Cielo com as credenciais (Client ID, Access Token)
-- Implementar `processPayment(amount, paymentType, description, orderId)` usando `OrderManager.createDraftOrder()` → `OrderManager.placeOrder()` → `OrderManager.checkoutOrder()`
-- Suportar crédito, débito e PIX (via QR Code Cielo)
-- Implementar callback `PaymentListener` do SDK para capturar `onPayment()`, `onError()`, `onCancel()`
-- Usar a mesma interface `PayGoCallback` (renomear para `PaymentCallback`) para manter compatibilidade com o plugin
+#### 1. Adicionar o SDK ao projeto Android
 
-#### 2. Atualizar PayGOPlugin.java
+- Copiar o arquivo `.aar` do SDK-2.5.4 para `android/app/libs/`
+- Atualizar `build.gradle` para incluir o `.aar` como dependência:
+  ```
+  implementation(name: 'cielo-lio-order-manager-2.5.4', ext: 'aar')
+  ```
+- Remover o comentário da dependência Maven (substituir pela versão local `.aar`)
 
-Substituir o bloco placeholder (linhas 96-103) por instanciação real do `CieloLioManager`:
-- Se `provider=cielo` → delegar para `CieloLioManager`
-- Se `provider=paygo` → manter fluxo atual com `RealPayGoManager`
+#### 2. Ativar o código real no CieloLioManager.java
 
-#### 3. Dependência do SDK Cielo no build.gradle
+Descomentar e completar a implementação:
+- `initializeSdk()` — criar `Credentials` + `OrderManager` + chamar `bind()`
+- `executeCieloPayment()` — `createDraftOrder()` → `addItem()` → `placeOrder()` → `checkoutOrder()` com `PaymentListener`
+- `cancelPayment()` — chamar `orderManager.cancelOrder()`
+- Mapear tipos: `credit` → `CREDITO/A_VISTA`, `debit` → `DEBITO/A_VISTA`, `pix` → `QRCODE/QRCODE_CREDIT`
 
-Adicionar ao `android/app/build.gradle`:
+#### 3. Atualizar TotemActivity.java
+
+O `TotemActivity` acessa `RealPayGoManager` diretamente (campo na linha 46). Adicionar suporte ao provedor:
+- Ler o provedor das settings (ou de um campo de configuração)
+- Se `cielo` → instanciar e usar `CieloLioManager` em vez de `RealPayGoManager`
+- Manter `RealPayGoManager` como fallback
+
+#### 4. Atualizar cancelPayment no PayGOPlugin
+
+Atualmente `cancelPayment()` e `cancelTransaction()` chamam apenas `payGoManager`. Atualizar para usar `getManager(provider)`.
+
+### Como testar
+
+#### Pré-requisitos
+1. **Hardware**: Terminal Cielo LIO (LIO V2 ou LIO+) — o SDK **não funciona** em tablets/smartphones comuns
+2. **Credenciais sandbox**: Obtidas no portal Cielo Developers (https://desenvolvedores.cielo.com.br)
+3. **APK compilado**: Após as alterações, recompilar o APK com `./gradlew assembleDebug`
+
+#### Passos de teste
+
+1. **Configurar credenciais no admin**:
+   - Acessar Configurações → Provedor de Pagamento → selecionar "Cielo LIO"
+   - Preencher Client ID, Access Token, Código EC
+   - Selecionar ambiente "sandbox"
+   - Salvar
+
+2. **Instalar o APK no terminal Cielo LIO**:
+   ```bash
+   adb install -r app-debug.apk
+   ```
+
+3. **Teste de inicialização**:
+   - Abrir o app no terminal LIO
+   - Verificar nos logs (`adb logcat | grep CieloLioManager`):
+     - `"Configured: merchant=... env=sandbox"`
+     - `"SDK initialized successfully"` (se o bind funcionou)
+
+4. **Teste de pagamento crédito** (R$ 1,00):
+   - Selecionar uma máquina no totem
+   - Escolher pagamento cartão
+   - A tela da Cielo LIO deve assumir o controle mostrando "Insira/Aproxime o cartão"
+   - Usar cartão de teste Cielo sandbox
+   - Verificar log: `"CIELO APPROVED"`
+
+5. **Teste de pagamento PIX**:
+   - Selecionar PIX no tipo de pagamento
+   - O QR Code deve aparecer na tela do LIO
+   - No sandbox, simular leitura
+
+6. **Teste de cancelamento**:
+   - Iniciar pagamento e cancelar antes de completar
+   - Verificar que o callback `onPaymentError("cancelada")` é chamado
+
+#### Verificação de logs
+```bash
+adb logcat -d | grep -E "CieloLioManager|PayGOPlugin" > cielo_test_logs.txt
 ```
-implementation 'com.cielo.lio:order-manager:1.8.4'
-```
 
-#### 4. Credenciais Cielo no Admin
+### Observação importante
 
-Adicionar campos na tabela `system_settings`:
-- `cielo_client_id` (text)
-- `cielo_access_token` (text)
-- `cielo_merchant_code` (text, código EC)
-- `cielo_environment` (text: `'sandbox'` ou `'production'`)
+O SDK Cielo LIO **só funciona em terminais Cielo LIO** (é um hardware específico). Se você estiver testando em um tablet Gertec/PPC930, o SDK não vai inicializar — nesses dispositivos, continue usando PayGo. A escolha de provedor no admin permite alternar conforme o hardware disponível em cada lavanderia.
 
-Adicionar esses campos no `SettingsForm.tsx` (visíveis apenas quando provedor = cielo).
-
-#### 5. Propagar credenciais Cielo ao Android
-
-No `Totem.tsx` e hooks, passar as credenciais Cielo via Capacitor call para que o `CieloLioManager` receba Client ID e Access Token na inicialização.
-
-#### 6. window.Android.pagar com Cielo
-
-O `MainActivity.java` não tem `@JavascriptInterface` (usa Capacitor). Se o fallback WebView for necessário, adicionar sobrecarga `pagar(valor, descricao, provider)` no `TotemActivity.java`.
-
-### Sugestões de Melhoria
-
-1. **Interface unificada de pagamento** — Extrair uma interface Java `PaymentManager` com métodos `processPayment`, `cancelPayment`, `isProcessing`, `isInitialized` que tanto `RealPayGoManager` quanto `CieloLioManager` implementem. O plugin escolhe qual instância usar sem `if/else` espalhados.
-
-2. **Diagnóstico por provedor no admin** — Na aba de diagnósticos, mostrar status específico do provedor selecionado (Cielo: verificar SDK instalado, credenciais válidas; PayGo: verificar pinpad conectado).
-
-3. **Fallback automático** — Se o provedor principal falhar na inicialização, tentar o secundário (ex: Cielo falhou → tenta PayGo).
-
-4. **Registro de transações com provedor** — Salvar na tabela `transactions` qual provedor processou cada pagamento (`payment_provider` column), útil para conciliação financeira.
-
-5. **Tela de teste rápido** — Botão no admin para executar transação de R$ 1,00 no sandbox e validar que o provedor está operacional.
-
-### Resumo de Arquivos
+### Arquivos a serem modificados
 
 | Arquivo | Ação |
 |---|---|
-| `CieloLioManager.java` (novo) | Implementar SDK Cielo LIO |
-| `PayGOPlugin.java` | Substituir placeholder por roteamento real |
-| `build.gradle` | Adicionar dependência SDK Cielo |
-| Migration SQL | Adicionar campos `cielo_*` em `system_settings` |
-| `SettingsForm.tsx` | Formulário de credenciais Cielo |
-| `useSystemSettings.ts` | Tipar novos campos |
-| `supabase/types.ts` | Regenerar types |
+| `android/app/libs/` | Copiar `.aar` do SDK |
+| `android/app/build.gradle` | Adicionar dependência `.aar` |
+| `CieloLioManager.java` | Ativar código real (descomentar + completar) |
+| `tablet_deploy/.../CieloLioManager.java` | Espelhar alterações |
+| `TotemActivity.java` | Adicionar roteamento de provedor |
+| `PayGOPlugin.java` | Corrigir `cancelPayment` para usar `getManager()` |
 
