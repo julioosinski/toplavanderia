@@ -71,6 +71,7 @@ const Totem = () => {
       paygo: {
         ...paygoConfig,
         port: Number(paygoConfig.port) || 31735,
+        provider: systemSettings?.paygo_provedor || 'paygo',
       },
       tef: {
         host: tefConfig.host,
@@ -81,8 +82,9 @@ const Totem = () => {
         retryDelay: tefConfig.retryDelay,
       },
       smartPosMode: deviceMode === 'smartpos',
+      provider: systemSettings?.paygo_provedor || 'paygo',
     }),
-    [paygoConfig, tefConfig, deviceMode]
+    [paygoConfig, tefConfig, deviceMode, systemSettings?.paygo_provedor]
   );
 
   const pixHookConfig = useMemo(
@@ -169,7 +171,6 @@ const Totem = () => {
         automationKey: systemSettings.paygo_automation_key || '',
         timeout: systemSettings.paygo_timeout || 30000,
         retryAttempts: systemSettings.paygo_retry_attempts || 3,
-        provider: systemSettings.paygo_provedor || 'paygo',
       });
     }
   }, [systemSettings]);
