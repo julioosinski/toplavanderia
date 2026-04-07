@@ -1,48 +1,42 @@
 
 
-## Plano: Mostrar ESP32s pendentes no diálogo de Nova Máquina + corrigir re-registro
+## Resposta às suas perguntas
 
-### Problemas identificados
+### 1. Posso apenas trocar as credenciais e já funciona?
 
-**1. ESP32 rejeitado não pode ser re-aprovado**
-O `lavadora_02` foi rejeitado anteriormente e agora está online (`is_online: true`). Quando envia heartbeat com `auto_register: true`, o código na Edge Function retorna "Device rejected" e ignora. Não há como "resetar" um ESP32 rejeitado para `pending`.
+**Sim, em grande parte.** O sistema já está preparado para o SiTef/TPGWeb. O mapeamento dos campos é:
 
-**2. MachineDialog usa campo de texto livre para ESP32 ID**
-O campo "ESP32 ID" é um `<Input>` onde o admin digita manualmente. O admin não sabe quais ESP32s estão disponíveis. Deveria ser um `<Select>` mostrando ESP32s detectados (pendentes, aprovados sem máquina, ou online).
+| Dado recebido | Campo no banco | Valor atual | Novo valor |
+|---|---|---|---|
+| Ponto de Captura | `tef_terminal_id` | `positivo_l4` | `109728` |
+| Endereço servidor | `paygo_host` | `localhost` | `pos-transac-sb.tpgweb.io` |
+| Porta | `paygo_port` | `8080` | `31735` |
+| CNPJ | `paygo_cnpj_cpf` | `43.652.666/0001-37` | `43652666000137` (sem formatação) |
+| Senha Técnica | `paygo_automation_key` | `314159` | `314159` (mantém - não veio nova) |
 
-### Correções
+### 2. Para o PIX funcionar corretamente
 
-#### 1. `src/components/admin/MachineDialog.tsx` — dropdown de ESP32s disponíveis
+O PIX no sandbox funciona assim:
+- O sistema já roteia transações PIX pelo PayGO nativo no tablet (Smart POS / PPC930)
+- No sandbox, após iniciar uma transação PIX, o **QR Code é gerado automaticamente** e a **aprovação acontece sozinha** após alguns segundos
+- **Restrição importante**: o sandbox **só aceita valores inteiros** (ex: R$ 5,00 = ok; R$ 5,50 = negado). Precisamos garantir que os preços das máquinas sejam valores inteiros
 
-Substituir o `<Input>` do ESP32 ID por um `<Select>` que busca da tabela `esp32_status`:
-- ESP32s com `registration_status = 'pending'` (novos, aguardando)
-- ESP32s com `registration_status = 'approved'` que não têm máquina vinculada (órfãos)
-- ESP32s com `registration_status = 'rejected'` mas `is_online = true` (re-conectados)
-- Manter opção "Outro (digitar manualmente)" para casos especiais
+### 3. O que será alterado
 
-Ao selecionar um ESP32 pendente/rejeitado, o sistema automaticamente atualiza o `registration_status` para `approved` ao salvar a máquina.
+Atualizar as credenciais SiTef/TPGWeb nas duas lavanderias:
 
-#### 2. `src/components/admin/MachineDialog.tsx` — aprovar ESP32 ao criar máquina
+- **TOP LAVANDERIA SINUELO** (`8ace0bcb...`): configurar do zero (está vazia) e habilitar PayGO
+- **Lavanderia Principal** (`567a7bb6...`): atualizar credenciais existentes com os novos dados
 
-No `handleSubmit`, após criar a máquina com sucesso, atualizar o `esp32_status` correspondente para `registration_status: 'approved'`.
+Campos atualizados em ambas:
+- `tef_terminal_id` → `109728`
+- `paygo_host` → `pos-transac-sb.tpgweb.io`
+- `paygo_port` → `31735`
+- `paygo_cnpj_cpf` → `43652666000137`
+- `paygo_automation_key` → `314159`
+- `paygo_enabled` → `true`
 
-#### 3. `supabase/functions/esp32-monitor/index.ts` — permitir re-registro de rejeitados
+### Observação sobre ambiente
 
-Quando um ESP32 rejeitado envia heartbeat com `auto_register: true`, em vez de bloquear, atualizar para `pending` novamente. Isso permite que o admin re-aprove.
-
-### Arquivos editados
-
-| Arquivo | Mudança |
-|---|---|
-| `src/components/admin/MachineDialog.tsx` | ESP32 ID vira Select com ESP32s disponíveis; aprova ESP32 ao criar máquina |
-| `supabase/functions/esp32-monitor/index.ts` | ESP32 rejeitado volta a `pending` quando re-conecta com `auto_register` |
-
-### Fluxo corrigido
-
-```text
-ESP32 novo conecta → heartbeat com auto_register → inserido como "pending"
-ESP32 rejeitado re-conecta → heartbeat com auto_register → atualizado para "pending"
-Admin clica "Nova Máquina" → Select mostra ESP32s pendentes/órfãos
-Admin seleciona ESP32, preenche dados, salva → máquina criada + ESP32 aprovado
-```
+Estas são credenciais de **sandbox (homologação)**. Para produção futura, a TPGWeb enviará novas credenciais com endereço de produção diferente.
 
