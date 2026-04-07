@@ -168,7 +168,8 @@ const Totem = () => {
         port: systemSettings.paygo_port || 31735,
         automationKey: systemSettings.paygo_automation_key || '',
         timeout: systemSettings.paygo_timeout || 30000,
-        retryAttempts: systemSettings.paygo_retry_attempts || 3
+        retryAttempts: systemSettings.paygo_retry_attempts || 3,
+        provider: systemSettings.paygo_provedor || 'paygo',
       });
     }
   }, [systemSettings]);

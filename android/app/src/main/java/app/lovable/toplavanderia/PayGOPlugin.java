@@ -81,6 +81,7 @@ public class PayGOPlugin extends Plugin {
             String paymentType = call.getString("paymentType", "credit");
             String orderId = call.getString("orderId", "");
             String description = call.getString("description", "Top Lavanderia");
+            String provider = call.getString("provider", "paygo");
 
             if (amount <= 0) {
                 JSObject err = new JSObject();
@@ -90,6 +91,19 @@ public class PayGOPlugin extends Plugin {
                 call.resolve(err);
                 return;
             }
+
+            // Route based on provider
+            if ("cielo".equalsIgnoreCase(provider)) {
+                Log.d(TAG, "processPayment: provider=cielo — SDK Cielo LIO não implementado ainda");
+                JSObject err = new JSObject();
+                err.put("success", false);
+                err.put("message", "Cielo LIO ainda não implementado no nativo. Configure o provedor como PayGo nas configurações.");
+                err.put("status", "error");
+                call.resolve(err);
+                return;
+            }
+
+            Log.d(TAG, "processPayment: provider=" + provider + " amount=" + amount + " type=" + paymentType + " order=" + orderId);
 
             if (!payGoManager.isInitialized()) {
                 JSObject err = new JSObject();
@@ -108,8 +122,6 @@ public class PayGOPlugin extends Plugin {
                 call.resolve(err);
                 return;
             }
-
-            Log.d(TAG, "processPayment: amount=" + amount + " type=" + paymentType + " order=" + orderId);
 
             // Set callback that resolves the Capacitor call
             payGoManager.setCallback(new RealPayGoManager.PayGoCallback() {

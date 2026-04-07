@@ -95,6 +95,8 @@ export interface PaymentOptions {
   description?: string;
   orderId?: string;
   paymentType?: 'credit' | 'debit' | 'pix';
+  /** Payment provider: 'paygo' (default) or 'cielo' */
+  provider?: string;
 }
 
 export interface PinpadDetection {

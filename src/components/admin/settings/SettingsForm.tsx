@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Wifi, Cpu, CreditCard, Save, Microchip, Database, Receipt, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import ESP32ConfigurationManager from "../ESP32ConfigurationManager";
@@ -376,17 +377,37 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="sitef-extra-config">Configuração Adicional (JSON)</Label>
-            <Input
-              id="sitef-extra-config"
-              value={localSettings.tef_config || ''}
-              onChange={(e) => updateSetting('tef_config', e.target.value)}
-              placeholder='{"ambiente": "sandbox"}'
-            />
-            <p className="text-xs text-muted-foreground">
-              Configurações extras em formato JSON (opcional)
-            </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="sitef-extra-config">Configuração Adicional (JSON)</Label>
+              <Input
+                id="sitef-extra-config"
+                value={localSettings.tef_config || ''}
+                onChange={(e) => updateSetting('tef_config', e.target.value)}
+                placeholder='{"ambiente": "sandbox"}'
+              />
+              <p className="text-xs text-muted-foreground">
+                Configurações extras em formato JSON (opcional)
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="payment-provider">Provedor de Pagamento</Label>
+              <Select
+                value={localSettings.paygo_provedor || 'paygo'}
+                onValueChange={(value) => updateSetting('paygo_provedor', value)}
+              >
+                <SelectTrigger id="payment-provider">
+                  <SelectValue placeholder="Selecione o provedor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="paygo">PayGo (padrão)</SelectItem>
+                  <SelectItem value="cielo">Cielo LIO</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Define qual SDK nativo o tablet usará para processar pagamentos
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
