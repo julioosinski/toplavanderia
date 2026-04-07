@@ -12,6 +12,11 @@ export interface RealPayGOConfig {
   retryAttempts?: number;
   /** Payment provider: 'paygo' (default) or 'cielo' */
   provider?: string;
+  /** Cielo LIO credentials (only needed when provider = 'cielo') */
+  cieloClientId?: string;
+  cieloAccessToken?: string;
+  cieloMerchantCode?: string;
+  cieloEnvironment?: string;
 }
 
 export interface PayGOSystemStatus {
@@ -115,8 +120,13 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
       const result = await PayGO.initialize({
         host: config.host,
         port: config.port,
-        automationKey: config.automationKey
-      });
+        automationKey: config.automationKey,
+        provider: config.provider || 'paygo',
+        cieloClientId: config.cieloClientId || '',
+        cieloAccessToken: config.cieloAccessToken || '',
+        cieloMerchantCode: config.cieloMerchantCode || '',
+        cieloEnvironment: config.cieloEnvironment || 'sandbox',
+      } as any);
 
       if (result.success) {
         setIsInitialized(true);

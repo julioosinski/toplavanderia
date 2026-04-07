@@ -26,21 +26,20 @@ import java.util.UUID;
  * REAL payment manager using InterfaceAutomacao to communicate with PPC930.
  * Supports credit, debit, and PIX payment types.
  */
-public class RealPayGoManager {
+public class RealPayGoManager implements PaymentManager {
     private static final String TAG = "RealPayGoManager";
 
     private Context context;
-    private PayGoCallback callback;
+    private PaymentCallback callback;
     private boolean isProcessing;
     private Transacao transacao;
     private boolean isInitialized;
     private DadosAutomacao dadosAutomacao;
 
-    public interface PayGoCallback {
-        void onPaymentSuccess(String authorizationCode, String transactionId);
-        void onPaymentError(String error);
-        void onPaymentProcessing(String message);
-    }
+    /**
+     * @deprecated Use {@link PaymentCallback} instead. Kept for backward compatibility.
+     */
+    public interface PayGoCallback extends PaymentCallback {}
 
     public RealPayGoManager(Context context) {
         this.context = context;
@@ -49,14 +48,17 @@ public class RealPayGoManager {
         initializePayGo();
     }
 
-    public void setCallback(PayGoCallback callback) {
+    @Override
+    public void setCallback(PaymentCallback callback) {
         this.callback = callback;
     }
 
+    @Override
     public boolean isProcessing() {
         return isProcessing;
     }
 
+    @Override
     public boolean isInitialized() {
         return isInitialized;
     }

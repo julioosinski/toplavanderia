@@ -32,6 +32,12 @@ export interface SystemSettings {
   paygo_automation_key: string | null;
   paygo_cnpj_cpf: string | null;
   paygo_provedor: string | null;
+
+  // Cielo LIO Settings
+  cielo_client_id: string | null;
+  cielo_access_token: string | null;
+  cielo_merchant_code: string | null;
+  cielo_environment: string | null;
   
   // TEF Settings
   tef_config: string | null;
