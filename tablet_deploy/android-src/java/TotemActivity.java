@@ -43,7 +43,10 @@ public class TotemActivity extends Activity {
     private static final String TAG = "TotemActivity";
     
     private SupabaseHelper supabaseHelper;
+    private PaymentManager activePaymentManager;
     private RealPayGoManager payGoManager;
+    private CieloLioManager cieloManager;
+    private String activeProvider = "paygo";
     private MachineStatusMonitor statusMonitor;
     private List<SupabaseHelper.Machine> machines;
     private SupabaseHelper.Machine selectedMachine;
@@ -81,23 +84,43 @@ public class TotemActivity extends Activity {
             }
         });
         
+        // Initialize payment managers
         payGoManager = new RealPayGoManager(this);
-        payGoManager.setCallback(new RealPayGoManager.PayGoCallback() {
+        cieloManager = new CieloLioManager(this);
+
+        // Determine provider from settings (default paygo)
+        activeProvider = supabaseHelper.getPaymentProvider();
+        if ("cielo".equalsIgnoreCase(activeProvider)) {
+            String cId = supabaseHelper.getCieloClientId();
+            String cToken = supabaseHelper.getCieloAccessToken();
+            String cMerchant = supabaseHelper.getCieloMerchantCode();
+            String cEnv = supabaseHelper.getCieloEnvironment();
+            if (cId != null && !cId.isEmpty()) {
+                cieloManager.configure(cId, cToken, cMerchant, cEnv);
+            }
+            activePaymentManager = cieloManager;
+            Log.d(TAG, "Provedor de pagamento: Cielo LIO");
+        } else {
+            activePaymentManager = payGoManager;
+            Log.d(TAG, "Provedor de pagamento: PayGo");
+        }
+
+        // Unified payment callback
+        PaymentCallback paymentCallback = new PaymentCallback() {
             @Override
             public void onPaymentSuccess(String authorizationCode, String transactionId) {
                 runOnUiThread(() -> handlePaymentSuccess(authorizationCode, transactionId));
             }
-            
             @Override
             public void onPaymentError(String error) {
                 runOnUiThread(() -> handlePaymentError(error));
             }
-            
             @Override
             public void onPaymentProcessing(String message) {
                 runOnUiThread(() -> updateStatus(message));
             }
-        });
+        };
+        activePaymentManager.setCallback(paymentCallback);
         
         // Criar monitor de status em tempo real
         statusMonitor = new MachineStatusMonitor(supabaseHelper);
@@ -516,9 +539,10 @@ public class TotemActivity extends Activity {
             // Mostrar tela de processamento
             showPaymentProcessing(machine);
             
-            // Processar pagamento real
-            payGoManager.processPayment(
+            // Processar pagamento via provedor ativo
+            activePaymentManager.processPayment(
                 machine.getPrice(),
+                "credit",
                 "Top Lavanderia - " + machine.getName(),
                 "TOTEM" + currentOperationId
             );

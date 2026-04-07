@@ -200,20 +200,23 @@ public class PayGOPlugin extends Plugin {
 
     @PluginMethod
     public void cancelPayment(PluginCall call) {
-        payGoManager.cancelPayment();
+        String provider = call.getString("provider", "paygo");
+        PaymentManager manager = getManager(provider);
+        manager.cancelPayment();
         JSObject result = new JSObject();
         result.put("success", true);
-        result.put("message", "Pagamento cancelado");
+        result.put("message", "Pagamento cancelado (" + provider + ")");
         call.resolve(result);
     }
 
     @PluginMethod
     public void cancelTransaction(PluginCall call) {
-        // For now, just cancel any in-progress payment
-        payGoManager.cancelPayment();
+        String provider = call.getString("provider", "paygo");
+        PaymentManager manager = getManager(provider);
+        manager.cancelPayment();
         JSObject result = new JSObject();
         result.put("success", true);
-        result.put("message", "Transação cancelada");
+        result.put("message", "Transação cancelada (" + provider + ")");
         call.resolve(result);
     }
 

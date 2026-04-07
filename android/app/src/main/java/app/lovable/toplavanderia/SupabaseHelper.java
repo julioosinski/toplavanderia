@@ -146,6 +146,67 @@ public class SupabaseHelper {
     public String getLaundryLogo() {
         return currentLaundryLogo;
     }
+
+    // ===== MÉTODOS DE CONFIGURAÇÃO DE PAGAMENTO =====
+
+    /** Cache of system settings fetched from Supabase */
+    private JSONObject cachedSystemSettings = null;
+
+    private JSONObject fetchSystemSettings() {
+        if (cachedSystemSettings != null) return cachedSystemSettings;
+        if (currentLaundryId == null) return null;
+        try {
+            String url = SUPABASE_URL + "/rest/v1/system_settings?select=paygo_provedor,cielo_client_id,cielo_access_token,cielo_merchant_code,cielo_environment&laundry_id=eq." + currentLaundryId + "&limit=1";
+            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setRequestMethod("GET");
+            connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
+            connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(5000);
+            int code = connection.getResponseCode();
+            if (code == 200) {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) sb.append(line);
+                reader.close();
+                JSONArray arr = new JSONArray(sb.toString());
+                if (arr.length() > 0) {
+                    cachedSystemSettings = arr.getJSONObject(0);
+                    return cachedSystemSettings;
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error fetching system settings", e);
+        }
+        return null;
+    }
+
+    public String getPaymentProvider() {
+        JSONObject s = fetchSystemSettings();
+        if (s != null) return s.optString("paygo_provedor", "paygo");
+        return "paygo";
+    }
+
+    public String getCieloClientId() {
+        JSONObject s = fetchSystemSettings();
+        return s != null ? s.optString("cielo_client_id", "") : "";
+    }
+
+    public String getCieloAccessToken() {
+        JSONObject s = fetchSystemSettings();
+        return s != null ? s.optString("cielo_access_token", "") : "";
+    }
+
+    public String getCieloMerchantCode() {
+        JSONObject s = fetchSystemSettings();
+        return s != null ? s.optString("cielo_merchant_code", "") : "";
+    }
+
+    public String getCieloEnvironment() {
+        JSONObject s = fetchSystemSettings();
+        return s != null ? s.optString("cielo_environment", "sandbox") : "sandbox";
+    }
     
     public void setOnMachinesLoadedListener(OnMachinesLoadedListener listener) {
         this.listener = listener;
