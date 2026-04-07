@@ -419,8 +419,8 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
                   <Label htmlFor="cielo-client-id">Client ID</Label>
                   <Input
                     id="cielo-client-id"
-                    value={(localSettings as any).cielo_client_id || ''}
-                    onChange={(e) => updateSetting('cielo_client_id' as any, e.target.value)}
+                    value={localSettings.cielo_client_id || ''}
+                    onChange={(e) => updateSetting('cielo_client_id', e.target.value)}
                     placeholder="Cielo Client ID"
                   />
                   <p className="text-xs text-muted-foreground">
@@ -432,8 +432,8 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
                   <Input
                     id="cielo-access-token"
                     type="password"
-                    value={(localSettings as any).cielo_access_token || ''}
-                    onChange={(e) => updateSetting('cielo_access_token' as any, e.target.value)}
+                    value={localSettings.cielo_access_token || ''}
+                    onChange={(e) => updateSetting('cielo_access_token', e.target.value)}
                     placeholder="Token de acesso"
                   />
                 </div>
@@ -443,16 +443,16 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
                   <Label htmlFor="cielo-merchant-code">Código do Estabelecimento (EC)</Label>
                   <Input
                     id="cielo-merchant-code"
-                    value={(localSettings as any).cielo_merchant_code || ''}
-                    onChange={(e) => updateSetting('cielo_merchant_code' as any, e.target.value)}
+                    value={localSettings.cielo_merchant_code || ''}
+                    onChange={(e) => updateSetting('cielo_merchant_code', e.target.value)}
                     placeholder="Ex: 1234567890"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="cielo-environment">Ambiente</Label>
                   <Select
-                    value={(localSettings as any).cielo_environment || 'sandbox'}
-                    onValueChange={(value) => updateSetting('cielo_environment' as any, value)}
+                    value={localSettings.cielo_environment || 'sandbox'}
+                    onValueChange={(value) => updateSetting('cielo_environment', value)}
                   >
                     <SelectTrigger id="cielo-environment">
                       <SelectValue placeholder="Selecione" />
