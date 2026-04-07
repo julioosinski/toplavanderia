@@ -51,6 +51,8 @@ export interface UniversalPaymentConfig {
   };
   /** When true, skip TEF/PIX HTTP tests and force PayGO as only method (Smart POS mode) */
   smartPosMode?: boolean;
+  /** Payment provider passed through to PayGO native layer: 'paygo' (default) | 'cielo' */
+  provider?: string;
 }
 
 export const useUniversalPayment = (config: UniversalPaymentConfig) => {

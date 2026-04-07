@@ -10,6 +10,8 @@ export interface RealPayGOConfig {
   automationKey: string;
   timeout: number;
   retryAttempts?: number;
+  /** Payment provider: 'paygo' (default) or 'cielo' */
+  provider?: string;
 }
 
 export interface PayGOSystemStatus {
@@ -189,7 +191,8 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
       const result = await PayGO.processPayment({
         paymentType: transaction.paymentType,
         amount: transaction.amount,
-        orderId: transaction.orderId
+        orderId: transaction.orderId,
+        provider: config.provider || 'paygo',
       });
 
       const stRaw = result.status;

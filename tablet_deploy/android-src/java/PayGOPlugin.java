@@ -81,6 +81,7 @@ public class PayGOPlugin extends Plugin {
             String paymentType = call.getString("paymentType", "credit");
             String orderId = call.getString("orderId", "");
             String description = call.getString("description", "Top Lavanderia");
+            String provider = call.getString("provider", "paygo");
 
             if (amount <= 0) {
                 JSObject err = new JSObject();
@@ -90,6 +91,19 @@ public class PayGOPlugin extends Plugin {
                 call.resolve(err);
                 return;
             }
+
+            // Route based on provider
+            if ("cielo".equalsIgnoreCase(provider)) {
+                Log.d(TAG, "processPayment: provider=cielo — SDK Cielo LIO não implementado ainda");
+                JSObject err = new JSObject();
+                err.put("success", false);
+                err.put("message", "Cielo LIO ainda não implementado no nativo. Configure o provedor como PayGo nas configurações.");
+                err.put("status", "error");
+                call.resolve(err);
+                return;
+            }
+
+            Log.d(TAG, "processPayment: provider=" + provider + " amount=" + amount + " type=" + paymentType + " order=" + orderId);
 
             if (!payGoManager.isInitialized()) {
                 JSObject err = new JSObject();
@@ -108,8 +122,6 @@ public class PayGOPlugin extends Plugin {
                 call.resolve(err);
                 return;
             }
-
-            Log.d(TAG, "processPayment: amount=" + amount + " type=" + paymentType + " order=" + orderId);
 
             // Set callback that resolves the Capacitor call
             payGoManager.setCallback(new RealPayGoManager.PayGoCallback() {
@@ -212,6 +224,7 @@ public class PayGOPlugin extends Plugin {
         result.put("initialized", init);
         result.put("online", init);
         result.put("clientConnected", init);
+        // Pinpad pode estar OK via PayGo Integrado mesmo sem o VID aparecer na lista abaixo
         result.put("usbDeviceDetected", usbListed || init);
         result.put("libraryVersion", "InterfaceAutomacao-v2.1.0.6");
         result.put("timestamp", System.currentTimeMillis());
@@ -250,6 +263,7 @@ public class PayGOPlugin extends Plugin {
 
     // ==================== HELPERS ====================
 
+    /** Preenche deviceName/vendorId/productId do primeiro USB que parece pinpad. */
     private void putFirstMatchingUsbDevice(JSObject result) {
         try {
             UsbManager usbManager = (UsbManager) getContext().getSystemService(Context.USB_SERVICE);
@@ -267,14 +281,25 @@ public class PayGOPlugin extends Plugin {
         }
     }
 
+    /**
+     * Heurística ampla: muitos pinpads usam bridge serial (FTDI, CH340, CP210x) ou chips dedicados.
+     * PayGo Integrado pode segurar o dispositivo — nesse caso {@link RealPayGoManager#isInitialized()} cobre o fluxo real.
+     */
     private boolean isLikelyPinpadUsb(int vid, int pid) {
+        // PPC930 / família Positivo (product id comum)
         if (pid == 0x0930) return true;
+        // Positivo Tecnologia, NXP em vários terminais, FTDI, STM VCOM, TI
         if (vid == 0x2BF9 || vid == 0x2C09 || vid == 0x1FC9 || vid == 0x0403
                 || vid == 0x0483 || vid == 0x0451) return true;
+        // Prolific PL2303
         if (vid == 0x067B) return true;
+        // Silicon Labs CP210x
         if (vid == 0x10C4 && (pid == 0xEA60 || pid == 0xEA61 || pid == 0xEA70)) return true;
+        // WCH CH340/CH341 (comum em bases USB)
         if (vid == 0x1A86 && (pid == 0x7523 || pid == 0x5523 || pid == 0xE010)) return true;
+        // Ingenico / leitores em alguns deployments
         if (vid == 0x079B) return true;
+        // Verifone / Gertec aparecem em relatórios de campo (hex variados)
         if (vid == 0x11CA || vid == 0x2912) return true;
         return false;
     }
