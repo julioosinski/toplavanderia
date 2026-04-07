@@ -115,29 +115,19 @@ public class PayGOPlugin extends Plugin {
                 return;
             }
 
-            // Route based on provider
-            if ("cielo".equalsIgnoreCase(provider)) {
-                Log.d(TAG, "processPayment: provider=cielo — SDK Cielo LIO não implementado ainda");
-                JSObject err = new JSObject();
-                err.put("success", false);
-                err.put("message", "Cielo LIO ainda não implementado no nativo. Configure o provedor como PayGo nas configurações.");
-                err.put("status", "error");
-                call.resolve(err);
-                return;
-            }
-
+            PaymentManager manager = getManager(provider);
             Log.d(TAG, "processPayment: provider=" + provider + " amount=" + amount + " type=" + paymentType + " order=" + orderId);
 
-            if (!payGoManager.isInitialized()) {
+            if (!manager.isInitialized()) {
                 JSObject err = new JSObject();
                 err.put("success", false);
-                err.put("message", "PayGO não inicializado. Instale o PayGo Integrado.");
+                err.put("message", "Provedor " + provider + " não inicializado.");
                 err.put("status", "error");
                 call.resolve(err);
                 return;
             }
 
-            if (payGoManager.isProcessing()) {
+            if (manager.isProcessing()) {
                 JSObject err = new JSObject();
                 err.put("success", false);
                 err.put("message", "Já há uma transação em processamento");
@@ -147,7 +137,7 @@ public class PayGOPlugin extends Plugin {
             }
 
             // Set callback that resolves the Capacitor call
-            payGoManager.setCallback(new RealPayGoManager.PayGoCallback() {
+            manager.setCallback(new PaymentCallback() {
                 @Override
                 public void onPaymentSuccess(String authorizationCode, String transactionId) {
                     mainHandler.post(() -> {
@@ -161,8 +151,6 @@ public class PayGOPlugin extends Plugin {
                         result.put("amount", amount);
                         result.put("paymentType", paymentType);
                         call.resolve(result);
-
-                        // Also notify JS listeners
                         notifyListeners("paymentSuccess", result);
                     });
                 }
@@ -197,8 +185,8 @@ public class PayGOPlugin extends Plugin {
                 }
             });
 
-            // Delegate to RealPayGoManager (runs on background thread internally)
-            payGoManager.processPayment(amount, paymentType, description, orderId);
+            // Delegate to the selected manager
+            manager.processPayment(amount, paymentType, description, orderId);
 
         } catch (Exception e) {
             Log.e(TAG, "Error in processPayment", e);
