@@ -324,22 +324,36 @@ const Totem = () => {
     });
   }, [machines, selectedId]);
 
+  const normalizePaymentMethod = (raw: string): string => {
+    const lower = raw.toLowerCase();
+    if (lower.includes('pix')) return 'pix';
+    if (lower.includes('cielo')) return 'cielo';
+    if (lower.includes('paygo') || lower.includes('tef') || lower.includes('credit') || lower.includes('debit') || lower.includes('card')) return 'card';
+    if (lower.includes('cash') || lower.includes('dinheiro')) return 'cash';
+    return 'totem';
+  };
+
   const activateMachine = useCallback(
     async (paymentMethod: string = 'TEF') => {
       if (!selectedMachine || !currentLaundry) return;
       try {
         const esp32Id = selectedMachine.esp32_id || 'main';
         const relayPin = resolvedRelayPin(selectedMachine.relay_pin);
+        const normalizedMethod = normalizePaymentMethod(paymentMethod);
 
-        await supabase.from('transactions').insert({
+        const { error: txError } = await supabase.from('transactions').insert({
           machine_id: selectedMachine.id,
           total_amount: selectedMachine.price,
           duration_minutes: selectedMachine.duration,
           status: 'pending',
-          payment_method: paymentMethod,
+          payment_method: normalizedMethod,
           laundry_id: currentLaundry.id,
           started_at: new Date().toISOString(),
         }).select().single();
+
+        if (txError) {
+          console.error('Erro ao registrar transação:', txError);
+        }
 
         const { data: espData, error: espErr } = await supabase.functions.invoke('esp32-control', {
           body: {
