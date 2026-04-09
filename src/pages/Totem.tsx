@@ -349,7 +349,7 @@ const Totem = () => {
           payment_method: normalizedMethod,
           laundry_id: currentLaundry.id,
           started_at: new Date().toISOString(),
-        }).select().single();
+        });
 
         if (txError) {
           console.error('Erro ao registrar transação:', txError);
