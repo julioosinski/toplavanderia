@@ -157,22 +157,40 @@ public class CieloLioManager implements PaymentManager {
             }
 
             String authCode = "";
+            String cieloCode = "";
+            String brand = "";
+            String mask = "";
             String txnId = json.optString("id", String.valueOf(System.currentTimeMillis()));
 
             JSONArray payments = json.optJSONArray("payments");
             if (payments != null && payments.length() > 0) {
                 JSONObject payment = payments.getJSONObject(payments.length() - 1);
                 authCode = payment.optString("authCode", "");
+                cieloCode = payment.optString("cieloCode", "");
+                brand = payment.optString("brand", "");
+                mask = payment.optString("mask", "");
                 String externalId = payment.optString("externalId", "");
                 if (!externalId.isEmpty()) {
                     txnId = externalId;
                 }
+
+                // Verify statusCode from paymentFields (1=Authorized, 2=Cancelled)
+                JSONObject paymentFields = payment.optJSONObject("paymentFields");
+                if (paymentFields != null) {
+                    String statusCode = paymentFields.optString("statusCode", "");
+                    if ("2".equals(statusCode)) {
+                        if (callback != null) callback.onPaymentError("Transacao cancelada pela Cielo (statusCode=2)");
+                        activeInstance = null;
+                        return;
+                    }
+                }
             }
 
             if (authCode.isEmpty()) {
-                authCode = txnId;
+                authCode = cieloCode.isEmpty() ? txnId : cieloCode;
             }
 
+            Log.d(TAG, "Cielo APPROVED: authCode=" + authCode + " cieloCode(NSU)=" + cieloCode + " brand=" + brand + " mask=" + mask);
             if (callback != null) callback.onPaymentSuccess(authCode, txnId);
         } catch (Exception e) {
             Log.e(TAG, "Erro ao processar callback Cielo", e);
@@ -192,7 +210,7 @@ public class CieloLioManager implements PaymentManager {
         // Doc Cielo: parcelas "não precisa informar" à vista. installments=0 no emulador costuma abrir fluxo de
         // cartão com débito pré-selecionado; para PIX omitimos o campo para forçar fluxo carteira digital.
         if (!"PIX".equalsIgnoreCase(paymentCode)) {
-            payload.put("installments", 0);
+            payload.put("installments", "0");
         }
         payload.put("email", "cliente@toplavanderia.local");
 

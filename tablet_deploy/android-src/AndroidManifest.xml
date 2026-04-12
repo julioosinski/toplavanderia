@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <queries>
+        <package android:name="br.com.setis.clientepaygoweb.cert" />
+        <package android:name="br.com.setis.clientepaygoweb" />
+        <!-- Cielo Smart UriApp (Deep Link integration) -->
+        <package android:name="com.ads.lio.uriappclient" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -10,6 +17,10 @@
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security_config">
+        <!-- Required metadata for Cielo Smart Deep Link integration -->
+        <meta-data
+            android:name="cs_integration_type"
+            android:value="uri" />
 
         <!-- MAIN ACTIVITY - Capacitor BridgeActivity (React WebView) -->
         <activity
@@ -39,11 +50,25 @@
                 android:resource="@xml/device_filter" />
         </activity>
 
-        <!-- Legacy TotemActivity (kept for reference, not launcher) -->
+    <!-- Legacy TotemActivity (kept for reference, not launcher) -->
         <activity
             android:exported="false"
             android:name="app.lovable.toplavanderia.TotemActivity"
             android:theme="@style/AppTheme.NoActionBar" />
+
+        <!-- Cielo Deep Link callback receiver -->
+        <activity
+            android:exported="true"
+            android:name="app.lovable.toplavanderia.CieloResponseActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="order" android:host="response" />
+            </intent-filter>
+        </activity>
 
         <activity
             android:exported="false"
