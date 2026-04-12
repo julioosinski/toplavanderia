@@ -99,7 +99,7 @@ public class CieloLioManager implements PaymentManager {
             if (callback != null) callback.onPaymentProcessing("Abrindo pagamento na Cielo...");
 
             context.startActivity(intent);
-            Log.d(TAG, "Deep link sent: " + checkoutUri);
+            Log.d(TAG, "Deep link Cielo enviado (ref=" + reference + ", paymentCode=" + paymentCode + ")");
         } catch (Exception e) {
             isProcessing = false;
             Log.e(TAG, "Erro ao iniciar pagamento Cielo via deep link", e);
@@ -144,7 +144,11 @@ public class CieloLioManager implements PaymentManager {
             }
 
             String decoded = new String(Base64.decode(responseBase64, Base64.DEFAULT), StandardCharsets.UTF_8);
-            Log.d(TAG, "Cielo callback responseCode=" + responseCode + " payload=" + decoded);
+            if (decoded.length() > 400) {
+                Log.d(TAG, "Cielo callback responsecode=" + responseCode + " payloadLen=" + decoded.length() + " preview=" + decoded.substring(0, 400) + "...");
+            } else {
+                Log.d(TAG, "Cielo callback responsecode=" + responseCode + " payload=" + decoded);
+            }
 
             JSONObject json = new JSONObject(decoded);
 
@@ -153,6 +157,14 @@ public class CieloLioManager implements PaymentManager {
                 int code = json.optInt("code", -1);
                 String reason = json.optString("reason", "Erro desconhecido");
                 if (callback != null) callback.onPaymentError("Erro Cielo (" + code + "): " + reason);
+                return;
+            }
+
+            // Doc Cielo: responsecode=0 sucesso; =2 típico de cancelamento/erro na URI (além do JSON de erro acima).
+            if ("2".equals(responseCode)) {
+                if (callback != null) {
+                    callback.onPaymentError("Pagamento cancelado ou recusado (responsecode=2)");
+                }
                 return;
             }
 

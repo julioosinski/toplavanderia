@@ -1,19 +1,22 @@
 package app.lovable.toplavanderia;
 
 import android.content.Intent;
+import android.content.pm.PackageInfo;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
 import android.util.Log;
+import android.webkit.WebView;
 
 import com.getcapacitor.BridgeActivity;
 
 /**
  * MainActivity - Capacitor BridgeActivity
- * 
+ *
  * Loads the React/Capacitor WebView and registers native plugins
  * (PayGO, USB, TEF) so the React UI can communicate with PPC930.
- * 
+ *
  * Replaces TotemActivity as launcher. Keeps kiosk-mode flags and
  * USB intent handling via AndroidManifest meta-data.
  */
@@ -30,6 +33,7 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
 
         applyKioskWindowFlags();
+        logWebViewAvailability();
 
         Log.d(TAG, "✅ MainActivity (BridgeActivity) created with PayGO, USB, TEF plugins");
     }
@@ -50,6 +54,25 @@ public class MainActivity extends BridgeActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         applyKioskWindowFlags();
+    }
+
+    /**
+     * Diagnóstico: a Cielo Smart pode não expor pacote WebView do sistema. Sem provedor, o Capacitor não carrega a UI.
+     */
+    private void logWebViewAvailability() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return;
+        }
+        try {
+            PackageInfo pkg = WebView.getCurrentWebViewPackage();
+            if (pkg == null) {
+                Log.w(TAG, "Nenhum pacote WebView reportado pelo sistema — a interface pode falhar neste terminal (validar com Emulador Cielo / Cielo Smart).");
+            } else {
+                Log.i(TAG, "WebView disponível: " + pkg.packageName + " " + pkg.versionName);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Não foi possível consultar o pacote WebView", t);
+        }
     }
 
     private void applyKioskWindowFlags() {

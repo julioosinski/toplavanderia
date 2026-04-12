@@ -9,6 +9,8 @@ buildscript {
     dependencies {
         classpath 'com.android.tools.build:gradle:8.9.1'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        // Opcional: necessário apenas se useGoogleServices=true e existir google-services.json (Firebase).
+        classpath 'com.google.gms:google-services:4.4.2'
     }
 }
 

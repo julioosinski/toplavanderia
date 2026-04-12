@@ -10,8 +10,8 @@ android {
         applicationId "com.toplavanderia.app"
         minSdk 24
         targetSdk 35
-        versionCode 5
-        versionName "2.1.2"
+        versionCode 6
+        versionName "2.1.3"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -36,29 +36,6 @@ android {
     packagingOptions {
         pickFirst '**/libc++_shared.so'
         pickFirst '**/libjsc.so'
-        exclude 'META-INF/DEPENDENCIES'
-        exclude 'META-INF/LICENSE'
-        exclude 'META-INF/LICENSE.txt'
-        exclude 'META-INF/license.txt'
-        exclude 'META-INF/NOTICE'
-        exclude 'META-INF/NOTICE.txt'
-        exclude 'META-INF/notice.txt'
-        exclude 'META-INF/ASL2.0'
-        exclude 'META-INF/*.kotlin_module'
-    }
-    
-    // Desabilitar verificação de classes duplicadas temporariamente
-    lintOptions {
-        checkReleaseBuilds false
-        abortOnError false
-    }
-    
-    // Configurações para resolver classes duplicadas
-    
-    // Configuração para resolver classes duplicadas
-    
-    // Configuração para resolver classes duplicadas do PayGo
-    packagingOptions {
         pickFirst '**/META-INF/DEPENDENCIES'
         pickFirst '**/META-INF/LICENSE'
         pickFirst '**/META-INF/LICENSE.txt'
@@ -70,13 +47,14 @@ android {
         exclude 'META-INF/DEPENDENCIES'
         exclude 'META-INF/LICENSE'
         exclude 'META-INF/LICENSE.txt'
+        exclude 'META-INF/license.txt'
         exclude 'META-INF/NOTICE'
         exclude 'META-INF/NOTICE.txt'
+        exclude 'META-INF/notice.txt'
         exclude 'META-INF/ASL2.0'
         exclude 'META-INF/*.kotlin_module'
     }
-    
-    // Desabilitar verificação de duplicatas
+
     lintOptions {
         checkReleaseBuilds false
         abortOnError false
@@ -133,11 +111,11 @@ dependencies {
 
 apply from: 'capacitor.build.gradle'
 
-try {
-    def servicesJSON = file('google-services.json')
-    if (servicesJSON.text) {
-        apply plugin: 'com.google.gms.google-services'
-    }
-} catch(Exception e) {
-    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+def wantGoogleServices = (findProperty('useGoogleServices') ?: 'false').toString().toBoolean()
+def googleJson = file('google-services.json')
+if (wantGoogleServices && googleJson.exists()) {
+    apply plugin: 'com.google.gms.google-services'
+    logger.lifecycle('Google Services plugin aplicado (Firebase). APK não adequado para terminais sem GMS (ex.: Cielo Smart).')
+} else {
+    logger.lifecycle('Google Services: omitido (useGoogleServices=' + wantGoogleServices + ', google-services.json=' + googleJson.exists() + '). Compatível com Cielo Smart.')
 }
