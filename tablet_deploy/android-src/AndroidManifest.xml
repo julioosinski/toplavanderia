@@ -39,11 +39,24 @@
                 android:resource="@xml/device_filter" />
         </activity>
 
-        <!-- Legacy TotemActivity (kept for reference, not launcher) -->
+    <!-- Legacy TotemActivity (kept for reference, not launcher) -->
         <activity
             android:exported="false"
             android:name="app.lovable.toplavanderia.TotemActivity"
             android:theme="@style/AppTheme.NoActionBar" />
+
+        <!-- Cielo Deep Link callback receiver -->
+        <activity
+            android:exported="true"
+            android:name="app.lovable.toplavanderia.CieloResponseActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="order" android:host="response" />
+            </intent-filter>
+        </activity>
 
         <activity
             android:exported="false"
