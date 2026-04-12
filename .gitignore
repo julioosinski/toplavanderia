@@ -11,6 +11,9 @@ build/
 *.tar.gz
 
 # Android
+android/keystore.properties
+*.jks
+*.keystore
 android/app/build/
 android/.gradle/
 android/gradle/

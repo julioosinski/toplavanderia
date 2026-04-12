@@ -2,6 +2,13 @@ plugins {
     id 'com.android.application'
 }
 
+// Assinatura release: crie android/keystore.properties (veja keystore.properties.example). Sem isso, release usa debug keystore (instalação local; não use na Play Store).
+def keystorePropsFile = rootProject.file('keystore.properties')
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystoreProps.load(new FileInputStream(keystorePropsFile))
+}
+
 android {
     namespace "app.lovable.toplavanderia"
     compileSdk 36
@@ -10,9 +17,21 @@ android {
         applicationId "com.toplavanderia.app"
         minSdk 24
         targetSdk 35
-        versionCode 6
-        versionName "2.1.3"
+        versionCode 7
+        versionName "2.1.4"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        release {
+            if (keystorePropsFile.exists()) {
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+                storePassword keystoreProps['storePassword']
+                def storePath = keystoreProps['storeFile']
+                storeFile storePath ? rootProject.file(storePath) : null
+            }
+        }
     }
 
     buildTypes {
@@ -25,6 +44,12 @@ android {
             shrinkResources true
             debuggable false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (keystorePropsFile.exists()) {
+                signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
+                logger.lifecycle('Release: assinatura debug (defina android/keystore.properties + .jks para AAB/Play Store).')
+            }
         }
     }
 
