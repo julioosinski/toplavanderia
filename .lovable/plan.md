@@ -1,66 +1,57 @@
 
 
-## Diagnóstico: Transações do Totem não são registradas como pagamento
+## Análise: Implementação atual vs Documentação Cielo
 
-### Causa raiz
+### O que está CORRETO
 
-A tabela `transactions` possui um **CHECK constraint** que restringe `payment_method` a: `'credit'`, `'pix'`, `'card'`, `'cash'`, `'manual_release'`, `'totem'`.
+- **URI de pagamento**: `lio://payment?request=$base64&urlCallback=order://response` — ✅
+- **AndroidManifest**: `<queries>` com `com.ads.lio.uriappclient`, `<meta-data cs_integration_type="uri">`, CieloResponseActivity com scheme `order://response` — ✅
+- **Payload JSON**: campos `accessToken`, `clientID`, `reference`, `value`, `items[]`, `paymentCode` — ✅
+- **paymentCode values**: `CREDITO_AVISTA`, `DEBITO_AVISTA`, `PIX` — ✅
+- **Response parsing**: extrai `authCode` e `externalId` do array `payments[]` — ✅
+- **minSdk 24** — ✅ (docs exigem ≥24)
 
-O Totem está passando valores **fora dessa lista**, causando falha silenciosa no INSERT:
+### O que precisa MUDAR
 
-| Fluxo | Valor enviado | Resultado |
-|---|---|---|
-| Pagamento universal (crédito/débito) | `"Universal - PAYGO"` | **FALHA** — violação do constraint |
-| Pagamento universal (PIX via PayGO) | `"Universal - PIX"` | **FALHA** |
-| Pagamento PIX direto | `"PIX"` (maiúsculo) | **FALHA** — constraint exige `'pix'` minúsculo |
+#### 1. `tablet_deploy/CieloLioManager.java` — usa SDK antigo (CRÍTICO)
 
-Por isso, só aparecem transações `manual_release` — estas são inseridas pelo painel admin com o valor correto.
+A versão em `tablet_deploy/android-src/java/CieloLioManager.java` usa o **SDK OrderManager** (`.aar`), que a Cielo está **descontinuando**. A documentação diz explicitamente:
 
-### Correções necessárias
+> "Recomendamos fortemente a migração para a integração via Deep link, que oferece uma solução mais leve, flexível e segura."
+> "29/08: Fim do suporte a apps não adaptados (sem Deep Link ou SDK < 2.1.0)"
+> "15/10: Corte definitivo"
 
-#### 1. Normalizar `payment_method` no `activateMachine` (Totem.tsx)
+**Ação**: Substituir o arquivo `tablet_deploy/android-src/java/CieloLioManager.java` pela versão Deep Link que já existe em `android/app/src/main/java/.../CieloLioManager.java`. Copiar também o `CieloResponseActivity.java`.
 
-Mapear os valores recebidos para valores válidos do constraint:
+#### 2. Campo `installments` — tipo incorreto (MENOR)
 
-```
-"Universal - PAYGO" → "card"
-"Universal - PIX"   → "pix"  
-"Universal - TEF"   → "card"
-"PIX"               → "pix"
-"TEF"               → "card"
-fallback            → "totem"
-```
+A documentação especifica que `installments` é tipo **string**. Nosso código envia como **int** (`payload.put("installments", 0)`).
 
-Lógica: criar uma função `normalizePaymentMethod(raw)` que converte para valores aceitos pelo banco.
+**Ação**: Mudar para `payload.put("installments", "0")` no `CieloLioManager.java`.
 
-#### 2. Tratar erro do INSERT (Totem.tsx)
+#### 3. Response parsing incompleta
 
-Atualmente o `.insert().select().single()` não verifica erro — o resultado é ignorado. Adicionar verificação de erro para diagnosticar falhas futuras.
+A documentação mostra que a resposta contém campos úteis que não estamos extraindo:
+- `cieloCode` (NSU Cielo)
+- `brand` (bandeira do cartão)
+- `paymentFields.statusCode` (1=Autorizada, 2=Cancelada, 0=PIX)
+- `mask` (cartão mascarado)
 
-#### 3. Atualizar o CHECK constraint (migration SQL)
+**Ação**: Melhorar `consumeDeepLinkResponse` para extrair `cieloCode` como NSU e `authCode` corretamente, e verificar `paymentFields.statusCode` para confirmar aprovação.
 
-Adicionar `'cielo'` como valor permitido para transações futuras da Cielo LIO:
+#### 4. Build release sem otimização
 
-```sql
-ALTER TABLE transactions DROP CONSTRAINT transactions_payment_method_check;
-ALTER TABLE transactions ADD CONSTRAINT transactions_payment_method_check 
-  CHECK (payment_method IS NULL OR payment_method IN ('credit','pix','card','cash','manual_release','totem','cielo'));
-```
+`minifyEnabled false` e `shrinkResources false` no release build. Para conformidade com limite de 70 MB.
 
-#### 4. Dashboard e Relatórios
-
-O Dashboard (`Dashboard.tsx`) e Reports (`ReportsTab.tsx`, `ConsolidatedReportsTab.tsx`) já consultam todas as transações sem filtro de `payment_method` — portanto, uma vez que as transações sejam inseridas corretamente, aparecerão automaticamente nos relatórios.
-
-A página Transactions (`Transactions.tsx`) também não filtra por método — mostrará tudo corretamente.
+**Ação**: Ativar `minifyEnabled true` e `shrinkResources true` no bloco `release` do `build.gradle`.
 
 ### Arquivos a modificar
 
 | Arquivo | Ação |
 |---|---|
-| `src/pages/Totem.tsx` | Normalizar `payment_method` + tratar erro do INSERT |
-| Migration SQL | Adicionar `'cielo'` ao CHECK constraint |
-
-### Impacto
-
-Após esta correção, toda transação feita pelo Totem (crédito, débito, PIX, Cielo) será registrada corretamente e aparecerá no Dashboard, Transações e Relatórios.
+| `android/app/.../CieloLioManager.java` | Corrigir tipo `installments` para string; melhorar parsing da resposta |
+| `tablet_deploy/android-src/java/CieloLioManager.java` | Substituir SDK por versão Deep Link |
+| `tablet_deploy/android-src/java/CieloResponseActivity.java` | Criar (copiar da versão principal) |
+| `tablet_deploy/android-src/AndroidManifest.xml` | Adicionar CieloResponseActivity + queries |
+| `android/app/build.gradle` | Ativar minify/shrink no release |
 
