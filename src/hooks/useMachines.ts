@@ -147,7 +147,13 @@ export const useMachines = (laundryId?: string | null) => {
       }
 
       const load = async () => {
-        let query = supabase.from('machines').select('*');
+        // Check auth state to choose correct source table.
+        // Authenticated users query 'machines' (full columns, role-scoped RLS).
+        // Anon/Totem users query 'public_machines' view (excludes revenue data).
+        const { data: { session } } = await supabase.auth.getSession();
+        const tableName = session ? 'machines' : 'public_machines';
+
+        let query = supabase.from(tableName).select('*');
         if (laundryId) query = query.eq('laundry_id', laundryId);
         let { data: machinesData, error: machinesError } = await query.order('name');
 
@@ -158,7 +164,7 @@ export const useMachines = (laundryId?: string | null) => {
         // o totem sem operação.
         if (laundryId && (!machinesData || machinesData.length === 0)) {
           const { data: fallbackMachines, error: fallbackError } = await supabase
-            .from('machines')
+            .from(tableName)
             .select('*')
             .order('name');
 
