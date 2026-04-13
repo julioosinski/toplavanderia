@@ -44,9 +44,24 @@ serve(async (req) => {
         });
       }
 
+      // Enrich ON commands with cycle_time_minutes from machines table
+      const enrichedCommands = [];
+      for (const cmd of (commands || [])) {
+        if (cmd.action === 'on' || cmd.action === 'activate' || cmd.action === 'turn_on') {
+          const { data: machine } = await supabaseClient
+            .from('machines')
+            .select('cycle_time_minutes')
+            .eq('id', cmd.machine_id)
+            .single();
+          enrichedCommands.push({ ...cmd, cycle_time_minutes: machine?.cycle_time_minutes ?? null });
+        } else {
+          enrichedCommands.push(cmd);
+        }
+      }
+
       return new Response(JSON.stringify({
         success: true,
-        commands: commands || [],
+        commands: enrichedCommands,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -286,8 +301,29 @@ serve(async (req) => {
         .eq('is_online', true)
         .lt('last_heartbeat', staleThreshold);
 
+      // Fetch machine config (cycle_time_minutes) for this ESP32
+      const { data: machineConfigs } = await supabaseClient
+        .from('machines')
+        .select('relay_pin, cycle_time_minutes')
+        .eq('esp32_id', heartbeatData.esp32_id || 'main')
+        .eq('laundry_id', heartbeatData.laundry_id);
+
+      const config: Record<string, unknown> = {};
+      if (machineConfigs && machineConfigs.length > 0) {
+        // If single machine, flat field; if multiple, keyed by relay_pin
+        if (machineConfigs.length === 1) {
+          config.cycle_time_minutes = machineConfigs[0].cycle_time_minutes;
+        } else {
+          const perRelay: Record<string, number | null> = {};
+          for (const m of machineConfigs) {
+            perRelay[`relay_${m.relay_pin}`] = m.cycle_time_minutes;
+          }
+          config.cycle_time_per_relay = perRelay;
+        }
+      }
+
       return new Response(JSON.stringify({
-        success: true, message: 'Heartbeat received', next_interval: 30
+        success: true, message: 'Heartbeat received', next_interval: 30, config
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
