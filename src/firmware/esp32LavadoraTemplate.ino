@@ -3,7 +3,7 @@
  * Fonte única: este arquivo. Placeholders __WIFI_SSID__, __ESP32_ID__, etc.
  * Ao alterar o firmware, sincronize também: public/arduino/ESP32_Lavadora_Individual_CORRIGIDO_v2.ino
  *
- * Versão: 2.0.7 — relay_pin e cycle_time do painel; desliga relé ao fim do ciclo; heartbeat relay_N
+ * Versão: 2.1.0 — cycle_time dinâmico via heartbeat/poll_commands; relay_pin do painel
  */
 
 #include <WiFi.h>
@@ -31,8 +31,8 @@ const char* supabaseApiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzd
 #define LED_PIN 2                  // LED embutido (GPIO2)
 /** Índice lógico no Supabase (relay_1, relay_2…) — substituído pelo painel "Configurar ESP32" */
 #define RELAY_LOGICAL_PIN __RELAY_LOGICAL_PIN__
-/** Minutos de ciclo — igual a cycle_time_minutes da máquina no painel */
-#define CYCLE_TIME_MINUTES __CYCLE_TIME_MINUTES__
+/** Valor inicial do painel — atualizado dinamicamente pela resposta do heartbeat */
+int cycleTimeMinutes = __CYCLE_TIME_MINUTES__;
 
 // ================== VARIÁVEIS DE CONTROLE ==================
 WebServer server(80);
@@ -63,7 +63,7 @@ String urlEncodeQueryValue(const char* in) {
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n========================================");
-  Serial.println("ESP32 Lavadora Individual v2.0.7");
+  Serial.println("ESP32 Lavadora Individual v2.1.0");
   Serial.println("========================================");
   
   // Configurar hardware
@@ -93,10 +93,10 @@ void loop() {
   unsigned long now = millis();
 
   // Fim do ciclo: desliga relé (mesma regra de tempo que o painel / dashboard)
-  if (machineRunning && relayState && CYCLE_TIME_MINUTES > 0) {
-    unsigned long cycleMs = (unsigned long)CYCLE_TIME_MINUTES * 60UL * 1000UL;
+  if (machineRunning && relayState && cycleTimeMinutes > 0) {
+    unsigned long cycleMs = (unsigned long)cycleTimeMinutes * 60UL * 1000UL;
     if (now - machineStartTime >= cycleMs) {
-      Serial.println("⏱️ Ciclo concluído (painel); desligando relé");
+      Serial.printf("⏱️ Ciclo concluído (%d min); desligando relé\n", cycleTimeMinutes);
       relayState = false;
       machineRunning = false;
       digitalWrite(RELAY_PIN, LOW);
@@ -191,7 +191,7 @@ void handleStatus() {
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
   doc["network_status"] = "connected";
-  doc["firmware_version"] = "v2.0.7";
+  doc["firmware_version"] = "v2.1.0";
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
   doc["relay_status"] = relayState ? "on" : "off";
@@ -299,12 +299,19 @@ void pollSupabaseCommands() {
     Serial.printf("📌 Comando relay_%d → GPIO físico %d\n", RELAY_LOGICAL_PIN, RELAY_PIN);
 
     if (action == "on" || action == "activate" || action == "turn_on") {
+      if (c.containsKey("cycle_time_minutes") && !c["cycle_time_minutes"].isNull()) {
+        int newCycle = c["cycle_time_minutes"].as<int>();
+        if (newCycle > 0 && newCycle != cycleTimeMinutes) {
+          Serial.printf("🔄 cycle_time atualizado via comando: %d → %d min\n", cycleTimeMinutes, newCycle);
+          cycleTimeMinutes = newCycle;
+        }
+      }
       relayState = true;
       machineRunning = true;
       machineStartTime = millis();
       digitalWrite(RELAY_PIN, HIGH);
       digitalWrite(LED_PIN, HIGH);
-      Serial.println("⚡ Fila Supabase: ON (pagamento / comando)");
+      Serial.printf("⚡ Fila Supabase: ON (ciclo: %d min)\n", cycleTimeMinutes);
     } else if (action == "off" || action == "deactivate" || action == "turn_off") {
       relayState = false;
       machineRunning = false;
@@ -340,7 +347,7 @@ void sendHeartbeat() {
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
   doc["network_status"] = "connected";
-  doc["firmware_version"] = "v2.0.7";
+  doc["firmware_version"] = "v2.1.0";
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
   
@@ -365,6 +372,18 @@ void sendHeartbeat() {
     String response = http.getString();
     Serial.println("Resposta: " + response);
     lastHeartbeat = millis();
+
+    DynamicJsonDocument respDoc(1024);
+    if (!deserializeJson(respDoc, response) && respDoc.containsKey("config")) {
+      JsonObject cfg = respDoc["config"];
+      if (cfg.containsKey("cycle_time_minutes") && !cfg["cycle_time_minutes"].isNull()) {
+        int newCycle = cfg["cycle_time_minutes"].as<int>();
+        if (newCycle > 0 && newCycle != cycleTimeMinutes) {
+          Serial.printf("🔄 cycle_time atualizado via heartbeat: %d → %d min\n", cycleTimeMinutes, newCycle);
+          cycleTimeMinutes = newCycle;
+        }
+      }
+    }
   } else {
     Serial.printf("❌ Erro no heartbeat - HTTP %d\n", httpCode);
     Serial.println("Erro: " + http.errorToString(httpCode));
