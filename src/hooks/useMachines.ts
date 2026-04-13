@@ -147,15 +147,28 @@ export const useMachines = (laundryId?: string | null) => {
       }
 
       const load = async () => {
-        // Check auth state to choose correct source table.
+        // Check auth state to choose correct source.
         // Authenticated users query 'machines' (full columns, role-scoped RLS).
         // Anon/Totem users query 'public_machines' view (excludes revenue data).
         const { data: { session } } = await supabase.auth.getSession();
-        const tableName = session ? 'machines' : 'public_machines';
+        const isAuthenticated = !!session;
 
-        let query = supabase.from(tableName).select('*');
-        if (laundryId) query = query.eq('laundry_id', laundryId);
-        let { data: machinesData, error: machinesError } = await query.order('name');
+        let machinesData: any[] | null = null;
+        let machinesError: any = null;
+
+        if (isAuthenticated) {
+          let query = supabase.from('machines').select('*');
+          if (laundryId) query = query.eq('laundry_id', laundryId);
+          const result = await query.order('name');
+          machinesData = result.data;
+          machinesError = result.error;
+        } else {
+          let query = supabase.from('public_machines').select('*');
+          if (laundryId) query = query.eq('laundry_id', laundryId);
+          const result = await query.order('name');
+          machinesData = result.data;
+          machinesError = result.error;
+        }
 
         if (machinesError) throw machinesError;
 
@@ -163,13 +176,12 @@ export const useMachines = (laundryId?: string | null) => {
         // máquinas por filtro/associação, tentar carregar todas para não deixar
         // o totem sem operação.
         if (laundryId && (!machinesData || machinesData.length === 0)) {
-          const { data: fallbackMachines, error: fallbackError } = await supabase
-            .from(tableName)
-            .select('*')
-            .order('name');
+          const fallbackResult = isAuthenticated
+            ? await supabase.from('machines').select('*').order('name')
+            : await supabase.from('public_machines').select('*').order('name');
 
-          if (!fallbackError && fallbackMachines && fallbackMachines.length > 0) {
-            machinesData = fallbackMachines;
+          if (!fallbackResult.error && fallbackResult.data && fallbackResult.data.length > 0) {
+            machinesData = fallbackResult.data;
             toast({
               title: "Aviso de configuração",
               description: "Nenhuma máquina vinculada à lavanderia selecionada. Exibindo máquinas disponíveis do sistema.",
