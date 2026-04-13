@@ -780,12 +780,15 @@ export type Database = {
           esp32_id: string | null
           id: string | null
           last_maintenance: string | null
+          laundry_id: string | null
           location: string | null
           name: string | null
           price_per_cycle: number | null
+          relay_pin: number | null
           status: string | null
           temperature: number | null
           type: string | null
+          updated_at: string | null
         }
         Insert: {
           capacity_kg?: number | null
@@ -793,12 +796,15 @@ export type Database = {
           esp32_id?: string | null
           id?: string | null
           last_maintenance?: string | null
+          laundry_id?: string | null
           location?: string | null
           name?: string | null
           price_per_cycle?: number | null
+          relay_pin?: number | null
           status?: string | null
           temperature?: number | null
           type?: string | null
+          updated_at?: string | null
         }
         Update: {
           capacity_kg?: number | null
@@ -806,14 +812,25 @@ export type Database = {
           esp32_id?: string | null
           id?: string | null
           last_maintenance?: string | null
+          laundry_id?: string | null
           location?: string | null
           name?: string | null
           price_per_cycle?: number | null
+          relay_pin?: number | null
           status?: string | null
           temperature?: number | null
           type?: string | null
+          updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "machines_laundry_id_fkey"
+            columns: ["laundry_id"]
+            isOneToOne: false
+            referencedRelation: "laundries"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Functions: {
