@@ -1,57 +1,69 @@
 
 
-## Análise: Implementação atual vs Documentação Cielo
+## Sincronizar tempo de ciclo do painel com o ESP32
 
-### O que está CORRETO
+### Problema
 
-- **URI de pagamento**: `lio://payment?request=$base64&urlCallback=order://response` — ✅
-- **AndroidManifest**: `<queries>` com `com.ads.lio.uriappclient`, `<meta-data cs_integration_type="uri">`, CieloResponseActivity com scheme `order://response` — ✅
-- **Payload JSON**: campos `accessToken`, `clientID`, `reference`, `value`, `items[]`, `paymentCode` — ✅
-- **paymentCode values**: `CREDITO_AVISTA`, `DEBITO_AVISTA`, `PIX` — ✅
-- **Response parsing**: extrai `authCode` e `externalId` do array `payments[]` — ✅
-- **minSdk 24** — ✅ (docs exigem ≥24)
+O ESP32 usa `CYCLE_TIME_MINUTES` como constante compilada (`#define CYCLE_TIME_MINUTES 40`). Quando o admin altera o tempo de ciclo no painel, o ESP32 não recebe essa informação — continua usando o valor antigo até o firmware ser recompilado e reenviado.
 
-### O que precisa MUDAR
+### Solução
 
-#### 1. `tablet_deploy/CieloLioManager.java` — usa SDK antigo (CRÍTICO)
+Usar o fluxo de comunicação existente (heartbeat response + poll_commands) para enviar o `cycle_time_minutes` atualizado do banco para o ESP32, que passará a usar o valor recebido em vez do hardcoded.
 
-A versão em `tablet_deploy/android-src/java/CieloLioManager.java` usa o **SDK OrderManager** (`.aar`), que a Cielo está **descontinuando**. A documentação diz explicitamente:
+### Mudanças
 
-> "Recomendamos fortemente a migração para a integração via Deep link, que oferece uma solução mais leve, flexível e segura."
-> "29/08: Fim do suporte a apps não adaptados (sem Deep Link ou SDK < 2.1.0)"
-> "15/10: Corte definitivo"
+#### 1. Edge Function `esp32-monitor` — incluir config na resposta do heartbeat
 
-**Ação**: Substituir o arquivo `tablet_deploy/android-src/java/CieloLioManager.java` pela versão Deep Link que já existe em `android/app/src/main/java/.../CieloLioManager.java`. Copiar também o `CieloResponseActivity.java`.
+Na seção do heartbeat (linha ~289), antes de retornar, buscar `cycle_time_minutes` da tabela `machines` para o ESP32 que enviou o heartbeat e incluir na resposta:
 
-#### 2. Campo `installments` — tipo incorreto (MENOR)
+```json
+{
+  "success": true,
+  "next_interval": 30,
+  "config": {
+    "cycle_time_minutes": 35
+  }
+}
+```
 
-A documentação especifica que `installments` é tipo **string**. Nosso código envia como **int** (`payload.put("installments", 0)`).
+#### 2. Edge Function `esp32-monitor` — incluir config no poll_commands
 
-**Ação**: Mudar para `payload.put("installments", "0")` no `CieloLioManager.java`.
+Na resposta do `poll_commands`, incluir também o `cycle_time_minutes` da máquina associada ao comando `on`, para que o ESP32 saiba a duração correta ao iniciar o ciclo.
 
-#### 3. Response parsing incompleta
+#### 3. Firmware `ESP32_Lavadora_Individual_CORRIGIDO_v2.ino`
 
-A documentação mostra que a resposta contém campos úteis que não estamos extraindo:
-- `cieloCode` (NSU Cielo)
-- `brand` (bandeira do cartão)
-- `paymentFields.statusCode` (1=Autorizada, 2=Cancelada, 0=PIX)
-- `mask` (cartão mascarado)
+- Converter `CYCLE_TIME_MINUTES` de `#define` para variável global `int cycleTimeMinutes = 40;`
+- No `sendHeartbeat()`, após receber resposta HTTP 200, parsear o JSON e extrair `config.cycle_time_minutes` — se presente, atualizar `cycleTimeMinutes`
+- No `pollSupabaseCommands()`, ao processar comando `on`, extrair `cycle_time_minutes` se presente no comando
+- O `loop()` já usa `CYCLE_TIME_MINUTES` para desligar o relé — apenas trocar pela variável
 
-**Ação**: Melhorar `consumeDeepLinkResponse` para extrair `cieloCode` como NSU e `authCode` corretamente, e verificar `paymentFields.statusCode` para confirmar aprovação.
+#### 4. Firmware template `src/firmware/esp32LavadoraTemplate.ino`
 
-#### 4. Build release sem otimização
+Aplicar as mesmas mudanças para manter ambos alinhados.
 
-`minifyEnabled false` e `shrinkResources false` no release build. Para conformidade com limite de 70 MB.
-
-**Ação**: Ativar `minifyEnabled true` e `shrinkResources true` no bloco `release` do `build.gradle`.
-
-### Arquivos a modificar
+### Arquivos modificados
 
 | Arquivo | Ação |
 |---|---|
-| `android/app/.../CieloLioManager.java` | Corrigir tipo `installments` para string; melhorar parsing da resposta |
-| `tablet_deploy/android-src/java/CieloLioManager.java` | Substituir SDK por versão Deep Link |
-| `tablet_deploy/android-src/java/CieloResponseActivity.java` | Criar (copiar da versão principal) |
-| `tablet_deploy/android-src/AndroidManifest.xml` | Adicionar CieloResponseActivity + queries |
-| `android/app/build.gradle` | Ativar minify/shrink no release |
+| `supabase/functions/esp32-monitor/index.ts` | Retornar `cycle_time_minutes` no heartbeat e poll_commands |
+| `public/arduino/ESP32_Lavadora_Individual_CORRIGIDO_v2.ino` | Usar variável dinâmica + parsear config da resposta |
+| `src/firmware/esp32LavadoraTemplate.ino` | Mesmo alinhamento do firmware principal |
+
+### Fluxo após a mudança
+
+```text
+Admin altera cycle_time → DB machines.cycle_time_minutes = 35
+   ↓
+ESP32 envia heartbeat (a cada 30s)
+   ↓
+esp32-monitor lê machines WHERE esp32_id + laundry_id
+   ↓
+Resposta: { config: { cycle_time_minutes: 35 } }
+   ↓
+ESP32 atualiza cycleTimeMinutes = 35
+   ↓
+Próximo ciclo usa 35 minutos
+```
+
+A atualização reflete no ESP32 em no máximo 30 segundos (próximo heartbeat).
 
