@@ -1,69 +1,71 @@
 
 
-## Sincronizar tempo de ciclo do painel com o ESP32
+## Diagnóstico: Comando manual não aciona o ESP32
 
-### Problema
+### Causa raiz encontrada
 
-O ESP32 usa `CYCLE_TIME_MINUTES` como constante compilada (`#define CYCLE_TIME_MINUTES 40`). Quando o admin altera o tempo de ciclo no painel, o ESP32 não recebe essa informação — continua usando o valor antigo até o firmware ser recompilado e reenviado.
+O problema é um **conflito de relay_pin** entre o banco de dados e o firmware.
 
-### Solução
+**No banco de dados**, as máquinas (ex: Lavadora 01) têm `relay_pin = 2`.
 
-Usar o fluxo de comunicação existente (heartbeat response + poll_commands) para enviar o `cycle_time_minutes` atualizado do banco para o ESP32, que passará a usar o valor recebido em vez do hardcoded.
+**No firmware**, o ESP32 tem `RELAY_LOGICAL_PIN = 1`.
 
-### Mudanças
+Quando o comando manual é criado via `esp32-credit-release`, ele insere na `pending_commands` com `relay_pin = 2` (lido do banco). O firmware busca esse comando, mas na linha 302 faz:
 
-#### 1. Edge Function `esp32-monitor` — incluir config na resposta do heartbeat
-
-Na seção do heartbeat (linha ~289), antes de retornar, buscar `cycle_time_minutes` da tabela `machines` para o ESP32 que enviou o heartbeat e incluir na resposta:
-
-```json
-{
-  "success": true,
-  "next_interval": 30,
-  "config": {
-    "cycle_time_minutes": 35
-  }
+```cpp
+if (cmdRelay != RELAY_LOGICAL_PIN) {
+  // Ignora o comando e confirma como "completed" sem executar!
+  confirmSupabaseCommand(cid);
+  continue;
 }
 ```
 
-#### 2. Edge Function `esp32-monitor` — incluir config no poll_commands
+O comando é **confirmado como executado** sem nunca ligar o relé. Por isso aparece como "completed" mas nada acontece fisicamente.
 
-Na resposta do `poll_commands`, incluir também o `cycle_time_minutes` da máquina associada ao comando `on`, para que o ESP32 saiba a duração correta ao iniciar o ciclo.
+### Solução
 
-#### 3. Firmware `ESP32_Lavadora_Individual_CORRIGIDO_v2.ino`
+Há duas abordagens (implementaremos ambas para robustez):
 
-- Converter `CYCLE_TIME_MINUTES` de `#define` para variável global `int cycleTimeMinutes = 40;`
-- No `sendHeartbeat()`, após receber resposta HTTP 200, parsear o JSON e extrair `config.cycle_time_minutes` — se presente, atualizar `cycleTimeMinutes`
-- No `pollSupabaseCommands()`, ao processar comando `on`, extrair `cycle_time_minutes` se presente no comando
-- O `loop()` já usa `CYCLE_TIME_MINUTES` para desligar o relé — apenas trocar pela variável
+#### 1. Firmware: usar o relay_pin do comando em vez de ignorá-lo
 
-#### 4. Firmware template `src/firmware/esp32LavadoraTemplate.ino`
+O firmware não deveria rejeitar relay_pins diferentes — ele deveria mapear o relay lógico para o GPIO físico correto. Como cada ESP32 neste sistema controla apenas 1 máquina com 1 relé (GPIO 2), o firmware deve aceitar qualquer relay_pin e acionar o mesmo GPIO.
 
-Aplicar as mesmas mudanças para manter ambos alinhados.
+**Arquivo**: `public/arduino/ESP32_Lavadora_Individual_CORRIGIDO_v2.ino` e `src/firmware/esp32LavadoraTemplate.ino`
 
-### Arquivos modificados
+- Remover a verificação `if (cmdRelay != RELAY_LOGICAL_PIN)` que pula o comando
+- Aceitar qualquer relay_pin e acionar o GPIO configurado (`RELAY_PIN`)
+- Manter o log informativo mas sem ignorar
 
-| Arquivo | Ação |
-|---|---|
-| `supabase/functions/esp32-monitor/index.ts` | Retornar `cycle_time_minutes` no heartbeat e poll_commands |
-| `public/arduino/ESP32_Lavadora_Individual_CORRIGIDO_v2.ino` | Usar variável dinâmica + parsear config da resposta |
-| `src/firmware/esp32LavadoraTemplate.ino` | Mesmo alinhamento do firmware principal |
+#### 2. Edge Function: garantir consistência do relay_pin
 
-### Fluxo após a mudança
+**Arquivo**: `supabase/functions/esp32-credit-release/index.ts`
 
-```text
-Admin altera cycle_time → DB machines.cycle_time_minutes = 35
-   ↓
-ESP32 envia heartbeat (a cada 30s)
-   ↓
-esp32-monitor lê machines WHERE esp32_id + laundry_id
-   ↓
-Resposta: { config: { cycle_time_minutes: 35 } }
-   ↓
-ESP32 atualiza cycleTimeMinutes = 35
-   ↓
-Próximo ciclo usa 35 minutos
+- Usar `machine.relay_pin || 1` ao criar o pending_command (já faz isso, está correto)
+
+### Mudança necessária no firmware (principal)
+
+Substituir as linhas 301-306 de:
+```cpp
+int cmdRelay = c["relay_pin"] | RELAY_LOGICAL_PIN;
+if (cmdRelay != RELAY_LOGICAL_PIN) {
+  Serial.printf("Ignorando comando relay_%d\n", cmdRelay, RELAY_LOGICAL_PIN);
+  confirmSupabaseCommand(cid);
+  continue;
+}
 ```
 
-A atualização reflete no ESP32 em no máximo 30 segundos (próximo heartbeat).
+Para:
+```cpp
+int cmdRelay = c["relay_pin"] | RELAY_LOGICAL_PIN;
+Serial.printf("📌 Comando relay_%d → GPIO físico %d\n", cmdRelay, RELAY_PIN);
+```
+
+Isso permite que o ESP32 execute o comando independentemente do relay_pin lógico, já que cada ESP32 controla apenas um GPIO.
+
+### Arquivos a modificar
+
+| Arquivo | Mudança |
+|---|---|
+| `public/arduino/ESP32_Lavadora_Individual_CORRIGIDO_v2.ino` | Remover filtro de relay_pin que bloqueia execução |
+| `src/firmware/esp32LavadoraTemplate.ino` | Mesma correção |
 
