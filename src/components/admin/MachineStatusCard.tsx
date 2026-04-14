@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -11,6 +12,28 @@ interface MachineStatusCardProps {
 }
 
 export const MachineStatusCard = ({ machine, onClick }: MachineStatusCardProps) => {
+  const isRunning = machine.status === "running";
+
+  // Tick every second for live countdown
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!isRunning) return;
+    const id = window.setInterval(() => setTick((t) => t + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [isRunning]);
+
+  const displayRemaining = useMemo(() => {
+    if (isRunning && machine.runningSinceAt) {
+      return Math.max(
+        0,
+        Math.round(
+          machine.duration -
+            (Date.now() - new Date(machine.runningSinceAt).getTime()) / 60000
+        )
+      );
+    }
+    return machine.timeRemaining ?? 0;
+  }, [isRunning, machine.runningSinceAt, machine.duration, machine.timeRemaining, tick]);
   const IconComponent = machine.type === "lavadora" ? Droplets : Wind;
   const colorScheme = machine.type === "lavadora" ? "blue" : "orange";
   
@@ -101,14 +124,14 @@ export const MachineStatusCard = ({ machine, onClick }: MachineStatusCardProps) 
           </Badge>
         </div>
 
-        {machine.status === "running" && machine.timeRemaining && (
+        {isRunning && displayRemaining > 0 && (
           <div className="space-y-2 mb-3">
             <Progress
-              value={((machine.duration - machine.timeRemaining) / machine.duration) * 100}
+              value={((machine.duration - displayRemaining) / machine.duration) * 100}
               className="h-2"
             />
-            <div className="text-center text-xs text-muted-foreground">
-              {machine.timeRemaining}min restantes
+            <div className="text-center text-xs text-muted-foreground font-medium">
+              {displayRemaining}min restantes
             </div>
           </div>
         )}
