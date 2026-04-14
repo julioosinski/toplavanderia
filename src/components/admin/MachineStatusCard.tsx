@@ -124,14 +124,14 @@ export const MachineStatusCard = ({ machine, onClick }: MachineStatusCardProps) 
           </Badge>
         </div>
 
-        {machine.status === "running" && machine.timeRemaining && (
+        {isRunning && displayRemaining > 0 && (
           <div className="space-y-2 mb-3">
             <Progress
-              value={((machine.duration - machine.timeRemaining) / machine.duration) * 100}
+              value={((machine.duration - displayRemaining) / machine.duration) * 100}
               className="h-2"
             />
-            <div className="text-center text-xs text-muted-foreground">
-              {machine.timeRemaining}min restantes
+            <div className="text-center text-xs text-muted-foreground font-medium">
+              {displayRemaining}min restantes
             </div>
           </div>
         )}
