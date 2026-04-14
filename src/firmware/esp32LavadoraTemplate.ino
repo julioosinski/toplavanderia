@@ -291,12 +291,7 @@ void pollSupabaseCommands() {
     String action = c["action"].as<String>();
     action.toLowerCase();
     int cmdRelay = c["relay_pin"] | RELAY_LOGICAL_PIN;
-    if (cmdRelay != RELAY_LOGICAL_PIN) {
-      Serial.printf("📌 Ignorando comando relay_%d (este firmware é relay_%d)\n", cmdRelay, RELAY_LOGICAL_PIN);
-      confirmSupabaseCommand(cid);
-      continue;
-    }
-    Serial.printf("📌 Comando relay_%d → GPIO físico %d\n", RELAY_LOGICAL_PIN, RELAY_PIN);
+    Serial.printf("📌 Comando relay_%d → GPIO físico %d\n", cmdRelay, RELAY_PIN);
 
     if (action == "on" || action == "activate" || action == "turn_on") {
       if (c.containsKey("cycle_time_minutes") && !c["cycle_time_minutes"].isNull()) {
