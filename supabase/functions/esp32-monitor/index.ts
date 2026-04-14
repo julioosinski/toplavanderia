@@ -211,39 +211,77 @@ serve(async (req) => {
         }
       }
 
-      // Process relay_status
-      let relayStatusToSave: Record<string, unknown> = {};
+      // Process relay_status — remap firmware keys to DB relay_pin
+      let rawRelayStatus: Record<string, unknown> = {};
       if (heartbeatData.relay_status) {
-        relayStatusToSave = typeof heartbeatData.relay_status === 'object' 
+        rawRelayStatus = typeof heartbeatData.relay_status === 'object' 
           ? heartbeatData.relay_status 
           : { status: heartbeatData.relay_status };
       }
 
-      // Detect relay changes for transactions
+      // Fetch machines for this ESP32 to build firmware→DB relay mapping
+      const esp32Id = heartbeatData.esp32_id || 'main';
+      const { data: esp32Machines } = await supabaseClient
+        .from('machines')
+        .select('id, relay_pin, capacity_kg, price_per_cycle, cycle_time_minutes')
+        .eq('esp32_id', esp32Id)
+        .eq('laundry_id', heartbeatData.laundry_id);
+
+      // Build mapping: firmware relay key → DB relay_pin
+      // If ESP32 controls 1 machine, relay_1 from firmware maps to whatever relay_pin is in DB
+      // If multiple machines, map by index (relay_1→first machine, relay_2→second, etc.)
+      const firmwareToDB: Record<string, number> = {};
+      if (esp32Machines && esp32Machines.length === 1) {
+        // Single machine: any relay_N from firmware maps to the DB relay_pin
+        const dbPin = esp32Machines[0].relay_pin ?? 1;
+        for (const key of Object.keys(rawRelayStatus)) {
+          const match = key.match(/^relay_(\d+)$/);
+          if (match) {
+            firmwareToDB[key] = dbPin;
+          }
+        }
+      } else if (esp32Machines && esp32Machines.length > 1) {
+        // Multiple machines: assume firmware relay_N matches DB relay_pin N
+        for (const m of esp32Machines) {
+          firmwareToDB[`relay_${m.relay_pin}`] = m.relay_pin ?? 1;
+        }
+      }
+
+      // Remap relay_status keys from firmware numbering to DB numbering
+      const remappedRelayStatus: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(rawRelayStatus)) {
+        const dbPin = firmwareToDB[key];
+        if (dbPin !== undefined) {
+          remappedRelayStatus[`relay_${dbPin}`] = value;
+        } else {
+          // Keep non-relay keys or unmapped keys as-is
+          remappedRelayStatus[key] = value;
+        }
+      }
+
+      console.log(`🔄 Relay remap for ${esp32Id}: firmware=${JSON.stringify(rawRelayStatus)} → db=${JSON.stringify(remappedRelayStatus)}`);
+
+      // Get current status for change detection and merge
       const { data: currentStatus } = await supabaseClient
         .from('esp32_status')
         .select('relay_status, laundry_id')
-        .eq('esp32_id', heartbeatData.esp32_id || 'main')
+        .eq('esp32_id', esp32Id)
         .eq('laundry_id', heartbeatData.laundry_id)
         .single();
-      
-      if (currentStatus && typeof relayStatusToSave === 'object') {
-        for (const [key, value] of Object.entries(relayStatusToSave)) {
-          const currentValue = (currentStatus.relay_status as Record<string, string>)?.[key];
+
+      const currentRelayStatus = (currentStatus?.relay_status as Record<string, string>) || {};
+
+      // Detect relay changes for transactions (using remapped keys)
+      if (currentStatus) {
+        for (const [key, value] of Object.entries(remappedRelayStatus)) {
+          const currentValue = currentRelayStatus[key];
+          const relayNumber = key.match(/\d+/)?.[0];
           
           if (currentValue === 'off' && value === 'on') {
-            const relayNumber = key.match(/\d+/)?.[0];
-            const { data: machine } = await supabaseClient
-              .from('machines')
-              .select('id, price_per_kg, capacity_kg, cycle_time_minutes')
-              .eq('esp32_id', heartbeatData.esp32_id || 'main')
-              .eq('relay_pin', relayNumber ? parseInt(relayNumber) : 1)
-              .eq('laundry_id', heartbeatData.laundry_id)
-              .single();
-            
+            const machine = esp32Machines?.find(m => m.relay_pin === (relayNumber ? parseInt(relayNumber) : 1));
             if (machine) {
               const estimatedWeight = machine.capacity_kg * 0.8;
-              const totalAmount = estimatedWeight * machine.price_per_kg;
+              const totalAmount = estimatedWeight * machine.price_per_cycle;
               await supabaseClient.from('transactions').insert({
                 machine_id: machine.id, laundry_id: heartbeatData.laundry_id,
                 status: 'pending', weight_kg: estimatedWeight,
@@ -254,14 +292,7 @@ serve(async (req) => {
           }
           
           if (currentValue === 'on' && value === 'off') {
-            const relayNumber = key.match(/\d+/)?.[0];
-            const { data: machine } = await supabaseClient
-              .from('machines').select('id')
-              .eq('esp32_id', heartbeatData.esp32_id || 'main')
-              .eq('relay_pin', relayNumber ? parseInt(relayNumber) : 1)
-              .eq('laundry_id', heartbeatData.laundry_id)
-              .single();
-            
+            const machine = esp32Machines?.find(m => m.relay_pin === (relayNumber ? parseInt(relayNumber) : 1));
             if (machine) {
               await supabaseClient.from('transactions')
                 .update({ status: 'completed', completed_at: new Date().toISOString() })
@@ -271,16 +302,19 @@ serve(async (req) => {
           }
         }
       }
+
+      // Merge: keep existing relay states, overlay with new remapped values
+      const mergedRelayStatus = { ...currentRelayStatus, ...remappedRelayStatus };
       
       const { error } = await supabaseClient.from('esp32_status').upsert({
-        esp32_id: heartbeatData.esp32_id || 'main',
+        esp32_id: esp32Id,
         laundry_id: heartbeatData.laundry_id,
         ip_address: heartbeatData.ip_address,
         signal_strength: heartbeatData.signal_strength,
         network_status: heartbeatData.network_status || 'connected',
         firmware_version: heartbeatData.firmware_version,
         uptime_seconds: heartbeatData.uptime_seconds,
-        relay_status: relayStatusToSave,
+        relay_status: mergedRelayStatus,
         device_name: heartbeatData.device_name || null,
         is_online: true,
         last_heartbeat: new Date().toISOString()
