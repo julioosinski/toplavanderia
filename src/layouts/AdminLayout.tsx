@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Outlet, Link, useNavigate, useLocation, Navigate } from "react-router-dom";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +47,9 @@ import { LaundrySelector } from "@/components/admin/LaundrySelector";
 import { NotificationsWidget } from "@/components/admin/NotificationsWidget";
 import { PasswordChangeDialog } from "@/components/admin/PasswordChangeDialog";
 import { useTheme } from "next-themes";
+import type { User } from "@supabase/supabase-js";
+
+type RoleBadgeVariant = "default" | "secondary" | "outline";
 
 const menuItems = [
   { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
@@ -105,7 +108,7 @@ export default function AdminLayout() {
   const location = useLocation();
   const { toast } = useToast();
   const { currentLaundry, loading, error, retry, userRole, isSuperAdmin, panelAccessDenied } = useLaundry();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
@@ -120,7 +123,7 @@ export default function AdminLayout() {
     return 'Conta';
   };
 
-  const getRoleBadgeVariant = () => {
+  const getRoleBadgeVariant = (): RoleBadgeVariant => {
     if (userRole === 'super_admin') return 'default';
     if (userRole === 'admin') return 'secondary';
     return 'outline';
@@ -264,7 +267,7 @@ export default function AdminLayout() {
               <div className="flex-1" />
               
               {/* Role Badge */}
-              <Badge variant={getRoleBadgeVariant() as any} className="hidden lg:flex">
+              <Badge variant={getRoleBadgeVariant()} className="hidden lg:flex">
                 {getRoleLabel()}
               </Badge>
 

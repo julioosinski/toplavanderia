@@ -3,17 +3,17 @@ import { flushSync } from 'react-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useUniversalPayment, PaymentType, PaymentMethod, UniversalPaymentConfig } from '@/hooks/useUniversalPayment';
+import { useUniversalPayment, PaymentType, PaymentMethod, UniversalPaymentConfig, UniversalPaymentResponse } from '@/hooks/useUniversalPayment';
 import { Loader2, CreditCard, Wallet, AlertCircle, QrCode } from 'lucide-react';
 import { formatPayGOAmount } from '@/lib/paygoUtils';
 
 interface UniversalPaymentWidgetProps {
   amount: number;
   config: UniversalPaymentConfig;
-  onSuccess: (data: any) => void;
+  onSuccess: (data: UniversalPaymentResponse) => void;
   onError: (error: string) => void;
   onCancel: () => void;
-  onPixQR?: (data: any) => void;
+  onPixQR?: (data: UniversalPaymentResponse) => void;
   /** Smart POS: mantém o mesmo fluxo direto, apenas ajusta tamanhos */
   compactMode?: boolean;
   /** Quando false, oculta o botão "Voltar" no rodapé (ex.: totem já tem barra superior). */

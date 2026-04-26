@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, AlertTriangle, Shield, CheckCircle, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 
 interface SecurityEvent {
   id: string;
@@ -13,11 +13,15 @@ interface SecurityEvent {
   severity: string;
   user_id: string | null;
   device_uuid: string | null;
-  details: any;
+  details: unknown;
   resolved: boolean;
   resolved_at: string | null;
   timestamp: string;
 }
+
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : "Erro desconhecido";
+};
 
 export const SecurityEventsTab = () => {
   const { currentLaundry, isAdmin } = useLaundry();
@@ -25,13 +29,7 @@ export const SecurityEventsTab = () => {
   const [events, setEvents] = useState<SecurityEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (isAdmin) {
-      loadEvents();
-    }
-  }, [currentLaundry, isAdmin]);
-
-  const loadEvents = async () => {
+  const loadEvents = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -42,18 +40,24 @@ export const SecurityEventsTab = () => {
         .limit(50);
 
       if (error) throw error;
-      setEvents(data || []);
-    } catch (error: any) {
+      setEvents((data || []) as SecurityEvent[]);
+    } catch (error: unknown) {
       console.error('Error loading security events:', error);
       toast({
         title: "Erro",
-        description: error.message,
+        description: getErrorMessage(error),
         variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    if (isAdmin) {
+      loadEvents();
+    }
+  }, [currentLaundry, isAdmin, loadEvents]);
 
   const handleResolveEvent = async (eventId: string) => {
     try {
@@ -73,10 +77,10 @@ export const SecurityEventsTab = () => {
       });
 
       loadEvents();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Erro",
-        description: error.message,
+        description: getErrorMessage(error),
         variant: "destructive",
       });
     }

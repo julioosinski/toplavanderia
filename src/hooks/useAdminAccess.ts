@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
-const FALLBACK_PIN = "1234"; // Fallback offline only
 const SESSION_TIMEOUT = 300000; // 5 minutos
 
 export const useAdminAccess = () => {
@@ -17,18 +16,18 @@ export const useAdminAccess = () => {
     setSessionTimeout(timeout);
   }, [sessionTimeout]);
 
-  // Validar PIN via Supabase RPC, com fallback local se offline
+  // Validação sensível deve falhar fechada: PIN local no bundle vira bypass público.
   const validatePinRemote = async (pin: string): Promise<boolean> => {
     try {
       const { data, error } = await supabase.rpc('validate_admin_pin', { _pin: pin });
       if (error) {
-        console.warn('[AdminAccess] RPC falhou, usando fallback local:', error.message);
-        return pin === FALLBACK_PIN;
+        console.warn('[AdminAccess] RPC falhou; acesso negado:', error.message);
+        return false;
       }
       return data === true;
-    } catch {
-      console.warn('[AdminAccess] Rede indisponível, usando fallback local');
-      return pin === FALLBACK_PIN;
+    } catch (error) {
+      console.warn('[AdminAccess] Rede indisponível; acesso negado:', error);
+      return false;
     }
   };
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +34,22 @@ interface ESP32Node {
   machineCount: number;
 }
 
+interface ESP32Configuration {
+  id: string;
+  name: string;
+  machines?: string[];
+}
+
+interface ESP32Status {
+  esp32_id: string;
+  is_online?: boolean | null;
+}
+
+const calculateLoad = (machineCount: number): number => {
+  const maxMachines = 4;
+  return Math.min((machineCount / maxMachines) * 100, 100);
+};
+
 const ESP32FailoverManager: React.FC = () => {
   const [nodes, setNodes] = useState<ESP32Node[]>([]);
   const [failoverRules, setFailoverRules] = useState<FailoverRule[]>([]);
@@ -43,16 +59,28 @@ const ESP32FailoverManager: React.FC = () => {
   const [triggering, setTriggering] = useState(false);
   const { toast } = useToast();
 
-  useEffect(() => {
-    loadData();
-    
-    // Verificar regras de failover a cada 30 segundos
-    const interval = setInterval(checkFailoverRules, 30000);
-    
-    return () => clearInterval(interval);
+  const loadFailoverRules = useCallback(() => {
+    // Em uma implementação real, isso viria do banco de dados
+    const rules: FailoverRule[] = [
+      {
+        id: '1',
+        sourceNode: 'main',
+        targetNode: 'secondary',
+        condition: 'offline',
+        isActive: true
+      },
+      {
+        id: '2',
+        sourceNode: 'secondary',
+        targetNode: 'main',
+        condition: 'offline',
+        isActive: true
+      }
+    ];
+    setFailoverRules(rules);
   }, []);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       // Carregar configurações dos ESP32s
       const { data: settings, error: settingsError } = await supabase
@@ -69,8 +97,10 @@ const ESP32FailoverManager: React.FC = () => {
 
       if (statusError) throw statusError;
 
-      const configurations = settings?.esp32_configurations as any[] || [];
-      const statusMap = new Map(statusData?.map(s => [s.esp32_id, s]) || []);
+      const configurations = Array.isArray(settings?.esp32_configurations)
+        ? (settings.esp32_configurations as ESP32Configuration[])
+        : [];
+      const statusMap = new Map<string, ESP32Status>(statusData?.map(s => [s.esp32_id, s]) || []);
 
       const loadedNodes: ESP32Node[] = configurations.map(config => {
         const status = statusMap.get(config.id);
@@ -96,65 +126,13 @@ const ESP32FailoverManager: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [loadFailoverRules, toast]);
 
-  const loadFailoverRules = () => {
-    // Em uma implementação real, isso viria do banco de dados
-    const rules: FailoverRule[] = [
-      {
-        id: '1',
-        sourceNode: 'main',
-        targetNode: 'secondary',
-        condition: 'offline',
-        isActive: true
-      },
-      {
-        id: '2',
-        sourceNode: 'secondary',
-        targetNode: 'main',
-        condition: 'offline',
-        isActive: true
-      }
-    ];
-    setFailoverRules(rules);
-  };
-
-  const calculateLoad = (machineCount: number): number => {
-    const maxMachines = 4;
-    return Math.min((machineCount / maxMachines) * 100, 100);
-  };
-
-  const checkFailoverRules = async () => {
-    for (const rule of failoverRules) {
-      if (!rule.isActive) continue;
-
-      const sourceNode = nodes.find(n => n.id === rule.sourceNode);
-      const targetNode = nodes.find(n => n.id === rule.targetNode);
-
-      if (!sourceNode || !targetNode) continue;
-
-      let shouldTrigger = false;
-
-      switch (rule.condition) {
-        case 'offline':
-          shouldTrigger = !sourceNode.isOnline && targetNode.isOnline;
-          break;
-        case 'high_load':
-          shouldTrigger = sourceNode.load > 90 && targetNode.load < 70;
-          break;
-      }
-
-      if (shouldTrigger) {
-        await triggerFailover(rule.sourceNode, rule.targetNode, rule.condition);
-      }
-    }
-  };
-
-  const triggerFailover = async (sourceNode: string, targetNode: string, reason: string) => {
+  const triggerFailover = useCallback(async (sourceNode: string, targetNode: string, reason: string) => {
     try {
       setTriggering(true);
 
-      const { data, error } = await supabase.functions.invoke('esp32-load-balancer', {
+      const { error } = await supabase.functions.invoke('esp32-load-balancer', {
         body: {
           action: 'failover',
           sourceNode,
@@ -189,7 +167,42 @@ const ESP32FailoverManager: React.FC = () => {
     } finally {
       setTriggering(false);
     }
-  };
+  }, [loadData, toast]);
+
+  const checkFailoverRules = useCallback(async () => {
+    for (const rule of failoverRules) {
+      if (!rule.isActive) continue;
+
+      const sourceNode = nodes.find(n => n.id === rule.sourceNode);
+      const targetNode = nodes.find(n => n.id === rule.targetNode);
+
+      if (!sourceNode || !targetNode) continue;
+
+      let shouldTrigger = false;
+
+      switch (rule.condition) {
+        case 'offline':
+          shouldTrigger = !sourceNode.isOnline && targetNode.isOnline;
+          break;
+        case 'high_load':
+          shouldTrigger = sourceNode.load > 90 && targetNode.load < 70;
+          break;
+      }
+
+      if (shouldTrigger) {
+        await triggerFailover(rule.sourceNode, rule.targetNode, rule.condition);
+      }
+    }
+  }, [failoverRules, nodes, triggerFailover]);
+
+  useEffect(() => {
+    loadData();
+    
+    // Verificar regras de failover a cada 30 segundos
+    const interval = setInterval(checkFailoverRules, 30000);
+    
+    return () => clearInterval(interval);
+  }, [checkFailoverRules, loadData]);
 
   const manualFailover = async () => {
     if (!selectedSource || !selectedTarget) {

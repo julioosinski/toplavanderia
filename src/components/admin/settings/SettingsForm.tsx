@@ -11,9 +11,9 @@ import { useToast } from "@/hooks/use-toast";
 import ESP32ConfigurationManager from "../ESP32ConfigurationManager";
 import { ESP32ConfigurationDialog } from "../ESP32ConfigurationDialog";
 import { NFSeTestWidget } from "../NFSeTestWidget";
-import { SystemSettings } from "@/hooks/useSystemSettings";
+import { SystemSettings, type ESP32Configuration } from "@/hooks/useSystemSettings";
 import { supabase } from "@/integrations/supabase/client";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 
 interface SettingsFormProps {
   settings: SystemSettings;
@@ -28,7 +28,7 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
   const { toast } = useToast();
   const { currentLaundry } = useLaundry();
 
-  const updateSetting = (key: keyof SystemSettings, value: any) => {
+  const updateSetting = <K extends keyof SystemSettings>(key: K, value: SystemSettings[K]) => {
     setLocalSettings(prev => ({ ...prev, [key]: value }));
   };
 
@@ -41,7 +41,7 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
     });
   };
 
-  const handleESP32ConfigurationsUpdate = async (configs: any[]) => {
+  const handleESP32ConfigurationsUpdate = async (configs: ESP32Configuration[]) => {
     if (!canEdit) return;
     
     // Atualizar estado local

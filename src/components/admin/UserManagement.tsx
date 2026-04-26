@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 import { useLaundryFilter } from "@/hooks/useLaundryFilter";
 import { AppRole, Laundry } from "@/types/laundry";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +37,10 @@ interface UserRole {
   };
 }
 
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : "Erro desconhecido";
+};
+
 export const UserManagement = () => {
   const { currentLaundry, laundries, isSuperAdmin } = useLaundry();
   const { laundryId, laundryName, addFilter } = useLaundryFilter();
@@ -51,11 +55,7 @@ export const UserManagement = () => {
     laundry_id: "",
   });
 
-  useEffect(() => {
-    loadUsers();
-  }, [currentLaundry]);
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -91,17 +91,21 @@ export const UserManagement = () => {
       } else {
         setUsers([]);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error loading users:', error);
       toast({
         title: "Erro",
-        description: error.message,
+        description: getErrorMessage(error),
         variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
-  };
+  }, [addFilter, toast]);
+
+  useEffect(() => {
+    loadUsers();
+  }, [currentLaundry, loadUsers]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,7 +137,7 @@ export const UserManagement = () => {
 
       console.log('🔵 Response status:', response.status);
 
-      const result = await response.json();
+      const result = (await response.json()) as { error?: string };
       console.log('🔵 Response data:', result);
 
       if (!response.ok) {
@@ -153,11 +157,11 @@ export const UserManagement = () => {
         role: "operator",
         laundry_id: "",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('🔴 Error creating user:', error);
       toast({
         title: "Erro",
-        description: error.message || "Falha ao criar usuário",
+        description: getErrorMessage(error) || "Falha ao criar usuário",
         variant: "destructive",
       });
     }
@@ -180,10 +184,10 @@ export const UserManagement = () => {
       });
 
       await loadUsers();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Erro",
-        description: error.message,
+        description: getErrorMessage(error),
         variant: "destructive",
       });
     }

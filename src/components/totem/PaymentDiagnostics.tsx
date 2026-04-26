@@ -6,7 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import PayGO from '@/plugins/paygo';
-import { useLaundry } from '@/contexts/LaundryContext';
+import { useLaundry } from '@/hooks/useLaundry';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
 import { useDeviceMode } from '@/hooks/useDeviceMode';
 

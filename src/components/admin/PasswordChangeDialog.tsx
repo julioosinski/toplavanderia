@@ -19,6 +19,10 @@ interface PasswordChangeDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : "Erro desconhecido";
+};
+
 export const PasswordChangeDialog = ({ open, onOpenChange }: PasswordChangeDialogProps) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -63,11 +67,11 @@ export const PasswordChangeDialog = ({ open, onOpenChange }: PasswordChangeDialo
       setNewPassword("");
       setConfirmPassword("");
       onOpenChange(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error changing password:", error);
       toast({
         title: "Erro ao alterar senha",
-        description: error.message,
+        description: getErrorMessage(error),
         variant: "destructive",
       });
     } finally {

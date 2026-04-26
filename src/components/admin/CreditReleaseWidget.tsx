@@ -9,7 +9,7 @@ import { Zap, Clock, CheckCircle, AlertCircle } from 'lucide-react';
 import { useESP32CreditRelease } from '@/hooks/useESP32CreditRelease';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { useLaundry } from '@/contexts/LaundryContext';
+import { useLaundry } from '@/hooks/useLaundry';
 
 interface CreditReleaseLog {
   id: string;
@@ -50,13 +50,11 @@ const CreditReleaseWidget: React.FC = () => {
 
       if (!error && data) {
         setMachines(data);
-        if (data.length > 0 && !selectedMachineId) {
-          setSelectedMachineId(data[0].id);
-        }
+        setSelectedMachineId((current) => current || data[0]?.id || '');
       }
     };
 
-    fetchMachines();
+    void fetchMachines();
   }, [currentLaundry?.id]);
 
   const selectedMachine = machines.find(m => m.id === selectedMachineId);

@@ -127,7 +127,7 @@ export const usePixPayment = (paygoConfig: { host: string; port: number; automat
     } finally {
       setIsGeneratingQR(false);
     }
-  }, [paygoConfig, toast]);
+  }, [paygoConfig]);
 
   const checkPixPaymentStatus = useCallback(async (orderId: string): Promise<PixPaymentStatus> => {
     try {

@@ -19,6 +19,17 @@ export interface RealPayGOConfig {
   cieloEnvironment?: string;
 }
 
+type PaymentProvider = 'paygo' | 'cielo';
+type CieloEnvironment = 'sandbox' | 'production';
+
+const normalizeProvider = (provider?: string): PaymentProvider => {
+  return provider?.toLowerCase() === 'cielo' ? 'cielo' : 'paygo';
+};
+
+const normalizeCieloEnvironment = (environment?: string): CieloEnvironment => {
+  return environment === 'production' ? 'production' : 'sandbox';
+};
+
 export interface PayGOSystemStatus {
   initialized: boolean;
   online: boolean;
@@ -135,12 +146,12 @@ export const useRealPayGOIntegration = (config: RealPayGOConfig) => {
         host: config.host,
         port: config.port,
         automationKey: config.automationKey,
-        provider: config.provider || 'paygo',
+        provider: normalizeProvider(config.provider),
         cieloClientId: config.cieloClientId || '',
         cieloAccessToken: config.cieloAccessToken || '',
         cieloMerchantCode: config.cieloMerchantCode || '',
-        cieloEnvironment: config.cieloEnvironment || 'sandbox',
-      } as any);
+        cieloEnvironment: normalizeCieloEnvironment(config.cieloEnvironment),
+      });
 
       if (result.success) {
         setIsInitialized(true);

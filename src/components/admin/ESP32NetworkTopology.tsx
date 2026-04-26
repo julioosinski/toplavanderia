@@ -16,6 +16,11 @@ import {
 } from 'lucide-react';
 import { useESP32Network } from '@/hooks/useESP32Network';
 
+interface NetworkNode {
+  isOnline: boolean;
+  load: number;
+}
+
 const ESP32NetworkTopology: React.FC = () => {
   const { 
     topology, 
@@ -41,7 +46,7 @@ const ESP32NetworkTopology: React.FC = () => {
     );
   }
 
-  const getNodeHealthColor = (node: any) => {
+  const getNodeHealthColor = (node: NetworkNode) => {
     if (!node.isOnline) return 'bg-red-500';
     if (node.load > 80) return 'bg-orange-500';
     if (node.load > 60) return 'bg-yellow-500';

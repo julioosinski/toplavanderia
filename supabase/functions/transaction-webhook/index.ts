@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-webhook-signature',
 };
 
 interface TransactionWebhookPayload {
@@ -16,6 +16,35 @@ interface TransactionWebhookPayload {
   device_uuid?: string;
 }
 
+const toHex = (buffer: ArrayBuffer) => {
+  return [...new Uint8Array(buffer)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+};
+
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : 'Unexpected error';
+};
+
+const verifyWebhookSignature = async (req: Request, rawBody: string) => {
+  const secret = Deno.env.get('TRANSACTION_WEBHOOK_SECRET');
+  if (!secret) return true;
+
+  const signature = req.headers.get('x-webhook-signature')?.replace(/^sha256=/, '');
+  if (!signature) return false;
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const digest = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(rawBody));
+
+  return toHex(digest) === signature.toLowerCase();
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -27,7 +56,20 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const payload: TransactionWebhookPayload = await req.json();
+    const rawBody = await req.text();
+    const isSignatureValid = await verifyWebhookSignature(req, rawBody);
+
+    if (!isSignatureValid) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid webhook signature' }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    const payload = JSON.parse(rawBody) as TransactionWebhookPayload;
     console.log('[Transaction Webhook] Received:', payload);
 
     // Validar dados obrigatórios
@@ -92,10 +134,10 @@ serve(async (req) => {
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Transaction Webhook] Error:', error);
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({ success: false, error: getErrorMessage(error) }),
       { 
         status: 400, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

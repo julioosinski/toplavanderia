@@ -24,11 +24,12 @@ export const MachineStatusCard = ({ machine, onClick }: MachineStatusCardProps) 
 
   const displayRemaining = useMemo(() => {
     if (isRunning && machine.runningSinceAt) {
+      const now = Date.now() + tick * 0;
       return Math.max(
         0,
         Math.round(
           machine.duration -
-            (Date.now() - new Date(machine.runningSinceAt).getTime()) / 60000
+            (now - new Date(machine.runningSinceAt).getTime()) / 60000
         )
       );
     }

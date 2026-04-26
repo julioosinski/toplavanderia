@@ -1,6 +1,10 @@
 import { WebPlugin } from '@capacitor/core';
 import type { TEFPlugin } from './tef';
 
+type TEFTransactionOptions = Parameters<TEFPlugin['processTransaction']>[0];
+type TEFTransactionResult = Awaited<ReturnType<TEFPlugin['processTransaction']>>;
+type TEFDevicesResult = Awaited<ReturnType<TEFPlugin['findTEFDevices']>>;
+
 export class TEFWeb extends WebPlugin implements TEFPlugin {
   async initialize(options: {
     host: string;
@@ -48,7 +52,7 @@ export class TEFWeb extends WebPlugin implements TEFPlugin {
     };
   }
 
-  async processTransaction(options: any): Promise<any> {
+  async processTransaction(_options: TEFTransactionOptions): Promise<TEFTransactionResult> {
     throw new Error('TEF transaction not supported on web platform');
   }
 
@@ -59,7 +63,7 @@ export class TEFWeb extends WebPlugin implements TEFPlugin {
     };
   }
 
-  async findTEFDevices(): Promise<{ devices: any[] }> {
+  async findTEFDevices(): Promise<TEFDevicesResult> {
     return {
       devices: [],
     };

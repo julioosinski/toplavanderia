@@ -82,7 +82,7 @@ export const useUSBConnection = () => {
         lastError: error instanceof Error ? error.message : 'Unknown USB error'
       }));
     }
-  }, [identifyDevice]);
+  }, []);
 
   const connectToDevice = useCallback(async (device: USBDevice): Promise<boolean> => {
     if (!device || !state.isSupported) {

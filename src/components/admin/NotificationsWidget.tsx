@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { Bell, X, AlertTriangle, Info, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -7,9 +7,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 
 interface Notification {
   id: string;
@@ -21,23 +20,24 @@ interface Notification {
   timestamp: string;
 }
 
+type NotificationSeverity = Notification['severity'];
+
+const normalizeSeverity = (severity: string | null | undefined): NotificationSeverity => {
+  if (severity === 'low' || severity === 'medium' || severity === 'high' || severity === 'critical') {
+    return severity;
+  }
+  return 'medium';
+};
+
 export const NotificationsWidget = () => {
   const { currentLaundry, isAdmin } = useLaundry();
-  const { toast } = useToast();
+  const currentLaundryId = currentLaundry?.id;
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
 
-  useEffect(() => {
-    if (currentLaundry && isAdmin) {
-      loadNotifications();
-      
-      // Atualizar a cada 30 segundos
-      const interval = setInterval(loadNotifications, 30000);
-      return () => clearInterval(interval);
-    }
-  }, [currentLaundry, isAdmin]);
+  const loadNotifications = useCallback(async () => {
+    if (!currentLaundryId) return;
 
-  const loadNotifications = async () => {
     try {
       // Buscar eventos de segurança não resolvidos
       const { data: securityEvents, error: securityError } = await supabase
@@ -53,7 +53,7 @@ export const NotificationsWidget = () => {
       const { data: machines, error: machinesError } = await supabase
         .from('machines')
         .select('*')
-        .eq('laundry_id', currentLaundry?.id)
+        .eq('laundry_id', currentLaundryId)
         .eq('status', 'offline');
 
       if (machinesError) throw machinesError;
@@ -67,7 +67,7 @@ export const NotificationsWidget = () => {
           type: 'security',
           title: 'Evento de Segurança',
           message: `${event.event_type} detectado`,
-          severity: event.severity as any,
+          severity: normalizeSeverity(event.severity),
           read: false,
           timestamp: event.timestamp,
         });
@@ -89,10 +89,20 @@ export const NotificationsWidget = () => {
       setNotifications(notifs.sort((a, b) => 
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       ));
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error loading notifications:', error);
     }
-  };
+  }, [currentLaundryId]);
+
+  useEffect(() => {
+    if (currentLaundryId && isAdmin) {
+      loadNotifications();
+      
+      // Atualizar a cada 30 segundos
+      const interval = setInterval(loadNotifications, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [currentLaundryId, isAdmin, loadNotifications]);
 
   const markAsRead = (id: string) => {
     setNotifications(prev =>

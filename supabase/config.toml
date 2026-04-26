@@ -54,6 +54,9 @@ port = 54327
 [functions.create-user]
 verify_jwt = true
 
+[functions.list-laundry-admins]
+verify_jwt = true
+
 [functions.esp32-credit-release]
 verify_jwt = true
 

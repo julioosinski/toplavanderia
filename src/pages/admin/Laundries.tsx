@@ -1,5 +1,5 @@
 import { LaundryManagement } from "@/components/admin/LaundryManagement";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 import { Building2 } from "lucide-react";
 
 export default function Laundries() {

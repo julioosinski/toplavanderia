@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef } from "react";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useCallback, useEffect, useState, useRef } from "react";
+import { useLaundry } from "@/hooks/useLaundry";
 import { supabase } from "@/integrations/supabase/client";
 import { LaundryGuard } from "@/components/admin/LaundryGuard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +18,7 @@ import {
   isEsp32Reachable,
   ESP32_HEARTBEAT_STALE_MINUTES,
   type Esp32StatusRow,
+  type MachineRow,
 } from "@/lib/machineEsp32Sync";
 import { ESP32ConfigurationDialog } from "@/components/admin/ESP32ConfigurationDialog";
 import { ESP32PendingApproval } from "@/components/admin/ESP32PendingApproval";
@@ -28,7 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-type Machine = {
+type Machine = MachineRow & {
   id: string;
   name: string;
   type: string;
@@ -49,6 +50,14 @@ type Machine = {
   network_status?: string;
 };
 
+type Esp32StatusWithLaundry = Esp32StatusRow & {
+  laundry_id?: string | null;
+};
+
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : "Erro desconhecido";
+};
+
 export default function Machines() {
   const { currentLaundry } = useLaundry();
   const { toast } = useToast();
@@ -58,9 +67,10 @@ export default function Machines() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const loadMachinesRef = useRef<() => Promise<void>>(async () => {});
   const initialLoadDone = useRef(false);
+  const currentLaundryId = currentLaundry?.id;
 
-  const loadMachines = async () => {
-    if (!currentLaundry) return;
+  const loadMachines = useCallback(async () => {
+    if (!currentLaundryId) return;
 
     try {
       if (!initialLoadDone.current) setLoading(true);
@@ -69,7 +79,7 @@ export default function Machines() {
       const { data: machinesData, error: machinesError } = await supabase
         .from("machines")
         .select("*")
-        .eq("laundry_id", currentLaundry.id)
+        .eq("laundry_id", currentLaundryId)
         .order("name");
 
       if (machinesError) throw machinesError;
@@ -81,49 +91,50 @@ export default function Machines() {
 
       if (esp32Error) throw esp32Error;
 
+      const esp32Rows = (esp32Data || []) as Esp32StatusWithLaundry[];
       const esp32ForLaundry =
-        esp32Data?.filter((esp) => esp.laundry_id === currentLaundry.id) ?? [];
+        esp32Rows.filter((esp) => esp.laundry_id === currentLaundryId);
 
-      const enrichedMachines = (machinesData || []).map((machine) => {
+      const enrichedMachines = ((machinesData || []) as Machine[]).map((machine) => {
         const esp32: Esp32StatusRow | undefined = machine.esp32_id
-          ? esp32ForLaundry.find((esp) => esp.esp32_id === machine.esp32_id) as Esp32StatusRow | undefined
+          ? esp32ForLaundry.find((esp) => esp.esp32_id === machine.esp32_id)
           : undefined;
 
         const staleMs = ESP32_HEARTBEAT_STALE_MINUTES * 60_000;
-        const computed = computeMachineStatus(machine as any, esp32, { staleMs });
+        const computed = computeMachineStatus(machine, esp32, { staleMs });
         const espReachable = isEsp32Reachable(esp32, staleMs);
 
         return {
           ...machine,
           realStatus: computed.status,
           esp32_online: espReachable,
-          signal_strength: (esp32 as any)?.signal_strength || null,
+          signal_strength: esp32?.signal_strength || null,
           last_heartbeat: esp32?.last_heartbeat || null,
-          network_status: (esp32 as any)?.network_status || 'unknown',
+          network_status: esp32?.network_status || 'unknown',
         };
       });
 
-      setMachines(enrichedMachines as Machine[]);
-    } catch (error: any) {
+      setMachines(enrichedMachines);
+    } catch (error: unknown) {
       console.error("Error loading machines:", error);
       toast({
         title: "Erro",
-        description: error.message,
+        description: getErrorMessage(error),
         variant: "destructive",
       });
     } finally {
       setLoading(false);
       initialLoadDone.current = true;
     }
-  };
+  }, [currentLaundryId, toast]);
 
   loadMachinesRef.current = loadMachines;
 
   useEffect(() => {
-    if (currentLaundry) {
+    if (currentLaundryId) {
       void loadMachines();
     }
-  }, [currentLaundry]);
+  }, [currentLaundryId, loadMachines]);
 
   useEffect(() => {
     if (!currentLaundry?.id) return;
@@ -168,10 +179,10 @@ export default function Machines() {
       });
 
       loadMachines();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Erro",
-        description: error.message,
+        description: getErrorMessage(error),
         variant: "destructive",
       });
     }
