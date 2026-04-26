@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import type { ESP32Configuration } from './useSystemSettings';
 
 interface ESP32Node {
   id: string;
@@ -21,6 +22,35 @@ interface NetworkTopology {
   onlineNodes: number;
 }
 
+interface ESP32StatusRow {
+  esp32_id: string;
+  is_online?: boolean | null;
+  last_heartbeat?: string | null;
+}
+
+const calculateNodeLoad = (machineCount: number): number => {
+  // Calcular carga baseada no número de máquinas (0-100%)
+  const maxMachinesPerNode = 4; // Assumindo máximo de 4 máquinas por ESP32
+  return Math.min((machineCount / maxMachinesPerNode) * 100, 100);
+};
+
+const generateNetworkConnections = (nodes: ESP32Node[]) => {
+  const connections: { from: string; to: string; strength: number }[] = [];
+
+  // Conectar nodes adjacentes (em uma implementação real, isso seria descoberto dinamicamente)
+  for (let i = 0; i < nodes.length - 1; i++) {
+    if (nodes[i].isOnline && nodes[i + 1].isOnline) {
+      connections.push({
+        from: nodes[i].id,
+        to: nodes[i + 1].id,
+        strength: Math.random() * 100 // Simular força da conexão
+      });
+    }
+  }
+
+  return connections;
+};
+
 export const useESP32Network = () => {
   const [topology, setTopology] = useState<NetworkTopology>({
     nodes: [],
@@ -31,7 +61,7 @@ export const useESP32Network = () => {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  const loadNetworkTopology = async () => {
+  const loadNetworkTopology = useCallback(async () => {
     try {
       // Buscar configurações dos ESP32s
       const { data: settings, error: settingsError } = await supabase
@@ -48,21 +78,23 @@ export const useESP32Network = () => {
 
       if (statusError) throw statusError;
 
-      const configurations = settings?.esp32_configurations as any[];
-      const statusMap = new Map(statusData?.map(s => [s.esp32_id, s]) || []);
+      const configurations = (settings?.esp32_configurations as ESP32Configuration[] | null) || [];
+      const statusMap = new Map<string, ESP32StatusRow>(
+        (statusData || []).map((status) => [status.esp32_id, status as ESP32StatusRow])
+      );
 
       const nodes: ESP32Node[] = configurations.map(config => {
         const status = statusMap.get(config.id);
         return {
           id: config.id,
-          name: config.name,
+          name: config.name || config.id,
           host: config.host,
           port: config.port,
-          location: config.location,
+          location: config.location || '',
           machines: config.machines || [],
           isOnline: status?.is_online || false,
           load: calculateNodeLoad(config.machines?.length || 0),
-          lastHeartbeat: status?.last_heartbeat
+          lastHeartbeat: status?.last_heartbeat || undefined
         };
       });
 
@@ -86,30 +118,7 @@ export const useESP32Network = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const calculateNodeLoad = (machineCount: number): number => {
-    // Calcular carga baseada no número de máquinas (0-100%)
-    const maxMachinesPerNode = 4; // Assumindo máximo de 4 máquinas por ESP32
-    return Math.min((machineCount / maxMachinesPerNode) * 100, 100);
-  };
-
-  const generateNetworkConnections = (nodes: ESP32Node[]) => {
-    const connections: { from: string; to: string; strength: number }[] = [];
-    
-    // Conectar nodes adjacentes (em uma implementação real, isso seria descoberto dinamicamente)
-    for (let i = 0; i < nodes.length - 1; i++) {
-      if (nodes[i].isOnline && nodes[i + 1].isOnline) {
-        connections.push({
-          from: nodes[i].id,
-          to: nodes[i + 1].id,
-          strength: Math.random() * 100 // Simular força da conexão
-        });
-      }
-    }
-
-    return connections;
-  };
+  }, [toast]);
 
   const redistributeMachines = async () => {
     try {
@@ -183,7 +192,7 @@ export const useESP32Network = () => {
       supabase.removeChannel(channel);
       clearInterval(interval);
     };
-  }, []);
+  }, [loadNetworkTopology]);
 
   return {
     topology,
