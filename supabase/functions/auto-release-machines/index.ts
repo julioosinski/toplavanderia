@@ -3,10 +3,21 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+    "authorization, x-client-info, apikey, content-type, x-cron-secret, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 const GRACE_MINUTES = 2;
+
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : "Unexpected error";
+};
+
+const isCronAuthorized = (req: Request) => {
+  const secret = Deno.env.get("AUTO_RELEASE_CRON_SECRET");
+  if (!secret) return true;
+
+  return req.headers.get("x-cron-secret") === secret;
+};
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -14,6 +25,13 @@ Deno.serve(async (req) => {
   }
 
   try {
+    if (!isCronAuthorized(req)) {
+      return new Response(
+        JSON.stringify({ error: "Cron unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -86,9 +104,9 @@ Deno.serve(async (req) => {
       JSON.stringify({ released, count: released.length }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (e: any) {
+  } catch (e: unknown) {
     return new Response(
-      JSON.stringify({ error: e.message }),
+      JSON.stringify({ error: getErrorMessage(e) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
