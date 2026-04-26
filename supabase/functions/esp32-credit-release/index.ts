@@ -14,6 +14,25 @@ interface CreditReleaseRequest {
   laundryId?: string;
 }
 
+interface UserRole {
+  role: string;
+  laundry_id: string | null;
+}
+
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : 'Erro inesperado';
+};
+
+const canReleaseCredit = (roles: UserRole[], targetLaundryId?: string | null) => {
+  if (roles.some((role) => role.role === 'super_admin')) return true;
+  if (!targetLaundryId) return false;
+
+  return roles.some((role) =>
+    (role.role === 'admin' || role.role === 'operator') &&
+    role.laundry_id === targetLaundryId
+  );
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -35,18 +54,26 @@ serve(async (req) => {
 
     console.log('Credit release request:', { transactionId, amount, esp32Id, machineId, laundryId });
 
-    // Extract user_id from JWT if present
-    let userId: string | null = null;
     const authHeader = req.headers.get('Authorization');
-    if (authHeader) {
-      const token = authHeader.replace('Bearer ', '');
-      const { data: { user } } = await supabaseClient.auth.getUser(token);
-      if (user) userId = user.id;
+    const token = authHeader?.replace('Bearer ', '');
+
+    if (!token) {
+      return new Response(JSON.stringify({ success: false, error: 'Não autorizado' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
+    if (userError || !user) {
+      return new Response(JSON.stringify({ success: false, error: 'Não autorizado' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     let targetESP32Id = esp32Id || 'main';
     let targetLaundryId = laundryId;
     let machineDuration: number | null = null;
+    let machineRelayPin: number | null = null;
 
     // Get machine info
     if (machineId) {
@@ -60,14 +87,34 @@ serve(async (req) => {
         if (machine.esp32_id) targetESP32Id = machine.esp32_id;
         if (machine.laundry_id) targetLaundryId = machine.laundry_id;
         machineDuration = machine.cycle_time_minutes;
+        machineRelayPin = machine.relay_pin || 1;
+      } else {
+        return new Response(JSON.stringify({ success: false, error: 'Máquina não encontrada' }), {
+          status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
 
+    const { data: roles, error: rolesError } = await supabaseClient
+      .from('user_roles')
+      .select('role, laundry_id')
+      .eq('user_id', user.id)
+      .returns<UserRole[]>();
+
+    if (rolesError || !roles || !canReleaseCredit(roles, targetLaundryId)) {
+      return new Response(JSON.stringify({ success: false, error: 'Sem permissão para liberar crédito' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (machineId) {
         // Create pending command for ESP32
         const { error: cmdError } = await supabaseClient
           .from('pending_commands')
           .insert({
-            esp32_id: machine.esp32_id || targetESP32Id,
+            esp32_id: targetESP32Id,
             machine_id: machineId,
-            relay_pin: machine.relay_pin || 1,
+            relay_pin: machineRelayPin || 1,
             action: 'on',
             status: 'pending',
           });
@@ -83,41 +130,44 @@ serve(async (req) => {
           .from('machines')
           .update({ status: 'running', updated_at: new Date().toISOString() })
           .eq('id', machineId);
-      }
     }
 
-    // Create transaction record for reporting
     const now = new Date().toISOString();
-    const { data: txData, error: txError } = await supabaseClient
-      .from('transactions')
-      .insert({
-        machine_id: machineId!,
-        laundry_id: targetLaundryId,
-        total_amount: amount,
-        payment_method: 'manual_release',
-        user_id: userId,
-        status: 'completed',
-        started_at: now,
-        completed_at: now,
-        duration_minutes: machineDuration,
-      })
-      .select('id')
-      .single();
+    let createdTransactionId: string | null = null;
 
-    if (txError) {
-      console.error('Error creating transaction:', txError);
-    } else {
-      console.log('Transaction created:', txData?.id);
+    if (machineId) {
+      const { data: txData, error: txError } = await supabaseClient
+        .from('transactions')
+        .insert({
+          machine_id: machineId,
+          laundry_id: targetLaundryId,
+          total_amount: amount,
+          payment_method: 'manual_release',
+          user_id: user.id,
+          status: 'completed',
+          started_at: now,
+          completed_at: now,
+          duration_minutes: machineDuration,
+        })
+        .select('id')
+        .single();
+
+      if (txError) {
+        console.error('Error creating transaction:', txError);
+      } else {
+        createdTransactionId = txData?.id ?? null;
+        console.log('Transaction created:', createdTransactionId);
+      }
     }
 
     const result = {
       success: true,
       message: 'Crédito liberado com sucesso',
-      transaction_id: txData?.id || transactionId,
+      transaction_id: createdTransactionId || transactionId,
       amount,
       esp32_id: targetESP32Id,
       machine_id: machineId || null,
-      operator_id: userId,
+      operator_id: user.id,
       timestamp: now,
     };
 
@@ -127,11 +177,11 @@ serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in credit release:', error);
     return new Response(JSON.stringify({
       success: false,
-      error: error.message,
+      error: getErrorMessage(error),
       message: 'Falha na liberação de crédito'
     }), {
       status: 500,

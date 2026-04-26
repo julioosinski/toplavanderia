@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -38,7 +38,7 @@ const ESP32MonitorTab: React.FC = () => {
   const [selectedESP32, setSelectedESP32] = useState<string>('main');
   const { toast } = useToast();
 
-  const loadESP32Status = async () => {
+  const loadESP32Status = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('esp32_status')
@@ -57,7 +57,7 @@ const ESP32MonitorTab: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
 
   const refreshStatus = async () => {
     setRefreshing(true);
@@ -96,7 +96,8 @@ const ESP32MonitorTab: React.FC = () => {
         body: {
           transactionId: `test-${Date.now()}`,
           amount: testAmount,
-          esp32Id: selectedESP32
+          esp32Id: selectedESP32,
+          laundryId: currentLaundry?.id,
         }
       });
 
@@ -312,7 +313,7 @@ const ESP32MonitorTab: React.FC = () => {
       clearInterval(interval);
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [loadESP32Status]);
 
   if (loading) {
     return (
