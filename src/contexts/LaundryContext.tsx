@@ -82,12 +82,22 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       .eq('id', laundryId)
       .single();
 
-    if (error) {
-      console.error('Error fetching laundry:', error);
+    if (!error && data) {
+      return data;
+    }
+
+    const { data: publicData, error: publicError } = await supabase
+      .rpc('get_laundry_by_id', { _laundry_id: laundryId })
+      .single();
+
+    if (publicError) {
+      console.error('Error fetching laundry:', error || publicError);
       return null;
     }
 
-    return data;
+    return publicData
+      ? { ...publicData, is_active: true, created_at: null, updated_at: null } as Laundry
+      : null;
   }, []);
 
   const refreshLaundries = useCallback(async () => {
