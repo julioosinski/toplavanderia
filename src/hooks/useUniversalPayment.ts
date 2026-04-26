@@ -26,7 +26,7 @@ export interface PaymentMethodStatus {
 export interface UniversalPaymentResponse {
   success: boolean;
   method: PaymentMethod;
-  data?: any;
+  data?: unknown;
   error?: string;
   transactionId?: string;
   /** Mesmo enviado ao PayGO em /pix/status/{orderId} */

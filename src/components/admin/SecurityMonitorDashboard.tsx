@@ -15,8 +15,8 @@ interface AuditLog {
   action: string;
   table_name: string;
   timestamp: string;
-  old_values?: any;
-  new_values?: any;
+  old_values?: unknown;
+  new_values?: unknown;
 }
 
 interface SecurityEvent {
@@ -25,7 +25,7 @@ interface SecurityEvent {
   severity: 'low' | 'medium' | 'high' | 'critical';
   timestamp: string;
   resolved: boolean;
-  details?: any;
+  details?: unknown;
 }
 
 export const SecurityMonitorDashboard = () => {

@@ -33,6 +33,9 @@ public class CieloLioManager implements PaymentManager {
     private String accessToken;
     private String merchantCode;
     private String environment;
+    private String pendingReference;
+    private long pendingAmountCents;
+    private String pendingPaymentCode;
 
     public CieloLioManager(Context context) {
         this.context = context;
@@ -96,12 +99,16 @@ public class CieloLioManager implements PaymentManager {
 
             activeInstance = this;
             isProcessing = true;
+            pendingReference = reference;
+            pendingAmountCents = amountCents;
+            pendingPaymentCode = paymentCode;
             if (callback != null) callback.onPaymentProcessing("Abrindo pagamento na Cielo...");
 
             context.startActivity(intent);
             Log.d(TAG, "Deep link Cielo enviado (ref=" + reference + ", paymentCode=" + paymentCode + ")");
         } catch (Exception e) {
             isProcessing = false;
+            clearPendingTransaction();
             Log.e(TAG, "Erro ao iniciar pagamento Cielo via deep link", e);
             if (callback != null) callback.onPaymentError("Erro ao iniciar pagamento Cielo: " + e.getMessage());
         }
@@ -111,6 +118,8 @@ public class CieloLioManager implements PaymentManager {
     public void cancelPayment() {
         if (isProcessing) {
             isProcessing = false;
+            clearPendingTransaction();
+            activeInstance = null;
             if (callback != null) callback.onPaymentError("Transacao Cielo cancelada pelo usuario");
         }
     }
@@ -144,11 +153,7 @@ public class CieloLioManager implements PaymentManager {
             }
 
             String decoded = new String(Base64.decode(responseBase64, Base64.DEFAULT), StandardCharsets.UTF_8);
-            if (decoded.length() > 400) {
-                Log.d(TAG, "Cielo callback responsecode=" + responseCode + " payloadLen=" + decoded.length() + " preview=" + decoded.substring(0, 400) + "...");
-            } else {
-                Log.d(TAG, "Cielo callback responsecode=" + responseCode + " payload=" + decoded);
-            }
+            Log.d(TAG, "Cielo callback recebido: responsecode=" + responseCode + " payloadLen=" + decoded.length());
 
             JSONObject json = new JSONObject(decoded);
 
@@ -173,28 +178,43 @@ public class CieloLioManager implements PaymentManager {
             String brand = "";
             String mask = "";
             String txnId = json.optString("id", String.valueOf(System.currentTimeMillis()));
+            String responseReference = json.optString("reference", "");
+
+            if (!isExpectedReference(responseReference)) {
+                rejectSuspiciousCallback("Referencia Cielo divergente");
+                return;
+            }
 
             JSONArray payments = json.optJSONArray("payments");
-            if (payments != null && payments.length() > 0) {
-                JSONObject payment = payments.getJSONObject(payments.length() - 1);
-                authCode = payment.optString("authCode", "");
-                cieloCode = payment.optString("cieloCode", "");
-                brand = payment.optString("brand", "");
-                mask = payment.optString("mask", "");
-                String externalId = payment.optString("externalId", "");
-                if (!externalId.isEmpty()) {
-                    txnId = externalId;
-                }
+            if (payments == null || payments.length() == 0) {
+                rejectSuspiciousCallback("Resposta Cielo sem pagamento confirmado");
+                return;
+            }
 
-                // Verify statusCode from paymentFields (1=Authorized, 2=Cancelled)
-                JSONObject paymentFields = payment.optJSONObject("paymentFields");
-                if (paymentFields != null) {
-                    String statusCode = paymentFields.optString("statusCode", "");
-                    if ("2".equals(statusCode)) {
-                        if (callback != null) callback.onPaymentError("Transacao cancelada pela Cielo (statusCode=2)");
-                        activeInstance = null;
-                        return;
-                    }
+            JSONObject payment = payments.getJSONObject(payments.length() - 1);
+            authCode = payment.optString("authCode", "");
+            cieloCode = payment.optString("cieloCode", "");
+            brand = payment.optString("brand", "");
+            mask = payment.optString("mask", "");
+            String externalId = payment.optString("externalId", "");
+            if (!externalId.isEmpty()) {
+                txnId = externalId;
+            }
+
+            long paidAmount = payment.optLong("amount", json.optLong("paidAmount", -1));
+            if (!isExpectedAmount(paidAmount)) {
+                rejectSuspiciousCallback("Valor Cielo divergente");
+                return;
+            }
+
+            // Verify statusCode from paymentFields (1=Authorized, 2=Cancelled)
+            JSONObject paymentFields = payment.optJSONObject("paymentFields");
+            if (paymentFields != null) {
+                String statusCode = paymentFields.optString("statusCode", "");
+                if ("2".equals(statusCode)) {
+                    if (callback != null) callback.onPaymentError("Transacao cancelada pela Cielo (statusCode=2)");
+                    activeInstance = null;
+                    return;
                 }
             }
 
@@ -202,12 +222,13 @@ public class CieloLioManager implements PaymentManager {
                 authCode = cieloCode.isEmpty() ? txnId : cieloCode;
             }
 
-            Log.d(TAG, "Cielo APPROVED: authCode=" + authCode + " cieloCode(NSU)=" + cieloCode + " brand=" + brand + " mask=" + mask);
+            Log.d(TAG, "Cielo APPROVED: ref=" + pendingReference + " paymentCode=" + pendingPaymentCode + " brand=" + brand + " maskSuffix=" + lastFour(mask));
             if (callback != null) callback.onPaymentSuccess(authCode, txnId);
         } catch (Exception e) {
             Log.e(TAG, "Erro ao processar callback Cielo", e);
             if (callback != null) callback.onPaymentError("Erro ao processar retorno Cielo: " + e.getMessage());
         } finally {
+            clearPendingTransaction();
             activeInstance = null;
         }
     }
@@ -262,5 +283,31 @@ public class CieloLioManager implements PaymentManager {
 
     private String safe(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private boolean isExpectedReference(String responseReference) {
+        return pendingReference != null
+                && !pendingReference.isEmpty()
+                && pendingReference.equals(responseReference);
+    }
+
+    private boolean isExpectedAmount(long paidAmount) {
+        return pendingAmountCents > 0 && paidAmount == pendingAmountCents;
+    }
+
+    private void rejectSuspiciousCallback(String message) {
+        Log.w(TAG, message + " (ref=" + pendingReference + ", cents=" + pendingAmountCents + ")");
+        if (callback != null) callback.onPaymentError(message);
+    }
+
+    private void clearPendingTransaction() {
+        pendingReference = null;
+        pendingAmountCents = 0;
+        pendingPaymentCode = null;
+    }
+
+    private String lastFour(String value) {
+        if (value == null || value.length() < 4) return "";
+        return value.substring(value.length() - 4);
     }
 }

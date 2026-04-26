@@ -34,7 +34,15 @@ public class CieloResponseActivity extends Activity {
         }
 
         Uri uri = intent.getData();
-        Log.d(TAG, "Callback URI recebida: " + uri);
+        if (uri == null) {
+            Log.w(TAG, "Callback Cielo sem URI");
+            CieloLioManager.handleDeepLinkResponse(null);
+            return;
+        }
+
+        Log.d(TAG, "Callback Cielo recebido: scheme=" + uri.getScheme()
+                + " host=" + uri.getHost()
+                + " responsecode=" + uri.getQueryParameter("responsecode"));
         CieloLioManager.handleDeepLinkResponse(uri);
     }
 }

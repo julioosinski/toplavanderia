@@ -1,6 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : 'Erro desconhecido';
+};
 
 export const useSupabaseConnectivity = () => {
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
@@ -8,7 +12,7 @@ export const useSupabaseConnectivity = () => {
   const [lastError, setLastError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const testConnection = async () => {
+  const testConnection = useCallback(async () => {
     try {
       setIsLoading(true);
       setLastError(null);
@@ -27,14 +31,15 @@ export const useSupabaseConnectivity = () => {
       console.log('✅ Supabase conectado com sucesso');
       
       return true;
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = getErrorMessage(error);
       console.error('❌ Erro de conectividade Supabase:', error);
-      setLastError(error.message || 'Erro desconhecido');
+      setLastError(errorMessage);
       setIsConnected(false);
       
       toast({
         title: "Erro de Conectividade",
-        description: `Não foi possível conectar ao Supabase: ${error.message}`,
+        description: `Não foi possível conectar ao Supabase: ${errorMessage}`,
         variant: "destructive"
       });
       
@@ -42,7 +47,7 @@ export const useSupabaseConnectivity = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
 
   const testESP32Status = async () => {
     try {
@@ -57,7 +62,7 @@ export const useSupabaseConnectivity = () => {
 
       console.log('📡 Status ESP32:', data);
       return data;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Erro ao buscar status ESP32:', error);
       throw error;
     }
@@ -76,7 +81,7 @@ export const useSupabaseConnectivity = () => {
 
       console.log('🔧 Máquinas:', data);
       return data;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Erro ao buscar máquinas:', error);
       throw error;
     }
@@ -103,8 +108,8 @@ export const useSupabaseConnectivity = () => {
         try {
           await testMachines();
           results.machines = true;
-        } catch (error: any) {
-          results.errors.push(`Máquinas: ${error.message}`);
+        } catch (error: unknown) {
+          results.errors.push(`Máquinas: ${getErrorMessage(error)}`);
         }
 
         // Teste 3: ESP32 Status
@@ -112,8 +117,8 @@ export const useSupabaseConnectivity = () => {
         try {
           await testESP32Status();
           results.esp32 = true;
-        } catch (error: any) {
-          results.errors.push(`ESP32: ${error.message}`);
+        } catch (error: unknown) {
+          results.errors.push(`ESP32: ${getErrorMessage(error)}`);
         }
       }
 
@@ -126,16 +131,16 @@ export const useSupabaseConnectivity = () => {
       });
 
       return results;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Erro no diagnóstico:', error);
-      results.errors.push(`Geral: ${error.message}`);
+      results.errors.push(`Geral: ${getErrorMessage(error)}`);
       return results;
     }
   };
 
   useEffect(() => {
     testConnection();
-  }, []);
+  }, [testConnection]);
 
   return {
     isConnected,

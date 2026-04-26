@@ -23,6 +23,10 @@ interface NFSeData {
   paymentMethod: string;
 }
 
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : 'Erro inesperado';
+};
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -154,10 +158,10 @@ serve(async (req) => {
       }
     );
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in NFSe automation:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: getErrorMessage(error) }),
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

@@ -26,6 +26,20 @@ export interface ESP32BLEStatus {
 }
 
 type BLEState = "idle" | "scanning" | "connecting" | "connected" | "error";
+type BleClientType = typeof import("@capacitor-community/bluetooth-le")["BleClient"];
+
+interface BLEScanResult {
+  device: {
+    deviceId: string;
+    name?: string | null;
+  };
+  localName?: string | null;
+  rssi?: number;
+}
+
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : "Erro desconhecido";
+};
 
 export function useBLEDiagnostics() {
   const [state, setState] = useState<BLEState>("idle");
@@ -34,7 +48,7 @@ export function useBLEDiagnostics() {
   const [esp32Status, setEsp32Status] = useState<ESP32BLEStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
-  const bleRef = useRef<any>(null);
+  const bleRef = useRef<BleClientType | null>(null);
 
   const isNative = Capacitor.isNativePlatform();
 
@@ -43,7 +57,7 @@ export function useBLEDiagnostics() {
     setLogs(prev => [`[${ts}] ${msg}`, ...prev.slice(0, 99)]);
   }, []);
 
-  const getBLE = useCallback(async () => {
+  const getBLE = useCallback(async (): Promise<BleClientType> => {
     if (bleRef.current) return bleRef.current;
     const mod = await import("@capacitor-community/bluetooth-le");
     bleRef.current = mod.BleClient;
@@ -75,8 +89,8 @@ export function useBLEDiagnostics() {
         }
       );
       addLog("🔔 Notificações BLE ativadas (tempo real)");
-    } catch (e: any) {
-      addLog(`⚠️ Falha ao ativar notificações: ${e.message}`);
+    } catch (e: unknown) {
+      addLog(`⚠️ Falha ao ativar notificações: ${getErrorMessage(e)}`);
     }
   }, [getBLE, parseStatusData, addLog]);
 
@@ -102,8 +116,8 @@ export function useBLEDiagnostics() {
         setEsp32Status(parsed);
         addLog(`Status: ESP32 ID=${parsed.esp32_id}, WiFi=${parsed.wifi_connected ? "Sim" : "Não"}`);
       }
-    } catch (e: any) {
-      addLog(`Erro ao ler status: ${e.message}`);
+    } catch (e: unknown) {
+      addLog(`Erro ao ler status: ${getErrorMessage(e)}`);
     }
   }, [connectedDevice, getBLE, parseStatusData, addLog]);
 
@@ -122,7 +136,7 @@ export function useBLEDiagnostics() {
       await BleClient.initialize({ androidNeverForLocation: true });
       await BleClient.requestLEScan(
         { services: [TOPLAV_SERVICE_UUID] },
-        (result: any) => {
+        (result: BLEScanResult) => {
           const dev: BLEDevice = {
             deviceId: result.device.deviceId,
             name: result.device.name || result.localName || null,
@@ -145,9 +159,10 @@ export function useBLEDiagnostics() {
         setState(prev => prev === "scanning" ? "idle" : prev);
         addLog("Scan finalizado.");
       }, 10000);
-    } catch (e: any) {
-      setError(e.message || "Erro no scan BLE");
-      addLog(`Erro scan: ${e.message}`);
+    } catch (e: unknown) {
+      const errorMessage = getErrorMessage(e);
+      setError(errorMessage || "Erro no scan BLE");
+      addLog(`Erro scan: ${errorMessage}`);
       setState("error");
     }
   }, [isNative, addLog, getBLE]);
@@ -182,15 +197,16 @@ export function useBLEDiagnostics() {
           setEsp32Status(parsed);
           addLog(`Status: ESP32 ID=${parsed.esp32_id}, WiFi=${parsed.wifi_connected ? "Sim" : "Não"}`);
         }
-      } catch (readErr: any) {
-        addLog(`Aviso: Não foi possível ler status: ${readErr.message}`);
+      } catch (readErr: unknown) {
+        addLog(`Aviso: Não foi possível ler status: ${getErrorMessage(readErr)}`);
       }
 
       // Subscribe to real-time notifications
       await subscribeNotifications(device.deviceId);
-    } catch (e: any) {
-      setError(e.message || "Erro ao conectar");
-      addLog(`Erro conexão: ${e.message}`);
+    } catch (e: unknown) {
+      const errorMessage = getErrorMessage(e);
+      setError(errorMessage || "Erro ao conectar");
+      addLog(`Erro conexão: ${errorMessage}`);
       setState("error");
     }
   }, [addLog, getBLE, parseStatusData, subscribeNotifications]);
@@ -222,9 +238,10 @@ export function useBLEDiagnostics() {
       );
       addLog(`Comando enviado: ${command}`);
       // Status will auto-update via BLE notifications
-    } catch (e: any) {
-      setError(e.message || "Erro ao enviar comando");
-      addLog(`Erro comando: ${e.message}`);
+    } catch (e: unknown) {
+      const errorMessage = getErrorMessage(e);
+      setError(errorMessage || "Erro ao enviar comando");
+      addLog(`Erro comando: ${errorMessage}`);
     }
   }, [connectedDevice, addLog, getBLE]);
 
@@ -246,9 +263,10 @@ export function useBLEDiagnostics() {
         encoded
       );
       addLog("Configuração enviada. ESP32 irá reiniciar...");
-    } catch (e: any) {
-      setError(e.message || "Erro ao enviar configuração");
-      addLog(`Erro config: ${e.message}`);
+    } catch (e: unknown) {
+      const errorMessage = getErrorMessage(e);
+      setError(errorMessage || "Erro ao enviar configuração");
+      addLog(`Erro config: ${errorMessage}`);
     }
   }, [connectedDevice, addLog, getBLE]);
 

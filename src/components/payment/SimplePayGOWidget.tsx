@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,9 +19,27 @@ import { useToast } from '@/hooks/use-toast';
 
 interface SimplePayGOWidgetProps {
   amount: number;
-  onSuccess: (result: any) => void;
+  onSuccess: (result: SimplePayGOResult) => void;
   onError: (error: string) => void;
   onCancel: () => void;
+}
+
+interface SimplePayGOResult {
+  success: boolean;
+  paymentType?: 'CREDIT' | 'DEBIT' | 'PIX';
+  orderId?: string;
+  amount?: number;
+  qrCode?: string;
+  resultMessage?: string;
+  transactionId?: string;
+  nsu?: string;
+  [key: string]: unknown;
+}
+
+interface PixStatusResult {
+  status?: 'paid' | 'expired' | 'cancelled' | 'pending';
+  transactionId?: string;
+  nsu?: string;
 }
 
 export const SimplePayGOWidget: React.FC<SimplePayGOWidgetProps> = ({
@@ -40,12 +58,7 @@ export const SimplePayGOWidget: React.FC<SimplePayGOWidgetProps> = ({
   });
   const { toast } = useToast();
 
-  // Verificar conexão ao montar
-  useEffect(() => {
-    checkConnection();
-  }, []);
-
-  const checkConnection = async () => {
+  const checkConnection = useCallback(async () => {
     setConnectionStatus('checking');
     try {
       const response = await fetch(`http://${config.host}:${config.port}/status`, {
@@ -69,7 +82,12 @@ export const SimplePayGOWidget: React.FC<SimplePayGOWidgetProps> = ({
       setConnectionStatus('offline');
       console.error('PayGO connection failed:', error);
     }
-  };
+  }, [config.host, config.port, toast]);
+
+  // Verificar conexão ao montar
+  useEffect(() => {
+    checkConnection();
+  }, [checkConnection]);
 
   const processPayment = async () => {
     if (connectionStatus !== 'online') {
@@ -119,7 +137,7 @@ export const SimplePayGOWidget: React.FC<SimplePayGOWidgetProps> = ({
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const result = await response.json();
+      const result = (await response.json()) as SimplePayGOResult;
       console.log('Resposta PayGO:', result);
 
       if (result.success) {
@@ -152,7 +170,7 @@ export const SimplePayGOWidget: React.FC<SimplePayGOWidgetProps> = ({
     }
   };
 
-  const pollPixPayment = async (orderId: string, pixData: any) => {
+  const pollPixPayment = async (orderId: string, pixData: SimplePayGOResult) => {
     const maxPolls = 60; // 5 minutos (5s * 60)
     let polls = 0;
 
@@ -166,7 +184,7 @@ export const SimplePayGOWidget: React.FC<SimplePayGOWidgetProps> = ({
         });
 
         if (response.ok) {
-          const status = await response.json();
+          const status = (await response.json()) as PixStatusResult;
           
           if (status.status === 'paid') {
             onSuccess({

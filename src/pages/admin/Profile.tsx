@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 import { User, Mail, Building2, Shield, Loader2 } from "lucide-react";
 import {
   Dialog,
@@ -16,11 +16,23 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+interface ProfileData {
+  id?: string;
+  user_id: string;
+  full_name: string | null;
+  email?: string | null;
+  role?: string | null;
+}
+
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : "Erro desconhecido";
+};
+
 export default function Profile() {
   const { toast } = useToast();
   const { currentLaundry, userRole } = useLaundry();
   const [loading, setLoading] = useState(true);
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<ProfileData | null>(null);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [passwordData, setPasswordData] = useState({
     currentPassword: "",
@@ -28,11 +40,7 @@ export default function Profile() {
     confirmPassword: "",
   });
 
-  useEffect(() => {
-    loadProfile();
-  }, []);
-
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -49,7 +57,7 @@ export default function Profile() {
         ...profileData,
         email: user.email,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Erro ao carregar perfil:', error);
       toast({
         title: "Erro",
@@ -59,7 +67,11 @@ export default function Profile() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,10 +113,10 @@ export default function Profile() {
         newPassword: "",
         confirmPassword: "",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Erro",
-        description: error.message,
+        description: getErrorMessage(error),
         variant: "destructive",
       });
     } finally {

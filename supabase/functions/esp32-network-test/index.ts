@@ -1,14 +1,21 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.52.1'
+import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.52.1'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-esp32-network-test-secret',
 }
 
 interface NetworkTestRequest {
   nodes: string[];
   testType?: 'ping' | 'latency' | 'throughput' | 'all';
+}
+
+interface ESP32Configuration {
+  id: string;
+  host: string;
+  port: number;
 }
 
 interface TestResult {
@@ -25,6 +32,42 @@ interface TestResult {
   };
 }
 
+interface NetworkStatistics {
+  availability: number;
+  averageResponseTime: number;
+  averageLatency: number;
+  averageThroughput: number;
+  totalNodes?: number;
+  onlineNodes?: number;
+  offlineNodes?: number;
+}
+
+interface ConnectivityReport {
+  healthScore: number;
+  status: 'excellent' | 'good' | 'warning' | 'critical';
+  issues: string[];
+  recommendations: string[];
+  detailedResults: Array<{
+    nodeId: string;
+    status: 'online' | 'offline';
+    responseTime: number;
+    latency: number;
+    throughput: number;
+    error?: string;
+  }>;
+}
+
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : 'Erro inesperado';
+};
+
+const isNetworkTestAuthorized = (req: Request) => {
+  const secret = Deno.env.get('ESP32_NETWORK_TEST_SECRET');
+  if (!secret) return true;
+
+  return req.headers.get('x-esp32-network-test-secret') === secret;
+};
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -32,12 +75,40 @@ serve(async (req) => {
   }
 
   try {
+    if (!isNetworkTestAuthorized(req)) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Network test não autorizado',
+          timestamp: new Date().toISOString()
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401
+        }
+      );
+    }
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
     );
 
     const { nodes, testType = 'all' }: NetworkTestRequest = await req.json();
+
+    if (!Array.isArray(nodes) || nodes.length === 0) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'nodes is required',
+          timestamp: new Date().toISOString()
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400
+        }
+      );
+    }
 
     console.log(`ESP32 Network Test: Testing ${nodes.length} nodes with type: ${testType}`);
 
@@ -51,7 +122,7 @@ serve(async (req) => {
       throw new Error(`Error fetching settings: ${settingsError.message}`);
     }
 
-    const configurations = settings?.esp32_configurations as any[] || [];
+    const configurations = settings?.esp32_configurations as ESP32Configuration[] || [];
     const nodesToTest = configurations.filter(config => nodes.includes(config.id));
 
     if (nodesToTest.length === 0) {
@@ -92,12 +163,12 @@ serve(async (req) => {
       }
     );
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('ESP32 Network Test Error:', error);
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message,
+        error: getErrorMessage(error),
         timestamp: new Date().toISOString()
       }),
       {
@@ -108,7 +179,7 @@ serve(async (req) => {
   }
 });
 
-async function testNodeConnectivity(node: any, testType: string): Promise<TestResult> {
+async function testNodeConnectivity(node: ESP32Configuration, testType: NetworkTestRequest['testType']): Promise<TestResult> {
   const result: TestResult = {
     nodeId: node.id,
     host: node.host,
@@ -149,9 +220,9 @@ async function testNodeConnectivity(node: any, testType: string): Promise<TestRe
       result.tests.throughput = throughputResult.throughput;
     }
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Error testing node ${node.id}:`, error);
-    result.lastError = error.message;
+    result.lastError = getErrorMessage(error);
   }
 
   return result;
@@ -184,11 +255,11 @@ async function testPing(host: string, port: number): Promise<{ success: boolean;
       throw new Error('Host not reachable');
     }
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
       success: false,
       responseTime: Date.now() - startTime,
-      error: error.message
+      error: getErrorMessage(error)
     };
   }
 }
@@ -230,7 +301,7 @@ async function testThroughput(host: string, port: number): Promise<{ throughput:
   }
 }
 
-async function updateNodeStatus(supabase: any, result: TestResult): Promise<void> {
+async function updateNodeStatus(supabase: SupabaseClient, result: TestResult): Promise<void> {
   try {
     const { error } = await supabase
       .from('esp32_status')
@@ -252,7 +323,7 @@ async function updateNodeStatus(supabase: any, result: TestResult): Promise<void
   }
 }
 
-function calculateNetworkStatistics(results: TestResult[]): any {
+function calculateNetworkStatistics(results: TestResult[]): NetworkStatistics {
   const reachableNodes = results.filter(r => r.isReachable);
   const totalNodes = results.length;
 
@@ -280,7 +351,7 @@ function calculateNetworkStatistics(results: TestResult[]): any {
   };
 }
 
-function generateConnectivityReport(results: TestResult[]): any {
+function generateConnectivityReport(results: TestResult[]): ConnectivityReport {
   const issues: string[] = [];
   const recommendations: string[] = [];
 

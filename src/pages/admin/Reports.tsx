@@ -2,7 +2,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConsolidatedReportsTab } from "@/components/admin/ConsolidatedReportsTab";
 import { LaundryReportsTab } from "@/components/admin/LaundryReportsTab";
 import { LaundryGuard } from "@/components/admin/LaundryGuard";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 
 export default function Reports() {
   const { isSuperAdmin, isViewingAllLaundries } = useLaundry();

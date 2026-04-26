@@ -1,5 +1,7 @@
 import { PayGOConfig, PayGOResponse } from '@/hooks/usePayGOIntegration';
 
+type RawPayGOResponse = Partial<PayGOResponse>;
+
 export const DEFAULT_PAYGO_CONFIG: PayGOConfig = {
   host: '127.0.0.1',
   port: 8080,
@@ -45,7 +47,7 @@ export const formatPayGOAmount = (amount: number): string => {
   }).format(amount);
 };
 
-export const parsePayGOResponse = (response: any): PayGOResponse => {
+export const parsePayGOResponse = (response: RawPayGOResponse): PayGOResponse => {
   return {
     success: response.success === true,
     resultCode: response.resultCode || 0,

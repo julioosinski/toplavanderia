@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,13 +28,22 @@ interface PayGOPPC930DiagnosticsProps {
   };
 }
 
+interface PinpadInfo {
+  detected: boolean;
+  deviceName?: string;
+  vendorId?: number;
+  productId?: number;
+  serialNumber?: string;
+  error?: string;
+}
+
 export const PayGOPPC930Diagnostics: React.FC<PayGOPPC930DiagnosticsProps> = ({ config }) => {
   const { status, detectPinpad, checkPayGOStatus, initializePayGO, testConnection } = usePayGOIntegration(config);
-  const [pinpadInfo, setPinpadInfo] = useState<any>(null);
+  const [pinpadInfo, setPinpadInfo] = useState<PinpadInfo | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
   const [isTestingPayment, setIsTestingPayment] = useState(false);
 
-  const handleDetectPinpad = async () => {
+  const handleDetectPinpad = useCallback(async () => {
     setIsDetecting(true);
     try {
       const result = await detectPinpad();
@@ -51,7 +60,7 @@ export const PayGOPPC930Diagnostics: React.FC<PayGOPPC930DiagnosticsProps> = ({ 
     } finally {
       setIsDetecting(false);
     }
-  };
+  }, [detectPinpad]);
 
   const handleTestConnection = async () => {
     try {
@@ -98,7 +107,7 @@ export const PayGOPPC930Diagnostics: React.FC<PayGOPPC930DiagnosticsProps> = ({ 
   useEffect(() => {
     // Auto-detect pinpad on component mount
     handleDetectPinpad();
-  }, []);
+  }, [handleDetectPinpad]);
 
   return (
     <div className="space-y-6">

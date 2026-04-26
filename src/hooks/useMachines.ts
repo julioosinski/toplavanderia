@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Droplets, Wind } from 'lucide-react';
+import { Droplets, Wind, type LucideIcon } from 'lucide-react';
 import { useMachineAutoStatus } from './useMachineAutoStatus';
 import { nativeStorage, getItemWithTimeout } from '@/utils/nativeStorage';
 import {
@@ -11,6 +11,7 @@ import {
   resolvedRelayPin,
   computeMachineStatus,
   type Esp32StatusRow,
+  type MachineRow,
 } from '@/lib/machineEsp32Sync';
 
 export interface Machine {
@@ -21,7 +22,7 @@ export interface Machine {
   price: number;
   duration: number;
   status: 'available' | 'running' | 'maintenance' | 'offline';
-  icon: any;
+  icon: LucideIcon;
   timeRemaining?: number;
   /** updated_at do ciclo atual — usado para contagem regressiva entre polls */
   runningSinceAt?: string;
@@ -31,6 +32,21 @@ export interface Machine {
   ip_address?: string;
   /** Ciclo em andamento no banco mas sem heartbeat recente do ESP (ex.: queda de energia no hardware). */
   hardwareLinkLost?: boolean;
+}
+
+interface MachineSourceRow extends MachineRow {
+  name: string;
+  type?: string | null;
+  price_per_cycle?: number | string | null;
+  cycle_time_minutes?: number | null;
+  updated_at?: string;
+  relay_pin?: number | null;
+  esp32_id?: string | null;
+  location?: string | null;
+}
+
+interface Esp32SourceRow extends Esp32StatusRow {
+  laundry_id?: string | null;
 }
 
 const CACHE_KEY_PREFIX = 'machines_cache_';
@@ -72,7 +88,7 @@ export const useMachines = (laundryId?: string | null) => {
     Map<string, { until: number; startedAt: string; durationMin: number }>
   >(new Map());
 
-  const transformMachine = (machine: any, esp32Map: Map<string, Esp32StatusRow>): Machine => {
+  const transformMachine = useCallback((machine: MachineSourceRow, esp32Map: Map<string, Esp32StatusRow>): Machine => {
     const esp32: Esp32StatusRow | undefined = esp32Map.get(machine.esp32_id || '');
 
     const typeMapping: Record<string, 'lavadora' | 'secadora'> = {
@@ -82,9 +98,9 @@ export const useMachines = (laundryId?: string | null) => {
     const mappedType = typeMapping[machine.type] || 'lavadora';
 
     // Use unified status computation — ESP32 relay is the authority
-    const computed = computeMachineStatus(machine as any, esp32);
+    const computed = computeMachineStatus(machine, esp32);
     let machineStatus: Machine['status'] = computed.status;
-    let hardwareLinkLost = computed.hardwareLinkLost;
+    const hardwareLinkLost = computed.hardwareLinkLost;
 
     // Calculate time remaining for running machines
     let timeRemaining: number | undefined;
@@ -136,9 +152,9 @@ export const useMachines = (laundryId?: string | null) => {
       ip_address: esp32?.ip_address,
       ...(hardwareLinkLost ? { hardwareLinkLost: true } : {}),
     };
-  };
+  }, []);
 
-  const fetchMachines = async (options?: { background?: boolean }) => {
+  const fetchMachines = useCallback(async (options?: { background?: boolean }) => {
     const background = options?.background === true;
     try {
       if (!background) {
@@ -153,20 +169,20 @@ export const useMachines = (laundryId?: string | null) => {
         const { data: { session } } = await supabase.auth.getSession();
         const isAuthenticated = !!session;
 
-        let machinesData: any[] | null = null;
-        let machinesError: any = null;
+        let machinesData: MachineSourceRow[] | null = null;
+        let machinesError: unknown = null;
 
         if (isAuthenticated) {
           let query = supabase.from('machines').select('*');
           if (laundryId) query = query.eq('laundry_id', laundryId);
           const result = await query.order('name');
-          machinesData = result.data;
+          machinesData = result.data as MachineSourceRow[] | null;
           machinesError = result.error;
         } else {
           let query = supabase.from('public_machines').select('*');
           if (laundryId) query = query.eq('laundry_id', laundryId);
           const result = await query.order('name');
-          machinesData = result.data;
+          machinesData = result.data as MachineSourceRow[] | null;
           machinesError = result.error;
         }
 
@@ -181,7 +197,7 @@ export const useMachines = (laundryId?: string | null) => {
             : await supabase.from('public_machines').select('*').order('name');
 
           if (!fallbackResult.error && fallbackResult.data && fallbackResult.data.length > 0) {
-            machinesData = fallbackResult.data;
+            machinesData = fallbackResult.data as MachineSourceRow[];
             toast({
               title: "Aviso de configuração",
               description: "Nenhuma máquina vinculada à lavanderia selecionada. Exibindo máquinas disponíveis do sistema.",
@@ -191,7 +207,7 @@ export const useMachines = (laundryId?: string | null) => {
 
         // Try direct table read (authenticated admins); fallback to RPC for totem/anon
         // NOTE: RLS returns empty array (not error) for anon, so check length too
-        let esp32Data: any[] | null = null;
+        let esp32Data: Esp32SourceRow[] | null = null;
         {
           let esp32Query = supabase
             .from('esp32_status')
@@ -199,15 +215,15 @@ export const useMachines = (laundryId?: string | null) => {
           if (laundryId) esp32Query = esp32Query.eq('laundry_id', laundryId);
           const { data, error: esp32Err } = await esp32Query;
           if (!esp32Err && data && data.length > 0) {
-            esp32Data = data;
+            esp32Data = data as Esp32SourceRow[];
           } else if (laundryId) {
             // Fallback: use secure RPC (returns esp32_id, is_online, last_heartbeat, relay_status, ip_address)
             const { data: rpcData } = await supabase.rpc('get_esp32_heartbeats', { _laundry_id: laundryId });
-            esp32Data = rpcData || [];
+            esp32Data = (rpcData || []) as Esp32SourceRow[];
           }
         }
 
-        const esp32Map = new Map(esp32Data?.map(e => [e.esp32_id, e]) || []);
+        const esp32Map = new Map<string, Esp32StatusRow>(esp32Data?.map(e => [e.esp32_id, e]) || []);
         const transformedMachines = machinesData?.map(m => transformMachine(m, esp32Map)) || [];
 
         setMachines(transformedMachines);
@@ -265,7 +281,7 @@ export const useMachines = (laundryId?: string | null) => {
     } finally {
       if (!background) setLoading(false);
     }
-  };
+  }, [cacheKey, laundryId, toast, transformMachine]);
 
   const applyLocalMachineStatus = useCallback(
     (machineId: string, status: Machine['status'], startedAtForRunning?: string) => {
@@ -412,7 +428,7 @@ export const useMachines = (laundryId?: string | null) => {
       supabase.removeChannel(machinesChannel);
       supabase.removeChannel(esp32Channel);
     };
-  }, [laundryId]);
+  }, [fetchMachines, laundryId]);
 
   return {
     machines,

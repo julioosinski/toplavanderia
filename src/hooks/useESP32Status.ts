@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useLaundry } from '@/contexts/LaundryContext';
+import { useLaundry } from '@/hooks/useLaundry';
 import { ESP32_HEARTBEAT_STALE_MINUTES } from '@/lib/machineEsp32Sync';
 
 export interface ESP32StatusData {
@@ -15,14 +15,15 @@ export const useESP32Status = () => {
   const [esp32StatusList, setEsp32StatusList] = useState<ESP32StatusData[]>([]);
   const [loading, setLoading] = useState(true);
   const { currentLaundry } = useLaundry();
+  const currentLaundryId = currentLaundry?.id;
 
-  const fetchESP32Status = async () => {
-    if (!currentLaundry?.id) return;
+  const fetchESP32Status = useCallback(async () => {
+    if (!currentLaundryId) return;
 
     const { data, error } = await supabase
       .from('esp32_status')
       .select('esp32_id, is_online, last_heartbeat, ip_address, signal_strength')
-      .eq('laundry_id', currentLaundry.id);
+      .eq('laundry_id', currentLaundryId);
 
     if (error) {
       console.error('Error fetching ESP32 status:', error);
@@ -31,7 +32,7 @@ export const useESP32Status = () => {
 
     setEsp32StatusList(data || []);
     setLoading(false);
-  };
+  }, [currentLaundryId]);
 
   useEffect(() => {
     fetchESP32Status();
@@ -45,7 +46,7 @@ export const useESP32Status = () => {
           event: '*',
           schema: 'public',
           table: 'esp32_status',
-          filter: `laundry_id=eq.${currentLaundry?.id}`,
+          filter: `laundry_id=eq.${currentLaundryId}`,
         },
         () => {
           fetchESP32Status();
@@ -56,7 +57,7 @@ export const useESP32Status = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentLaundry?.id]);
+  }, [currentLaundryId, fetchESP32Status]);
 
   const getStatus = (esp32Id: string): ESP32StatusData | null => {
     return esp32StatusList.find(s => s.esp32_id === esp32Id) || null;

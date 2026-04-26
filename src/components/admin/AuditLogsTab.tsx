@@ -1,22 +1,26 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, FileText, Trash2, Edit, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 
 interface AuditLog {
   id: string;
   action: string;
   table_name: string;
   record_id: string | null;
-  old_values: any;
-  new_values: any;
+  old_values: unknown;
+  new_values: unknown;
   timestamp: string;
   user_id: string | null;
 }
+
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : "Erro desconhecido";
+};
 
 export const AuditLogsTab = () => {
   const { currentLaundry, isSuperAdmin } = useLaundry();
@@ -24,11 +28,7 @@ export const AuditLogsTab = () => {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadLogs();
-  }, [currentLaundry]);
-
-  const loadLogs = async () => {
+  const loadLogs = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -39,18 +39,22 @@ export const AuditLogsTab = () => {
         .limit(100);
 
       if (error) throw error;
-      setLogs(data || []);
-    } catch (error: any) {
+      setLogs((data || []) as AuditLog[]);
+    } catch (error: unknown) {
       console.error('Error loading audit logs:', error);
       toast({
         title: "Erro",
-        description: error.message,
+        description: getErrorMessage(error),
         variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    loadLogs();
+  }, [currentLaundry, loadLogs]);
 
   const getActionIcon = (action: string) => {
     switch (action) {

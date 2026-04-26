@@ -3,7 +3,18 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.52.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-esp32-monitor-secret',
+};
+
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : 'Erro inesperado';
+};
+
+const isMonitorAuthorized = (req: Request) => {
+  const secret = Deno.env.get('ESP32_MONITOR_SECRET');
+  if (!secret) return true;
+
+  return req.headers.get('x-esp32-monitor-secret') === secret;
 };
 
 serve(async (req) => {
@@ -12,6 +23,16 @@ serve(async (req) => {
   }
 
   try {
+    if (!isMonitorAuthorized(req)) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'ESP32 monitor não autorizado',
+      }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -383,10 +404,10 @@ serve(async (req) => {
       message: 'Action must be "status", "heartbeat", "poll_commands", or "confirm_command"'
     }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error in ESP32 monitor:', error);
     return new Response(JSON.stringify({
-      success: false, error: error.message, message: 'Error in ESP32 monitoring'
+      success: false, error: getErrorMessage(error), message: 'Error in ESP32 monitoring'
     }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });

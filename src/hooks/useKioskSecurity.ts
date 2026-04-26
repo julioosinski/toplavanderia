@@ -1,5 +1,17 @@
 import { useEffect, useCallback, useState } from 'react';
 
+interface VendorFullscreenElement extends HTMLElement {
+  webkitRequestFullscreen?: () => Promise<void> | void;
+  msRequestFullscreen?: () => Promise<void> | void;
+}
+
+interface VendorFullscreenDocument extends Document {
+  webkitExitFullscreen?: () => Promise<void> | void;
+  msExitFullscreen?: () => Promise<void> | void;
+  webkitFullscreenElement?: Element | null;
+  msFullscreenElement?: Element | null;
+}
+
 export const useKioskSecurity = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [securityEnabled, setSecurityEnabled] = useState(false);
@@ -7,12 +19,13 @@ export const useKioskSecurity = () => {
   // Função para entrar em tela cheia
   const enterFullscreen = useCallback(async () => {
     try {
+      const documentElement = document.documentElement as VendorFullscreenElement;
       if (document.documentElement.requestFullscreen) {
         await document.documentElement.requestFullscreen();
-      } else if ((document.documentElement as any).webkitRequestFullscreen) {
-        await (document.documentElement as any).webkitRequestFullscreen();
-      } else if ((document.documentElement as any).msRequestFullscreen) {
-        await (document.documentElement as any).msRequestFullscreen();
+      } else if (documentElement.webkitRequestFullscreen) {
+        await documentElement.webkitRequestFullscreen();
+      } else if (documentElement.msRequestFullscreen) {
+        await documentElement.msRequestFullscreen();
       }
       setIsFullscreen(true);
     } catch (error) {
@@ -23,12 +36,13 @@ export const useKioskSecurity = () => {
   // Função para sair da tela cheia
   const exitFullscreen = useCallback(async () => {
     try {
+      const fullscreenDocument = document as VendorFullscreenDocument;
       if (document.exitFullscreen) {
         await document.exitFullscreen();
-      } else if ((document as any).webkitExitFullscreen) {
-        await (document as any).webkitExitFullscreen();
-      } else if ((document as any).msExitFullscreen) {
-        await (document as any).msExitFullscreen();
+      } else if (fullscreenDocument.webkitExitFullscreen) {
+        await fullscreenDocument.webkitExitFullscreen();
+      } else if (fullscreenDocument.msExitFullscreen) {
+        await fullscreenDocument.msExitFullscreen();
       }
       setIsFullscreen(false);
     } catch (error) {
@@ -88,10 +102,11 @@ export const useKioskSecurity = () => {
 
   // Monitorar mudanças de fullscreen
   const handleFullscreenChange = useCallback(() => {
+    const fullscreenDocument = document as VendorFullscreenDocument;
     const isCurrentlyFullscreen = !!(
       document.fullscreenElement ||
-      (document as any).webkitFullscreenElement ||
-      (document as any).msFullscreenElement
+      fullscreenDocument.webkitFullscreenElement ||
+      fullscreenDocument.msFullscreenElement
     );
     
     setIsFullscreen(isCurrentlyFullscreen);

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 import { Download, Settings, Copy, CheckCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { buildEsp32LavadoraFirmware } from "@/lib/esp32FirmwareDownload";

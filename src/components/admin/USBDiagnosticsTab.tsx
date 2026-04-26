@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { RefreshCw, Usb, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
-import { useUSBConnection } from '@/hooks/useUSBConnection';
+import { useUSBConnection, type USBDevice } from '@/hooks/useUSBConnection';
 import { toast } from 'sonner';
 
 export const USBDiagnosticsTab = () => {
@@ -19,7 +19,7 @@ export const USBDiagnosticsTab = () => {
     getConnectedPinpads 
   } = useUSBConnection();
 
-  const handleConnect = async (device: any) => {
+  const handleConnect = async (device: USBDevice) => {
     const success = await connectToDevice(device);
     if (success) {
       toast.success(`Conectado ao ${device.deviceName}`);
@@ -28,7 +28,7 @@ export const USBDiagnosticsTab = () => {
     }
   };
 
-  const handleDisconnect = (device: any) => {
+  const handleDisconnect = (device: USBDevice) => {
     disconnectFromDevice(device);
     toast.info(`Desconectado de ${device.deviceName}`);
   };

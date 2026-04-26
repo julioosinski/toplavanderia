@@ -1,6 +1,6 @@
 import { SettingsTab } from "@/components/admin/SettingsTab";
 import { LaundryGuard } from "@/components/admin/LaundryGuard";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 
 export default function Settings() {
   const { currentLaundry } = useLaundry();
