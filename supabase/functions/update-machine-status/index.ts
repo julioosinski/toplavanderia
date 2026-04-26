@@ -3,7 +3,18 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+    "authorization, x-client-info, apikey, content-type, x-machine-control-secret, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : "Unexpected error";
+};
+
+const isMachineControlAuthorized = (req: Request) => {
+  const secret = Deno.env.get("MACHINE_CONTROL_SECRET");
+  if (!secret) return true;
+
+  return req.headers.get("x-machine-control-secret") === secret;
 };
 
 Deno.serve(async (req) => {
@@ -12,6 +23,13 @@ Deno.serve(async (req) => {
   }
 
   try {
+    if (!isMachineControlAuthorized(req)) {
+      return new Response(
+        JSON.stringify({ error: "Machine control unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const { machine_id, status } = await req.json();
 
     if (!machine_id || !status) {
@@ -97,9 +115,9 @@ Deno.serve(async (req) => {
       JSON.stringify({ success: true, machine_id, status }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (e: any) {
+  } catch (e: unknown) {
     return new Response(
-      JSON.stringify({ error: e.message }),
+      JSON.stringify({ error: getErrorMessage(e) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

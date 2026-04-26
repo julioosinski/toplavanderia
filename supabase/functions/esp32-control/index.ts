@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-machine-control-secret',
 };
 
 interface ESP32ControlRequest {
@@ -13,12 +13,30 @@ interface ESP32ControlRequest {
   transaction_id?: string;
 }
 
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : 'Erro inesperado';
+};
+
+const isMachineControlAuthorized = (req: Request) => {
+  const secret = Deno.env.get('MACHINE_CONTROL_SECRET');
+  if (!secret) return true;
+
+  return req.headers.get('x-machine-control-secret') === secret;
+};
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    if (!isMachineControlAuthorized(req)) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Controle de máquina não autorizado' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -66,10 +84,10 @@ Deno.serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('❌ Erro no edge function:', error);
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({ success: false, error: getErrorMessage(error) }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     );
   }
