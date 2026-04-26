@@ -165,7 +165,7 @@ export const useMachines = (laundryId?: string | null) => {
       const load = async () => {
         // Check auth state to choose correct source.
         // Authenticated users query 'machines' (full columns, role-scoped RLS).
-        // Anon/Totem users query 'public_machines' view (excludes revenue data).
+        // Anon/Totem users use RPCs so base tables are not exposed publicly.
         const { data: { session } } = await supabase.auth.getSession();
         const isAuthenticated = !!session;
 
@@ -179,9 +179,9 @@ export const useMachines = (laundryId?: string | null) => {
           machinesData = result.data as MachineSourceRow[] | null;
           machinesError = result.error;
         } else {
-          let query = supabase.from('public_machines').select('*');
-          if (laundryId) query = query.eq('laundry_id', laundryId);
-          const result = await query.order('name');
+          const result = await supabase.rpc('get_public_machines', {
+            _laundry_id: laundryId || null,
+          });
           machinesData = result.data as MachineSourceRow[] | null;
           machinesError = result.error;
         }
@@ -194,7 +194,7 @@ export const useMachines = (laundryId?: string | null) => {
         if (laundryId && (!machinesData || machinesData.length === 0)) {
           const fallbackResult = isAuthenticated
             ? await supabase.from('machines').select('*').order('name')
-            : await supabase.from('public_machines').select('*').order('name');
+            : await supabase.rpc('get_public_machines', { _laundry_id: null });
 
           if (!fallbackResult.error && fallbackResult.data && fallbackResult.data.length > 0) {
             machinesData = fallbackResult.data as MachineSourceRow[];

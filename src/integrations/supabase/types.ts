@@ -835,6 +835,16 @@ export type Database = {
     }
     Functions: {
       cleanup_old_logs: { Args: never; Returns: undefined }
+      create_totem_transaction: {
+        Args: {
+          _duration_minutes: number
+          _laundry_id: string
+          _machine_id: string
+          _payment_method: string
+          _total_amount: number
+        }
+        Returns: string
+      }
       create_default_system_settings: {
         Args: { _laundry_id: string }
         Returns: string
@@ -856,6 +866,34 @@ export type Database = {
           id: string
           logo_url: string
           name: string
+        }[]
+      }
+      get_laundry_by_id: {
+        Args: { _laundry_id: string }
+        Returns: {
+          cnpj: string
+          id: string
+          logo_url: string
+          name: string
+        }[]
+      }
+      get_public_machines: {
+        Args: { _laundry_id?: string | null }
+        Returns: {
+          capacity_kg: number | null
+          cycle_time_minutes: number | null
+          esp32_id: string | null
+          id: string
+          last_maintenance: string | null
+          laundry_id: string
+          location: string | null
+          name: string
+          price_per_cycle: number | null
+          relay_pin: number | null
+          status: string | null
+          temperature: number | null
+          type: string | null
+          updated_at: string | null
         }[]
       }
       get_totem_settings: { Args: { _laundry_id: string }; Returns: Json }
