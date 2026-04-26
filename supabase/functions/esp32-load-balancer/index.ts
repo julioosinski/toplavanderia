@@ -1,9 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.52.1'
+import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.52.1'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-esp32-load-balancer-secret',
 }
 
 interface LoadBalancerRequest {
@@ -21,6 +22,55 @@ interface ESP32Config {
   machines: string[];
 }
 
+interface ESP32Status {
+  esp32_id: string;
+  is_online?: boolean;
+  uptime_seconds?: number | null;
+  signal_strength?: number | null;
+}
+
+interface DistributionSummary {
+  nodeId: string;
+  machineCount: number;
+  machines?: string[];
+}
+
+interface LoadBalancerResult {
+  redistributedNodes?: number;
+  optimizedNodes?: number;
+  totalMachines?: number;
+  machinesPerNode?: number;
+  optimalLoadPerNode?: number;
+  newDistribution?: DistributionSummary[];
+  sourceNode?: string;
+  targetNode?: string;
+  machinesMoved?: number;
+  machines?: string[];
+  metrics?: Array<{
+    nodeId: string;
+    currentLoad: number;
+    uptime: number;
+    signalStrength: number;
+    location: string;
+  }>;
+}
+
+interface ESP32ChangePayload {
+  action: 'machines_added';
+  machines: string[];
+}
+
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : 'Erro inesperado';
+};
+
+const isLoadBalancerAuthorized = (req: Request) => {
+  const secret = Deno.env.get('ESP32_LOAD_BALANCER_SECRET');
+  if (!secret) return true;
+
+  return req.headers.get('x-esp32-load-balancer-secret') === secret;
+};
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -28,12 +78,54 @@ serve(async (req) => {
   }
 
   try {
+    if (!isLoadBalancerAuthorized(req)) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Load balancer não autorizado',
+          timestamp: new Date().toISOString()
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401
+        }
+      );
+    }
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
     );
 
     const { action, targetNode, sourceNode }: LoadBalancerRequest = await req.json();
+
+    if (!['redistribute', 'failover', 'optimize'].includes(action)) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Invalid load balancer action',
+          timestamp: new Date().toISOString()
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400
+        }
+      );
+    }
+
+    if (action === 'failover' && (!sourceNode || !targetNode)) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'sourceNode and targetNode are required for failover',
+          timestamp: new Date().toISOString()
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400
+        }
+      );
+    }
 
     console.log(`ESP32 Load Balancer: Executing ${action}`, { targetNode, sourceNode });
 
@@ -57,16 +149,18 @@ serve(async (req) => {
     }
 
     const configurations: ESP32Config[] = settings?.esp32_configurations as ESP32Config[] || [];
-    const statusMap = new Map(statusData?.map(s => [s.esp32_id, s]) || []);
+    const statusMap = new Map<string, ESP32Status>(
+      (statusData ?? []).map((status) => [status.esp32_id, status as ESP32Status])
+    );
 
-    let result;
+    let result: LoadBalancerResult;
 
     switch (action) {
       case 'redistribute':
         result = await redistributeLoad(configurations, statusMap, supabase);
         break;
       case 'failover':
-        result = await handleFailover(configurations, statusMap, sourceNode!, targetNode!, supabase);
+        result = await handleFailover(configurations, statusMap, sourceNode, targetNode, supabase);
         break;
       case 'optimize':
         result = await optimizeLoadDistribution(configurations, statusMap, supabase);
@@ -88,12 +182,12 @@ serve(async (req) => {
       }
     );
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('ESP32 Load Balancer Error:', error);
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: error.message,
+        error: getErrorMessage(error),
         timestamp: new Date().toISOString()
       }),
       { 
@@ -106,9 +200,9 @@ serve(async (req) => {
 
 async function redistributeLoad(
   configurations: ESP32Config[], 
-  statusMap: Map<string, any>,
-  supabase: any
-): Promise<any> {
+  statusMap: Map<string, ESP32Status>,
+  supabase: SupabaseClient
+): Promise<LoadBalancerResult> {
   console.log('Redistributing load across ESP32 nodes...');
 
   // Filtrar apenas nodes online
@@ -131,7 +225,6 @@ async function redistributeLoad(
   const newConfigurations = [...configurations];
 
   // Redistribuir máquinas
-  let machineIndex = 0;
   onlineNodes.forEach((node, nodeIndex) => {
     const configIndex = newConfigurations.findIndex(c => c.id === node.id);
     if (configIndex !== -1) {
@@ -175,11 +268,11 @@ async function redistributeLoad(
 
 async function handleFailover(
   configurations: ESP32Config[],
-  statusMap: Map<string, any>,
+  statusMap: Map<string, ESP32Status>,
   sourceNodeId: string,
   targetNodeId: string,
-  supabase: any
-): Promise<any> {
+  supabase: SupabaseClient
+): Promise<LoadBalancerResult> {
   console.log(`Handling failover from ${sourceNodeId} to ${targetNodeId}...`);
 
   const sourceNode = configurations.find(c => c.id === sourceNodeId);
@@ -240,9 +333,9 @@ async function handleFailover(
 
 async function optimizeLoadDistribution(
   configurations: ESP32Config[],
-  statusMap: Map<string, any>,
-  supabase: any
-): Promise<any> {
+  statusMap: Map<string, ESP32Status>,
+  supabase: SupabaseClient
+): Promise<LoadBalancerResult> {
   console.log('Optimizing load distribution...');
 
   // Implementar algoritmo de otimização baseado em:
@@ -281,7 +374,6 @@ async function optimizeLoadDistribution(
   const allMachines: string[] = [];
   configurations.forEach(config => allMachines.push(...config.machines));
 
-  let machineIndex = 0;
   onlineNodes.forEach((node, index) => {
     const configIndex = newConfigurations.findIndex(c => c.id === node.id);
     if (configIndex !== -1) {
@@ -315,7 +407,7 @@ async function optimizeLoadDistribution(
   };
 }
 
-async function notifyESP32OfChange(host: string, port: number, payload: any): Promise<void> {
+async function notifyESP32OfChange(host: string, port: number, payload: ESP32ChangePayload): Promise<void> {
   try {
     console.log(`Notifying ESP32 at ${host}:${port} of configuration change...`);
     
