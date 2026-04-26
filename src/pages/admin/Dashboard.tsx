@@ -1,19 +1,68 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { DollarSign, Receipt, Activity, CheckCircle, AlertTriangle } from "lucide-react";
+import { DollarSign, Receipt, Activity, CheckCircle, AlertTriangle, Droplets, Wind } from "lucide-react";
 import { useLaundry } from "@/contexts/LaundryContext";
 import { supabase } from "@/integrations/supabase/client";
-import { computeMachineStatus, type Esp32StatusRow } from "@/lib/machineEsp32Sync";
+import { computeMachineStatus, type Esp32StatusRow, type MachineRow } from "@/lib/machineEsp32Sync";
 import { LaundryDashboardSelector } from "@/components/admin/LaundryDashboardSelector";
 import { MachineStatusGrid } from "@/components/admin/MachineStatusGrid";
 import { ConsolidatedMachineStatus } from "@/components/admin/ConsolidatedMachineStatus";
-import { useMachines } from "@/hooks/useMachines";
+import { type Machine, useMachines } from "@/hooks/useMachines";
 import { Badge } from "@/components/ui/badge";
+
+interface TransactionRow {
+  created_at: string | null;
+  total_amount: number | string | null;
+}
+
+interface MachineRevenueRow {
+  total_revenue: number | string | null;
+}
+
+interface ConsolidatedMachineRow extends MachineRow {
+  name: string;
+  type?: string | null;
+  price_per_cycle?: number | string | null;
+  cycle_time_minutes?: number | null;
+  relay_pin?: number | null;
+  esp32_id?: string | null;
+  location?: string | null;
+}
+
+type Esp32StatusWithLaundry = Esp32StatusRow & {
+  laundry_id: string | null;
+};
+
+type MachinesByLaundry = Record<string, { laundryName: string; machines: Machine[] }>;
+
+const toDashboardMachine = (
+  row: ConsolidatedMachineRow,
+  status: Machine["status"],
+  esp32?: Esp32StatusRow
+): Machine => {
+  const type = row.type === "secadora" || row.type === "drying" ? "secadora" : "lavadora";
+
+  return {
+    id: row.id,
+    name: row.name,
+    type,
+    title: row.name,
+    price: Number(row.price_per_cycle) || 18,
+    duration: row.cycle_time_minutes || 40,
+    status,
+    icon: type === "lavadora" ? Droplets : Wind,
+    esp32_id: row.esp32_id || undefined,
+    relay_pin: row.relay_pin || undefined,
+    location: row.location || undefined,
+    ip_address: esp32?.ip_address || undefined,
+  };
+};
 
 export default function Dashboard() {
   const { currentLaundry, isSuperAdmin, laundries, isViewingAllLaundries } = useLaundry();
   const isViewingAll = isSuperAdmin && isViewingAllLaundries;
-  const laundryIdForMachines = isViewingAll ? undefined : currentLaundry?.id;
+  const currentLaundryId = currentLaundry?.id;
+  const laundryIdForMachines = isViewingAll ? undefined : currentLaundryId;
   const { machines, loading: machinesLoading, refreshMachines } = useMachines(laundryIdForMachines);
 
   // Revenue/transaction stats — fetched independently at a slower cadence
@@ -21,7 +70,7 @@ export default function Dashboard() {
   const [revenueLoading, setRevenueLoading] = useState(true);
   const initialLoadDone = useRef(false);
 
-  const [machinesByLaundry, setMachinesByLaundry] = useState<Record<string, { laundryName: string; machines: any[] }>>({});
+  const [machinesByLaundry, setMachinesByLaundry] = useState<MachinesByLaundry>({});
 
   // Machine stats derived reactively from useMachines — updates in ≤5s
   const machineStats = useMemo(() => ({
@@ -31,33 +80,36 @@ export default function Dashboard() {
     maintenanceMachines: machines.filter(m => m.status === 'maintenance').length,
   }), [machines]);
 
-  const loadRevenueData = async () => {
-    if (!currentLaundry && !isViewingAll) return;
+  const loadRevenueData = useCallback(async () => {
+    if (!currentLaundryId && !isViewingAll) return;
     try {
       // Only show skeleton on first load
       if (!initialLoadDone.current) setRevenueLoading(true);
 
       const transactionsQuery = supabase.from('transactions').select('*');
       const machinesQuery = supabase.from('machines').select('total_revenue');
-      if (!isViewingAll && currentLaundry) {
-        transactionsQuery.eq('laundry_id', currentLaundry.id);
-        machinesQuery.eq('laundry_id', currentLaundry.id);
+      if (!isViewingAll && currentLaundryId) {
+        transactionsQuery.eq('laundry_id', currentLaundryId);
+        machinesQuery.eq('laundry_id', currentLaundryId);
       }
       const [{ data: transactionsData }, { data: machinesData }] = await Promise.all([
         transactionsQuery,
         machinesQuery,
       ]);
 
+      const transactions = (transactionsData || []) as TransactionRow[];
+      const machineRevenueRows = (machinesData || []) as MachineRevenueRow[];
       const today = new Date(); today.setHours(0, 0, 0, 0);
-      const todayTransactions = transactionsData?.filter(t => new Date(t.created_at) >= today).length || 0;
-      const totalRevenue = machinesData?.reduce((sum, m) => sum + (Number(m.total_revenue) || 0), 0) || 0;
+      const todayTransactions = transactions.filter(t => t.created_at && new Date(t.created_at) >= today).length;
+      const totalRevenue = machineRevenueRows.reduce((sum, m) => sum + (Number(m.total_revenue) || 0), 0);
 
       const currentMonth = new Date().getMonth();
       const currentYear = new Date().getFullYear();
-      const monthlyRevenue = transactionsData?.filter(t => {
+      const monthlyRevenue = transactions.filter(t => {
+        if (!t.created_at) return false;
         const date = new Date(t.created_at);
         return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
-      }).reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0) || 0;
+      }).reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0);
 
       setRevenueStats({ totalRevenue, monthlyRevenue, todayTransactions });
       initialLoadDone.current = true;
@@ -66,18 +118,19 @@ export default function Dashboard() {
     } finally {
       setRevenueLoading(false);
     }
-  };
+  }, [currentLaundryId, isViewingAll]);
 
-  const loadConsolidatedMachines = async () => {
+  const loadConsolidatedMachines = useCallback(async () => {
     if (!isViewingAll) return;
-    const groupedMachines: Record<string, { laundryName: string; machines: any[] }> = {};
+    const groupedMachines: MachinesByLaundry = {};
 
     // Fetch all ESP32 status once
     const { data: allEsp32 } = await supabase
       .from('esp32_status')
       .select('esp32_id, ip_address, is_online, relay_status, last_heartbeat, signal_strength, network_status, laundry_id');
     const esp32ByLaundry = new Map<string, Esp32StatusRow[]>();
-    (allEsp32 || []).forEach((e: any) => {
+    ((allEsp32 || []) as Esp32StatusWithLaundry[]).forEach((e) => {
+      if (!e.laundry_id) return;
       const arr = esp32ByLaundry.get(e.laundry_id) || [];
       arr.push(e);
       esp32ByLaundry.set(e.laundry_id, arr);
@@ -89,26 +142,26 @@ export default function Dashboard() {
       if (laundryMachines && laundryMachines.length > 0) {
         const esp32List = esp32ByLaundry.get(laundry.id) || [];
         const esp32Map = new Map(esp32List.map(e => [e.esp32_id, e]));
-        const enriched = laundryMachines.map((m: any) => {
-          const esp32 = esp32Map.get(m.esp32_id || '') as Esp32StatusRow | undefined;
+        const enriched = (laundryMachines as ConsolidatedMachineRow[]).map((m) => {
+          const esp32 = esp32Map.get(m.esp32_id || '');
           const computed = computeMachineStatus(m, esp32);
-          return { ...m, status: computed.status };
+          return toDashboardMachine(m, computed.status, esp32);
         });
         groupedMachines[laundry.id] = { laundryName: laundry.name, machines: enriched };
       }
     }
     setMachinesByLaundry(groupedMachines);
-  };
+  }, [isViewingAll, laundries]);
 
   useEffect(() => {
-    loadRevenueData();
-    if (isViewingAll) loadConsolidatedMachines();
+    void loadRevenueData();
+    void loadConsolidatedMachines();
     const interval = setInterval(() => {
-      loadRevenueData();
-      if (isViewingAll) loadConsolidatedMachines();
+      void loadRevenueData();
+      void loadConsolidatedMachines();
     }, 15000);
     return () => clearInterval(interval);
-  }, [currentLaundry, isViewingAll, isSuperAdmin, laundries]);
+  }, [loadConsolidatedMachines, loadRevenueData]);
 
   if (revenueLoading && !initialLoadDone.current) {
     return (
