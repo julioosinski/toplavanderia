@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,10 +32,18 @@ interface ReportData {
   machine_name?: string;
 }
 
+interface MachineOption {
+  id: string;
+  name: string;
+  type: string;
+}
+
 export const LaundryReportsTab = () => {
   const { currentLaundry, isSuperAdmin } = useLaundry();
+  const currentLaundryId = currentLaundry?.id;
+  const currentLaundryName = currentLaundry?.name;
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [machines, setMachines] = useState<any[]>([]);
+  const [machines, setMachines] = useState<MachineOption[]>([]);
   const [reportData, setReportData] = useState<ReportData[]>([]);
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState({
@@ -48,31 +56,24 @@ export const LaundryReportsTab = () => {
   });
   const { toast } = useToast();
 
-  useEffect(() => {
-    if (currentLaundry?.id) {
-      loadMachines();
-      generateReport();
-    }
-  }, [currentLaundry]);
-
-  const loadMachines = async () => {
-    if (!currentLaundry?.id) return;
+  const loadMachines = useCallback(async () => {
+    if (!currentLaundryId) return;
     const { data, error } = await supabase
       .from('machines')
       .select('id, name, type')
-      .eq('laundry_id', currentLaundry.id)
+      .eq('laundry_id', currentLaundryId)
       .order('name');
-    if (!error && data) setMachines(data);
-  };
+    if (!error && data) setMachines(data as MachineOption[]);
+  }, [currentLaundryId]);
 
-  const generateReport = async () => {
-    if (!currentLaundry?.id) return;
+  const generateReport = useCallback(async () => {
+    if (!currentLaundryId) return;
     setLoading(true);
     try {
       let query = supabase
         .from('transactions')
         .select(`id, machine_id, total_amount, created_at, payment_method, user_id, machines!inner(name, type)`)
-        .eq('laundry_id', currentLaundry.id)
+        .eq('laundry_id', currentLaundryId)
         .gte('created_at', filters.startDate + 'T00:00:00')
         .lte('created_at', filters.endDate + 'T23:59:59')
         .order('created_at', { ascending: false });
@@ -140,7 +141,14 @@ export const LaundryReportsTab = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentLaundryId, filters, toast]);
+
+  useEffect(() => {
+    if (currentLaundryId) {
+      loadMachines();
+      generateReport();
+    }
+  }, [currentLaundryId, generateReport, loadMachines]);
 
   const exportReport = () => {
     const headers = ['Data', 'Vendas', 'Receita'];
@@ -152,7 +160,7 @@ export const LaundryReportsTab = () => {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.setAttribute('href', URL.createObjectURL(blob));
-    link.setAttribute('download', `relatorio_${currentLaundry?.name}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `relatorio_${currentLaundryName}_${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();

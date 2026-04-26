@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,9 +28,14 @@ interface ReportData {
   machine_name?: string;
 }
 
+interface MachineOption {
+  id: string;
+  name: string;
+}
+
 export const ReportsTab = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [machines, setMachines] = useState<any[]>([]);
+  const [machines, setMachines] = useState<MachineOption[]>([]);
   const [reportData, setReportData] = useState<ReportData[]>([]);
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState({
@@ -41,23 +46,18 @@ export const ReportsTab = () => {
   });
   const { toast } = useToast();
 
-  useEffect(() => {
-    loadMachines();
-    generateReport();
-  }, []);
-
-  const loadMachines = async () => {
+  const loadMachines = useCallback(async () => {
     const { data, error } = await supabase
       .from('machines')
       .select('id, name')
       .order('name');
     
     if (!error && data) {
-      setMachines(data);
+      setMachines(data as MachineOption[]);
     }
-  };
+  }, []);
 
-  const generateReport = async () => {
+  const generateReport = useCallback(async () => {
     setLoading(true);
     try {
       let query = supabase
@@ -134,7 +134,12 @@ export const ReportsTab = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters, toast]);
+
+  useEffect(() => {
+    loadMachines();
+    generateReport();
+  }, [generateReport, loadMachines]);
 
   const exportReport = () => {
     const headers = ['Data', 'Vendas', 'Receita'];

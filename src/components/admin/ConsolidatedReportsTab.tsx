@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,10 @@ interface LaundryStats {
   active_machines: number;
 }
 
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : "Erro desconhecido";
+};
+
 export const ConsolidatedReportsTab = () => {
   const { isSuperAdmin, laundries } = useLaundry();
   const { toast } = useToast();
@@ -27,11 +31,7 @@ export const ConsolidatedReportsTab = () => {
   const [startDate, setStartDate] = useState(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
 
-  useEffect(() => {
-    if (isSuperAdmin) loadConsolidatedStats();
-  }, [isSuperAdmin, selectedLaundryId, startDate, endDate]);
-
-  const loadConsolidatedStats = async () => {
+  const loadConsolidatedStats = useCallback(async () => {
     try {
       setLoading(true);
       const laundriesFilter = selectedLaundryId === "all" ? laundries : laundries.filter(l => l.id === selectedLaundryId);
@@ -43,7 +43,7 @@ export const ConsolidatedReportsTab = () => {
           .eq('laundry_id', laundry.id);
         if (machinesError) throw machinesError;
 
-        let txQuery = supabase
+        const txQuery = supabase
           .from('transactions')
           .select('id, total_amount')
           .eq('laundry_id', laundry.id)
@@ -68,13 +68,17 @@ export const ConsolidatedReportsTab = () => {
 
       const results = await Promise.all(statsPromises);
       setStats(results);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error loading consolidated stats:', error);
-      toast({ title: "Erro", description: error.message, variant: "destructive" });
+      toast({ title: "Erro", description: getErrorMessage(error), variant: "destructive" });
     } finally {
       setLoading(false);
     }
-  };
+  }, [endDate, laundries, selectedLaundryId, startDate, toast]);
+
+  useEffect(() => {
+    if (isSuperAdmin) loadConsolidatedStats();
+  }, [isSuperAdmin, loadConsolidatedStats]);
 
   if (!isSuperAdmin) {
     return (
