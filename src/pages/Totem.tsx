@@ -356,21 +356,16 @@ const Totem = () => {
         const relayPin = resolvedRelayPin(selectedMachine.relay_pin);
         const normalizedMethod = normalizePaymentMethod(paymentMethod);
 
-        const { data: transaction, error: txError } = await supabase
-          .from('transactions')
-          .insert({
-            machine_id: selectedMachine.id,
-            total_amount: selectedMachine.price,
-            duration_minutes: selectedMachine.duration,
-            status: 'pending',
-            payment_method: normalizedMethod,
-            laundry_id: currentLaundry.id,
-            started_at: new Date().toISOString(),
-          })
-          .select('id')
-          .single();
+        const { data: transactionId, error: txError } = await supabase
+          .rpc('create_totem_transaction', {
+            _machine_id: selectedMachine.id,
+            _total_amount: selectedMachine.price,
+            _duration_minutes: selectedMachine.duration,
+            _payment_method: normalizedMethod,
+            _laundry_id: currentLaundry.id,
+          });
 
-        if (txError || !transaction) {
+        if (txError || !transactionId) {
           console.error('Erro ao registrar transação:', txError);
           throw new Error('Pagamento aprovado, mas a transação não foi registrada.');
         }
@@ -381,7 +376,7 @@ const Totem = () => {
             relay_pin: relayPin,
             action: 'on',
             machine_id: selectedMachine.id,
-            transaction_id: transaction.id,
+            transaction_id: transactionId,
           },
         });
         if (espErr) throw espErr;
