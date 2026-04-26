@@ -5,7 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { CreditCard, CheckCircle, XCircle, Clock } from "lucide-react";
 import type { Machine } from "@/hooks/useMachines";
 import { UniversalPaymentWidget } from '@/components/payment/UniversalPaymentWidget';
-import { UniversalPaymentConfig } from '@/hooks/useUniversalPayment';
+import { UniversalPaymentConfig, type UniversalPaymentResponse } from '@/hooks/useUniversalPayment';
 import { TotemScreenBackBar } from '@/components/totem/TotemScreenBackBar';
 
 interface ProcessingScreenProps {
@@ -83,7 +83,11 @@ export const ErrorScreen = ({ onRetry, onCancel }: ErrorScreenProps) => {
 
 interface SuccessScreenProps {
   machine: Machine | null;
-  transactionData: any;
+  transactionData: {
+    nsu?: string;
+    autorizacao?: string;
+    ultimosDigitos?: string;
+  } | null;
   onReset: () => void;
 }
 
@@ -179,10 +183,10 @@ interface PaymentScreenProps {
   machine: Machine;
   config: UniversalPaymentConfig;
   deviceMode: string;
-  onSuccess: (result: any) => void;
+  onSuccess: (result: UniversalPaymentResponse) => void;
   onError: (error: string) => void;
   onCancel: () => void;
-  onPixQR: (result: any) => void;
+  onPixQR: (result: UniversalPaymentResponse) => void;
 }
 
 export const PaymentScreen = ({ machine, config, deviceMode, onSuccess, onError, onCancel, onPixQR }: PaymentScreenProps) => {
