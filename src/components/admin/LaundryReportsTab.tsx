@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { BarChart3, Calendar, TrendingUp, Download, Building2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface Transaction {

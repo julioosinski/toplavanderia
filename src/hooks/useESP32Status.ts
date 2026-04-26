@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useLaundry } from '@/contexts/LaundryContext';
+import { useLaundry } from '@/hooks/useLaundry';
 import { ESP32_HEARTBEAT_STALE_MINUTES } from '@/lib/machineEsp32Sync';
 
 export interface ESP32StatusData {

@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 import { useLaundryFilter } from "@/hooks/useLaundryFilter";
 import { AppRole, Laundry } from "@/types/laundry";
 import { Badge } from "@/components/ui/badge";

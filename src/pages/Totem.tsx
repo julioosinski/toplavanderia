@@ -6,7 +6,7 @@ import { useKioskSecurity } from "@/hooks/useKioskSecurity";
 import { resolvedRelayPin } from "@/lib/machineEsp32Sync";
 import { useAdminAccess } from "@/hooks/useAdminAccess";
 import { useMachines, type Machine } from "@/hooks/useMachines";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 import { useCapacitorIntegration } from "@/hooks/useCapacitorIntegration";
 import { UniversalPaymentConfig } from '@/hooks/useUniversalPayment';
 import { usePixPayment } from '@/hooks/usePixPayment';

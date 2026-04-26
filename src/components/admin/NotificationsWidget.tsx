@@ -8,7 +8,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 
 interface Notification {
   id: string;

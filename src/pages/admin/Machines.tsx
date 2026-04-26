@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from "react";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 import { supabase } from "@/integrations/supabase/client";
 import { LaundryGuard } from "@/components/admin/LaundryGuard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

@@ -1,6 +1,7 @@
-import { createContext, useCallback, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { useCallback, useState, useEffect, useRef, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Laundry, AppRole, ADMIN_PANEL_ROLES } from '@/types/laundry';
+import { LaundryContext } from '@/contexts/LaundryContextValue';
 
 const debugLaundry = (...args: unknown[]) => {
   if (import.meta.env.DEV) console.log(...args);
@@ -8,28 +9,6 @@ const debugLaundry = (...args: unknown[]) => {
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { nativeStorage, getItemWithTimeout } from '@/utils/nativeStorage';
-
-interface LaundryContextType {
-  currentLaundry: Laundry | null;
-  userRole: AppRole | null;
-  isSuperAdmin: boolean;
-  isAdmin: boolean;
-  isOperator: boolean;
-  /** Super admin com visão consolidada (todas as lavanderias) — use no dashboard */
-  isViewingAllLaundries: boolean;
-  /** Login com perfil sem acesso ao painel (ex.: user, totem_device) */
-  panelAccessDenied: boolean;
-  laundries: Laundry[];
-  loading: boolean;
-  error: string | null;
-  switchLaundry: (laundryId: string) => Promise<void>;
-  switchToAllLaundries: () => Promise<void>;
-  refreshLaundries: () => Promise<void>;
-  retry: () => void;
-  configureTotemByCNPJ: (cnpj: string) => Promise<boolean>;
-}
-
-const LaundryContext = createContext<LaundryContextType | undefined>(undefined);
 
 export const LaundryProvider = ({ children }: { children: ReactNode }) => {
   const [currentLaundry, setCurrentLaundry] = useState<Laundry | null>(null);
@@ -396,12 +375,4 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       {children}
     </LaundryContext.Provider>
   );
-};
-
-export const useLaundry = () => {
-  const context = useContext(LaundryContext);
-  if (context === undefined) {
-    throw new Error('useLaundry must be used within a LaundryProvider');
-  }
-  return context;
 };

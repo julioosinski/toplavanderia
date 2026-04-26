@@ -9,7 +9,7 @@ import { Zap, Clock, CheckCircle, AlertCircle } from 'lucide-react';
 import { useESP32CreditRelease } from '@/hooks/useESP32CreditRelease';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { useLaundry } from '@/contexts/LaundryContext';
+import { useLaundry } from '@/hooks/useLaundry';
 
 interface CreditReleaseLog {
   id: string;

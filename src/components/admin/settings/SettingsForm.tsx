@@ -13,7 +13,7 @@ import { ESP32ConfigurationDialog } from "../ESP32ConfigurationDialog";
 import { NFSeTestWidget } from "../NFSeTestWidget";
 import { SystemSettings, type ESP32Configuration } from "@/hooks/useSystemSettings";
 import { supabase } from "@/integrations/supabase/client";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 
 interface SettingsFormProps {
   settings: SystemSettings;

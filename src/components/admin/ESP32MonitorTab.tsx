@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Wifi, WifiOff, Signal, Clock, AlertTriangle, CheckCircle, RefreshCw, Zap, TestTube, MapPin, Cpu } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { useLaundry } from '@/contexts/LaundryContext';
+import { useLaundry } from '@/hooks/useLaundry';
 import type { Json } from '@/integrations/supabase/types';
 import ESP32NetworkTopology from './ESP32NetworkTopology';
 

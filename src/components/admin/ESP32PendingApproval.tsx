@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CheckCircle2, XCircle, Cpu, Clock, Wifi, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 import { useSystemSettings, type SystemSettings } from "@/hooks/useSystemSettings";
 import { useToast } from "@/hooks/use-toast";
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { DollarSign, Receipt, Activity, CheckCircle, AlertTriangle, Droplets, Wind } from "lucide-react";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 import { supabase } from "@/integrations/supabase/client";
 import { computeMachineStatus, type Esp32StatusRow, type MachineRow } from "@/lib/machineEsp32Sync";
 import { LaundryDashboardSelector } from "@/components/admin/LaundryDashboardSelector";

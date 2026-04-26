@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw, AlertTriangle, Shield, CheckCircle, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 
 interface SecurityEvent {
   id: string;

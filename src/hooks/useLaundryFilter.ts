@@ -1,4 +1,4 @@
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 
 interface LaundryFilterQuery {
   eq: (column: string, value: string) => LaundryFilterQuery;

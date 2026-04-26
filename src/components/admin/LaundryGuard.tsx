@@ -1,5 +1,5 @@
 import { Building2 } from "lucide-react";
-import { useLaundry } from "@/contexts/LaundryContext";
+import { useLaundry } from "@/hooks/useLaundry";
 
 interface LaundryGuardProps {
   children: React.ReactNode;
