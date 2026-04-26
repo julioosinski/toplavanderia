@@ -25,11 +25,20 @@ const getErrorMessage = (error: unknown) => {
   return error instanceof Error ? error.message : 'Erro inesperado';
 };
 
-const isHealthCheckAuthorized = (req: Request) => {
+const isAuthenticatedUser = async (req: Request, supabase: ReturnType<typeof createClient>) => {
+  const token = req.headers.get('Authorization')?.replace('Bearer ', '');
+  if (!token) return false;
+
+  const { data: { user } } = await supabase.auth.getUser(token);
+  return Boolean(user);
+};
+
+const isHealthCheckAuthorized = async (req: Request, supabase: ReturnType<typeof createClient>) => {
   const secret = Deno.env.get('ESP32_HEALTH_CHECK_SECRET');
   if (!secret) return true;
 
-  return req.headers.get('x-esp32-health-check-secret') === secret;
+  return req.headers.get('x-esp32-health-check-secret') === secret ||
+    await isAuthenticatedUser(req, supabase);
 };
 
 serve(async (req) => {
@@ -38,7 +47,12 @@ serve(async (req) => {
   }
 
   try {
-    if (!isHealthCheckAuthorized(req)) {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    if (!await isHealthCheckAuthorized(req, supabase)) {
       return new Response(
         JSON.stringify({
           success: false,
@@ -50,11 +64,6 @@ serve(async (req) => {
         }
       );
     }
-
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
 
     console.log('[Health Check] Starting health check process...');
 

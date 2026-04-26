@@ -10,11 +10,20 @@ const getErrorMessage = (error: unknown) => {
   return error instanceof Error ? error.message : 'Erro inesperado';
 };
 
-const isTotemSettingsAuthorized = (req: Request) => {
+const isAuthenticatedUser = async (req: Request, supabase: ReturnType<typeof createClient>) => {
+  const token = req.headers.get('Authorization')?.replace('Bearer ', '');
+  if (!token) return false;
+
+  const { data: { user } } = await supabase.auth.getUser(token);
+  return Boolean(user);
+};
+
+const isTotemSettingsAuthorized = async (req: Request, supabase: ReturnType<typeof createClient>) => {
   const secret = Deno.env.get('TOTEM_SETTINGS_SECRET');
   if (!secret) return true;
 
-  return req.headers.get('x-totem-settings-secret') === secret;
+  return req.headers.get('x-totem-settings-secret') === secret ||
+    await isAuthenticatedUser(req, supabase);
 };
 
 serve(async (req) => {
@@ -23,7 +32,12 @@ serve(async (req) => {
   }
 
   try {
-    if (!isTotemSettingsAuthorized(req)) {
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    if (!await isTotemSettingsAuthorized(req, supabaseClient)) {
       return new Response(JSON.stringify({
         success: false,
         error: 'Totem settings não autorizado',
@@ -40,11 +54,6 @@ serve(async (req) => {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
 
     const { data, error } = await supabaseClient
       .rpc('get_totem_settings', { _laundry_id: laundry_id });
