@@ -22,6 +22,7 @@ import android.widget.Toast;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.text.DecimalFormat;
@@ -563,17 +564,20 @@ public class TotemActivity extends Activity {
         
         new Thread(() -> {
             try {
-                // Buscar status atual da máquina no Supabase
-                String url = "https://rkdybjzwiwwqqzjfmerm.supabase.co/rest/v1/machines" +
-                            "?id=eq." + machine.getId() +
-                            "&select=status,esp32_id";
+                String url = SupabaseConfig.SUPABASE_URL + "/rest/v1/rpc/get_public_machines";
                 
                 HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
-                connection.setRequestMethod("GET");
-                connection.setRequestProperty("apikey", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg");
-                connection.setRequestProperty("Authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg");
+                connection.setRequestMethod("POST");
+                SupabaseConfig.applyJsonHeaders(connection);
+                connection.setDoOutput(true);
                 connection.setConnectTimeout(5000);
                 connection.setReadTimeout(5000);
+
+                JSONObject body = new JSONObject();
+                body.put("_laundry_id", supabaseHelper.getLaundryId());
+                OutputStream os = connection.getOutputStream();
+                os.write(body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                os.close();
                 
                 int responseCode = connection.getResponseCode();
                 
@@ -588,8 +592,11 @@ public class TotemActivity extends Activity {
                     
                     JSONArray jsonArray = new JSONArray(response.toString());
                     
-                    if (jsonArray.length() > 0) {
-                        JSONObject machineData = jsonArray.getJSONObject(0);
+                    for (int i = 0; i < jsonArray.length(); i++) {
+                        JSONObject machineData = jsonArray.getJSONObject(i);
+                        if (!machine.getId().equals(machineData.optString("id"))) {
+                            continue;
+                        }
                         String currentStatus = machineData.getString("status");
                         String esp32Id = machineData.getString("esp32_id");
                         
@@ -600,6 +607,7 @@ public class TotemActivity extends Activity {
                         result[0] = "available".equals(currentStatus) && esp32Online;
                         
                         Log.d(TAG, "Status atual: " + currentStatus + ", ESP32 Online: " + esp32Online);
+                        break;
                     }
                 }
                 
@@ -632,16 +640,20 @@ public class TotemActivity extends Activity {
      */
     private boolean checkEsp32Status(String esp32Id) {
         try {
-            String url = "https://rkdybjzwiwwqqzjfmerm.supabase.co/rest/v1/esp32_status" +
-                        "?esp32_id=eq." + esp32Id +
-                        "&select=is_online,last_heartbeat";
+            String url = SupabaseConfig.SUPABASE_URL + "/rest/v1/rpc/get_esp32_heartbeats";
             
             HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
-            connection.setRequestMethod("GET");
-            connection.setRequestProperty("apikey", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg");
-            connection.setRequestProperty("Authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg");
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
             connection.setConnectTimeout(3000);
             connection.setReadTimeout(3000);
+
+            JSONObject body = new JSONObject();
+            body.put("_laundry_id", supabaseHelper.getLaundryId());
+            OutputStream os = connection.getOutputStream();
+            os.write(body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            os.close();
             
             int responseCode = connection.getResponseCode();
             
@@ -656,8 +668,11 @@ public class TotemActivity extends Activity {
                 
                 JSONArray jsonArray = new JSONArray(response.toString());
                 
-                if (jsonArray.length() > 0) {
-                    JSONObject esp32Data = jsonArray.getJSONObject(0);
+                for (int i = 0; i < jsonArray.length(); i++) {
+                    JSONObject esp32Data = jsonArray.getJSONObject(i);
+                    if (!esp32Id.equals(esp32Data.optString("esp32_id"))) {
+                        continue;
+                    }
                     boolean isOnline = esp32Data.getBoolean("is_online");
                     String lastHeartbeat = esp32Data.optString("last_heartbeat", null);
                     
