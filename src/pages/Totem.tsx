@@ -17,6 +17,21 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { useDeviceMode } from "@/hooks/useDeviceMode";
 
+interface PaymentPayload {
+  [key: string]: unknown;
+  method?: string;
+  orderId?: string;
+  data?: PaymentPayload;
+}
+
+interface PixPaymentPayload extends PaymentPayload {
+  qrCode?: string;
+  qrCodeBase64?: string;
+  pixKey?: string;
+  amount: number;
+  expiresIn?: number;
+}
+
 // Totem sub-components
 import { TotemHeader } from "@/components/totem/TotemHeader";
 import { TotemMachineGrid } from "@/components/totem/TotemMachineGrid";
@@ -33,10 +48,10 @@ const Totem = () => {
   >("select");
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showConfig, setShowConfig] = useState(false);
-  const [transactionData, setTransactionData] = useState<any>(null);
+  const [transactionData, setTransactionData] = useState<PaymentPayload | null>(null);
   const [showAdminDialog, setShowAdminDialog] = useState(false);
   const [adminClickCount, setAdminClickCount] = useState(0);
-  const [pixPaymentData, setPixPaymentData] = useState<any>(null);
+  const [pixPaymentData, setPixPaymentData] = useState<PixPaymentPayload | null>(null);
   const [loadingTimeout, setLoadingTimeout] = useState(false);
   const pixPollDoneRef = useRef(false);
 
@@ -341,18 +356,23 @@ const Totem = () => {
         const relayPin = resolvedRelayPin(selectedMachine.relay_pin);
         const normalizedMethod = normalizePaymentMethod(paymentMethod);
 
-        const { error: txError } = await supabase.from('transactions').insert({
-          machine_id: selectedMachine.id,
-          total_amount: selectedMachine.price,
-          duration_minutes: selectedMachine.duration,
-          status: 'pending',
-          payment_method: normalizedMethod,
-          laundry_id: currentLaundry.id,
-          started_at: new Date().toISOString(),
-        });
+        const { data: transaction, error: txError } = await supabase
+          .from('transactions')
+          .insert({
+            machine_id: selectedMachine.id,
+            total_amount: selectedMachine.price,
+            duration_minutes: selectedMachine.duration,
+            status: 'pending',
+            payment_method: normalizedMethod,
+            laundry_id: currentLaundry.id,
+            started_at: new Date().toISOString(),
+          })
+          .select('id')
+          .single();
 
-        if (txError) {
+        if (txError || !transaction) {
           console.error('Erro ao registrar transação:', txError);
+          throw new Error('Pagamento aprovado, mas a transação não foi registrada.');
         }
 
         const { data: espData, error: espErr } = await supabase.functions.invoke('esp32-control', {
@@ -361,6 +381,7 @@ const Totem = () => {
             relay_pin: relayPin,
             action: 'on',
             machine_id: selectedMachine.id,
+            transaction_id: transaction.id,
           },
         });
         if (espErr) throw espErr;
@@ -373,9 +394,12 @@ const Totem = () => {
         await updateMachineStatus(selectedMachine.id, 'running', { suppressErrorToast: true });
       } catch (error) {
         console.error('Erro ao ativar máquina:', error);
+        const description = error instanceof Error
+          ? error.message
+          : 'Pagamento aprovado, mas o comando do ESP32 falhou. Verifique esp32_id e fila pending_commands.';
         toast({
           title: 'Atenção',
-          description: 'Pagamento aprovado, mas o comando do ESP32 falhou. Verifique esp32_id e fila pending_commands.',
+          description,
           variant: 'destructive',
         });
       }
@@ -417,12 +441,14 @@ const Totem = () => {
     setTimeout(() => setLogoTapCount(0), 3000);
   };
 
-  const handlePixQR = (result: any) => {
+  const handlePixQR = (result: PaymentPayload) => {
+    const orderId = result.orderId ??
+      (typeof result.data?.orderId === 'string' ? result.data.orderId : undefined);
     pixPollDoneRef.current = false;
     setPixPaymentData({
       ...result,
-      amount: selectedMachine?.price,
-      orderId: result.orderId ?? result.data?.orderId,
+      amount: selectedMachine?.price ?? 0,
+      orderId,
     });
     setPaymentStep('pix_qr');
   };
@@ -592,8 +618,8 @@ const Totem = () => {
         deviceMode={deviceMode}
         onSuccess={async (result) => {
           setPaymentStep('activating');
-          await activateMachine(`Universal - ${result.method.toUpperCase()}`);
-          setTransactionData(result.data);
+          await activateMachine(`Universal - ${(result.method ?? 'pagamento').toUpperCase()}`);
+          setTransactionData(result.data ?? result);
           setPaymentStep('success');
         }}
         onError={(err) => { toast({ title: "Erro no Pagamento", description: err, variant: "destructive" }); setPaymentStep('error'); }}
