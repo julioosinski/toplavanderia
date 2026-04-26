@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CheckCircle2, XCircle, Cpu, Clock, Wifi, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useLaundry } from "@/contexts/LaundryContext";
-import { useSystemSettings } from "@/hooks/useSystemSettings";
+import { useSystemSettings, type SystemSettings } from "@/hooks/useSystemSettings";
 import { useToast } from "@/hooks/use-toast";
 
 interface PendingESP32 {
@@ -33,7 +33,7 @@ interface MachineForm {
   capacity_kg: number;
 }
 
-const defaultForm = (settings: any): MachineForm => ({
+const defaultForm = (settings: SystemSettings | null): MachineForm => ({
   name: "",
   type: "lavadora",
   relay_pin: 2,
@@ -47,6 +47,7 @@ export const ESP32PendingApproval = () => {
   const [forms, setForms] = useState<Record<string, MachineForm>>({});
   const [loading, setLoading] = useState(true);
   const { currentLaundry } = useLaundry();
+  const currentLaundryId = currentLaundry?.id;
   const { settings } = useSystemSettings();
   const { toast } = useToast();
 
@@ -59,34 +60,34 @@ export const ESP32PendingApproval = () => {
 
   const getForm = (espId: string): MachineForm => forms[espId] || defaultForm(settings);
 
-  const fetchPendingDevices = async () => {
-    if (!currentLaundry?.id) return;
+  const fetchPendingDevices = useCallback(async () => {
+    if (!currentLaundryId) return;
 
     // Fetch pending ESP32s
     const { data: pendingData } = await supabase
       .from("esp32_status")
       .select("id, esp32_id, device_name, ip_address, signal_strength, firmware_version, last_heartbeat, registration_status, created_at")
-      .eq("laundry_id", currentLaundry.id)
+      .eq("laundry_id", currentLaundryId)
       .eq("registration_status", "pending");
 
     // Fetch approved ESP32s that have no associated machine (orphans)
     const { data: approvedData } = await supabase
       .from("esp32_status")
       .select("id, esp32_id, device_name, ip_address, signal_strength, firmware_version, last_heartbeat, registration_status, created_at")
-      .eq("laundry_id", currentLaundry.id)
+      .eq("laundry_id", currentLaundryId)
       .eq("registration_status", "approved");
 
     const { data: machinesData } = await supabase
       .from("machines")
       .select("esp32_id")
-      .eq("laundry_id", currentLaundry.id);
+      .eq("laundry_id", currentLaundryId);
 
     const machineEsp32Ids = new Set(machinesData?.map(m => m.esp32_id) || []);
     const orphanedApproved = (approvedData || []).filter(d => !machineEsp32Ids.has(d.esp32_id));
 
     setPendingDevices([...(pendingData || []), ...orphanedApproved]);
     setLoading(false);
-  };
+  }, [currentLaundryId]);
 
   useEffect(() => {
     fetchPendingDevices();
@@ -96,11 +97,11 @@ export const ESP32PendingApproval = () => {
         event: "*",
         schema: "public",
         table: "esp32_status",
-        filter: `laundry_id=eq.${currentLaundry?.id}`,
+        filter: `laundry_id=eq.${currentLaundryId}`,
       }, () => fetchPendingDevices())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [currentLaundry?.id]);
+  }, [currentLaundryId, fetchPendingDevices]);
 
   const approveDevice = async (device: PendingESP32) => {
     const form = getForm(device.esp32_id);
