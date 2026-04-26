@@ -5,6 +5,15 @@ import { toast } from 'sonner';
 import { useLaundry } from '@/contexts/LaundryContext';
 import { nativeStorage } from '@/utils/nativeStorage';
 
+export interface ESP32Configuration {
+  id: string;
+  name?: string;
+  host: string;
+  port: number;
+  location?: string;
+  machines?: string[];
+}
+
 export interface SystemSettings {
   id: string;
   
@@ -15,7 +24,7 @@ export interface SystemSettings {
   heartbeat_interval_seconds: number;
   max_offline_duration_minutes: number;
   signal_threshold_warning: number;
-  esp32_configurations?: any[];
+  esp32_configurations?: ESP32Configuration[];
   
   // Machine Settings
   default_cycle_time: number;
