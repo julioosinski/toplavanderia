@@ -17,7 +17,7 @@ import java.util.List;
  * MONITOR DE STATUS DAS MÁQUINAS EM TEMPO REAL
  *
  * Polling alinhado ao web (machineEsp32Sync.computeMachineStatus): relé no ESP32 é a autoridade.
- * Fallback RPC get_esp32_heartbeats quando RLS bloqueia SELECT direto em esp32_status (totem anon).
+ * Usa RPCs publicas controladas para respeitar RLS no modo totem anonimo.
  */
 public class MachineStatusMonitor {
     private static final String TAG = "MachineStatusMonitor";
@@ -29,8 +29,7 @@ public class MachineStatusMonitor {
     private static final int DEFAULT_RELAY_LOGICAL_PIN = 1;
     private static final int DEFAULT_CYCLE_MINUTES = 40;
 
-    private static final String SUPABASE_URL = "https://rkdybjzwiwwqqzjfmerm.supabase.co";
-    private static final String SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg";
+    private static final String SUPABASE_URL = SupabaseConfig.SUPABASE_URL;
 
     private Handler handler;
     private Runnable pollRunnable;
@@ -86,8 +85,7 @@ public class MachineStatusMonitor {
                     return;
                 }
 
-                String machinesUrl = SUPABASE_URL + "/rest/v1/machines?select=*&laundry_id=eq." + laundryId + "&order=name.asc";
-                JSONArray machinesArray = fetchFromUrl(machinesUrl);
+                JSONArray machinesArray = fetchPublicMachines(laundryId);
                 JSONArray esp32Array = fetchEsp32StatusesForLaundry(laundryId);
 
                 if (machinesArray == null) {
@@ -146,17 +144,8 @@ public class MachineStatusMonitor {
         }).start();
     }
 
-    /**
-     * SELECT direto; se vazio (RLS anon), usa RPC como useMachines.ts no totem web.
-     */
     private JSONArray fetchEsp32StatusesForLaundry(String laundryId) {
         try {
-            String esp32Url = SUPABASE_URL + "/rest/v1/esp32_status?select=*&laundry_id=eq." + laundryId;
-            JSONArray fromTable = fetchFromUrl(esp32Url);
-            if (fromTable != null && fromTable.length() > 0) {
-                return fromTable;
-            }
-            Log.d(TAG, "esp32_status vazio ou bloqueado — usando RPC get_esp32_heartbeats");
             return fetchEsp32ViaRpc(laundryId);
         } catch (Exception e) {
             Log.e(TAG, "fetchEsp32StatusesForLaundry", e);
@@ -170,9 +159,7 @@ public class MachineStatusMonitor {
             URL url = new URL(SUPABASE_URL + "/rest/v1/rpc/get_esp32_heartbeats");
             connection = (HttpURLConnection) url.openConnection();
             connection.setRequestMethod("POST");
-            connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
-            connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
-            connection.setRequestProperty("Content-Type", "application/json");
+            SupabaseConfig.applyJsonHeaders(connection);
             connection.setDoOutput(true);
             connection.setConnectTimeout(8000);
             connection.setReadTimeout(8000);
@@ -208,15 +195,20 @@ public class MachineStatusMonitor {
         }
     }
 
-    private JSONArray fetchFromUrl(String urlString) {
+    private JSONArray fetchPublicMachines(String laundryId) {
         try {
-            HttpURLConnection connection = (HttpURLConnection) new URL(urlString).openConnection();
-            connection.setRequestMethod("GET");
-            connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
-            connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
-            connection.setRequestProperty("Content-Type", "application/json");
+            HttpURLConnection connection = (HttpURLConnection) new URL(SUPABASE_URL + "/rest/v1/rpc/get_public_machines").openConnection();
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
             connection.setConnectTimeout(5000);
             connection.setReadTimeout(5000);
+
+            JSONObject body = new JSONObject();
+            body.put("_laundry_id", laundryId);
+            OutputStream os = connection.getOutputStream();
+            os.write(body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            os.close();
 
             int responseCode = connection.getResponseCode();
 
@@ -236,7 +228,7 @@ public class MachineStatusMonitor {
             return null;
 
         } catch (Exception e) {
-            Log.e(TAG, "Erro ao buscar URL: " + urlString, e);
+            Log.e(TAG, "Erro ao buscar maquinas publicas", e);
             return null;
         }
     }
