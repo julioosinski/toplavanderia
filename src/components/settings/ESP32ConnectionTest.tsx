@@ -11,6 +11,10 @@ interface ESP32ConnectionTestProps {
   esp32Id: string;
 }
 
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : "Erro desconhecido";
+};
+
 export const ESP32ConnectionTest = ({ host, port, esp32Id }: ESP32ConnectionTestProps) => {
   const { toast } = useToast();
   const [testing, setTesting] = useState(false);
@@ -43,13 +47,14 @@ export const ESP32ConnectionTest = ({ host, port, esp32Id }: ESP32ConnectionTest
       } else {
         throw new Error(`HTTP ${response.status}`);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       setStatus("error");
       console.error(`❌ Erro ao conectar ESP32 ${esp32Id}:`, error);
       
-      const errorMessage = error.message?.includes("timeout") || error.message?.includes("timed out")
+      const rawMessage = getErrorMessage(error);
+      const errorMessage = rawMessage.includes("timeout") || rawMessage.includes("timed out")
         ? "Timeout - ESP32 não respondeu em 5 segundos" 
-        : error.message || "Erro desconhecido";
+        : rawMessage;
       
       toast({
         title: "Falha na conexão",
