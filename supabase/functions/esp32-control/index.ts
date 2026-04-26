@@ -17,11 +17,20 @@ const getErrorMessage = (error: unknown) => {
   return error instanceof Error ? error.message : 'Erro inesperado';
 };
 
-const isMachineControlAuthorized = (req: Request) => {
+const isAuthenticatedUser = async (req: Request, supabase: ReturnType<typeof createClient>) => {
+  const token = req.headers.get('Authorization')?.replace('Bearer ', '');
+  if (!token) return false;
+
+  const { data: { user } } = await supabase.auth.getUser(token);
+  return Boolean(user);
+};
+
+const isMachineControlAuthorized = async (req: Request, supabase: ReturnType<typeof createClient>) => {
   const secret = Deno.env.get('MACHINE_CONTROL_SECRET');
   if (!secret) return true;
 
-  return req.headers.get('x-machine-control-secret') === secret;
+  return req.headers.get('x-machine-control-secret') === secret ||
+    await isAuthenticatedUser(req, supabase);
 };
 
 Deno.serve(async (req) => {
@@ -30,17 +39,17 @@ Deno.serve(async (req) => {
   }
 
   try {
-    if (!isMachineControlAuthorized(req)) {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    if (!await isMachineControlAuthorized(req, supabase)) {
       return new Response(
         JSON.stringify({ success: false, error: 'Controle de máquina não autorizado' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
       );
     }
-
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
 
     const { esp32_id, relay_pin, action, machine_id, transaction_id } = await req.json() as ESP32ControlRequest;
 
