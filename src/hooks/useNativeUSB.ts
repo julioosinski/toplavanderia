@@ -12,9 +12,16 @@ export interface NativeUSBDevice {
   connected: boolean;
 }
 
+export interface NativeUSBPinpad {
+  vendorId: number;
+  productId: number;
+  name: string;
+  connected: boolean;
+}
+
 export const useNativeUSB = () => {
   const [devices, setDevices] = useState<NativeUSBDevice[]>([]);
-  const [pinpads, setPinpads] = useState<any[]>([]);
+  const [pinpads, setPinpads] = useState<NativeUSBPinpad[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const isNative = Capacitor.isNativePlatform();
 
