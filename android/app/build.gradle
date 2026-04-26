@@ -9,9 +9,39 @@ if (keystorePropsFile.exists()) {
     keystoreProps.load(new FileInputStream(keystorePropsFile))
 }
 
+def envFile = rootProject.file('../.env')
+def envProps = new Properties()
+if (envFile.exists()) {
+    envFile.eachLine { line ->
+        def trimmed = line.trim()
+        if (trimmed && !trimmed.startsWith('#') && trimmed.contains('=')) {
+            def idx = trimmed.indexOf('=')
+            def key = trimmed.substring(0, idx).trim()
+            def value = trimmed.substring(idx + 1).trim()
+            envProps.setProperty(key, value.replaceAll(/^['"]|['"]$/, ''))
+        }
+    }
+}
+
+def readConfigValue = { propName, envName ->
+    def fromGradle = findProperty(propName)
+    if (fromGradle != null && fromGradle.toString().trim()) return fromGradle.toString().trim()
+    def fromEnv = System.getenv(envName)
+    if (fromEnv != null && fromEnv.trim()) return fromEnv.trim()
+    return envProps.getProperty(envName, '').trim()
+}
+
+def quoteBuildConfig = { value ->
+    return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+}
+
 android {
     namespace "app.lovable.toplavanderia"
     compileSdk 36
+
+    buildFeatures {
+        buildConfig true
+    }
 
     defaultConfig {
         applicationId "com.toplavanderia.app"
@@ -20,6 +50,8 @@ android {
         versionCode 7
         versionName "2.1.4"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField "String", "SUPABASE_URL", quoteBuildConfig(readConfigValue('supabaseUrl', 'VITE_SUPABASE_URL'))
+        buildConfigField "String", "SUPABASE_ANON_KEY", quoteBuildConfig(readConfigValue('supabaseAnonKey', 'VITE_SUPABASE_PUBLISHABLE_KEY'))
     }
 
     signingConfigs {

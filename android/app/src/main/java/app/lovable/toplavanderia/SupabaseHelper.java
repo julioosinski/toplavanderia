@@ -25,9 +25,7 @@ import java.util.TimeZone;
 public class SupabaseHelper {
     private static final String TAG = "SupabaseHelper";
     
-    // Configurações do Supabase
-    private static final String SUPABASE_URL = "https://rkdybjzwiwwqqzjfmerm.supabase.co";
-    private static final String SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg";
+    private static final String SUPABASE_URL = SupabaseConfig.SUPABASE_URL;
     
     // CONFIGURAÇÃO DO TOTEM - CNPJ DA LAVANDERIA
     private static final String PREFS_NAME = "totem_config";
@@ -68,6 +66,9 @@ public class SupabaseHelper {
         Log.d(TAG, "CNPJ: " + currentLaundryCNPJ);
         Log.d(TAG, "Laundry ID: " + currentLaundryId);
         Log.d(TAG, "Nome: " + currentLaundryName);
+        if (!SupabaseConfig.isConfigured()) {
+            Log.e(TAG, "Supabase nativo não configurado. Defina VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY no .env ou propriedades Gradle.");
+        }
     }
     
     /**
@@ -156,13 +157,20 @@ public class SupabaseHelper {
         if (cachedSystemSettings != null) return cachedSystemSettings;
         if (currentLaundryId == null) return null;
         try {
-            String url = SUPABASE_URL + "/rest/v1/system_settings?select=paygo_provedor,cielo_client_id,cielo_access_token,cielo_merchant_code,cielo_environment&laundry_id=eq." + currentLaundryId + "&limit=1";
+            String url = SUPABASE_URL + "/rest/v1/rpc/get_totem_settings";
             HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
-            connection.setRequestMethod("GET");
-            connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
-            connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
             connection.setConnectTimeout(5000);
             connection.setReadTimeout(5000);
+
+            JSONObject body = new JSONObject();
+            body.put("_laundry_id", currentLaundryId);
+            OutputStream os = connection.getOutputStream();
+            os.write(body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            os.close();
+
             int code = connection.getResponseCode();
             if (code == 200) {
                 BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
@@ -170,11 +178,8 @@ public class SupabaseHelper {
                 String line;
                 while ((line = reader.readLine()) != null) sb.append(line);
                 reader.close();
-                JSONArray arr = new JSONArray(sb.toString());
-                if (arr.length() > 0) {
-                    cachedSystemSettings = arr.getJSONObject(0);
-                    return cachedSystemSettings;
-                }
+                cachedSystemSettings = new JSONObject(sb.toString());
+                return cachedSystemSettings;
             }
         } catch (Exception e) {
             Log.e(TAG, "Error fetching system settings", e);
@@ -280,18 +285,23 @@ public class SupabaseHelper {
     private Laundry fetchLaundryByCNPJ(String cnpj) {
         HttpURLConnection connection = null;
         try {
-            String url = SUPABASE_URL + "/rest/v1/laundries?select=*&cnpj=eq." + cnpj + "&is_active=eq.true";
+            String url = SUPABASE_URL + "/rest/v1/rpc/get_laundry_by_cnpj";
             
             Log.d(TAG, "Buscando lavanderia por CNPJ: " + cnpj);
             Log.d(TAG, "URL: " + url);
             
             connection = (HttpURLConnection) new URL(url).openConnection();
-            connection.setRequestMethod("GET");
-            connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
-            connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
-            connection.setRequestProperty("Content-Type", "application/json");
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
             connection.setConnectTimeout(10000);
             connection.setReadTimeout(10000);
+
+            JSONObject body = new JSONObject();
+            body.put("_cnpj", cnpj);
+            OutputStream os = connection.getOutputStream();
+            os.write(body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            os.close();
             
             int responseCode = connection.getResponseCode();
             if (responseCode == 200) {
@@ -313,9 +323,9 @@ public class SupabaseHelper {
                     laundry.setId(laundryJson.getString("id"));
                     laundry.setCnpj(laundryJson.getString("cnpj"));
                     laundry.setName(laundryJson.getString("name"));
-                    laundry.setAddress(laundryJson.optString("address", ""));
-                    laundry.setCity(laundryJson.optString("city", ""));
-                    laundry.setState(laundryJson.optString("state", ""));
+                    laundry.setAddress("");
+                    laundry.setCity("");
+                    laundry.setState("");
                     laundry.setLogoUrl(laundryJson.optString("logo_url", null));
                     
                     Log.d(TAG, "✅ Lavanderia encontrada: " + laundry.getName());
@@ -352,19 +362,23 @@ public class SupabaseHelper {
                 return getDefaultMachines();
             }
             
-            // FILTRAR MÁQUINAS POR LAVANDERIA
-            String url = SUPABASE_URL + "/rest/v1/machines?select=*&laundry_id=eq." + currentLaundryId + "&order=name";
+            String url = SUPABASE_URL + "/rest/v1/rpc/get_public_machines";
             
             Log.d(TAG, "Buscando máquinas da lavanderia: " + currentLaundryId);
             Log.d(TAG, "URL: " + url);
             
             connection = (HttpURLConnection) new URL(url).openConnection();
-            connection.setRequestMethod("GET");
-            connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
-            connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
-            connection.setRequestProperty("Content-Type", "application/json");
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
             connection.setConnectTimeout(10000);
             connection.setReadTimeout(10000);
+
+            JSONObject body = new JSONObject();
+            body.put("_laundry_id", currentLaundryId);
+            OutputStream os = connection.getOutputStream();
+            os.write(body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            os.close();
             
             int responseCode = connection.getResponseCode();
             if (responseCode == 200) {
@@ -387,7 +401,7 @@ public class SupabaseHelper {
                     machine.setName(machineJson.getString("name"));
                     machine.setType(mapType(machineJson.getString("type")));
                     machine.setStatus(mapStatus(machineJson.getString("status")));
-                    machine.setPrice(machineJson.optDouble("price_per_kg", 15.00));
+                    machine.setPrice(machineJson.optDouble("price_per_cycle", 15.00));
                     machine.setDuration(machineJson.optInt("cycle_time_minutes", 40));
                     machine.setLocation(machineJson.optString("location", "Conjunto A"));
                     machine.setEsp32Id(machineJson.optString("esp32_id", "main"));
@@ -449,50 +463,12 @@ public class SupabaseHelper {
         }
     }
 
-    /**
-     * SELECT em esp32_status; se vazio (RLS anon), usa RPC get_esp32_heartbeats — mesmo fallback do totem web.
-     */
     private JSONArray fetchEsp32StatusJsonArray() {
-        HttpURLConnection connection = null;
         try {
-            String url = SUPABASE_URL + "/rest/v1/esp32_status?select=esp32_id,is_online,network_status,last_heartbeat,relay_status,ip_address&laundry_id=eq." + currentLaundryId;
-            connection = (HttpURLConnection) new URL(url).openConnection();
-            connection.setRequestMethod("GET");
-            connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
-            connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
-            connection.setRequestProperty("Content-Type", "application/json");
-
-            int responseCode = connection.getResponseCode();
-            if (responseCode == 200) {
-                BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-                StringBuilder response = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    response.append(line);
-                }
-                reader.close();
-                JSONArray arr = new JSONArray(response.toString());
-                if (arr.length() > 0) {
-                    return arr;
-                }
-            }
-            connection.disconnect();
-            connection = null;
-
-            Log.d(TAG, "esp32_status vazio ou bloqueado — RPC get_esp32_heartbeats");
             return fetchEsp32StatusViaRpc();
         } catch (Exception e) {
             Log.e(TAG, "fetchEsp32StatusJsonArray", e);
-            try {
-                return fetchEsp32StatusViaRpc();
-            } catch (Exception e2) {
-                Log.e(TAG, "fetchEsp32StatusViaRpc falhou", e2);
-                return new JSONArray();
-            }
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
+            return new JSONArray();
         }
     }
 
@@ -500,9 +476,7 @@ public class SupabaseHelper {
         URL url = new URL(SUPABASE_URL + "/rest/v1/rpc/get_esp32_heartbeats");
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("POST");
-        conn.setRequestProperty("apikey", SUPABASE_ANON_KEY);
-        conn.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
-        conn.setRequestProperty("Content-Type", "application/json");
+        SupabaseConfig.applyJsonHeaders(conn);
         conn.setDoOutput(true);
         conn.setConnectTimeout(10000);
         conn.setReadTimeout(10000);
@@ -651,33 +625,29 @@ public class SupabaseHelper {
     
     private boolean createTransactionInSupabase(String machineId, String service, double price, String paymentCode, String transactionId) {
         try {
-            String url = SUPABASE_URL + "/rest/v1/transactions";
-            
+            String url = SUPABASE_URL + "/rest/v1/rpc/create_totem_transaction";
+
             JSONObject transaction = new JSONObject();
-            transaction.put("machine_id", machineId);
-            transaction.put("service_type", service);
-            transaction.put("amount", price);
-            transaction.put("payment_method", "card");
-            transaction.put("payment_code", paymentCode);
-            transaction.put("transaction_id", transactionId);
-            transaction.put("status", "completed");
-            
+            transaction.put("_machine_id", machineId);
+            transaction.put("_total_amount", price);
+            transaction.put("_duration_minutes", findMachineDuration(machineId));
+            transaction.put("_payment_method", "card");
+            transaction.put("_laundry_id", currentLaundryId);
+
             HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
             connection.setRequestMethod("POST");
-            connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
-            connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
-            connection.setRequestProperty("Content-Type", "application/json");
+            SupabaseConfig.applyJsonHeaders(connection);
             connection.setDoOutput(true);
             
             OutputStream os = connection.getOutputStream();
-            os.write(transaction.toString().getBytes());
+            os.write(transaction.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
             os.flush();
             os.close();
             
             int responseCode = connection.getResponseCode();
             connection.disconnect();
             
-            if (responseCode == 201) {
+            if (responseCode == 200) {
                 Log.d(TAG, "Transação criada no Supabase com sucesso");
                 return true;
             } else {
@@ -695,6 +665,17 @@ public class SupabaseHelper {
         // Implementar salvamento local para sincronização posterior
         Log.d(TAG, "Transação salva localmente para sincronização posterior");
         return true;
+    }
+
+    private int findMachineDuration(String machineId) {
+        if (realMachines != null) {
+            for (Machine machine : realMachines) {
+                if (machineId.equals(machine.getId())) {
+                    return machine.getDuration();
+                }
+            }
+        }
+        return 40;
     }
     
     // ===== MÉTODOS PARA STATUS DAS MÁQUINAS =====
@@ -778,9 +759,7 @@ public class SupabaseHelper {
             // Fazer requisição HTTP POST
             HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
             connection.setRequestMethod("POST");
-            connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
-            connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
-            connection.setRequestProperty("Content-Type", "application/json");
+            SupabaseConfig.applyJsonHeaders(connection);
             connection.setDoOutput(true);
             connection.setConnectTimeout(15000);
             connection.setReadTimeout(15000);
@@ -855,9 +834,7 @@ public class SupabaseHelper {
                 
                 HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
                 connection.setRequestMethod("POST");
-                connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
-                connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
-                connection.setRequestProperty("Content-Type", "application/json");
+                SupabaseConfig.applyJsonHeaders(connection);
                 connection.setDoOutput(true);
                 
                 OutputStream os = connection.getOutputStream();
@@ -881,28 +858,26 @@ public class SupabaseHelper {
     
     private boolean updateMachineStatusInSupabase(String machineId, String status) {
         try {
-            String url = SUPABASE_URL + "/rest/v1/machines?id=eq." + machineId;
+            String url = SUPABASE_URL + "/functions/v1/update-machine-status";
             
             JSONObject updateData = new JSONObject();
+            updateData.put("machine_id", machineId);
             updateData.put("status", mapStatusToSupabase(status));
-            updateData.put("updated_at", "now()");
             
             HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
-            connection.setRequestMethod("PATCH");
-            connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
-            connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
-            connection.setRequestProperty("Content-Type", "application/json");
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
             connection.setDoOutput(true);
             
             OutputStream os = connection.getOutputStream();
-            os.write(updateData.toString().getBytes());
+            os.write(updateData.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
             os.flush();
             os.close();
             
             int responseCode = connection.getResponseCode();
             connection.disconnect();
             
-            if (responseCode == 200 || responseCode == 204) {
+            if (responseCode == 200) {
                 Log.d(TAG, "Status da máquina atualizado no Supabase");
                 return true;
             } else {
@@ -953,15 +928,20 @@ public class SupabaseHelper {
         // Iniciar verificação em background
         new Thread(() -> {
             try {
-                String url = SUPABASE_URL + "/rest/v1/machines?select=id&limit=1";
+                String url = SUPABASE_URL + "/rest/v1/rpc/get_public_machines";
                 
                 HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
-                connection.setRequestMethod("GET");
-                connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
-                connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
-                connection.setRequestProperty("Content-Type", "application/json");
+                connection.setRequestMethod("POST");
+                SupabaseConfig.applyJsonHeaders(connection);
+                connection.setDoOutput(true);
                 connection.setConnectTimeout(10000); // 10 segundos
                 connection.setReadTimeout(10000); // 10 segundos
+
+                JSONObject body = new JSONObject();
+                body.put("_laundry_id", currentLaundryId == null ? JSONObject.NULL : currentLaundryId);
+                OutputStream os = connection.getOutputStream();
+                os.write(body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                os.close();
                 
                 int responseCode = connection.getResponseCode();
                 String responseMessage = connection.getResponseMessage();
