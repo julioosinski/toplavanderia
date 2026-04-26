@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Laundry, AppRole, ADMIN_PANEL_ROLES } from '@/types/laundry';
 
@@ -46,7 +46,7 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
   const isAdmin = userRole === 'admin' || isSuperAdmin;
   const isOperator = userRole === 'operator' || isAdmin;
 
-  const fetchUserRole = async (userId: string) => {
+  const fetchUserRole = useCallback(async (userId: string) => {
     const { data, error } = await supabase
       .from('user_roles')
       .select('role, laundry_id')
@@ -74,9 +74,9 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
 
     // Fallback para primeira role
     return data[0];
-  };
+  }, []);
 
-  const fetchLaundries = async () => {
+  const fetchLaundries = useCallback(async () => {
     const { data, error } = await supabase
       .from('laundries')
       .select('*')
@@ -94,9 +94,9 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
     }
 
     return data || [];
-  };
+  }, [toast]);
 
-  const fetchCurrentLaundry = async (laundryId: string) => {
+  const fetchCurrentLaundry = useCallback(async (laundryId: string) => {
     const { data, error } = await supabase
       .from('laundries')
       .select('*')
@@ -109,14 +109,14 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
     }
 
     return data;
-  };
+  }, []);
 
-  const refreshLaundries = async () => {
+  const refreshLaundries = useCallback(async () => {
     const laundriesList = await fetchLaundries();
     setLaundries(laundriesList);
-  };
+  }, [fetchLaundries]);
 
-  const switchLaundry = async (laundryId: string) => {
+  const switchLaundry = useCallback(async (laundryId: string) => {
     const laundry = await fetchCurrentLaundry(laundryId);
     if (laundry) {
       setIsViewingAllLaundries(false);
@@ -128,9 +128,9 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         description: `Agora você está gerenciando: ${laundry.name}`,
       });
     }
-  };
+  }, [fetchCurrentLaundry, queryClient, toast]);
 
-  const switchToAllLaundries = async () => {
+  const switchToAllLaundries = useCallback(async () => {
     await nativeStorage.setItem('selectedLaundryId', 'all');
     setIsViewingAllLaundries(true);
     queryClient.invalidateQueries();
@@ -138,11 +138,11 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       title: 'Visão consolidada',
       description: 'Dashboard e relatórios globais. Para editar máquinas ou configurações, escolha uma lavanderia no menu.',
     });
-  };
+  }, [queryClient, toast]);
 
   const initializingRef = useRef(false);
 
-  const initializeLaundryContext = async () => {
+  const initializeLaundryContext = useCallback(async () => {
     if (initializingRef.current) {
       debugLaundry('[LaundryContext] Inicialização já em andamento, ignorando chamada duplicada');
       return;
@@ -281,10 +281,10 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       initializingRef.current = false;
     }
-  };
+  }, [fetchCurrentLaundry, fetchLaundries, fetchUserRole, toast]);
 
   useEffect(() => {
-    initializeLaundryContext();
+    void initializeLaundryContext();
 
     // Escutar mudanças de autenticação
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -292,7 +292,7 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       // Ignorar INITIAL_SESSION — o useEffect mount já cobre a inicialização
       if (event === 'INITIAL_SESSION') return;
       if (event === 'SIGNED_IN' && session) {
-        initializeLaundryContext();
+        void initializeLaundryContext();
       } else if (event === 'SIGNED_OUT') {
         initializingRef.current = false;
         setCurrentLaundry(null);
@@ -308,11 +308,11 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [initializeLaundryContext]);
 
-  const retry = () => {
-    initializeLaundryContext();
-  };
+  const retry = useCallback(() => {
+    void initializeLaundryContext();
+  }, [initializeLaundryContext]);
 
   const configureTotemByCNPJ = async (cnpj: string): Promise<boolean> => {
     try {

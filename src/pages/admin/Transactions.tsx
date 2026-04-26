@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLaundry } from "@/contexts/LaundryContext";
 import { supabase } from "@/integrations/supabase/client";
 import { LaundryGuard } from "@/components/admin/LaundryGuard";
@@ -114,19 +114,16 @@ export default function Transactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+  const currentLaundryId = currentLaundry?.id;
 
-  useEffect(() => {
-    if (currentLaundry) loadTransactions();
-  }, [currentLaundry, dateFilter]);
-
-  const loadTransactions = async () => {
-    if (!currentLaundry) return;
+  const loadTransactions = useCallback(async () => {
+    if (!currentLaundryId) return;
     setLoading(true);
 
     let query = supabase
       .from("transactions")
       .select("*")
-      .eq("laundry_id", currentLaundry.id)
+      .eq("laundry_id", currentLaundryId)
       .order("created_at", { ascending: false })
       .limit(200);
 
@@ -149,7 +146,7 @@ export default function Transactions() {
     const { data: machinesData } = await supabase
       .from("machines")
       .select("id, name, type")
-      .eq("laundry_id", currentLaundry.id);
+      .eq("laundry_id", currentLaundryId);
     const machineMap = new Map(machinesData?.map(m => [m.id, m]) || []);
 
     // Fetch operator names for manual releases
@@ -175,7 +172,11 @@ export default function Transactions() {
 
     setTransactions(enriched);
     setLoading(false);
-  };
+  }, [currentLaundryId, dateFilter]);
+
+  useEffect(() => {
+    if (currentLaundryId) void loadTransactions();
+  }, [currentLaundryId, loadTransactions]);
 
   const filterLabels: Record<DateFilter, string> = {
     all: "Todas",

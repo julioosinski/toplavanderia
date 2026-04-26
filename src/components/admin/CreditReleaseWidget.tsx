@@ -50,13 +50,11 @@ const CreditReleaseWidget: React.FC = () => {
 
       if (!error && data) {
         setMachines(data);
-        if (data.length > 0 && !selectedMachineId) {
-          setSelectedMachineId(data[0].id);
-        }
+        setSelectedMachineId((current) => current || data[0]?.id || '');
       }
     };
 
-    fetchMachines();
+    void fetchMachines();
   }, [currentLaundry?.id]);
 
   const selectedMachine = machines.find(m => m.id === selectedMachineId);
