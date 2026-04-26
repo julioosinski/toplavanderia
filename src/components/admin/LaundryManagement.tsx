@@ -18,6 +18,21 @@ import { supabase } from "@/integrations/supabase/client";
 import { useLaundry } from "@/contexts/LaundryContext";
 import { Laundry, AppRole } from "@/types/laundry";
 
+interface LaundryAdmin {
+  id: string;
+  user_id: string;
+  role: AppRole;
+  profiles: {
+    full_name: string | null;
+    user_id: string;
+  };
+  email: string;
+}
+
+const getErrorMessage = (error: unknown, fallback = "Erro inesperado") => {
+  return error instanceof Error ? error.message : fallback;
+};
+
 export const LaundryManagement = () => {
   const { laundries, refreshLaundries, isSuperAdmin } = useLaundry();
   const { toast } = useToast();
@@ -38,14 +53,13 @@ export const LaundryManagement = () => {
     password: "",
     fullName: "",
   });
-  const [laundryAdmins, setLaundryAdmins] = useState<any[]>([]);
+  const [laundryAdmins, setLaundryAdmins] = useState<LaundryAdmin[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   // Proteção: apenas super admins podem usar este componente
   if (!isSuperAdmin) {
     return null;
   }
-
-  const [uploading, setUploading] = useState(false);
 
   const resetForm = () => {
     setFormData({
@@ -109,6 +123,7 @@ export const LaundryManagement = () => {
 
       const data = (rolesData || []).map(r => ({
         ...r,
+        role: r.role as AppRole,
         profiles: { full_name: profilesMap[r.user_id] || null, user_id: r.user_id },
       }));
 
@@ -116,7 +131,7 @@ export const LaundryManagement = () => {
 
       // Buscar emails dos usuários
       const adminsWithEmails = await Promise.all(
-        (data || []).map(async (admin: any) => {
+        (data || []).map(async (admin) => {
           const { data: authData } = await supabase.auth.admin.getUserById(admin.user_id);
           return {
             ...admin,
@@ -166,10 +181,10 @@ export const LaundryManagement = () => {
       }
 
       await refreshLaundries();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Erro",
-        description: error.message,
+        description: getErrorMessage(error),
         variant: "destructive",
       });
     }
@@ -226,10 +241,10 @@ export const LaundryManagement = () => {
       });
 
       await loadLaundryAdmins(editingLaundry.id);
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Erro",
-        description: error.message || "Falha ao criar administrador",
+        description: getErrorMessage(error, "Falha ao criar administrador"),
         variant: "destructive",
       });
     }
@@ -274,10 +289,10 @@ export const LaundryManagement = () => {
       });
 
       await refreshLaundries();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Erro ao fazer upload",
-        description: error.message,
+        description: getErrorMessage(error),
         variant: "destructive",
       });
     } finally {
@@ -305,10 +320,10 @@ export const LaundryManagement = () => {
       if (editingLaundry) {
         await loadLaundryAdmins(editingLaundry.id);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Erro",
-        description: error.message,
+        description: getErrorMessage(error),
         variant: "destructive",
       });
     }
@@ -331,10 +346,10 @@ export const LaundryManagement = () => {
       });
 
       await refreshLaundries();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast({
         title: "Erro",
-        description: error.message,
+        description: getErrorMessage(error),
         variant: "destructive",
       });
     }
