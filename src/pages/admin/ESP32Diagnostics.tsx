@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,11 +9,11 @@ import { Activity, AlertTriangle, CheckCircle, WifiOff, Zap } from "lucide-react
 interface ESP32Status {
   esp32_id: string;
   laundry_id: string;
-  is_online: boolean;
-  ip_address?: string;
-  signal_strength?: number;
-  last_heartbeat?: string;
-  relay_status?: any;
+  is_online: boolean | null;
+  ip_address?: string | null;
+  signal_strength?: number | null;
+  last_heartbeat?: string | null;
+  relay_status?: Record<string, unknown> | string | null;
 }
 
 interface Machine {
@@ -32,28 +32,14 @@ interface Laundry {
 
 export default function ESP32Diagnostics() {
   const { currentLaundry } = useLaundry();
+  const currentLaundryId = currentLaundry?.id;
   const [esp32List, setEsp32List] = useState<ESP32Status[]>([]);
   const [machineList, setMachineList] = useState<Machine[]>([]);
   const [laundries, setLaundries] = useState<Laundry[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchData();
-    
-    // Realtime
-    const esp32Channel = supabase
-      .channel('esp32-diagnostics')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'esp32_status' }, fetchData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'machines' }, fetchData)
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(esp32Channel);
-    };
-  }, [currentLaundry]);
-
-  const fetchData = async () => {
-    const laundryId = currentLaundry?.id;
+  const fetchData = useCallback(async () => {
+    const laundryId = currentLaundryId;
     try {
       setLoading(true);
 
@@ -79,7 +65,7 @@ export default function ESP32Diagnostics() {
         .eq('laundry_id', laundryId)
         .order('esp32_id');
 
-      setEsp32List(esp32Data || []);
+      setEsp32List((esp32Data || []) as ESP32Status[]);
 
       const { data: machinesData } = await supabase
         .from('machines')
@@ -87,13 +73,28 @@ export default function ESP32Diagnostics() {
         .eq('laundry_id', laundryId)
         .order('name');
 
-      setMachineList(machinesData || []);
+      setMachineList((machinesData || []) as Machine[]);
     } catch (error) {
       console.error('Error fetching diagnostics:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentLaundryId]);
+
+  useEffect(() => {
+    void fetchData();
+    
+    // Realtime
+    const esp32Channel = supabase
+      .channel('esp32-diagnostics')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'esp32_status' }, () => void fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'machines' }, () => void fetchData())
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(esp32Channel);
+    };
+  }, [fetchData]);
 
   const getMachinesForESP32 = (esp32Id: string, laundryId: string) => {
     return machineList.filter(m => m.esp32_id === esp32Id && m.laundry_id === laundryId);
@@ -125,11 +126,12 @@ export default function ESP32Diagnostics() {
     return `${diffDays}d atrás`;
   };
 
-  const isOutdatedFirmware = (relayStatus?: any) => {
+  const isOutdatedFirmware = (relayStatus?: ESP32Status["relay_status"]) => {
     if (!relayStatus || typeof relayStatus !== 'object') return false;
     // Formato antigo: {"status": "on/off"}
     // Formato novo: {"relay_1": "on", "relay_2": "off"}
-    return relayStatus.hasOwnProperty('status') && !relayStatus.hasOwnProperty('relay_1');
+    return Object.prototype.hasOwnProperty.call(relayStatus, 'status') &&
+      !Object.prototype.hasOwnProperty.call(relayStatus, 'relay_1');
   };
 
   return (
