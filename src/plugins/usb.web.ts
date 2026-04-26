@@ -1,5 +1,7 @@
 import { WebPlugin } from '@capacitor/core';
-import type { USBPlugin } from './usb';
+import type { USBDevice, USBPlugin } from './usb';
+
+type USBPinpad = Awaited<ReturnType<USBPlugin['detectPinpads']>>['pinpads'][number];
 
 export class USBWeb extends WebPlugin implements USBPlugin {
   async requestPermission(): Promise<{ granted: boolean }> {
@@ -7,7 +9,7 @@ export class USBWeb extends WebPlugin implements USBPlugin {
     return { granted: false };
   }
 
-  async listDevices(): Promise<{ devices: any[] }> {
+  async listDevices(): Promise<{ devices: USBDevice[] }> {
     return { devices: [] };
   }
 
@@ -26,7 +28,7 @@ export class USBWeb extends WebPlugin implements USBPlugin {
     return { success: false };
   }
 
-  async detectPinpads(): Promise<{ pinpads: any[] }> {
+  async detectPinpads(): Promise<{ pinpads: USBPinpad[] }> {
     return { pinpads: [] };
   }
 }
