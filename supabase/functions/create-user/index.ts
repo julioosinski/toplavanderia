@@ -6,6 +6,26 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+type AppRole = 'super_admin' | 'admin' | 'operator' | 'user' | 'totem_device'
+
+interface CreateUserBody {
+  email?: string
+  password?: string
+  role?: AppRole
+  laundry_id?: string | null
+  full_name?: string
+}
+
+interface RoleInsert {
+  user_id: string
+  role: AppRole
+  laundry_id?: string | null
+}
+
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : 'Erro inesperado'
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -25,8 +45,16 @@ serve(async (req) => {
     )
 
     // Verificar autenticação do usuário que está chamando
-    const authHeader = req.headers.get('Authorization')!
-    const token = authHeader.replace('Bearer ', '')
+    const authHeader = req.headers.get('Authorization')
+    const token = authHeader?.replace('Bearer ', '')
+
+    if (!token) {
+      return new Response(
+        JSON.stringify({ error: 'Não autorizado' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token)
 
     if (userError || !user) {
@@ -64,7 +92,7 @@ serve(async (req) => {
     }
 
     // Pegar dados do body
-    const { email, password, role, laundry_id, full_name } = await req.json()
+    const { email, password, role, laundry_id, full_name } = await req.json() as CreateUserBody
 
     // Validações
     if (!email || !password || !role) {
@@ -121,7 +149,7 @@ serve(async (req) => {
     await new Promise(resolve => setTimeout(resolve, 1000))
 
     // Criar role do usuário
-    const roleData: any = {
+    const roleData: RoleInsert = {
       user_id: userId,
       role: role,
     }
@@ -166,10 +194,10 @@ serve(async (req) => {
       }
     )
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating user:', error)
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: getErrorMessage(error) }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
