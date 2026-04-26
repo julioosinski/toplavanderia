@@ -9,12 +9,8 @@ max_rows = 1000
 
 [auth]
 enabled = true
-port = 54322
-external_url = "http://127.0.0.1:54321"
+site_url = "http://127.0.0.1:54321"
 jwt_expiry = 3600
-refresh_token_rotation_enabled = true
-anonymous_users_enabled = false
-password_min_length = 6
 
 [auth.email]
 enable_signup = true
@@ -22,10 +18,6 @@ double_confirm_changes = true
 enable_confirmations = false
 
 [auth.sms]
-enable_signup = false
-enable_confirmations = false
-
-[auth.phone]
 enable_signup = false
 enable_confirmations = false
 
@@ -44,7 +36,6 @@ port = 54324
 
 [storage]
 enabled = true
-port = 54325
 file_size_limit = "50MiB"
 
 [analytics]
