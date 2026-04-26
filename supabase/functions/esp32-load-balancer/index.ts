@@ -64,11 +64,20 @@ const getErrorMessage = (error: unknown) => {
   return error instanceof Error ? error.message : 'Erro inesperado';
 };
 
-const isLoadBalancerAuthorized = (req: Request) => {
+const isAuthenticatedUser = async (req: Request, supabase: SupabaseClient) => {
+  const token = req.headers.get('Authorization')?.replace('Bearer ', '');
+  if (!token) return false;
+
+  const { data: { user } } = await supabase.auth.getUser(token);
+  return Boolean(user);
+};
+
+const isLoadBalancerAuthorized = async (req: Request, supabase: SupabaseClient) => {
   const secret = Deno.env.get('ESP32_LOAD_BALANCER_SECRET');
   if (!secret) return true;
 
-  return req.headers.get('x-esp32-load-balancer-secret') === secret;
+  return req.headers.get('x-esp32-load-balancer-secret') === secret ||
+    await isAuthenticatedUser(req, supabase);
 };
 
 serve(async (req) => {
@@ -78,7 +87,12 @@ serve(async (req) => {
   }
 
   try {
-    if (!isLoadBalancerAuthorized(req)) {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    );
+
+    if (!await isLoadBalancerAuthorized(req, supabase)) {
       return new Response(
         JSON.stringify({
           success: false,
@@ -91,11 +105,6 @@ serve(async (req) => {
         }
       );
     }
-
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-    );
 
     const { action, targetNode, sourceNode }: LoadBalancerRequest = await req.json();
 

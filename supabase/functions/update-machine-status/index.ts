@@ -10,11 +10,20 @@ const getErrorMessage = (error: unknown) => {
   return error instanceof Error ? error.message : "Unexpected error";
 };
 
-const isMachineControlAuthorized = (req: Request) => {
+const isAuthenticatedUser = async (req: Request, supabase: ReturnType<typeof createClient>) => {
+  const token = req.headers.get("Authorization")?.replace("Bearer ", "");
+  if (!token) return false;
+
+  const { data: { user } } = await supabase.auth.getUser(token);
+  return Boolean(user);
+};
+
+const isMachineControlAuthorized = async (req: Request, supabase: ReturnType<typeof createClient>) => {
   const secret = Deno.env.get("MACHINE_CONTROL_SECRET");
   if (!secret) return true;
 
-  return req.headers.get("x-machine-control-secret") === secret;
+  return req.headers.get("x-machine-control-secret") === secret ||
+    await isAuthenticatedUser(req, supabase);
 };
 
 Deno.serve(async (req) => {
@@ -23,7 +32,12 @@ Deno.serve(async (req) => {
   }
 
   try {
-    if (!isMachineControlAuthorized(req)) {
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
+    if (!await isMachineControlAuthorized(req, supabase)) {
       return new Response(
         JSON.stringify({ error: "Machine control unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -47,11 +61,6 @@ Deno.serve(async (req) => {
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
 
     // Validate transition: only available → running or running → available
     const { data: machine, error: fetchErr } = await supabase

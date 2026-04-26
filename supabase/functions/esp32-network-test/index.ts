@@ -61,11 +61,20 @@ const getErrorMessage = (error: unknown) => {
   return error instanceof Error ? error.message : 'Erro inesperado';
 };
 
-const isNetworkTestAuthorized = (req: Request) => {
+const isAuthenticatedUser = async (req: Request, supabase: SupabaseClient) => {
+  const token = req.headers.get('Authorization')?.replace('Bearer ', '');
+  if (!token) return false;
+
+  const { data: { user } } = await supabase.auth.getUser(token);
+  return Boolean(user);
+};
+
+const isNetworkTestAuthorized = async (req: Request, supabase: SupabaseClient) => {
   const secret = Deno.env.get('ESP32_NETWORK_TEST_SECRET');
   if (!secret) return true;
 
-  return req.headers.get('x-esp32-network-test-secret') === secret;
+  return req.headers.get('x-esp32-network-test-secret') === secret ||
+    await isAuthenticatedUser(req, supabase);
 };
 
 serve(async (req) => {
@@ -75,7 +84,12 @@ serve(async (req) => {
   }
 
   try {
-    if (!isNetworkTestAuthorized(req)) {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    );
+
+    if (!await isNetworkTestAuthorized(req, supabase)) {
       return new Response(
         JSON.stringify({
           success: false,
@@ -88,11 +102,6 @@ serve(async (req) => {
         }
       );
     }
-
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-    );
 
     const { nodes, testType = 'all' }: NetworkTestRequest = await req.json();
 
