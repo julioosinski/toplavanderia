@@ -52,7 +52,7 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
       const { error } = await supabase
         .from('system_settings')
         .update({ 
-          esp32_configurations: configs,
+          esp32_configurations: configs as unknown as never,
           updated_at: new Date().toISOString()
         })
         .eq('laundry_id', currentLaundry?.id);
@@ -595,7 +595,14 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
         </CardHeader>
         <CardContent>
           <ESP32ConfigurationManager 
-            configurations={localSettings.esp32_configurations || []}
+            configurations={(localSettings.esp32_configurations || []).map(c => ({
+              id: c.id,
+              name: c.name ?? '',
+              host: c.host,
+              port: c.port,
+              location: c.location ?? '',
+              machines: c.machines ?? [],
+            }))}
             onUpdate={handleESP32ConfigurationsUpdate}
           />
         </CardContent>

@@ -234,7 +234,7 @@ export function useBLEDiagnostics() {
         connectedDevice.deviceId,
         TOPLAV_SERVICE_UUID,
         TOPLAV_CHAR_COMMAND_UUID,
-        encoded
+        new DataView(encoded.buffer, encoded.byteOffset, encoded.byteLength)
       );
       addLog(`Comando enviado: ${command}`);
       // Status will auto-update via BLE notifications
@@ -260,7 +260,7 @@ export function useBLEDiagnostics() {
         connectedDevice.deviceId,
         TOPLAV_SERVICE_UUID,
         TOPLAV_CHAR_CONFIG_UUID,
-        encoded
+        new DataView(encoded.buffer, encoded.byteOffset, encoded.byteLength)
       );
       addLog("Configuração enviada. ESP32 irá reiniciar...");
     } catch (e: unknown) {

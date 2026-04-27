@@ -239,12 +239,12 @@ export const useSystemSettings = () => {
             return await readCachedSettings(currentLaundry.id);
           }
 
-          const created = newSettings as SystemSettings;
+          const created = newSettings as unknown as SystemSettings;
           await writeCachedSettings(currentLaundry.id, created);
           return created;
         }
 
-        const current = data as SystemSettings;
+        const current = data as unknown as SystemSettings;
         await writeCachedSettings(currentLaundry.id, current);
         return current;
       };
@@ -287,13 +287,13 @@ export const useSystemSettings = () => {
         .update({
           ...updates,
           updated_at: new Date().toISOString(),
-        })
+        } as never)
         .eq('id', settings.id)
         .select()
         .single();
 
       if (error) throw error;
-      return data as SystemSettings;
+      return data as unknown as SystemSettings;
     },
     onSuccess: (data) => {
       queryClient.setQueryData(['system-settings', currentLaundry?.id], data);

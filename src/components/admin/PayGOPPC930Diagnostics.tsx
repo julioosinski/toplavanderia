@@ -31,10 +31,11 @@ interface PayGOPPC930DiagnosticsProps {
 interface PinpadInfo {
   detected: boolean;
   deviceName?: string;
-  vendorId?: number;
-  productId?: number;
+  vendorId?: string;
+  productId?: string;
   serialNumber?: string;
   error?: string;
+  message?: string;
 }
 
 export const PayGOPPC930Diagnostics: React.FC<PayGOPPC930DiagnosticsProps> = ({ config }) => {

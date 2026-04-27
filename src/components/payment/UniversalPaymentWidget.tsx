@@ -82,13 +82,13 @@ export const UniversalPaymentWidget: React.FC<UniversalPaymentWidgetProps> = ({
         } else if (result.success) {
           onSuccess(result);
         } else {
-          onError(
-            result.error ||
-              (result.data && typeof result.data.errorMessage === 'string'
-                ? result.data.errorMessage
-                : undefined) ||
-              'Falha no pagamento'
-          );
+          const dataObj = (result.data && typeof result.data === 'object')
+            ? (result.data as Record<string, unknown>)
+            : null;
+          const dataErr = dataObj && typeof dataObj.errorMessage === 'string'
+            ? dataObj.errorMessage
+            : undefined;
+          onError(result.error || dataErr || 'Falha no pagamento');
         }
       } catch (error) {
         onError(error instanceof Error ? error.message : 'Erro inesperado');
