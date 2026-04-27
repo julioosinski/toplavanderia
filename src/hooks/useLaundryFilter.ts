@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from "react";
 import { useLaundry } from "@/hooks/useLaundry";
 
 interface LaundryFilterQuery {
@@ -10,18 +11,21 @@ interface LaundryFilterQuery {
  */
 export const useLaundryFilter = () => {
   const { currentLaundry, isSuperAdmin } = useLaundry();
-  
-  return {
+  const laundryId = currentLaundry?.id;
+  const laundryName = currentLaundry?.name;
+
+  const addFilter = useCallback(<T extends LaundryFilterQuery>(query: T): T => {
+    if (laundryId) {
+      return query.eq('laundry_id', laundryId) as T;
+    }
+    return query;
+  }, [laundryId]);
+
+  return useMemo(() => ({
     laundryId: currentLaundry?.id,
     laundryName: currentLaundry?.name,
-    isReady: !!currentLaundry,
+    isReady: !!laundryId,
     isSuperAdmin,
-    // Helper para adicionar filtro em queries
-    addFilter: <T extends LaundryFilterQuery>(query: T): T => {
-      if (currentLaundry?.id) {
-        return query.eq('laundry_id', currentLaundry.id) as T;
-      }
-      return query;
-    },
-  };
+    addFilter,
+  }), [addFilter, currentLaundry?.id, currentLaundry?.name, isSuperAdmin, laundryId]);
 };
