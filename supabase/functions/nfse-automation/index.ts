@@ -34,18 +34,72 @@ serve(async (req) => {
   }
 
   try {
+    // ===== AUTHENTICATION =====
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({ error: 'Missing or invalid Authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    const token = authHeader.replace('Bearer ', '');
+
+    // Client used to validate the caller's JWT
+    const supabaseAuth = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    );
+    const { data: userData, error: userError } = await supabaseAuth.auth.getUser(token);
+    if (userError || !userData?.user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid or expired token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    const callerId = userData.user.id;
+
+    // Service-role client for privileged reads/writes
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { transactionId } = await req.json();
+    // ===== AUTHORIZATION: caller must be super_admin or admin of the laundry =====
+    const { data: roles, error: rolesError } = await supabaseClient
+      .from('user_roles')
+      .select('role, laundry_id')
+      .eq('user_id', callerId);
 
-    if (!transactionId) {
-      throw new Error('Transaction ID is required');
+    if (rolesError) {
+      console.error('Error fetching caller roles:', rolesError);
+      return new Response(
+        JSON.stringify({ error: 'Authorization check failed' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    console.log('Processing NFSe for transaction:', transactionId);
+    const isSuperAdmin = (roles ?? []).some((r) => r.role === 'super_admin');
+    const adminLaundryIds = new Set(
+      (roles ?? []).filter((r) => r.role === 'admin' && r.laundry_id).map((r) => r.laundry_id as string)
+    );
+
+    if (!isSuperAdmin && adminLaundryIds.size === 0) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden: admin role required' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { transactionId } = await req.json();
+
+    if (!transactionId || typeof transactionId !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'Transaction ID is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Processing NFSe for transaction:', transactionId, 'by user:', callerId);
 
     // Get transaction details
     const { data: transaction, error: transactionError } = await supabaseClient
@@ -70,11 +124,20 @@ serve(async (req) => {
       );
     }
 
-    // Get system settings for NFSe configuration
+    // Verify caller has access to this transaction's laundry
+    if (!isSuperAdmin && (!transaction.laundry_id || !adminLaundryIds.has(transaction.laundry_id))) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden: not an admin for this transaction\'s laundry' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Get system settings scoped to the transaction's laundry
     const { data: settings, error: settingsError } = await supabaseClient
       .from('system_settings')
       .select('nfse_enabled, zapier_webhook_url, company_name, company_cnpj, company_email')
-      .single();
+      .eq('laundry_id', transaction.laundry_id)
+      .maybeSingle();
 
     if (settingsError || !settings?.nfse_enabled) {
       console.log('NFSe not enabled or settings not found');
