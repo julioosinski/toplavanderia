@@ -2,7 +2,7 @@ import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { LaundryProvider } from "@/contexts/LaundryContext";
 import { ThemeProvider } from "next-themes";
 import NotFound from "./pages/NotFound";
@@ -32,6 +32,15 @@ const AdminFallback = () => (
   </div>
 );
 
+/** Rotas que precisam de LaundryContext — fora disso evita corrida com /auth (Radix Tabs + auth listeners). */
+function LaundryProviderLayout() {
+  return (
+    <LaundryProvider>
+      <Outlet />
+    </LaundryProvider>
+  );
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider
@@ -40,16 +49,16 @@ const App = () => (
       enableSystem
       disableTransitionOnChange
     >
-      <LaundryProvider>
-        <TooltipProvider>
-          <Toaster />
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/totem" element={<Totem />} />
-              <Route path="/auth" element={<Auth />} />
-              <Route path="/no-access" element={<NoAccess />} />
-              <Route path="/admin" element={<Suspense fallback={<AdminFallback />}><AdminLayout /></Suspense>}>
+      <TooltipProvider>
+        <Toaster />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/auth" element={<Auth />} />
+            <Route element={<LaundryProviderLayout />}>
+              <Route path="totem" element={<Totem />} />
+              <Route path="no-access" element={<NoAccess />} />
+              <Route path="admin" element={<Suspense fallback={<AdminFallback />}><AdminLayout /></Suspense>}>
                 <Route index element={<Suspense fallback={<AdminFallback />}><Dashboard /></Suspense>} />
                 <Route path="dashboard" element={<Suspense fallback={<AdminFallback />}><Dashboard /></Suspense>} />
                 <Route path="machines" element={<Suspense fallback={<AdminFallback />}><Machines /></Suspense>} />
@@ -64,12 +73,12 @@ const App = () => (
                 <Route path="esp32-diagnostics" element={<Suspense fallback={<AdminFallback />}><ESP32Diagnostics /></Suspense>} />
                 <Route path="ble-diagnostics" element={<Suspense fallback={<AdminFallback />}><BLEDiagnostics /></Suspense>} />
               </Route>
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
-      </LaundryProvider>
+            </Route>
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
     </ThemeProvider>
   </QueryClientProvider>
 );
