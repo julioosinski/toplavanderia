@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Sparkles, Home } from "lucide-react";
 
 export default function Auth() {
+  const [authTab, setAuthTab] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -67,8 +68,7 @@ export default function Auth() {
           });
         }
       }
-      // Sucesso: navegação vem do onAuthStateChange (SIGNED_IN). Evita toast + unmount
-      // simultâneos com Radix Tabs / Sonner (insertBefore no React DOM).
+      // Sucesso: navegação vem do onAuthStateChange (SIGNED_IN).
     } catch (error) {
       toast({
         title: "Erro",
@@ -148,13 +148,43 @@ export default function Auth() {
           </CardDescription>
         </CardHeader>
         
-        <Tabs defaultValue="login" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-4">
-            <TabsTrigger value="login">Login</TabsTrigger>
-            <TabsTrigger value="signup">Cadastro</TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="login">
+        <div className="w-full">
+          <div
+            className="grid w-full grid-cols-2 gap-1 rounded-md bg-muted p-1 mb-4"
+            role="tablist"
+            aria-label="Login ou cadastro"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={authTab === "login"}
+              className={cn(
+                "inline-flex items-center justify-center rounded-sm px-3 py-1.5 text-sm font-medium transition-colors",
+                authTab === "login"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+              onClick={() => setAuthTab("login")}
+            >
+              Login
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={authTab === "signup"}
+              className={cn(
+                "inline-flex items-center justify-center rounded-sm px-3 py-1.5 text-sm font-medium transition-colors",
+                authTab === "signup"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+              onClick={() => setAuthTab("signup")}
+            >
+              Cadastro
+            </button>
+          </div>
+
+          {authTab === "login" ? (
             <form onSubmit={signIn}>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
@@ -180,9 +210,9 @@ export default function Auth() {
                 </div>
               </CardContent>
               <CardFooter>
-                <Button 
-                  type="submit" 
-                  className="w-full" 
+                <Button
+                  type="submit"
+                  className="w-full"
                   disabled={loading}
                 >
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -190,9 +220,7 @@ export default function Auth() {
                 </Button>
               </CardFooter>
             </form>
-          </TabsContent>
-          
-          <TabsContent value="signup">
+          ) : (
             <form onSubmit={signUp}>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
@@ -220,9 +248,9 @@ export default function Auth() {
                 </div>
               </CardContent>
               <CardFooter>
-                <Button 
-                  type="submit" 
-                  className="w-full" 
+                <Button
+                  type="submit"
+                  className="w-full"
                   disabled={loading}
                 >
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -230,8 +258,8 @@ export default function Auth() {
                 </Button>
               </CardFooter>
             </form>
-          </TabsContent>
-        </Tabs>
+          )}
+        </div>
       </Card>
     </div>
   );
