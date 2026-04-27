@@ -1,46 +1,59 @@
-## O que está acontecendo
+# Padronizar gerenciador de pacotes (pnpm)
 
-A tela branca aparece porque o bundle publicado (`index-DoUiPDmp.js`) foi gerado sem as variáveis `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY`. O arquivo `src/integrations/supabase/client.ts` faz `throw` quando elas faltam, derrubando o app inteiro.
+## Diagnóstico
 
-No Lovable não existe uma tela onde você cole variáveis de ambiente do frontend — o `.env` é gerado automaticamente pela conexão Supabase. A solução correta é embutir os valores públicos (URL do projeto + **anon key**, que já é pública por design) como **fallback no código**, garantindo que o app nunca quebre por falta de `.env`.
+O repositório tem **três lockfiles** convivendo, o que causa builds diferentes entre ambientes:
 
-## Mudanças que vou fazer
+| Lockfile | Última atualização | Quem usa |
+|---|---|---|
+| `bun.lock` | 27/04 17:21 | Sandbox Lovable (bun) |
+| `pnpm-lock.yaml` | 27/04 17:19 | **Netlify** (`netlify.toml` → `pnpm build`) |
+| `package-lock.json` | 27/04 16:56 | Ninguém — resíduo |
 
-**1. `src/integrations/supabase/client.ts`** — substituir o `throw` por fallbacks com os valores reais do projeto:
+Problemas:
+- `package.json` não declara `packageManager`, então cada ambiente escolhe o seu.
+- Toda vez que o sandbox roda `bun add/remove`, só o `bun.lock` é regravado — `pnpm-lock.yaml` fica defasado e o Netlify pode resolver versões diferentes (ou falhar com `ERR_PNPM_OUTDATED_LOCKFILE`).
+- Versões hoje batem para `@tanstack/react-query` 5.56.2, mas isso é coincidência; sem unificação, voltará a divergir.
 
-```ts
-const SUPABASE_URL =
-  import.meta.env.VITE_SUPABASE_URL ||
-  "https://rkdybjzwiwwqqzjfmerm.supabase.co";
+## Decisão
 
-const SUPABASE_PUBLISHABLE_KEY =
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg";
+Padronizar em **pnpm** (que já é o que o Netlify e os scripts `supabase:*` usam) e eliminar os outros dois lockfiles.
 
-if (!import.meta.env.VITE_SUPABASE_URL) {
-  console.warn("[supabase] VITE_SUPABASE_URL ausente — usando fallback do projeto.");
-}
-```
+## Mudanças
 
-Mantenho o resto do arquivo intacto.
+1. **`package.json`**
+   - Adicionar `"packageManager": "pnpm@9.x"` para que Lovable, Netlify e dev local usem a mesma ferramenta automaticamente.
+   - Adicionar `"engines": { "node": ">=20" }`.
 
-**2. Verificar build** rodando `bun run build` para garantir que o bundle compila e o erro some.
+2. **Criar `.npmrc`** com:
+   ```
+   engine-strict=true
+   auto-install-peers=true
+   ```
 
-**3. Validar preview** — confirmar que a tela branca foi resolvida.
+3. **Remover lockfiles redundantes**
+   - Apagar `bun.lock`
+   - Apagar `package-lock.json`
+   - Manter apenas `pnpm-lock.yaml`
 
-## Depois disso
+4. **Regenerar `pnpm-lock.yaml`** rodando `pnpm install` para garantir consistência total com o `package.json` atual.
 
-Para o domínio público (`paglav.com.br` / `toplavanderia.lovable.app`) refletir a correção, você precisa **clicar em Publish → Update** no canto superior direito. No celular: `...` no canto inferior direito → Publish.
+5. **`netlify.toml`** — sem mudança (já está correto: `pnpm build`).
 
-## Segurança
+## Validação
 
-- A **anon key** é pública por design (já é exposta a qualquer visitante do site). Pode ficar no código sem risco.
-- Toda a proteção real continua via RLS no Supabase, que já está configurado.
-- A `service_role_key` **não** é tocada — ela continua só nas Edge Functions.
+- Rodar `pnpm install` → deve completar sem warnings de lockfile desatualizado.
+- Rodar `pnpm build` localmente no sandbox → deve gerar `dist/` igual ao que o Netlify produzirá.
+- Após o merge, o próximo deploy do Netlify deve usar exatamente o mesmo `pnpm-lock.yaml`.
 
-## Fora de escopo
+## O que NÃO muda
 
-- Não vou corrigir os erros de TypeScript pendentes (ESP32Configuration, PinpadInfo, etc.) nesta passagem.
-- Não vou alterar `.gitignore` nem mexer em outras integrações.
+- Versões de dependências em `package.json` permanecem idênticas.
+- Código da aplicação, configs do Vite, Capacitor, Supabase — intactos.
+- Os erros de TypeScript pré-existentes (ESP32Configuration, PaymentPayload) não são tratados aqui — são tarefa separada.
 
-Aprove para eu aplicar.
+## Detalhes técnicos
+
+- `packageManager` no `package.json` é respeitado pelo Corepack, Netlify e Lovable, eliminando ambiguidade.
+- `@rollup/rollup-linux-x64-gnu` e `@swc/core-linux-x64-gnu` continuam declarados como deps explícitas (necessárias para o ambiente Linux do Lovable/Netlify, conforme memória `build/native-binding-resolution`).
+- Após aprovar, será necessário clicar em **Publish → Update** para refletir no domínio `paglav.com.br`.
