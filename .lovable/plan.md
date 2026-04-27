@@ -1,54 +1,46 @@
+## O que está acontecendo
 
+A tela branca aparece porque o bundle publicado (`index-DoUiPDmp.js`) foi gerado sem as variáveis `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY`. O arquivo `src/integrations/supabase/client.ts` faz `throw` quando elas faltam, derrubando o app inteiro.
 
-## Diagnóstico: Máquina volta para "Disponível" imediatamente
+No Lovable não existe uma tela onde você cole variáveis de ambiente do frontend — o `.env` é gerado automaticamente pela conexão Supabase. A solução correta é embutir os valores públicos (URL do projeto + **anon key**, que já é pública por design) como **fallback no código**, garantindo que o app nunca quebre por falta de `.env`.
 
-### Causa raiz
+## Mudanças que vou fazer
 
-Há um **conflito de mapeamento de relay_pin** entre três camadas:
+**1. `src/integrations/supabase/client.ts`** — substituir o `throw` por fallbacks com os valores reais do projeto:
 
-```text
-DB machines:     relay_pin = 2          → UI procura relay_2
-Firmware:        RELAY_LOGICAL_PIN = 1  → reporta relay_1
-esp32_status:    { relay_1: "on" }      → relay_2 não existe!
+```ts
+const SUPABASE_URL =
+  import.meta.env.VITE_SUPABASE_URL ||
+  "https://rkdybjzwiwwqqzjfmerm.supabase.co";
+
+const SUPABASE_PUBLISHABLE_KEY =
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg";
+
+if (!import.meta.env.VITE_SUPABASE_URL) {
+  console.warn("[supabase] VITE_SUPABASE_URL ausente — usando fallback do projeto.");
+}
 ```
 
-**Fluxo do problema:**
-1. `esp32-credit-release` cria `pending_command` com `relay_pin = 2` (do banco)
-2. `confirm_command` salva `relay_2: "on"` no `esp32_status` e status = `running` ✅
-3. **30 segundos depois**, o heartbeat chega com `{ relay_1: "on" }` e **sobrescreve** todo o `relay_status` → `relay_2` desaparece
-4. A detecção de mudança de relé (linhas 256-272) vê `relay_2` indo de `"on"` para `undefined` → interpreta como desligamento → marca transação como `completed`
-5. `computeMachineStatus` no frontend procura `relay_2`, não encontra → mostra "Disponível"
+Mantenho o resto do arquivo intacto.
 
-### Solução
+**2. Verificar build** rodando `bun run build` para garantir que o bundle compila e o erro some.
 
-Corrigir o **heartbeat handler** na Edge Function `esp32-monitor` para mapear o relay reportado pelo firmware para o `relay_pin` configurado no banco de dados.
+**3. Validar preview** — confirmar que a tela branca foi resolvida.
 
-#### 1. `esp32-monitor` — Heartbeat: mapear relay_status do firmware para o DB
+## Depois disso
 
-Antes de salvar o `relay_status`, consultar a tabela `machines` para este `esp32_id` e remapear as chaves:
+Para o domínio público (`paglav.com.br` / `toplavanderia.lovable.app`) refletir a correção, você precisa **clicar em Publish → Update** no canto superior direito. No celular: `...` no canto inferior direito → Publish.
 
-```text
-Firmware reporta: { relay_1: "on" }
-DB machine tem:   relay_pin = 2
-Salva como:       { relay_2: "on" }
-```
+## Segurança
 
-Isso garante que:
-- O `relay_status` no `esp32_status` sempre usa a numeração do banco
-- A detecção de mudança off→on / on→off funciona corretamente
-- O `computeMachineStatus` no frontend encontra a chave certa
+- A **anon key** é pública por design (já é exposta a qualquer visitante do site). Pode ficar no código sem risco.
+- Toda a proteção real continua via RLS no Supabase, que já está configurado.
+- A `service_role_key` **não** é tocada — ela continua só nas Edge Functions.
 
-#### 2. `esp32-monitor` — Heartbeat: merge em vez de sobrescrever
+## Fora de escopo
 
-Ao salvar o `relay_status`, fazer merge com o valor existente em vez de substituir completamente, para não perder estados de outros relés caso haja mais de uma máquina por ESP32.
+- Não vou corrigir os erros de TypeScript pendentes (ESP32Configuration, PinpadInfo, etc.) nesta passagem.
+- Não vou alterar `.gitignore` nem mexer em outras integrações.
 
-### Arquivos a modificar
-
-| Arquivo | Mudança |
-|---|---|
-| `supabase/functions/esp32-monitor/index.ts` | Mapear relay_status do firmware para relay_pin do banco + merge |
-
-### Resultado esperado
-
-Após a correção, o heartbeat do ESP32 reportando `{ relay_1: "on" }` será mapeado para `{ relay_2: "on" }` no banco. O frontend encontrará `relay_2: "on"`, `computeMachineStatus` retornará `running`, e a máquina permanecerá "Em Uso" durante todo o ciclo.
-
+Aprove para eu aplicar.
