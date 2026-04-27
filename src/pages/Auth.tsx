@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -16,25 +16,31 @@ export default function Auth() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  const scheduleNavigateToAdmin = useCallback(() => {
+    queueMicrotask(() => {
+      navigate("/admin", { replace: true });
+    });
+  }, [navigate]);
+
   useEffect(() => {
     // Check if user is already logged in
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        navigate("/admin");
+        scheduleNavigateToAdmin();
       }
     };
-    checkAuth();
+    void checkAuth();
 
-    // Listen for auth changes
+    // OAuth / magic link: apenas SIGNED_IN evita TOKEN_REFRESHED re-navegando
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        navigate("/admin");
+      if (event === "SIGNED_IN" && session) {
+        scheduleNavigateToAdmin();
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate]);
+  }, [scheduleNavigateToAdmin]);
 
   const signIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,12 +66,9 @@ export default function Auth() {
             variant: "destructive",
           });
         }
-      } else {
-        toast({
-          title: "Sucesso",
-          description: "Login realizado com sucesso!",
-        });
       }
+      // Sucesso: navegação vem do onAuthStateChange (SIGNED_IN). Evita toast + unmount
+      // simultâneos com Radix Tabs / Sonner (insertBefore no React DOM).
     } catch (error) {
       toast({
         title: "Erro",
