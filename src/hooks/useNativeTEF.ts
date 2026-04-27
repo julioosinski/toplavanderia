@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
 import TEF from '@/plugins/tef';
-import { toast } from 'sonner';
+import { toast } from "@/hooks/use-toast";
 
 export interface NativeTEFConfig {
   host: string;

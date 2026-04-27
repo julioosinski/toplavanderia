@@ -1,4 +1,4 @@
-import { toast } from 'sonner';
+import { toast } from "@/hooks/use-toast";
 import { Capacitor } from '@capacitor/core';
 
 export const handlePayGOError = (error: unknown, context: string): string => {

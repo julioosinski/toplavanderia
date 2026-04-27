@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { RefreshCw, Usb, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { useUSBConnection, type USBDevice } from '@/hooks/useUSBConnection';
-import { toast } from 'sonner';
+import { toast } from "@/hooks/use-toast";
 
 export const USBDiagnosticsTab = () => {
   const { 

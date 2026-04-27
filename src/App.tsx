@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Toaster as Sonner } from "@/components/ui/sonner";
+import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
@@ -37,7 +37,7 @@ const App = () => (
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
       <LaundryProvider>
         <TooltipProvider>
-          <Sonner />
+          <Toaster />
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Home />} />
