@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Wifi, CheckCircle2, XCircle, Loader2, CreditCard, Cpu } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
+import { toast } from "@/hooks/use-toast";
 import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import PayGO from '@/plugins/paygo';
 import { useLaundry } from '@/hooks/useLaundry';

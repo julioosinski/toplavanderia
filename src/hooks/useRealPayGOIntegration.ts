@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Capacitor } from '@capacitor/core';
 import PayGO from '@/plugins/paygo';
-import { toast } from 'sonner';
+import { toast } from "@/hooks/use-toast";
 import { handlePayGOError, formatCurrency, validatePayGOConfig } from '@/utils/paygoHelpers';
 
 export interface RealPayGOConfig {

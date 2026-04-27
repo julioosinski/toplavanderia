@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect } from 'react';
-import { toast } from 'sonner';
+import { toast } from "@/hooks/use-toast";
 import { useLaundry } from '@/hooks/useLaundry';
 import { nativeStorage } from '@/utils/nativeStorage';
 

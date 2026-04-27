@@ -1,23 +1,12 @@
 import * as React from "react"
-import { toast as sonnerToast } from "sonner"
 
 import type {
   ToastActionElement,
   ToastProps,
 } from "@/components/ui/toast"
 
-function reactNodeToDescription(node: React.ReactNode): string | undefined {
-  if (node == null || node === false) return undefined
-  if (typeof node === "string" || typeof node === "number") return String(node)
-  if (Array.isArray(node)) {
-    const parts = node.map(reactNodeToDescription).filter(Boolean) as string[]
-    return parts.length ? parts.join(" ") : undefined
-  }
-  return undefined
-}
-
-const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+const TOAST_LIMIT = 5
+const TOAST_REMOVE_DELAY = 1000
 
 type ToasterToast = ToastProps & {
   id: string
@@ -26,32 +15,11 @@ type ToasterToast = ToastProps & {
   action?: ToastActionElement
 }
 
-const actionTypes = {
-  ADD_TOAST: "ADD_TOAST",
-  UPDATE_TOAST: "UPDATE_TOAST",
-  DISMISS_TOAST: "DISMISS_TOAST",
-  REMOVE_TOAST: "REMOVE_TOAST",
-} as const
-
-type ActionType = typeof actionTypes
-
 type Action =
-  | {
-      type: ActionType["ADD_TOAST"]
-      toast: ToasterToast
-    }
-  | {
-      type: ActionType["UPDATE_TOAST"]
-      toast: Partial<ToasterToast>
-    }
-  | {
-      type: ActionType["DISMISS_TOAST"]
-      toastId?: ToasterToast["id"]
-    }
-  | {
-      type: ActionType["REMOVE_TOAST"]
-      toastId?: ToasterToast["id"]
-    }
+  | { type: "ADD_TOAST"; toast: ToasterToast }
+  | { type: "UPDATE_TOAST"; toast: Partial<ToasterToast> & Pick<ToasterToast, "id"> }
+  | { type: "DISMISS_TOAST"; toastId?: ToasterToast["id"] }
+  | { type: "REMOVE_TOAST"; toastId?: ToasterToast["id"] }
 
 interface State {
   toasts: ToasterToast[]
@@ -94,13 +62,11 @@ export const reducer = (state: State, action: Action): State => {
     case "DISMISS_TOAST": {
       const { toastId } = action
 
-      // ! Side effects ! - This could be extracted into a dismissToast() action,
-      // but I'll keep it here for simplicity
       if (toastId) {
         addToRemoveQueue(toastId)
       } else {
-        state.toasts.forEach((toast) => {
-          addToRemoveQueue(toast.id)
+        state.toasts.forEach((toastItem) => {
+          addToRemoveQueue(toastItem.id)
         })
       }
 
@@ -141,42 +107,63 @@ function dispatch(action: Action) {
   })
 }
 
-type Toast = Omit<ToasterToast, "id">
+type ToastInput = Omit<ToasterToast, "id">
 
-function toast({ title, description, variant, action }: Toast) {
-  const desc = reactNodeToDescription(description)
-
-  const opts: {
-    description?: string
-    action?: { label: string; onClick: () => void }
-  } = {}
-  if (desc) opts.description = desc
-
-  if (action && React.isValidElement(action)) {
-    const p = action.props as { children?: React.ReactNode; onClick?: () => void }
-    const label = reactNodeToDescription(p.children)
-    if (label && typeof p.onClick === "function") {
-      opts.action = { label, onClick: p.onClick }
-    }
+function genId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID()
   }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
 
-  const message = title ?? ""
+function toastBase(props: ToastInput) {
+  const id = genId()
 
-  const sonnerId =
-    variant === "destructive"
-      ? sonnerToast.error(message, opts)
-      : sonnerToast(message, opts)
-
-  const id = String(sonnerId)
+  dispatch({
+    type: "ADD_TOAST",
+    toast: {
+      ...props,
+      id,
+      open: true,
+      onOpenChange: (open) => {
+        if (!open) {
+          dispatch({ type: "DISMISS_TOAST", toastId: id })
+        }
+      },
+    },
+  })
 
   return {
     id,
-    dismiss: () => sonnerToast.dismiss(sonnerId),
-    update: (_props: ToasterToast) => {
-      /* Sonner não expõe update compatível com o padrão shadcn */
+    dismiss: () => {
+      dispatch({ type: "DISMISS_TOAST", toastId: id })
     },
+    update: (p: Partial<ToastInput>) =>
+      dispatch({ type: "UPDATE_TOAST", toast: { id, ...p } }),
   }
 }
+
+export const toast = Object.assign(toastBase, {
+  success: (message: string, opts?: { description?: React.ReactNode }) =>
+    toastBase({ title: message, description: opts?.description }),
+
+  error: (message: string, opts?: { description?: React.ReactNode }) =>
+    toastBase({
+      title: message,
+      description: opts?.description,
+      variant: "destructive",
+    }),
+
+  info: (message: string, opts?: { description?: React.ReactNode }) =>
+    toastBase({ title: message, description: opts?.description }),
+
+  warning: (message: string, opts?: { description?: React.ReactNode }) =>
+    toastBase({ title: message, description: opts?.description }),
+
+  dismiss: (toastId?: string) => {
+    dispatch({ type: "DISMISS_TOAST", toastId })
+  },
+})
 
 function useToast() {
   const [state, setState] = React.useState<State>(memoryState)
@@ -195,10 +182,9 @@ function useToast() {
     ...state,
     toast,
     dismiss: (toastId?: string) => {
-      if (toastId === undefined) sonnerToast.dismiss()
-      else sonnerToast.dismiss(toastId)
+      dispatch({ type: "DISMISS_TOAST", toastId })
     },
   }
 }
 
-export { useToast, toast }
+export { useToast }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Device } from '@capacitor/device';
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
+import { toast } from "@/hooks/use-toast";
 
 export interface AuthorizedDevice {
   id: string;
