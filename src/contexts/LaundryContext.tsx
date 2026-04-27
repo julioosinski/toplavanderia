@@ -281,7 +281,11 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       // Ignorar INITIAL_SESSION — o useEffect mount já cobre a inicialização
       if (event === 'INITIAL_SESSION') return;
       if (event === 'SIGNED_IN' && session) {
-        void initializeLaundryContext();
+        // Após SIGNED_IN o Auth agenda navigate em microtask; adiar init evita corrida
+        // com desmontagem da tela de login (Radix + portais) e o erro insertBefore.
+        window.setTimeout(() => {
+          void initializeLaundryContext();
+        }, 0);
       } else if (event === 'SIGNED_OUT') {
         initializingRef.current = false;
         setCurrentLaundry(null);
