@@ -113,6 +113,7 @@
     "vite": "^5.4.1"
   },
   "trustedDependencies": [
-    "@swc/core"
+    "@swc/core",
+    "esbuild"
   ]
 }

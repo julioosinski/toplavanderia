@@ -92,6 +92,7 @@
     },
   },
   "trustedDependencies": [
+    "esbuild",
     "@swc/core",
   ],
   "packages": {
