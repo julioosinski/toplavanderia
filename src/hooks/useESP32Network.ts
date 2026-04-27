@@ -78,7 +78,7 @@ export const useESP32Network = () => {
 
       if (statusError) throw statusError;
 
-      const configurations = (settings?.esp32_configurations as ESP32Configuration[] | null) || [];
+      const configurations = (settings?.esp32_configurations as unknown as ESP32Configuration[] | null) || [];
       const statusMap = new Map<string, ESP32StatusRow>(
         (statusData || []).map((status) => [status.esp32_id, status as ESP32StatusRow])
       );

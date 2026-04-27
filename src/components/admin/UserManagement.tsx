@@ -60,7 +60,8 @@ export const UserManagement = () => {
       setLoading(true);
       
       // Buscar user_roles com filtro pela lavanderia selecionada
-      let rolesQuery = supabase
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let rolesQuery: any = supabase
         .from('user_roles')
         .select('*')
         .order('created_at', { ascending: false });

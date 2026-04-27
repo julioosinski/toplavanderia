@@ -98,7 +98,7 @@ const ESP32FailoverManager: React.FC = () => {
       if (statusError) throw statusError;
 
       const configurations = Array.isArray(settings?.esp32_configurations)
-        ? (settings.esp32_configurations as ESP32Configuration[])
+        ? (settings.esp32_configurations as unknown as ESP32Configuration[])
         : [];
       const statusMap = new Map<string, ESP32Status>(statusData?.map(s => [s.esp32_id, s]) || []);
 

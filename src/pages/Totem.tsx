@@ -15,16 +15,23 @@ import { SecureTEFConfig } from "@/components/admin/SecureTEFConfig";
 import { AdminPinDialog } from "@/components/admin/AdminPinDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useSystemSettings } from "@/hooks/useSystemSettings";
+import type { UniversalPaymentResponse } from "@/hooks/useUniversalPayment";
 import { useDeviceMode } from "@/hooks/useDeviceMode";
 
 interface PaymentPayload {
-  [key: string]: unknown;
   method?: string;
   orderId?: string;
-  data?: PaymentPayload;
+  data?: unknown;
+  nsu?: string;
+  autorizacao?: string;
+  ultimosDigitos?: string;
+  [key: string]: unknown;
 }
 
-interface PixPaymentPayload extends PaymentPayload {
+interface PixPaymentPayload {
+  method?: string;
+  orderId?: string;
+  data?: unknown;
   qrCode?: string;
   qrCodeBase64?: string;
   pixKey?: string;
@@ -436,12 +443,20 @@ const Totem = () => {
     setTimeout(() => setLogoTapCount(0), 3000);
   };
 
-  const handlePixQR = (result: PaymentPayload) => {
+  const handlePixQR = (result: UniversalPaymentResponse) => {
+    const innerData = (result.data && typeof result.data === 'object')
+      ? (result.data as Record<string, unknown>)
+      : null;
     const orderId = result.orderId ??
-      (typeof result.data?.orderId === 'string' ? result.data.orderId : undefined);
+      (innerData && typeof innerData.orderId === 'string' ? innerData.orderId : undefined);
     pixPollDoneRef.current = false;
     setPixPaymentData({
-      ...result,
+      method: result.method,
+      data: result.data,
+      qrCode: result.qrCode,
+      qrCodeBase64: result.qrCodeBase64,
+      pixKey: result.pixKey,
+      expiresIn: result.expiresIn,
       amount: selectedMachine?.price ?? 0,
       orderId,
     });
@@ -614,7 +629,10 @@ const Totem = () => {
         onSuccess={async (result) => {
           setPaymentStep('activating');
           await activateMachine(`Universal - ${(result.method ?? 'pagamento').toUpperCase()}`);
-          setTransactionData(result.data ?? result);
+          const payload: PaymentPayload = (result.data && typeof result.data === 'object')
+            ? (result.data as PaymentPayload)
+            : (result as unknown as PaymentPayload);
+          setTransactionData(payload);
           setPaymentStep('success');
         }}
         onError={(err) => { toast({ title: "Erro no Pagamento", description: err, variant: "destructive" }); setPaymentStep('error'); }}
