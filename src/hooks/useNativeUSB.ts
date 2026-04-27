@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import USB from '@/plugins/usb';
-import { toast } from 'sonner';
+import { toast } from "@/hooks/use-toast";
 
 export interface NativeUSBDevice {
   vendorId: number;
