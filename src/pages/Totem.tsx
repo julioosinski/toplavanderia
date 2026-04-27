@@ -15,12 +15,16 @@ import { SecureTEFConfig } from "@/components/admin/SecureTEFConfig";
 import { AdminPinDialog } from "@/components/admin/AdminPinDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useSystemSettings } from "@/hooks/useSystemSettings";
+import type { UniversalPaymentResponse } from "@/hooks/useUniversalPayment";
 import { useDeviceMode } from "@/hooks/useDeviceMode";
 
 interface PaymentPayload {
   method?: string;
   orderId?: string;
   data?: unknown;
+  nsu?: string;
+  autorizacao?: string;
+  ultimosDigitos?: string;
   [key: string]: unknown;
 }
 
