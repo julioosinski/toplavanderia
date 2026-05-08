@@ -27,12 +27,12 @@
             android:name="cs_integration_type"
             android:value="uri" />
 
-        <!-- MAIN ACTIVITY - Capacitor BridgeActivity (React WebView) -->
+        <!-- MAIN ACTIVITY - Native Totem -->
         <activity
             android:exported="true"
             android:launchMode="singleTask"
-            android:name="app.lovable.toplavanderia.MainActivity"
-            android:theme="@style/AppTheme.NoActionBar"
+            android:name="app.lovable.toplavanderia.TotemActivity"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
             android:keepScreenOn="true">
 
@@ -54,12 +54,6 @@
                 android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
                 android:resource="@xml/device_filter" />
         </activity>
-
-        <!-- Legacy TotemActivity (kept for reference, not launcher) -->
-        <activity
-            android:exported="false"
-            android:name="app.lovable.toplavanderia.TotemActivity"
-            android:theme="@style/AppTheme.NoActionBar" />
 
         <activity
             android:exported="false"
@@ -85,7 +79,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Provider required for Capacitor and file sharing -->
+        <!-- Provider for file sharing -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

@@ -2,7 +2,7 @@ package app.lovable.toplavanderia;
 
 /**
  * Unified interface for payment managers (PayGo, Cielo LIO, etc.)
- * Each provider implements this interface so PayGOPlugin can route
+ * Each provider implements this interface so TotemActivity can route
  * without provider-specific if/else logic.
  */
 public interface PaymentManager {

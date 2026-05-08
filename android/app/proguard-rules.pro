@@ -1,12 +1,5 @@
-# Capacitor / bridge
+# Android annotations/reflection
 -keepattributes *Annotation*,InnerClasses,EnclosingMethod
--keepclassmembers class * {
-    @com.getcapacitor.PluginMethod <methods>;
-}
--keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
--keep class com.getcapacitor.** { *; }
--keep public class * extends com.getcapacitor.Plugin
--keep class org.apache.cordova.** { *; }
 
 # Gson (PayGO / serialização)
 -keepattributes Signature
