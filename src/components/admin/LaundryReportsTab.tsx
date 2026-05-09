@@ -74,6 +74,7 @@ export const LaundryReportsTab = () => {
         .from('transactions')
         .select(`id, machine_id, total_amount, created_at, payment_method, user_id, machines!inner(name, type)`)
         .eq('laundry_id', currentLaundryId)
+        .eq('status', 'completed')
         .gte('created_at', filters.startDate + 'T00:00:00')
         .lte('created_at', filters.endDate + 'T23:59:59')
         .order('created_at', { ascending: false });

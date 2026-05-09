@@ -658,6 +658,51 @@ public class SupabaseHelper {
             return false;
         }
     }
+
+    /**
+     * Finaliza a ultima transacao pendente da maquina/lavanderia como concluida.
+     * Isso evita contabilizar duas transacoes pendentes no fluxo do totem.
+     */
+    public boolean completeLatestTotemTransaction(String machineId, String paymentMethod) {
+        try {
+            String url = SUPABASE_URL + "/rest/v1/rpc/complete_totem_transaction";
+            JSONObject payload = new JSONObject();
+            payload.put("_machine_id", machineId);
+            payload.put("_laundry_id", currentLaundryId);
+            payload.put("_payment_method", paymentMethod == null || paymentMethod.isEmpty() ? "card" : paymentMethod);
+
+            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
+
+            OutputStream os = connection.getOutputStream();
+            os.write(payload.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+
+            int responseCode = connection.getResponseCode();
+            if (responseCode == 200) {
+                BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+                StringBuilder response = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) {
+                    response.append(line);
+                }
+                br.close();
+                Log.d(TAG, "Transação pendente finalizada: " + response);
+                connection.disconnect();
+                return true;
+            }
+
+            Log.e(TAG, "Erro ao finalizar transação pendente: HTTP " + responseCode);
+            connection.disconnect();
+            return false;
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao finalizar transação pendente", e);
+            return false;
+        }
+    }
     
     private boolean createTransactionInSupabase(String machineId, String service, double price, String paymentCode, String transactionId) {
         try {
@@ -790,7 +835,9 @@ public class SupabaseHelper {
             payload.put("relay_pin", relayPin);
             payload.put("action", "on");
             payload.put("machine_id", machineId);
-            payload.put("transaction_id", transactionId);
+            // Nao enviar transaction_id externo da adquirente (Cielo),
+            // pois a FK de pending_commands referencia public.transactions.id.
+            // O campo e opcional na edge function.
             
             // Fazer requisição HTTP POST
             HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();

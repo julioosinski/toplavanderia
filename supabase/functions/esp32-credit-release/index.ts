@@ -107,31 +107,6 @@ serve(async (req) => {
       });
     }
 
-    if (machineId) {
-        // Create pending command for ESP32
-        const { error: cmdError } = await supabaseClient
-          .from('pending_commands')
-          .insert({
-            esp32_id: targetESP32Id,
-            machine_id: machineId,
-            relay_pin: machineRelayPin || 1,
-            action: 'on',
-            status: 'pending',
-          });
-
-        if (cmdError) {
-          console.error('Error creating pending command:', cmdError);
-        } else {
-          console.log('Pending command created for machine:', machineId);
-        }
-
-        // Update machine status to running
-        await supabaseClient
-          .from('machines')
-          .update({ status: 'running', updated_at: new Date().toISOString() })
-          .eq('id', machineId);
-    }
-
     const now = new Date().toISOString();
     let createdTransactionId: string | null = null;
 
@@ -157,6 +132,42 @@ serve(async (req) => {
       } else {
         createdTransactionId = txData?.id ?? null;
         console.log('Transaction created:', createdTransactionId);
+      }
+    }
+
+    if (machineId) {
+      // Create pending command for ESP32 (must succeed, otherwise release is not effective)
+      const { error: cmdError } = await supabaseClient
+        .from('pending_commands')
+        .insert({
+          esp32_id: targetESP32Id,
+          machine_id: machineId,
+          relay_pin: machineRelayPin || 1,
+          action: 'on',
+          transaction_id: createdTransactionId ?? undefined,
+          status: 'pending',
+        });
+
+      if (cmdError) {
+        console.error('Error creating pending command:', cmdError);
+        return new Response(JSON.stringify({
+          success: false,
+          error: cmdError.message,
+          message: 'Falha ao enfileirar comando para o ESP32'
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      console.log('Pending command created for machine:', machineId);
+
+      // Update machine status to running
+      const { error: machineStatusError } = await supabaseClient
+        .from('machines')
+        .update({ status: 'running', updated_at: new Date().toISOString() })
+        .eq('id', machineId);
+      if (machineStatusError) {
+        console.error('Error updating machine status:', machineStatusError);
       }
     }
 

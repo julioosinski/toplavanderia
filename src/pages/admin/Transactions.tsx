@@ -124,6 +124,7 @@ export default function Transactions() {
       .from("transactions")
       .select("*")
       .eq("laundry_id", currentLaundryId)
+      .eq("status", "completed")
       .order("created_at", { ascending: false })
       .limit(200);
 

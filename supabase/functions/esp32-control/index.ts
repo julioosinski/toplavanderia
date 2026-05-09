@@ -75,13 +75,16 @@ Deno.serve(async (req) => {
 
     console.log(`✅ Comando enfileirado: ${data.id} - ESP32 vai executar em até 5s`);
 
-    // Registrar no audit log
-    await supabase.from('audit_logs').insert({
+    // Registrar no audit log sem derrubar o fluxo principal caso o log falhe.
+    const { error: auditError } = await supabase.from('audit_logs').insert({
       action: 'ESP32_CONTROL_QUEUED',
       table_name: 'pending_commands',
       record_id: data.id,
       new_values: { esp32_id, relay_pin, action, transaction_id, command_id: data.id }
     });
+    if (auditError) {
+      console.warn('⚠️ Falha ao registrar audit log (comando mantido na fila):', auditError.message);
+    }
 
     return new Response(
       JSON.stringify({ 

@@ -543,66 +543,76 @@ public class TotemActivity extends Activity {
     }
     
     private void processPayment(SupabaseHelper.Machine machine) {
-        try {
-            Log.d(TAG, "=== INICIANDO PROCESSAMENTO DE PAGAMENTO ===");
-            Log.d(TAG, "=== VALIDAÇÃO PRÉ-PAGAMENTO ===");
-            Log.d(TAG, "Máquina ID: " + machine.getId());
-            Log.d(TAG, "Máquina: " + machine.getName());
-            Log.d(TAG, "ESP32 ID: " + machine.getEsp32Id());
-            Log.d(TAG, "Status Atual: " + machine.getStatus());
-            Log.d(TAG, "ESP32 Online (cache): " + machine.isEsp32Online());
-            Log.d(TAG, "Valor: R$ " + machine.getPrice());
-            
-            // ✅ NOVA VALIDAÇÃO: Verificar disponibilidade em tempo real
-            Log.d(TAG, "🔍 Validando disponibilidade da máquina em tempo real...");
-            
-            boolean isStillAvailable = validateMachineAvailability(machine);
-            
-            Log.d(TAG, "=== RESULTADO DA VALIDAÇÃO ===");
-            Log.d(TAG, "Disponível: " + isStillAvailable);
-            
-            if (!isStillAvailable) {
-                Log.w(TAG, "⚠️ PAGAMENTO BLOQUEADO - Máquina não disponível");
-                Log.e(TAG, "❌ Máquina não está mais disponível!");
-                handlePaymentError("Máquina não está mais disponível. Por favor, selecione outra.");
-                
-                // Recarregar tela principal
-                new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                    createTotemInterface();
-                    loadMachines();
-                }, 3000);
-                return;
+        new Thread(() -> {
+            try {
+                Log.d(TAG, "=== INICIANDO PROCESSAMENTO DE PAGAMENTO ===");
+                Log.d(TAG, "=== VALIDAÇÃO PRÉ-PAGAMENTO ===");
+                Log.d(TAG, "Máquina ID: " + machine.getId());
+                Log.d(TAG, "Máquina: " + machine.getName());
+                Log.d(TAG, "ESP32 ID: " + machine.getEsp32Id());
+                Log.d(TAG, "Status Atual: " + machine.getStatus());
+                Log.d(TAG, "ESP32 Online (cache): " + machine.isEsp32Online());
+                Log.d(TAG, "Valor: R$ " + machine.getPrice());
+
+                // ✅ NOVA VALIDAÇÃO: Verificar disponibilidade em tempo real
+                Log.d(TAG, "🔍 Validando disponibilidade da máquina em tempo real...");
+
+                boolean isStillAvailable = validateMachineAvailability(machine);
+
+                Log.d(TAG, "=== RESULTADO DA VALIDAÇÃO ===");
+                Log.d(TAG, "Disponível: " + isStillAvailable);
+
+                if (!isStillAvailable) {
+                    Log.w(TAG, "⚠️ PAGAMENTO BLOQUEADO - Máquina não disponível");
+                    runOnUiThread(() -> {
+                        handlePaymentError("Máquina não está mais disponível. Por favor, selecione outra.");
+                        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                            createTotemInterface();
+                            loadMachines();
+                        }, 3000);
+                    });
+                    return;
+                }
+
+                Log.d(TAG, "✅ Máquina disponível - prosseguindo com pagamento");
+
+                // Criar operação no Supabase (fora da UI thread)
+                currentOperationId = System.currentTimeMillis();
+                boolean operationCreated = supabaseHelper.createTransaction(
+                    machine.getId(),
+                    machine.getTypeDisplay(),
+                    machine.getPrice(),
+                    "PENDING",
+                    "TXN" + currentOperationId
+                );
+                if (!operationCreated) {
+                    Log.w(TAG, "Falha ao criar operação no Supabase; prosseguindo com fluxo local de pagamento");
+                }
+
+                if ("cielo".equalsIgnoreCase(activeProvider)) {
+                    String cId = supabaseHelper.getCieloClientId();
+                    String cToken = supabaseHelper.getCieloAccessToken();
+                    String cMerchant = supabaseHelper.getCieloMerchantCode();
+                    String cEnv = supabaseHelper.getCieloEnvironment();
+                    cieloManager.configure(cId, cToken, cMerchant, cEnv);
+                }
+
+                Log.d(TAG, "Operação criada: ID " + currentOperationId);
+
+                runOnUiThread(() -> {
+                    showPaymentProcessing(machine);
+                    activePaymentManager.processPayment(
+                        machine.getPrice(),
+                        "credit",
+                        "Top Lavanderia - " + machine.getName(),
+                        "TOTEM" + currentOperationId
+                    );
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "Erro ao processar pagamento", e);
+                runOnUiThread(() -> handlePaymentError("Erro ao processar pagamento: " + e.getMessage()));
             }
-            
-            Log.d(TAG, "✅ Máquina disponível - prosseguindo com pagamento");
-            
-            // Criar operação no Supabase
-            currentOperationId = System.currentTimeMillis();
-            boolean operationCreated = supabaseHelper.createTransaction(
-                machine.getId(),
-                machine.getTypeDisplay(),
-                machine.getPrice(),
-                "PENDING",
-                "TXN" + currentOperationId
-            );
-            
-            Log.d(TAG, "Operação criada: ID " + currentOperationId);
-            
-            // Mostrar tela de processamento
-            showPaymentProcessing(machine);
-            
-            // Processar pagamento via provedor ativo
-            activePaymentManager.processPayment(
-                machine.getPrice(),
-                "credit",
-                "Top Lavanderia - " + machine.getName(),
-                "TOTEM" + currentOperationId
-            );
-            
-        } catch (Exception e) {
-            Log.e(TAG, "Erro ao processar pagamento", e);
-            handlePaymentError("Erro ao processar pagamento: " + e.getMessage());
-        }
+        }).start();
     }
     
     /**
@@ -782,50 +792,53 @@ public class TotemActivity extends Activity {
     }
     
     private void handlePaymentSuccess(String authorizationCode, String transactionId) {
-        try {
-            Log.d(TAG, "=== PAGAMENTO APROVADO ===");
-            Log.d(TAG, "Código: " + authorizationCode);
-            Log.d(TAG, "Transação: " + transactionId);
-            
-            // Atualizar operação no Supabase
-            boolean transactionUpdated = supabaseHelper.createTransaction(
-                selectedMachine.getId(),
-                selectedMachine.getTypeDisplay(),
-                selectedMachine.getPrice(),
-                authorizationCode,
-                transactionId
-            );
-            
-            // NOVO: Acionar ESP32 via Edge Function
-            Log.d(TAG, "=== ACIONANDO ESP32 ===");
-            Log.d(TAG, "Endpoint: /functions/v1/esp32-control");
-            Log.d(TAG, "Payload: {esp32_id: " + selectedMachine.getEsp32Id() + ", relay_pin: " + selectedMachine.getRelayPin() + "}");
-            Log.d(TAG, "Acionando ESP32 para máquina: " + selectedMachine.getName());
-            boolean esp32Activated = supabaseHelper.activateEsp32Relay(
-                selectedMachine.getEsp32Id(),      // ex: "lavadora_01"
-                selectedMachine.getRelayPin(),     // ex: 1
-                selectedMachine.getId(),           // UUID da máquina
-                transactionId,                     // ID da transação
-                selectedMachine.getDuration()      // Tempo em minutos
-            );
-            
-            if (esp32Activated) {
-                Log.d(TAG, "✅ ESP32 acionado com sucesso - máquina liberada");
-                
-                // Iniciar uso da máquina com tempo de duração
-                boolean statusUpdated = supabaseHelper.startMachineUsage(selectedMachine.getId(), selectedMachine.getDuration());
-                
-                // Mostrar tela de sucesso
-                showPaymentSuccess(authorizationCode, transactionId);
-            } else {
-                Log.e(TAG, "❌ Falha ao acionar ESP32");
-                handlePaymentError("Pagamento aprovado mas a máquina não pôde ser acionada. Entre em contato com a administração.");
-            }
-            
-        } catch (Exception e) {
-            Log.e(TAG, "Erro ao processar sucesso do pagamento", e);
-            handlePaymentError("Erro ao finalizar pagamento: " + e.getMessage());
+        final SupabaseHelper.Machine machineSnapshot = selectedMachine;
+        if (machineSnapshot == null) {
+            handlePaymentError("Pagamento aprovado, mas a máquina selecionada não está disponível.");
+            return;
         }
+
+        new Thread(() -> {
+            try {
+                Log.d(TAG, "=== PAGAMENTO APROVADO ===");
+                Log.d(TAG, "Código: " + authorizationCode);
+                Log.d(TAG, "Transação: " + transactionId);
+
+                // Fechar a transação pendente criada no início do fluxo como concluída.
+                boolean txCompleted = supabaseHelper.completeLatestTotemTransaction(
+                    machineSnapshot.getId(),
+                    "card"
+                );
+                if (!txCompleted) {
+                    Log.w(TAG, "Não foi possível marcar a transação do totem como concluída");
+                }
+
+                Log.d(TAG, "=== ACIONANDO ESP32 ===");
+                Log.d(TAG, "Endpoint: /functions/v1/esp32-control");
+                Log.d(TAG, "Payload: {esp32_id: " + machineSnapshot.getEsp32Id() + ", relay_pin: " + machineSnapshot.getRelayPin() + "}");
+                Log.d(TAG, "Acionando ESP32 para máquina: " + machineSnapshot.getName());
+
+                boolean esp32Activated = supabaseHelper.activateEsp32Relay(
+                    machineSnapshot.getEsp32Id(),
+                    machineSnapshot.getRelayPin(),
+                    machineSnapshot.getId(),
+                    transactionId,
+                    machineSnapshot.getDuration()
+                );
+
+                if (esp32Activated) {
+                    Log.d(TAG, "✅ ESP32 acionado com sucesso - máquina liberada");
+                    supabaseHelper.startMachineUsage(machineSnapshot.getId(), machineSnapshot.getDuration());
+                    runOnUiThread(() -> showPaymentSuccess(authorizationCode, transactionId));
+                } else {
+                    Log.e(TAG, "❌ Falha ao acionar ESP32");
+                    runOnUiThread(() -> handlePaymentError("Pagamento aprovado mas a máquina não pôde ser acionada. Entre em contato com a administração."));
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Erro ao processar sucesso do pagamento", e);
+                runOnUiThread(() -> handlePaymentError("Erro ao finalizar pagamento: " + e.getMessage()));
+            }
+        }).start();
     }
     
     private void showPaymentSuccess(String authorizationCode, String transactionId) {
