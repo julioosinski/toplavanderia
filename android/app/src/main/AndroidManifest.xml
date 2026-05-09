@@ -58,7 +58,8 @@
         <activity
             android:exported="false"
             android:name="app.lovable.toplavanderia.AdminActivity"
-            android:theme="@style/AppTheme" />
+            android:theme="@style/AppTheme"
+            android:keepScreenOn="true" />
 
         <activity
             android:exported="false"

@@ -11,6 +11,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.GridLayout;
 import android.widget.ImageView;
@@ -65,6 +66,7 @@ public class TotemActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        applyKeepScreenAwake();
         try {
             // Inicializar componentes
             supabaseHelper = new SupabaseHelper(this);
@@ -156,6 +158,7 @@ public class TotemActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        applyKeepScreenAwake();
         try {
             if (statusMonitor != null) {
                 statusMonitor.startMonitoring();
@@ -181,6 +184,14 @@ public class TotemActivity extends Activity {
         }
     }
     
+    /**
+     * Mantém o visor ligado enquanto o totem está em primeiro plano (reforço além de
+     * android:keepScreenOn). No app de pagamento Cielo/PayGo o timeout é o do sistema/terminal.
+     */
+    private void applyKeepScreenAwake() {
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+
     private void updateMachineStatuses(List<MachineStatusMonitor.MachineStatus> statuses) {
         if (machines == null || statuses == null) return;
         
