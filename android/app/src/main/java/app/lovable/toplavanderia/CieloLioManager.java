@@ -273,6 +273,10 @@ public class CieloLioManager implements PaymentManager {
         items.put(item);
         payload.put("items", items);
 
+        // Resposta Cielo usa receiptPrintPermission como string; no pedido pode reduzir prompt de impressão.
+        // Se o terminal retornar "Json inválido", remover esta linha.
+        payload.put("receiptPrintPermission", "0");
+
         return payload;
     }
 

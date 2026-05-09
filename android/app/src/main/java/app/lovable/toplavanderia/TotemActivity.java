@@ -847,18 +847,7 @@ public class TotemActivity extends Activity {
                 Log.d(TAG, "Código: " + authorizationCode);
                 Log.d(TAG, "Transação: " + transactionId);
 
-                // Fechar a transação pendente criada no início do fluxo como concluída.
-                String methodForComplete = currentOperationSupabasePaymentMethod != null
-                    ? currentOperationSupabasePaymentMethod
-                    : "credit";
-                boolean txCompleted = supabaseHelper.completeLatestTotemTransaction(
-                    machineSnapshot.getId(),
-                    methodForComplete
-                );
-                if (!txCompleted) {
-                    Log.w(TAG, "Não foi possível marcar a transação do totem como concluída");
-                }
-
+                // ESP32 o mais cedo possível após o callback (o atraso longo costuma ser tela da Cielo antes do deep link).
                 Log.d(TAG, "=== ACIONANDO ESP32 ===");
                 Log.d(TAG, "Endpoint: /functions/v1/esp32-control");
                 Log.d(TAG, "Payload: {esp32_id: " + machineSnapshot.getEsp32Id() + ", relay_pin: " + machineSnapshot.getRelayPin() + "}");
@@ -871,6 +860,17 @@ public class TotemActivity extends Activity {
                     transactionId,
                     machineSnapshot.getDuration()
                 );
+
+                String methodForComplete = currentOperationSupabasePaymentMethod != null
+                    ? currentOperationSupabasePaymentMethod
+                    : "credit";
+                boolean txCompleted = supabaseHelper.completeLatestTotemTransaction(
+                    machineSnapshot.getId(),
+                    methodForComplete
+                );
+                if (!txCompleted) {
+                    Log.w(TAG, "Não foi possível marcar a transação do totem como concluída");
+                }
 
                 if (esp32Activated) {
                     Log.d(TAG, "✅ ESP32 acionado com sucesso - máquina liberada");

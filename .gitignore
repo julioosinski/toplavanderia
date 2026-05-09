@@ -24,9 +24,8 @@ android/app/.gradle/
 android/capacitor-cordova-android-plugins/build/
 android/capacitor-cordova-android-plugins/.gradle/
 
-# Capacitor
+# Capacitor (ícones launcher em mipmap-* devem ser versionados)
 android/app/src/main/assets/
-android/app/src/main/res/mipmap-*/
 
 # IDE
 .vscode/
