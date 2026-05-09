@@ -6,6 +6,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -62,94 +63,111 @@ public class TotemActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
-        // Inicializar componentes
-        supabaseHelper = new SupabaseHelper(this);
-        
-        // Verificar se totem está configurado
-        if (!supabaseHelper.isConfigured()) {
-            Log.d(TAG, "Totem não configurado - exibindo tela de configuração");
-            showConfigurationScreen();
-            return;
-        }
-        
-        // Configurar listeners
-        supabaseHelper.setOnMachinesLoadedListener(new SupabaseHelper.OnMachinesLoadedListener() {
-            @Override
-            public void onMachinesLoaded(List<SupabaseHelper.Machine> loadedMachines) {
-                runOnUiThread(() -> {
-                    Log.d(TAG, "Dados reais do Supabase recebidos, atualizando interface...");
-                    machines = loadedMachines;
-                    displayMachines();
-                });
+        try {
+            // Inicializar componentes
+            supabaseHelper = new SupabaseHelper(this);
+            
+            // Verificar se totem está configurado
+            if (!supabaseHelper.isConfigured()) {
+                Log.d(TAG, "Totem não configurado - exibindo tela de configuração");
+                showConfigurationScreen();
+                return;
             }
-        });
-        
-        // Initialize payment managers
-        payGoManager = new RealPayGoManager(this);
-        cieloManager = new CieloLioManager(this);
+            
+            // Configurar listeners
+            supabaseHelper.setOnMachinesLoadedListener(new SupabaseHelper.OnMachinesLoadedListener() {
+                @Override
+                public void onMachinesLoaded(List<SupabaseHelper.Machine> loadedMachines) {
+                    runOnUiThread(() -> {
+                        Log.d(TAG, "Dados reais do Supabase recebidos, atualizando interface...");
+                        machines = loadedMachines;
+                        displayMachines();
+                    });
+                }
+            });
+            
+            // Initialize payment managers
+            payGoManager = new RealPayGoManager(this);
+            cieloManager = new CieloLioManager(this);
 
-        // Determine provider from settings (default paygo)
-        activeProvider = supabaseHelper.getPaymentProvider();
-        if ("cielo".equalsIgnoreCase(activeProvider)) {
-            String cId = supabaseHelper.getCieloClientId();
-            String cToken = supabaseHelper.getCieloAccessToken();
-            String cMerchant = supabaseHelper.getCieloMerchantCode();
-            String cEnv = supabaseHelper.getCieloEnvironment();
-            if (cId != null && !cId.isEmpty()) {
-                cieloManager.configure(cId, cToken, cMerchant, cEnv);
+            // Determine provider from settings (default paygo)
+            activeProvider = supabaseHelper.getPaymentProvider();
+            if (!"cielo".equalsIgnoreCase(activeProvider) && isCieloSmartTerminal()) {
+                Log.d(TAG, "Terminal Cielo detectado: priorizando provedor Cielo LIO");
+                activeProvider = "cielo";
             }
-            activePaymentManager = cieloManager;
-            Log.d(TAG, "Provedor de pagamento: Cielo LIO");
-        } else {
-            activePaymentManager = payGoManager;
-            Log.d(TAG, "Provedor de pagamento: PayGo");
-        }
+            if ("cielo".equalsIgnoreCase(activeProvider)) {
+                String cId = supabaseHelper.getCieloClientId();
+                String cToken = supabaseHelper.getCieloAccessToken();
+                String cMerchant = supabaseHelper.getCieloMerchantCode();
+                String cEnv = supabaseHelper.getCieloEnvironment();
+                if (cId != null && !cId.isEmpty()) {
+                    cieloManager.configure(cId, cToken, cMerchant, cEnv);
+                }
+                activePaymentManager = cieloManager;
+                Log.d(TAG, "Provedor de pagamento: Cielo LIO");
+            } else {
+                activePaymentManager = payGoManager;
+                Log.d(TAG, "Provedor de pagamento: PayGo");
+            }
 
-        // Unified payment callback
-        PaymentCallback paymentCallback = new PaymentCallback() {
-            @Override
-            public void onPaymentSuccess(String authorizationCode, String transactionId) {
-                runOnUiThread(() -> handlePaymentSuccess(authorizationCode, transactionId));
-            }
-            @Override
-            public void onPaymentError(String error) {
-                runOnUiThread(() -> handlePaymentError(error));
-            }
-            @Override
-            public void onPaymentProcessing(String message) {
-                runOnUiThread(() -> updateStatus(message));
-            }
-        };
-        activePaymentManager.setCallback(paymentCallback);
-        
-        // Criar monitor de status em tempo real
-        statusMonitor = new MachineStatusMonitor(supabaseHelper);
-        statusMonitor.setListener(statuses -> {
-            // Atualizar UI com status real-time
-            runOnUiThread(() -> updateMachineStatuses(statuses));
-        });
-        
-        // Criar interface
-        createTotemInterface();
-        
-        // Carregar máquinas
-        loadMachines();
-        
-        // Iniciar atualização de tempo
-        startTimeUpdater();
-        
-        Log.d(TAG, "TotemActivity criada com sucesso");
+            // Unified payment callback
+            PaymentCallback paymentCallback = new PaymentCallback() {
+                @Override
+                public void onPaymentSuccess(String authorizationCode, String transactionId) {
+                    runOnUiThread(() -> handlePaymentSuccess(authorizationCode, transactionId));
+                }
+                @Override
+                public void onPaymentError(String error) {
+                    runOnUiThread(() -> handlePaymentError(error));
+                }
+                @Override
+                public void onPaymentProcessing(String message) {
+                    runOnUiThread(() -> updateStatus(message));
+                }
+            };
+            activePaymentManager.setCallback(paymentCallback);
+            
+            // Criar monitor de status em tempo real
+            statusMonitor = new MachineStatusMonitor(supabaseHelper);
+            statusMonitor.setListener(statuses -> {
+                // Atualizar UI com status real-time
+                runOnUiThread(() -> updateMachineStatuses(statuses));
+            });
+            
+            // Criar interface
+            createTotemInterface();
+            
+            // Carregar máquinas
+            loadMachines();
+            
+            // Iniciar atualização de tempo
+            startTimeUpdater();
+            
+            Log.d(TAG, "TotemActivity criada com sucesso");
+        } catch (Throwable t) {
+            Log.e(TAG, "Falha no bootstrap do Totem", t);
+            showFatalErrorScreen(t.getMessage() == null ? "Erro ao iniciar aplicativo" : t.getMessage());
+        }
     }
     
     @Override
     protected void onResume() {
         super.onResume();
-        if (statusMonitor != null) {
-            statusMonitor.startMonitoring();
-            Log.d(TAG, "Monitor de status iniciado");
+        try {
+            if (statusMonitor != null) {
+                statusMonitor.startMonitoring();
+                Log.d(TAG, "Monitor de status iniciado");
+            }
+            if (supabaseHelper != null && supabaseHelper.isConfigured()) {
+                loadMachines();
+            } else {
+                Log.d(TAG, "onResume sem configuração do totem; mantendo tela de configuração");
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "Falha no onResume", t);
+            showFatalErrorScreen("Falha ao retomar aplicativo");
         }
-        loadMachines();
     }
     
     @Override
@@ -265,6 +283,18 @@ public class TotemActivity extends Activity {
     
     private void loadMachines() {
         Log.d(TAG, "Carregando máquinas do Supabase...");
+        if (supabaseHelper == null) {
+            Log.e(TAG, "SupabaseHelper indisponível no loadMachines");
+            showFatalErrorScreen("Configuração do sistema indisponível");
+            return;
+        }
+        if (!supabaseHelper.isConfigured()) {
+            Log.d(TAG, "Totem não configurado; cancelando carregamento de máquinas");
+            return;
+        }
+        if (machinesContainer == null) {
+            createTotemInterface();
+        }
         
         machines = supabaseHelper.getAllMachines();
         displayMachines();
@@ -273,6 +303,14 @@ public class TotemActivity extends Activity {
     }
     
     private void displayMachines() {
+        if (machinesContainer == null) {
+            Log.w(TAG, "machinesContainer nulo, recriando interface");
+            createTotemInterface();
+        }
+        if (machines == null) {
+            Log.w(TAG, "Lista de máquinas nula; exibindo lista vazia");
+            machines = new ArrayList<>();
+        }
         machinesContainer.removeAllViews();
         
         Log.d(TAG, "=== EXIBINDO MÁQUINAS ===");
@@ -314,18 +352,19 @@ public class TotemActivity extends Activity {
         sectionTitle.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         machinesContainer.addView(sectionTitle);
         
-        // Linha de máquinas com espaçamento
-        LinearLayout machineRow = new LinearLayout(this);
-        machineRow.setOrientation(LinearLayout.HORIZONTAL);
-        machineRow.setGravity(android.view.Gravity.CENTER);
-        machineRow.setPadding(0, 0, 0, 30); // Reduzido de 50 para 30
-        
+        // Grid responsivo para evitar cortes em telas menores.
+        GridLayout machineGrid = new GridLayout(this);
+        int screenWidthDp = getResources().getConfiguration().screenWidthDp;
+        machineGrid.setColumnCount(screenWidthDp >= 720 ? 3 : 2);
+        machineGrid.setUseDefaultMargins(false);
+        machineGrid.setPadding(0, 0, 0, dp(24));
+
         for (SupabaseHelper.Machine machine : machines) {
             Button machineButton = createMachineButton(machine);
-            machineRow.addView(machineButton);
+            machineGrid.addView(machineButton);
         }
         
-        machinesContainer.addView(machineRow);
+        machinesContainer.addView(machineGrid);
     }
     
     
@@ -372,18 +411,16 @@ public class TotemActivity extends Activity {
             button.setElevation(6);
         }
         
-        button.setTextSize(14); // Reduzido de 16 para 14
-        button.setPadding(15, 20, 15, 20); // Reduzido padding
+        button.setTextSize(13);
+        button.setPadding(dp(10), dp(12), dp(10), dp(12));
         button.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         
-        // Layout params responsivos
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        );
-        params.setMargins(10, 5, 10, 5); // Reduzido margens
-        params.width = 180; // Reduzido de 220 para 180
-        params.height = 120; // Reduzido de 140 para 120
+        GridLayout.LayoutParams params = new GridLayout.LayoutParams();
+        params.width = 0;
+        params.height = GridLayout.LayoutParams.WRAP_CONTENT;
+        params.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f);
+        params.setMargins(dp(6), dp(6), dp(6), dp(6));
+        button.setMinHeight(dp(88));
         button.setLayoutParams(params);
         
         // Click listener apenas para máquinas disponíveis
@@ -413,9 +450,11 @@ public class TotemActivity extends Activity {
     }
     
     private void showPaymentConfirmation(SupabaseHelper.Machine machine) {
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setFillViewport(true);
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(50, 50, 50, 50);
+        layout.setPadding(dp(20), dp(20), dp(20), dp(20));
         layout.setBackgroundColor(Color.parseColor("#2196F3"));
         
         // Título
@@ -449,8 +488,8 @@ public class TotemActivity extends Activity {
                        "ESP32: " + machine.getEsp32Id() + " (Relay " + machine.getRelayPin() + ")\n" +
                        "Preço: R$ " + new DecimalFormat("0.00").format(machine.getPrice()) + "\n" +
                        "Duração: " + machine.getDuration() + " minutos\n\n" +
-                       "💳 PAGAMENTO SERÁ PROCESSADO NA PPC930\n" +
-                       "Insira seu cartão quando solicitado");
+                       "💳 " + getPaymentInstructionTitle() + "\n" +
+                       getPaymentInstructionSubtitle());
         details.setTextSize(16);
         details.setTextColor(Color.WHITE);
         details.setGravity(android.view.Gravity.CENTER);
@@ -458,18 +497,24 @@ public class TotemActivity extends Activity {
         details.setBackgroundColor(Color.parseColor("#1976D2"));
         layout.addView(details);
         
-        // Botões de ação
+        // Botões de ação em coluna para não cortar.
         LinearLayout buttonRow = new LinearLayout(this);
-        buttonRow.setOrientation(LinearLayout.HORIZONTAL);
-        buttonRow.setPadding(0, 20, 0, 0);
+        buttonRow.setOrientation(LinearLayout.VERTICAL);
+        buttonRow.setPadding(0, dp(16), 0, 0);
         
         // Botão confirmar
         Button confirmButton = new Button(this);
         confirmButton.setText("💳 CONFIRMAR E PAGAR");
-        confirmButton.setTextSize(18);
-        confirmButton.setPadding(20, 25, 20, 25);
+        confirmButton.setTextSize(16);
+        confirmButton.setPadding(dp(16), dp(16), dp(16), dp(16));
         confirmButton.setBackgroundColor(Color.parseColor("#4CAF50"));
         confirmButton.setTextColor(Color.WHITE);
+        LinearLayout.LayoutParams confirmParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        confirmParams.setMargins(0, 0, 0, dp(10));
+        confirmButton.setLayoutParams(confirmParams);
         confirmButton.setOnClickListener(v -> processPayment(machine));
         buttonRow.addView(confirmButton);
         
@@ -477,9 +522,14 @@ public class TotemActivity extends Activity {
         Button cancelButton = new Button(this);
         cancelButton.setText("❌ CANCELAR");
         cancelButton.setTextSize(16);
-        cancelButton.setPadding(20, 20, 20, 20);
+        cancelButton.setPadding(dp(16), dp(14), dp(16), dp(14));
         cancelButton.setBackgroundColor(Color.parseColor("#F44336"));
         cancelButton.setTextColor(Color.WHITE);
+        LinearLayout.LayoutParams cancelParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        cancelButton.setLayoutParams(cancelParams);
         cancelButton.setOnClickListener(v -> {
             selectedMachine = null;
             createTotemInterface();
@@ -488,7 +538,8 @@ public class TotemActivity extends Activity {
         buttonRow.addView(cancelButton);
         
         layout.addView(buttonRow);
-        setContentView(layout);
+        scrollView.addView(layout);
+        setContentView(scrollView);
     }
     
     private void processPayment(SupabaseHelper.Machine machine) {
@@ -719,7 +770,7 @@ public class TotemActivity extends Activity {
                              "Máquina: " + machine.getName() + "\n" +
                              "Valor: R$ " + new DecimalFormat("0.00").format(machine.getPrice()) + "\n" +
                              "Operação: " + currentOperationId + "\n\n" +
-                             "🔄 COMUNICAÇÃO COM PPC930...\n" +
+                             "🔄 " + getPaymentProcessingText() + "\n" +
                              "Aguarde o processamento do pagamento");
         processingText.setTextSize(16);
         processingText.setGravity(android.view.Gravity.CENTER);
@@ -829,7 +880,7 @@ public class TotemActivity extends Activity {
         
         TextView errorText = new TextView(this);
         errorText.setText("❌ ERRO NO PAGAMENTO\n\n" + error + "\n\n" +
-                         "Tente novamente ou verifique a conexão com a PPC930.");
+                         "Tente novamente ou verifique a conexão de pagamento.");
         errorText.setTextSize(16);
         errorText.setGravity(android.view.Gravity.CENTER);
         errorText.setPadding(20, 20, 20, 20);
@@ -954,8 +1005,9 @@ public class TotemActivity extends Activity {
         confirmButton.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         
         confirmButton.setOnClickListener(v -> {
-            String cnpj = cnpjInput.getText().toString().trim();
-            
+            String raw = cnpjInput.getText().toString().trim();
+            String cnpj = raw.replaceAll("\\D", "");
+
             if (cnpj.length() != 14) {
                 statusMessage.setText("❌ CNPJ deve ter 14 dígitos");
                 statusMessage.setTextColor(Color.parseColor("#F85149"));
@@ -997,16 +1049,75 @@ public class TotemActivity extends Activity {
         
         setContentView(layout);
     }
+
+    private void showFatalErrorScreen(String message) {
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setBackgroundColor(Color.parseColor("#0D1117"));
+        layout.setPadding(40, 40, 40, 40);
+        layout.setGravity(android.view.Gravity.CENTER);
+
+        TextView title = new TextView(this);
+        title.setText("Erro ao iniciar o totem");
+        title.setTextSize(22);
+        title.setTextColor(Color.WHITE);
+        title.setGravity(android.view.Gravity.CENTER);
+        title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        title.setPadding(0, 0, 0, 24);
+        layout.addView(title);
+
+        TextView details = new TextView(this);
+        details.setText(message + "\n\nVerifique rede/configurações e reinicie o app.");
+        details.setTextSize(15);
+        details.setTextColor(Color.parseColor("#C9D1D9"));
+        details.setGravity(android.view.Gravity.CENTER);
+        layout.addView(details);
+
+        setContentView(layout);
+    }
+
+    private boolean isCieloSmartTerminal() {
+        String model = Build.MODEL == null ? "" : Build.MODEL.toUpperCase(Locale.US);
+        String manufacturer = Build.MANUFACTURER == null ? "" : Build.MANUFACTURER.toUpperCase(Locale.US);
+        return model.contains("DX8000")
+                || model.contains("L300")
+                || model.contains("L400")
+                || manufacturer.contains("CIELO");
+    }
+
+    private String getPaymentInstructionTitle() {
+        return "cielo".equalsIgnoreCase(activeProvider)
+                ? "PAGAMENTO SERÁ PROCESSADO NA CIELO"
+                : "PAGAMENTO SERÁ PROCESSADO NA PPC930";
+    }
+
+    private String getPaymentInstructionSubtitle() {
+        return "cielo".equalsIgnoreCase(activeProvider)
+                ? "Siga as instruções na maquininha Cielo"
+                : "Insira seu cartão quando solicitado";
+    }
+
+    private String getPaymentProcessingText() {
+        return "cielo".equalsIgnoreCase(activeProvider)
+                ? "COMUNICAÇÃO COM CIELO DX8000..."
+                : "COMUNICAÇÃO COM PPC930...";
+    }
     
     private void updateConnectivityStatus() {
         if (statusText != null) {
             if (supabaseHelper.isOnline()) {
-                statusText.setText("✅ " + machines.size() + " máquinas carregadas");
+                int machineCount = machines == null ? 0 : machines.size();
+                statusText.setText("✅ " + machineCount + " máquinas carregadas");
                 statusText.setTextColor(Color.parseColor("#4CAF50"));
             } else {
                 statusText.setText("🔄 Carregando máquinas...");
                 statusText.setTextColor(Color.parseColor("#FF9800"));
             }
         }
+    }
+
+    private int dp(int value) {
+        float density = getResources().getDisplayMetrics().density;
+        return Math.round(value * density);
     }
 }

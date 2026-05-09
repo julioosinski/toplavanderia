@@ -1,6 +1,8 @@
 package app.lovable.toplavanderia;
 
 import android.content.Context;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.util.Log;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -77,20 +79,25 @@ public class SupabaseHelper {
      */
     public boolean configureLaundryByCNPJ(String cnpj) {
         Log.d(TAG, "=== CONFIGURANDO LAVANDERIA POR CNPJ ===");
-        Log.d(TAG, "CNPJ: " + cnpj);
-        
+        String digits = cnpj == null ? "" : cnpj.replaceAll("\\D", "");
+        Log.d(TAG, "CNPJ (14 dígitos): " + digits);
+        if (digits.length() != 14) {
+            Log.e(TAG, "CNPJ inválido: esperado 14 dígitos após remover pontuação");
+            return false;
+        }
+
         try {
-            Laundry laundry = fetchLaundryByCNPJ(cnpj);
-            
+            Laundry laundry = fetchLaundryByCNPJ(digits);
+
             if (laundry != null) {
-                this.currentLaundryCNPJ = cnpj;
+                this.currentLaundryCNPJ = digits;
                 this.currentLaundryId = laundry.getId();
                 this.currentLaundryName = laundry.getName();
                 
                 // Salvar nas preferências
                 android.content.SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
                 prefs.edit()
-                    .putString(PREF_LAUNDRY_CNPJ, cnpj)
+                    .putString(PREF_LAUNDRY_CNPJ, digits)
                     .putString(PREF_LAUNDRY_ID, laundry.getId())
                     .putString(PREF_LAUNDRY_NAME, laundry.getName())
                     .putString(PREF_LAUNDRY_LOGO, laundry.getLogoUrl())
@@ -103,7 +110,7 @@ public class SupabaseHelper {
                 Log.d(TAG, "✅ Lavanderia configurada com sucesso: " + laundry.getName());
                 return true;
             } else {
-                Log.e(TAG, "❌ Lavanderia não encontrada com CNPJ: " + cnpj);
+                Log.e(TAG, "❌ Lavanderia não encontrada com CNPJ: " + digits);
                 return false;
             }
             
@@ -156,6 +163,17 @@ public class SupabaseHelper {
     private JSONObject fetchSystemSettings() {
         if (cachedSystemSettings != null) return cachedSystemSettings;
         if (currentLaundryId == null) return null;
+        // Evita NetworkOnMainThreadException durante bootstrap da Activity.
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            new Thread(() -> {
+                try {
+                    fetchSystemSettings();
+                } catch (Exception ignored) {
+                    // Keep silent: settings are optional for first paint.
+                }
+            }).start();
+            return null;
+        }
         try {
             String url = SUPABASE_URL + "/rest/v1/rpc/get_totem_settings";
             HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
@@ -190,7 +208,25 @@ public class SupabaseHelper {
     public String getPaymentProvider() {
         JSONObject s = fetchSystemSettings();
         if (s != null) return s.optString("paygo_provedor", "paygo");
-        return "paygo";
+        return isCieloSmartTerminal() ? "cielo" : "paygo";
+    }
+
+    private boolean isCieloSmartTerminal() {
+        try {
+            String model = Build.MODEL == null ? "" : Build.MODEL.toUpperCase(Locale.US);
+            String manufacturer = Build.MANUFACTURER == null ? "" : Build.MANUFACTURER.toUpperCase(Locale.US);
+            boolean cieloModel = model.contains("DX8000")
+                    || model.contains("L300")
+                    || model.contains("L400")
+                    || manufacturer.contains("CIELO");
+            if (cieloModel) return true;
+
+            PackageManager pm = context.getPackageManager();
+            pm.getPackageInfo("com.ads.lio.uriappclient", 0);
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     public String getCieloClientId() {

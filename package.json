@@ -14,7 +14,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "supabase:link": "pnpm dlx supabase link --project-ref rkdybjzwiwwqqzjfmerm",
-    "supabase:db:push": "pnpm dlx supabase db push --linked",
+    "supabase:db:push": "node scripts/supabase-db-push.cjs",
     "supabase:deploy:create-user": "pnpm dlx supabase functions deploy create-user --project-ref rkdybjzwiwwqqzjfmerm --use-api",
     "supabase:deploy:list-laundry-admins": "pnpm dlx supabase functions deploy list-laundry-admins --project-ref rkdybjzwiwwqqzjfmerm --use-api",
     "supabase:deploy:esp32-credit-release": "pnpm dlx supabase functions deploy esp32-credit-release --project-ref rkdybjzwiwwqqzjfmerm --use-api",
