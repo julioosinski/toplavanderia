@@ -43,7 +43,6 @@ import org.json.JSONObject;
  */
 public class TotemActivity extends Activity {
     private static final String TAG = "TotemActivity";
-    private static final int BRIEF_APPROVED_SCREEN_MS = 1000;
 
     private SupabaseHelper supabaseHelper;
     private PaymentManager activePaymentManager;
@@ -486,15 +485,11 @@ public class TotemActivity extends Activity {
         
         // Detalhes da máquina
         TextView details = new TextView(this);
-        String payHint = "cielo".equalsIgnoreCase(activeProvider)
-            ? "Escolha: crédito, débito ou PIX.\n\n"
-            : "";
         details.setText("Máquina: " + machine.getName() + "\n" +
                        "Tipo: " + machine.getTypeDisplay() + "\n" +
                        "ESP32: " + machine.getEsp32Id() + " (Relay " + machine.getRelayPin() + ")\n" +
                        "Preço: R$ " + new DecimalFormat("0.00").format(machine.getPrice()) + "\n" +
                        "Duração: " + machine.getDuration() + " minutos\n\n" +
-                       payHint +
                        "💳 " + getPaymentInstructionTitle() + "\n" +
                        getPaymentInstructionSubtitle());
         details.setTextSize(16);
@@ -522,44 +517,8 @@ public class TotemActivity extends Activity {
         );
         confirmParams.setMargins(0, 0, 0, dp(10));
         confirmButton.setLayoutParams(confirmParams);
-        if ("cielo".equalsIgnoreCase(activeProvider)) {
-            confirmButton.setText("💳 CRÉDITO à vista");
-            confirmButton.setOnClickListener(v -> processPayment(machine, "credit"));
-            buttonRow.addView(confirmButton);
-
-            Button debitButton = new Button(this);
-            debitButton.setText("💳 DÉBITO");
-            debitButton.setTextSize(16);
-            debitButton.setPadding(dp(16), dp(16), dp(16), dp(16));
-            debitButton.setBackgroundColor(Color.parseColor("#00897B"));
-            debitButton.setTextColor(Color.WHITE);
-            LinearLayout.LayoutParams debitParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            );
-            debitParams.setMargins(0, 0, 0, dp(10));
-            debitButton.setLayoutParams(debitParams);
-            debitButton.setOnClickListener(v -> processPayment(machine, "debit"));
-            buttonRow.addView(debitButton);
-
-            Button pixButton = new Button(this);
-            pixButton.setText("📱 PIX (QR Code)");
-            pixButton.setTextSize(16);
-            pixButton.setPadding(dp(16), dp(16), dp(16), dp(16));
-            pixButton.setBackgroundColor(Color.parseColor("#9C27B0"));
-            pixButton.setTextColor(Color.WHITE);
-            LinearLayout.LayoutParams pixParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            );
-            pixParams.setMargins(0, 0, 0, dp(10));
-            pixButton.setLayoutParams(pixParams);
-            pixButton.setOnClickListener(v -> processPayment(machine, "pix"));
-            buttonRow.addView(pixButton);
-        } else {
-            confirmButton.setOnClickListener(v -> processPayment(machine, "credit"));
-            buttonRow.addView(confirmButton);
-        }
+        confirmButton.setOnClickListener(v -> processPayment(machine));
+        buttonRow.addView(confirmButton);
         
         // Botão cancelar
         Button cancelButton = new Button(this);
@@ -585,6 +544,13 @@ public class TotemActivity extends Activity {
         setContentView(scrollView);
     }
     
+    /**
+     * Abre o fluxo de pagamento (Cielo: crédito à vista no deep link; cartão/PIX/débito podem ser escolhidos na tela nativa).
+     */
+    private void processPayment(SupabaseHelper.Machine machine) {
+        processPayment(machine, "credit");
+    }
+
     /**
      * @param paymentTypeForManager tipo enviado ao {@link PaymentManager} (ex.: credit, pix para Cielo LIO).
      */
@@ -909,11 +875,10 @@ public class TotemActivity extends Activity {
                 if (esp32Activated) {
                     Log.d(TAG, "✅ ESP32 acionado com sucesso - máquina liberada");
                     supabaseHelper.startMachineUsage(machineSnapshot.getId(), machineSnapshot.getDuration());
-                    runOnUiThread(() -> showBriefApprovedThenReset(
-                        machineSnapshot,
-                        authorizationCode,
-                        transactionId
-                    ));
+                    runOnUiThread(() -> {
+                        triggerAutomaticReceiptPrint(machineSnapshot, authorizationCode, transactionId);
+                        resetToNewTransaction();
+                    });
                 } else {
                     Log.e(TAG, "❌ Falha ao acionar ESP32");
                     runOnUiThread(() -> handlePaymentError("Pagamento aprovado mas a máquina não pôde ser acionada. Entre em contato com a administração."));
@@ -925,31 +890,6 @@ public class TotemActivity extends Activity {
         }).start();
     }
     
-    private void showBriefApprovedThenReset(SupabaseHelper.Machine machine, String authorizationCode, String transactionId) {
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(50, 50, 50, 50);
-        layout.setGravity(android.view.Gravity.CENTER);
-        layout.setBackgroundColor(Color.parseColor("#4CAF50"));
-
-        TextView successText = new TextView(this);
-        successText.setText("✅ Pagamento aprovado!\n\n" +
-            "Máquina liberada.\n\n" +
-            "Retornando para nova operação...");
-        successText.setTextSize(18);
-        successText.setGravity(android.view.Gravity.CENTER);
-        successText.setPadding(20, 20, 20, 20);
-        successText.setTextColor(Color.WHITE);
-        layout.addView(successText);
-
-        setContentView(layout);
-
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            triggerAutomaticReceiptPrint(machine, authorizationCode, transactionId);
-            resetToNewTransaction();
-        }, BRIEF_APPROVED_SCREEN_MS);
-    }
-
     private void triggerAutomaticReceiptPrint(SupabaseHelper.Machine machine, String authorizationCode, String transactionId) {
         // No fluxo Cielo via deep link, o comprovante geralmente é gerenciado pelo app de pagamento.
         // Aqui mantemos o gatilho explícito para rastreabilidade operacional no log.
