@@ -92,8 +92,13 @@ export function isEsp32Reachable(
   if (!esp32) return false;
   if (esp32.is_online === false) return false;
   const lastHb = esp32.last_heartbeat ? new Date(esp32.last_heartbeat) : null;
-  if (!lastHb) return false;
-  return (Date.now() - lastHb.getTime()) <= staleMs;
+  if (!lastHb || Number.isNaN(lastHb.getTime())) return false;
+  const now = Date.now();
+  const ageMs = now - lastHb.getTime();
+  // Relógio do cliente atrasado: heartbeat parece "no futuro" e ageMs negativo faria (ageMs <= stale) sempre true.
+  if (ageMs < -5_000) return false;
+  if (lastHb.getTime() > now + 120_000) return false;
+  return ageMs <= staleMs;
 }
 
 /**

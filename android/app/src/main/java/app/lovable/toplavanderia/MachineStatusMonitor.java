@@ -258,43 +258,11 @@ public class MachineStatusMonitor {
     }
 
     private boolean isEsp32Reachable(JSONObject esp32Status) {
-        if (esp32Status == null) {
-            return false;
-        }
         try {
-            if (!esp32Status.optBoolean("is_online", false)) {
-                return false;
-            }
-            String lastHeartbeat = esp32Status.optString("last_heartbeat", null);
-            if (lastHeartbeat == null || lastHeartbeat.isEmpty()) {
-                return false;
-            }
-            long heartbeatTime = parseISODate(lastHeartbeat);
-            if (heartbeatTime <= 0) {
-                return false;
-            }
-            return (System.currentTimeMillis() - heartbeatTime) <= Esp32TotemPolicy.HEARTBEAT_STALE_MS;
+            return Esp32TotemPolicy.isEsp32Reachable(esp32Status);
         } catch (Exception e) {
             Log.e(TAG, "Erro ao verificar reachability ESP32", e);
             return false;
-        }
-    }
-
-    private long parseISODate(String isoDate) {
-        try {
-            String s = isoDate.replace("Z", "");
-            int dot = s.indexOf('.');
-            if (dot > 0) {
-                s = s.substring(0, dot);
-            }
-            if (s.length() < 19) {
-                return 0;
-            }
-            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US);
-            sdf.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
-            return sdf.parse(s.substring(0, 19)).getTime();
-        } catch (Exception e) {
-            return 0;
         }
     }
 
@@ -375,7 +343,7 @@ public class MachineStatusMonitor {
 
     private long elapsedMinutesSince(String isoUpdatedAt) {
         try {
-            long t = parseISODate(isoUpdatedAt);
+            long t = Esp32TotemPolicy.parseHeartbeatToUtcMillis(isoUpdatedAt);
             if (t <= 0) {
                 return -1;
             }

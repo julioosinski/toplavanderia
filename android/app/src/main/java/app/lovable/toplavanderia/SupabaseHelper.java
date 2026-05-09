@@ -11,12 +11,9 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
-import java.util.TimeZone;
 
 /**
  * HELPER PARA CONEXÃO COM SUPABASE
@@ -442,7 +439,7 @@ public class SupabaseHelper {
                     machine.setLocation(machineJson.optString("location", "Conjunto A"));
                     machine.setEsp32Id(machineJson.optString("esp32_id", "main"));
                     machine.setRelayPin(machineJson.optInt("relay_pin", 1));
-                    machine.setEsp32Online(true); // Será atualizado pelo loadEsp32Status
+                    machine.setEsp32Online(false); // Atualizado em loadEsp32Status
                     
                     machines.add(machine);
                 }
@@ -543,39 +540,19 @@ public class SupabaseHelper {
      * Valida se ESP32 está realmente online (verifica timeout de heartbeat)
      */
     private boolean isEsp32ReallyOnline(JSONObject esp32Status) {
-        if (esp32Status == null) {
-            return false;
-        }
-        
         try {
-            boolean isOnline = esp32Status.optBoolean("is_online", false);
-            String lastHeartbeat = esp32Status.optString("last_heartbeat", null);
-            
-            if (!isOnline || lastHeartbeat == null) {
-                return false;
+            boolean ok = Esp32TotemPolicy.isEsp32Reachable(esp32Status);
+            if (esp32Status != null) {
+                String id = esp32Status.optString("esp32_id", "?");
+                long age = 0;
+                String hb = esp32Status.optString("last_heartbeat", "");
+                long t = Esp32TotemPolicy.parseHeartbeatToUtcMillis(hb);
+                if (t > 0) {
+                    age = (System.currentTimeMillis() - t) / 1000;
+                }
+                Log.d(TAG, "ESP32 " + id + " - Heartbeat age: " + age + "s, reachable: " + ok);
             }
-            
-            // Heartbeat recente — ms (evitar truncar em minutos: antes ficava online até ~2 min)
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US);
-            sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
-            String hb = lastHeartbeat.replace("Z", "");
-            int dot = hb.indexOf('.');
-            if (dot > 0) {
-                hb = hb.substring(0, dot);
-            }
-            Date heartbeatDate = sdf.parse(hb.length() >= 19 ? hb.substring(0, 19) : hb);
-            
-            if (heartbeatDate == null) {
-                return false;
-            }
-            
-            long ageMs = System.currentTimeMillis() - heartbeatDate.getTime();
-            boolean isRecent = ageMs <= Esp32TotemPolicy.HEARTBEAT_STALE_MS;
-            
-            Log.d(TAG, "ESP32 " + esp32Status.getString("esp32_id") +
-                  " - Heartbeat age: " + (ageMs / 1000) + "s, reachable: " + isRecent);
-            
-            return isRecent;
+            return ok;
         } catch (Exception e) {
             Log.e(TAG, "Error validating ESP32 heartbeat: " + e.getMessage());
             return false;
@@ -610,7 +587,7 @@ public class SupabaseHelper {
         machine.setLocation(location);
         machine.setEsp32Id(esp32Id);
         machine.setRelayPin(relayPin);
-        machine.setEsp32Online(true); // Por padrão, assumir que está online
+        machine.setEsp32Online(false);
         return machine;
     }
     

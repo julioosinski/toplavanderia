@@ -205,14 +205,13 @@ public class TotemActivity extends Activity {
         
         Log.d(TAG, "Atualizando status de " + statuses.size() + " máquinas");
         
-        // Atualizar lista de máquinas com status real
+        java.util.HashSet<String> seen = new java.util.HashSet<>();
         for (MachineStatusMonitor.MachineStatus status : statuses) {
+            seen.add(status.machineId);
             for (SupabaseHelper.Machine machine : machines) {
                 if (machine.getId().equals(status.machineId)) {
-                    // Atualizar status da máquina
                     machine.setEsp32Online(status.esp32Online);
                     
-                    // Mapear computed status para status da máquina
                     if (status.isAvailable()) {
                         machine.setStatus("LIVRE");
                     } else if (status.isRunning()) {
@@ -227,8 +226,14 @@ public class TotemActivity extends Activity {
                 }
             }
         }
+        // Resposta incompleta ou máquina sumiu do RPC: não manter ESP "online" por cache velho
+        for (SupabaseHelper.Machine machine : machines) {
+            if (!seen.contains(machine.getId())) {
+                machine.setEsp32Online(false);
+                machine.setStatus("OFFLINE");
+            }
+        }
         
-        // Atualizar display das máquinas
         displayMachines();
     }
     
@@ -788,18 +793,7 @@ public class TotemActivity extends Activity {
                     if (!esp32Id.equals(esp32Data.optString("esp32_id"))) {
                         continue;
                     }
-                    boolean isOnline = esp32Data.getBoolean("is_online");
-                    String lastHeartbeat = esp32Data.optString("last_heartbeat", null);
-                    
-                    if (!isOnline || lastHeartbeat == null) {
-                        return false;
-                    }
-                    
-                    long heartbeatTime = parseISODate(lastHeartbeat);
-                    if (heartbeatTime <= 0) {
-                        return false;
-                    }
-                    return (System.currentTimeMillis() - heartbeatTime) <= Esp32TotemPolicy.HEARTBEAT_STALE_MS;
+                    return Esp32TotemPolicy.isEsp32Reachable(esp32Data);
                 }
             }
             
@@ -809,27 +803,6 @@ public class TotemActivity extends Activity {
         } catch (Exception e) {
             Log.e(TAG, "Erro ao verificar ESP32", e);
             return false;
-        }
-    }
-    
-    private long parseISODate(String isoDate) {
-        if (isoDate == null || isoDate.isEmpty()) {
-            return 0;
-        }
-        try {
-            String s = isoDate.replace("Z", "");
-            int dot = s.indexOf('.');
-            if (dot > 0) {
-                s = s.substring(0, dot);
-            }
-            if (s.length() < 19) {
-                return 0;
-            }
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US);
-            sdf.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
-            return sdf.parse(s.substring(0, 19)).getTime();
-        } catch (Exception e) {
-            return 0;
         }
     }
     
