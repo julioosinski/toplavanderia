@@ -10,9 +10,9 @@ export const ESP32_HEARTBEAT_STALE_MINUTES = 1;
 
 /**
  * Totem: tempo sem heartbeat para considerar o link com o ESP perdido (mais rápido que o servidor).
- * Firmware envia heartbeat ~30s; 55s ≈ um ciclo perdido.
+ * Firmware envia heartbeat ~30s; 42s ≈ um ciclo perdido + margem (totem / maquininha).
  */
-export const ESP32_TOTEM_HEARTBEAT_STALE_MS = 55_000;
+export const ESP32_TOTEM_HEARTBEAT_STALE_MS = 42_000;
 
 function relayKey(pin: number): string {
   return `relay_${pin}`;

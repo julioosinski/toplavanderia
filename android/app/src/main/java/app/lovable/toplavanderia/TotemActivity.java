@@ -162,7 +162,8 @@ public class TotemActivity extends Activity {
         try {
             if (statusMonitor != null) {
                 statusMonitor.startMonitoring();
-                Log.d(TAG, "Monitor de status iniciado");
+                statusMonitor.requestImmediatePoll();
+                Log.d(TAG, "Monitor de status iniciado + poll imediato");
             }
             if (supabaseHelper != null && supabaseHelper.isConfigured()) {
                 loadMachines();
@@ -178,10 +179,17 @@ public class TotemActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
+        // Não parar o monitor: no fluxo Cielo o app de pagamento cobre a tela (onPause) e o polling
+        // parava por minutos — o status offline só atualizava ao voltar. Kiosk: manter consultas.
+        Log.d(TAG, "onPause: monitor de ESP segue ativo em segundo plano");
+    }
+
+    @Override
+    protected void onDestroy() {
         if (statusMonitor != null) {
             statusMonitor.stopMonitoring();
-            Log.d(TAG, "Monitor de status pausado");
         }
+        super.onDestroy();
     }
     
     /**

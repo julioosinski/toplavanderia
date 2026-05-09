@@ -12,6 +12,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * MONITOR DE STATUS DAS MÁQUINAS EM TEMPO REAL
@@ -32,6 +33,7 @@ public class MachineStatusMonitor {
     private SupabaseHelper supabaseHelper;
     private StatusUpdateListener listener;
     private boolean isRunning = false;
+    private final AtomicBoolean fetchInFlight = new AtomicBoolean(false);
 
     public interface StatusUpdateListener {
         void onStatusUpdate(List<MachineStatus> statuses);
@@ -64,6 +66,13 @@ public class MachineStatusMonitor {
         handler.post(pollRunnable);
     }
 
+    /**
+     * Força uma leitura imediata (ex.: ao voltar do app Cielo). Ignora se já houver fetch em andamento.
+     */
+    public void requestImmediatePoll() {
+        fetchMachineStatuses();
+    }
+
     public void stopMonitoring() {
         isRunning = false;
         if (pollRunnable != null) {
@@ -73,6 +82,9 @@ public class MachineStatusMonitor {
     }
 
     private void fetchMachineStatuses() {
+        if (!fetchInFlight.compareAndSet(false, true)) {
+            return;
+        }
         new Thread(() -> {
             try {
                 String laundryId = supabaseHelper.getLaundryId();
@@ -81,8 +93,18 @@ public class MachineStatusMonitor {
                     return;
                 }
 
-                JSONArray machinesArray = fetchPublicMachines(laundryId);
-                JSONArray esp32Array = fetchEsp32StatusesForLaundry(laundryId);
+                // Paralelizar RPCs — na maquininha Cielo a rede costuma ser lenta; sequencial dobrou o tempo.
+                final JSONArray[] machinesBox = new JSONArray[1];
+                final JSONArray[] esp32Box = new JSONArray[1];
+                Thread tMachines = new Thread(() -> machinesBox[0] = fetchPublicMachines(laundryId), "totem-machines-rpc");
+                Thread tEsp32 = new Thread(() -> esp32Box[0] = fetchEsp32StatusesForLaundry(laundryId), "totem-esp32-rpc");
+                tMachines.start();
+                tEsp32.start();
+                tMachines.join(12_000);
+                tEsp32.join(12_000);
+
+                JSONArray machinesArray = machinesBox[0];
+                JSONArray esp32Array = esp32Box[0];
 
                 if (machinesArray == null) {
                     Log.w(TAG, "Erro ao buscar máquinas");
@@ -136,6 +158,8 @@ public class MachineStatusMonitor {
 
             } catch (Exception e) {
                 Log.e(TAG, "Erro ao buscar status", e);
+            } finally {
+                fetchInFlight.set(false);
             }
         }).start();
     }
@@ -157,8 +181,8 @@ public class MachineStatusMonitor {
             connection.setRequestMethod("POST");
             SupabaseConfig.applyJsonHeaders(connection);
             connection.setDoOutput(true);
-            connection.setConnectTimeout(8000);
-            connection.setReadTimeout(8000);
+            connection.setConnectTimeout(6000);
+            connection.setReadTimeout(6000);
 
             JSONObject body = new JSONObject();
             body.put("_laundry_id", laundryId);
