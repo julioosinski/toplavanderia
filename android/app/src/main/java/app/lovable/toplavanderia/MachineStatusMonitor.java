@@ -118,6 +118,7 @@ public class MachineStatusMonitor {
                         esp32Map.put(esp32.getString("esp32_id"), esp32);
                     }
                 }
+                Esp32TotemPolicy.retainHeartbeatAnchors(esp32Map.keySet());
 
                 List<MachineStatus> statuses = new ArrayList<>();
                 for (int i = 0; i < machinesArray.length(); i++) {

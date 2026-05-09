@@ -1,10 +1,14 @@
 package app.lovable.toplavanderia;
 
+import android.os.SystemClock;
+
 import org.json.JSONObject;
 
 import java.text.SimpleDateFormat;
 import java.util.Locale;
+import java.util.Set;
 import java.util.TimeZone;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Política de detecção de ESP32 no totem — manter alinhado a
@@ -23,7 +27,30 @@ public final class Esp32TotemPolicy {
      */
     private static final long MAX_PLAUSIBLE_CLOCK_SKEW_MS = 900_000L; // 15 min
 
+    private static final class HbAnchor {
+        final long tMillis;
+        final long elapsedRealtimeAtT;
+
+        HbAnchor(long tMillis, long elapsedRealtimeAtT) {
+            this.tMillis = tMillis;
+            this.elapsedRealtimeAtT = elapsedRealtimeAtT;
+        }
+    }
+
+    /** Por esp32_id: último {@code last_heartbeat} visto e quando passou a valer (tempo monotônico). */
+    private static final ConcurrentHashMap<String, HbAnchor> HB_ANCHORS = new ConcurrentHashMap<>();
+
     private Esp32TotemPolicy() {}
+
+    /**
+     * Remove âncoras de ESPs que não vieram na última leitura (troca de loja / lista).
+     */
+    public static void retainHeartbeatAnchors(Set<String> esp32IdsFromPoll) {
+        if (esp32IdsFromPoll == null) {
+            return;
+        }
+        HB_ANCHORS.keySet().removeIf(k -> !esp32IdsFromPoll.contains(k));
+    }
 
     /**
      * Converte {@code last_heartbeat} do Supabase (timestamptz ISO) para epoch UTC ms.
@@ -60,6 +87,10 @@ public final class Esp32TotemPolicy {
     /**
      * {@code is_online == false} explícito no JSON → offline. Campo ausente → não bloquear (alguns
      * caminhos REST só mandam heartbeat); decisão pelo tempo do heartbeat.
+     * <p>
+     * Usa duas regras: idade pelo relógio de parede (com correção de skew) e, crucial na maquininha,
+     * quanto tempo o mesmo {@code last_heartbeat} permanece inalterado em {@link SystemClock#elapsedRealtime()} —
+     * assim que o ESP para de enviar, o timestamp no banco congela e detectamos offline mesmo com relógio local errado.
      */
     public static boolean isEsp32Reachable(JSONObject esp32Status) {
         if (esp32Status == null) {
@@ -78,6 +109,11 @@ public final class Esp32TotemPolicy {
         if (t <= 0) {
             return false;
         }
+        String esp32Id = esp32Status.optString("esp32_id", "").trim();
+        if (esp32Id.isEmpty()) {
+            return false;
+        }
+
         long now = System.currentTimeMillis();
         long ageMs = now - t;
         if (ageMs < 0) {
@@ -90,7 +126,22 @@ public final class Esp32TotemPolicy {
         if (t > now + MAX_PLAUSIBLE_CLOCK_SKEW_MS) {
             return false;
         }
-        return ageMs <= HEARTBEAT_STALE_MS;
+
+        long rt = SystemClock.elapsedRealtime();
+        HbAnchor anchor = HB_ANCHORS.compute(esp32Id, (k, old) -> {
+            if (old == null || old.tMillis != t) {
+                return new HbAnchor(t, rt);
+            }
+            return old;
+        });
+        long frozenMs = rt - anchor.elapsedRealtimeAtT;
+
+        boolean wallStale = ageMs > HEARTBEAT_STALE_MS;
+        boolean frozenStale = frozenMs > HEARTBEAT_STALE_MS;
+        if (wallStale || frozenStale) {
+            return false;
+        }
+        return true;
     }
 
     private static boolean readBooleanLoose(JSONObject o, String key) {
