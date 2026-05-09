@@ -94,10 +94,13 @@ export function isEsp32Reachable(
   const lastHb = esp32.last_heartbeat ? new Date(esp32.last_heartbeat) : null;
   if (!lastHb || Number.isNaN(lastHb.getTime())) return false;
   const now = Date.now();
-  const ageMs = now - lastHb.getTime();
-  // Relógio do cliente atrasado: heartbeat parece "no futuro" e ageMs negativo faria (ageMs <= stale) sempre true.
-  if (ageMs < -5_000) return false;
-  if (lastHb.getTime() > now + 120_000) return false;
+  let ageMs = now - lastHb.getTime();
+  const maxSkew = 900_000; // 15 min — mesmo critério do Android (relógio local vs servidor)
+  if (ageMs < 0) {
+    if (-ageMs > maxSkew) return false;
+    ageMs = 0;
+  }
+  if (lastHb.getTime() > now + maxSkew) return false;
   return ageMs <= staleMs;
 }
 

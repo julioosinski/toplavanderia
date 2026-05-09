@@ -16,10 +16,12 @@ public final class Esp32TotemPolicy {
     /** Intervalo entre polls (Cielo: rede + dois RPCs — manter moderado). */
     public static final int STATUS_POLL_INTERVAL_MS = 2_500;
 
-    /** Tolerância se o relógio do terminal estiver alguns segundos atrasado ao servidor. */
-    private static final long FUTURE_HEARTBEAT_REJECT_MS = 5_000L;
-    /** Heartbeat absurdamente no futuro = dado inválido. */
-    private static final long MAX_FUTURE_SKEW_MS = 120_000L;
+    /**
+     * Se o relógio da maquininha está atrasado, o heartbeat (UTC) parece “no futuro” (ageMs negativo).
+     * Skew até este valor tratamos como relógio local errado e consideramos o heartbeat fresco.
+     * Acima disso é provável dado inválido / bug (evita “sempre online” de timestamps absurdos).
+     */
+    private static final long MAX_PLAUSIBLE_CLOCK_SKEW_MS = 900_000L; // 15 min
 
     private Esp32TotemPolicy() {}
 
@@ -56,15 +58,17 @@ public final class Esp32TotemPolicy {
     }
 
     /**
-     * ESP alcançável no totem: {@code is_online} explícito no JSON, heartbeat recente.
-     * Não usar default {@code true} para {@code is_online} — campo ausente = offline.
+     * {@code is_online == false} explícito no JSON → offline. Campo ausente → não bloquear (alguns
+     * caminhos REST só mandam heartbeat); decisão pelo tempo do heartbeat.
      */
     public static boolean isEsp32Reachable(JSONObject esp32Status) {
         if (esp32Status == null) {
             return false;
         }
-        if (!esp32Status.optBoolean("is_online", false)) {
-            return false;
+        if (esp32Status.has("is_online") && !esp32Status.isNull("is_online")) {
+            if (!readBooleanLoose(esp32Status, "is_online")) {
+                return false;
+            }
         }
         String hb = esp32Status.optString("last_heartbeat", "");
         if (hb.isEmpty() || "null".equalsIgnoreCase(hb.trim())) {
@@ -76,14 +80,25 @@ public final class Esp32TotemPolicy {
         }
         long now = System.currentTimeMillis();
         long ageMs = now - t;
-        // Bug comum na maquininha: relógio local atrasado → heartbeat "no futuro" → ageMs negativo
-        // e (ageMs <= STALE) ficava sempre true (ESP parecia sempre online).
-        if (ageMs < -FUTURE_HEARTBEAT_REJECT_MS) {
-            return false;
+        if (ageMs < 0) {
+            long futureByLocalClock = -ageMs;
+            if (futureByLocalClock > MAX_PLAUSIBLE_CLOCK_SKEW_MS) {
+                return false;
+            }
+            ageMs = 0;
         }
-        if (t > now + MAX_FUTURE_SKEW_MS) {
+        if (t > now + MAX_PLAUSIBLE_CLOCK_SKEW_MS) {
             return false;
         }
         return ageMs <= HEARTBEAT_STALE_MS;
+    }
+
+    private static boolean readBooleanLoose(JSONObject o, String key) {
+        try {
+            return o.getBoolean(key);
+        } catch (Exception e) {
+            String s = o.optString(key, "");
+            return "true".equalsIgnoreCase(s) || "1".equals(s);
+        }
     }
 }
