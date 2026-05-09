@@ -21,10 +21,6 @@ import java.util.List;
  */
 public class MachineStatusMonitor {
     private static final String TAG = "MachineStatusMonitor";
-    private static final int POLL_INTERVAL_MS = 5000;
-
-    /** Igual ao painel admin: ESP32_HEARTBEAT_STALE_MINUTES * 60s */
-    private static final long ESP_STALE_MS = 60_000L;
 
     private static final int DEFAULT_RELAY_LOGICAL_PIN = 1;
     private static final int DEFAULT_CYCLE_MINUTES = 40;
@@ -61,7 +57,7 @@ public class MachineStatusMonitor {
             public void run() {
                 if (!isRunning) return;
                 fetchMachineStatuses();
-                handler.postDelayed(this, POLL_INTERVAL_MS);
+                handler.postDelayed(this, Esp32TotemPolicy.STATUS_POLL_INTERVAL_MS);
             }
         };
 
@@ -253,7 +249,7 @@ public class MachineStatusMonitor {
             if (heartbeatTime <= 0) {
                 return false;
             }
-            return (System.currentTimeMillis() - heartbeatTime) <= ESP_STALE_MS;
+            return (System.currentTimeMillis() - heartbeatTime) <= Esp32TotemPolicy.HEARTBEAT_STALE_MS;
         } catch (Exception e) {
             Log.e(TAG, "Erro ao verificar reachability ESP32", e);
             return false;

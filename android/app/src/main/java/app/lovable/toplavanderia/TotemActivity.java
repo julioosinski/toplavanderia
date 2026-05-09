@@ -787,12 +787,11 @@ public class TotemActivity extends Activity {
                         return false;
                     }
                     
-                    // Verificar se heartbeat não está muito antigo (máximo 2 minutos)
                     long heartbeatTime = parseISODate(lastHeartbeat);
-                    long currentTime = System.currentTimeMillis();
-                    long diffMinutes = (currentTime - heartbeatTime) / (1000 * 60);
-                    
-                    return diffMinutes <= 2;
+                    if (heartbeatTime <= 0) {
+                        return false;
+                    }
+                    return (System.currentTimeMillis() - heartbeatTime) <= Esp32TotemPolicy.HEARTBEAT_STALE_MS;
                 }
             }
             
@@ -806,10 +805,21 @@ public class TotemActivity extends Activity {
     }
     
     private long parseISODate(String isoDate) {
+        if (isoDate == null || isoDate.isEmpty()) {
+            return 0;
+        }
         try {
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+            String s = isoDate.replace("Z", "");
+            int dot = s.indexOf('.');
+            if (dot > 0) {
+                s = s.substring(0, dot);
+            }
+            if (s.length() < 19) {
+                return 0;
+            }
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US);
             sdf.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
-            return sdf.parse(isoDate.substring(0, 19)).getTime();
+            return sdf.parse(s.substring(0, 19)).getTime();
         } catch (Exception e) {
             return 0;
         }

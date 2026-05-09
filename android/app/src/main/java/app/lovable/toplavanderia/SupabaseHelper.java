@@ -555,7 +555,7 @@ public class SupabaseHelper {
                 return false;
             }
             
-            // Heartbeat recente — alinhado ao painel (ESP32_HEARTBEAT_STALE_MINUTES = 1)
+            // Heartbeat recente — ms (evitar truncar em minutos: antes ficava online até ~2 min)
             SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US);
             sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
             String hb = lastHeartbeat.replace("Z", "");
@@ -569,11 +569,11 @@ public class SupabaseHelper {
                 return false;
             }
             
-            long minutesSince = (System.currentTimeMillis() - heartbeatDate.getTime()) / (1000 * 60);
-            boolean isRecent = minutesSince <= 1;
+            long ageMs = System.currentTimeMillis() - heartbeatDate.getTime();
+            boolean isRecent = ageMs <= Esp32TotemPolicy.HEARTBEAT_STALE_MS;
             
-            Log.d(TAG, "ESP32 " + esp32Status.getString("esp32_id") + 
-                  " - Heartbeat: " + minutesSince + " min ago, Online: " + isRecent);
+            Log.d(TAG, "ESP32 " + esp32Status.getString("esp32_id") +
+                  " - Heartbeat age: " + (ageMs / 1000) + "s, reachable: " + isRecent);
             
             return isRecent;
         } catch (Exception e) {
