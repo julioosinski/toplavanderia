@@ -43,7 +43,8 @@ import org.json.JSONObject;
  */
 public class TotemActivity extends Activity {
     private static final String TAG = "TotemActivity";
-    
+    private static final int BRIEF_APPROVED_SCREEN_MS = 1000;
+
     private SupabaseHelper supabaseHelper;
     private PaymentManager activePaymentManager;
     private RealPayGoManager payGoManager;
@@ -53,7 +54,9 @@ public class TotemActivity extends Activity {
     private List<SupabaseHelper.Machine> machines;
     private SupabaseHelper.Machine selectedMachine;
     private long currentOperationId = -1;
-    
+    /** credit ou pix — alinhado à constraint do Supabase (transactions.payment_method). */
+    private String currentOperationSupabasePaymentMethod = "credit";
+
     private TextView statusText;
     private TextView timeText;
     private LinearLayout machinesContainer;
@@ -483,11 +486,15 @@ public class TotemActivity extends Activity {
         
         // Detalhes da máquina
         TextView details = new TextView(this);
+        String payHint = "cielo".equalsIgnoreCase(activeProvider)
+            ? "Escolha: crédito, débito ou PIX.\n\n"
+            : "";
         details.setText("Máquina: " + machine.getName() + "\n" +
                        "Tipo: " + machine.getTypeDisplay() + "\n" +
                        "ESP32: " + machine.getEsp32Id() + " (Relay " + machine.getRelayPin() + ")\n" +
                        "Preço: R$ " + new DecimalFormat("0.00").format(machine.getPrice()) + "\n" +
                        "Duração: " + machine.getDuration() + " minutos\n\n" +
+                       payHint +
                        "💳 " + getPaymentInstructionTitle() + "\n" +
                        getPaymentInstructionSubtitle());
         details.setTextSize(16);
@@ -515,8 +522,44 @@ public class TotemActivity extends Activity {
         );
         confirmParams.setMargins(0, 0, 0, dp(10));
         confirmButton.setLayoutParams(confirmParams);
-        confirmButton.setOnClickListener(v -> processPayment(machine));
-        buttonRow.addView(confirmButton);
+        if ("cielo".equalsIgnoreCase(activeProvider)) {
+            confirmButton.setText("💳 CRÉDITO à vista");
+            confirmButton.setOnClickListener(v -> processPayment(machine, "credit"));
+            buttonRow.addView(confirmButton);
+
+            Button debitButton = new Button(this);
+            debitButton.setText("💳 DÉBITO");
+            debitButton.setTextSize(16);
+            debitButton.setPadding(dp(16), dp(16), dp(16), dp(16));
+            debitButton.setBackgroundColor(Color.parseColor("#00897B"));
+            debitButton.setTextColor(Color.WHITE);
+            LinearLayout.LayoutParams debitParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            );
+            debitParams.setMargins(0, 0, 0, dp(10));
+            debitButton.setLayoutParams(debitParams);
+            debitButton.setOnClickListener(v -> processPayment(machine, "debit"));
+            buttonRow.addView(debitButton);
+
+            Button pixButton = new Button(this);
+            pixButton.setText("📱 PIX (QR Code)");
+            pixButton.setTextSize(16);
+            pixButton.setPadding(dp(16), dp(16), dp(16), dp(16));
+            pixButton.setBackgroundColor(Color.parseColor("#9C27B0"));
+            pixButton.setTextColor(Color.WHITE);
+            LinearLayout.LayoutParams pixParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            );
+            pixParams.setMargins(0, 0, 0, dp(10));
+            pixButton.setLayoutParams(pixParams);
+            pixButton.setOnClickListener(v -> processPayment(machine, "pix"));
+            buttonRow.addView(pixButton);
+        } else {
+            confirmButton.setOnClickListener(v -> processPayment(machine, "credit"));
+            buttonRow.addView(confirmButton);
+        }
         
         // Botão cancelar
         Button cancelButton = new Button(this);
@@ -542,9 +585,18 @@ public class TotemActivity extends Activity {
         setContentView(scrollView);
     }
     
-    private void processPayment(SupabaseHelper.Machine machine) {
+    /**
+     * @param paymentTypeForManager tipo enviado ao {@link PaymentManager} (ex.: credit, pix para Cielo LIO).
+     */
+    private void processPayment(SupabaseHelper.Machine machine, String paymentTypeForManager) {
         new Thread(() -> {
             try {
+                if ("cielo".equalsIgnoreCase(activeProvider)) {
+                    cieloManager.takeLastDetectedSupabasePaymentMethod();
+                }
+                final String supabaseMethod = toSupabasePaymentMethod(paymentTypeForManager);
+                currentOperationSupabasePaymentMethod = supabaseMethod;
+
                 Log.d(TAG, "=== INICIANDO PROCESSAMENTO DE PAGAMENTO ===");
                 Log.d(TAG, "=== VALIDAÇÃO PRÉ-PAGAMENTO ===");
                 Log.d(TAG, "Máquina ID: " + machine.getId());
@@ -583,7 +635,8 @@ public class TotemActivity extends Activity {
                     machine.getTypeDisplay(),
                     machine.getPrice(),
                     "PENDING",
-                    "TXN" + currentOperationId
+                    "TXN" + currentOperationId,
+                    supabaseMethod
                 );
                 if (!operationCreated) {
                     Log.w(TAG, "Falha ao criar operação no Supabase; prosseguindo com fluxo local de pagamento");
@@ -599,11 +652,13 @@ public class TotemActivity extends Activity {
 
                 Log.d(TAG, "Operação criada: ID " + currentOperationId);
 
+                final String managerPaymentType = paymentTypeForManager == null || paymentTypeForManager.isEmpty()
+                    ? "credit" : paymentTypeForManager;
                 runOnUiThread(() -> {
                     showPaymentProcessing(machine);
                     activePaymentManager.processPayment(
                         machine.getPrice(),
-                        "credit",
+                        managerPaymentType,
                         "Top Lavanderia - " + machine.getName(),
                         "TOTEM" + currentOperationId
                     );
@@ -614,7 +669,21 @@ public class TotemActivity extends Activity {
             }
         }).start();
     }
-    
+
+    private static String toSupabasePaymentMethod(String paymentTypeForManager) {
+        if (paymentTypeForManager == null) {
+            return "credit";
+        }
+        String t = paymentTypeForManager.trim();
+        if ("pix".equalsIgnoreCase(t)) {
+            return "pix";
+        }
+        if ("debit".equalsIgnoreCase(t) || "debito".equalsIgnoreCase(t)) {
+            return "card";
+        }
+        return "credit";
+    }
+
     /**
      * Valida se a máquina ainda está disponível em tempo real
      * Faz consulta direta ao Supabase para garantir dados atualizados
@@ -798,6 +867,14 @@ public class TotemActivity extends Activity {
             return;
         }
 
+        if ("cielo".equalsIgnoreCase(activeProvider)) {
+            String detected = cieloManager.takeLastDetectedSupabasePaymentMethod();
+            if (detected != null && !detected.isEmpty()) {
+                currentOperationSupabasePaymentMethod = detected;
+                Log.d(TAG, "Forma de pagamento confirmada pela Cielo (Supabase): " + detected);
+            }
+        }
+
         new Thread(() -> {
             try {
                 Log.d(TAG, "=== PAGAMENTO APROVADO ===");
@@ -805,9 +882,12 @@ public class TotemActivity extends Activity {
                 Log.d(TAG, "Transação: " + transactionId);
 
                 // Fechar a transação pendente criada no início do fluxo como concluída.
+                String methodForComplete = currentOperationSupabasePaymentMethod != null
+                    ? currentOperationSupabasePaymentMethod
+                    : "credit";
                 boolean txCompleted = supabaseHelper.completeLatestTotemTransaction(
                     machineSnapshot.getId(),
-                    "card"
+                    methodForComplete
                 );
                 if (!txCompleted) {
                     Log.w(TAG, "Não foi possível marcar a transação do totem como concluída");
@@ -829,7 +909,11 @@ public class TotemActivity extends Activity {
                 if (esp32Activated) {
                     Log.d(TAG, "✅ ESP32 acionado com sucesso - máquina liberada");
                     supabaseHelper.startMachineUsage(machineSnapshot.getId(), machineSnapshot.getDuration());
-                    runOnUiThread(() -> showPaymentSuccess(authorizationCode, transactionId));
+                    runOnUiThread(() -> showBriefApprovedThenReset(
+                        machineSnapshot,
+                        authorizationCode,
+                        transactionId
+                    ));
                 } else {
                     Log.e(TAG, "❌ Falha ao acionar ESP32");
                     runOnUiThread(() -> handlePaymentError("Pagamento aprovado mas a máquina não pôde ser acionada. Entre em contato com a administração."));
@@ -841,50 +925,56 @@ public class TotemActivity extends Activity {
         }).start();
     }
     
-    private void showPaymentSuccess(String authorizationCode, String transactionId) {
+    private void showBriefApprovedThenReset(SupabaseHelper.Machine machine, String authorizationCode, String transactionId) {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(50, 50, 50, 50);
+        layout.setGravity(android.view.Gravity.CENTER);
         layout.setBackgroundColor(Color.parseColor("#4CAF50"));
-        
+
         TextView successText = new TextView(this);
-        successText.setText("✅ PAGAMENTO APROVADO!\n\n" +
-                           "Máquina: " + selectedMachine.getName() + "\n" +
-                           "Valor: R$ " + new DecimalFormat("0.00").format(selectedMachine.getPrice()) + "\n" +
-                           "Código: " + authorizationCode + "\n" +
-                           "Transação: " + transactionId + "\n" +
-                           "Data: " + getCurrentTime() + "\n\n" +
-                           "🔓 MÁQUINA LIBERADA!\n" +
-                           "🎉 Você pode usar o serviço agora!\n\n" +
-                           "⏰ Tempo de uso: " + selectedMachine.getDuration() + " minutos");
-        successText.setTextSize(16);
+        successText.setText("✅ Pagamento aprovado!\n\n" +
+            "Máquina liberada.\n\n" +
+            "Retornando para nova operação...");
+        successText.setTextSize(18);
         successText.setGravity(android.view.Gravity.CENTER);
         successText.setPadding(20, 20, 20, 20);
         successText.setTextColor(Color.WHITE);
         layout.addView(successText);
-        
-        // Botão para nova operação
-        Button newOperationButton = new Button(this);
-        newOperationButton.setText("🛒 NOVA OPERAÇÃO");
-        newOperationButton.setTextSize(18);
-        newOperationButton.setPadding(20, 25, 20, 25);
-        newOperationButton.setBackgroundColor(Color.WHITE);
-        newOperationButton.setTextColor(Color.parseColor("#4CAF50"));
-        newOperationButton.setOnClickListener(v -> {
-            selectedMachine = null;
-            currentOperationId = -1;
-            createTotemInterface();
-            loadMachines();
-        });
-        layout.addView(newOperationButton);
-        
+
         setContentView(layout);
+
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            triggerAutomaticReceiptPrint(machine, authorizationCode, transactionId);
+            resetToNewTransaction();
+        }, BRIEF_APPROVED_SCREEN_MS);
+    }
+
+    private void triggerAutomaticReceiptPrint(SupabaseHelper.Machine machine, String authorizationCode, String transactionId) {
+        // No fluxo Cielo via deep link, o comprovante geralmente é gerenciado pelo app de pagamento.
+        // Aqui mantemos o gatilho explícito para rastreabilidade operacional no log.
+        Log.d(TAG, "🖨️ Impressão automática acionada - máquina=" + machine.getName()
+            + ", método=" + currentOperationSupabasePaymentMethod
+            + ", auth=" + authorizationCode + ", txn=" + transactionId);
+    }
+
+    private void resetToNewTransaction() {
+        selectedMachine = null;
+        currentOperationId = -1;
+        currentOperationSupabasePaymentMethod = "credit";
+        createTotemInterface();
+        loadMachines();
     }
     
     private void handlePaymentError(String error) {
         Log.e(TAG, "=== ERRO NO PAGAMENTO ===");
         Log.e(TAG, "Erro: " + error);
-        
+
+        String displayError = error;
+        if ("cielo".equalsIgnoreCase(activeProvider) && error != null) {
+            displayError = error + appendCieloCommercialHints(error);
+        }
+
         // Mostrar tela de erro
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
@@ -892,7 +982,7 @@ public class TotemActivity extends Activity {
         layout.setBackgroundColor(Color.parseColor("#F44336"));
         
         TextView errorText = new TextView(this);
-        errorText.setText("❌ ERRO NO PAGAMENTO\n\n" + error + "\n\n" +
+        errorText.setText("❌ ERRO NO PAGAMENTO\n\n" + displayError + "\n\n" +
                          "Tente novamente ou verifique a conexão de pagamento.");
         errorText.setTextSize(16);
         errorText.setGravity(android.view.Gravity.CENTER);
@@ -917,7 +1007,47 @@ public class TotemActivity extends Activity {
         
         setContentView(layout);
     }
-    
+
+    /**
+     * Códigos como -990 (opt-in PIX / elegibilidade do POS) e -4007 (produto não permitido) vêm do
+     * estabelecimento/terminal Cielo, não do aplicativo. Orientação para o operador.
+     */
+    private String appendCieloCommercialHints(String error) {
+        if (error == null) {
+            return "";
+        }
+        String e = error.toLowerCase(java.util.Locale.ROOT);
+        StringBuilder sb = new StringBuilder();
+
+        if (e.contains("-990")
+                || e.contains("optin") || e.contains("opt-in")
+                || e.contains("não elegível") || e.contains("nao elegivel")
+                || e.contains("não elegivel")) {
+            sb.append("\n\n— PIX (-990 / elegibilidade) —\n");
+            sb.append("O terminal ou o cadastro do estabelecimento não está elegível ao opt-in Pix na Cielo. ");
+            sb.append("Conclua a habilitação em Minha Conta Cielo (Meu cadastro → Autorizações → Pix) e aguarde a liberação. ");
+            sb.append("Em caso de multi-EC, confira se o código do estabelecimento (merchant) no totem é o mesmo do terminal. ");
+            sb.append("Se o modelo/conta não suportar Pix neste POS, use apenas crédito ou fale com o suporte Cielo (4002-5472).");
+        }
+
+        if (e.contains("-4007") || e.contains("4007")
+                || e.contains("operação não permitida") || e.contains("operacao nao permitida")) {
+            sb.append("\n\n— Débito / produto (-4007) —\n");
+            sb.append("A Cielo recusou o produto solicitado (ex.: débito à vista). ");
+            sb.append("Verifique no contrato/cadastro se débito está habilitado para este estabelecimento e terminal. ");
+            sb.append("Confira também o merchantCode nas configurações do totem. ");
+            sb.append("Enquanto o débito não estiver liberado, use \"Crédito à vista\" no totem ou contate o suporte Cielo.");
+        }
+
+        if ((e.contains("pix") || (currentOperationSupabasePaymentMethod != null && "pix".equals(currentOperationSupabasePaymentMethod)))
+                && (e.contains("inválid") || e.contains("invalid") || e.contains("parâmetro") || e.contains("parametro") || e.contains("json"))) {
+            sb.append("\n\n— PIX (parâmetros) —\n");
+            sb.append("Confira Pix habilitado no cadastro Cielo e o merchantCode nas configurações do totem.");
+        }
+
+        return sb.toString();
+    }
+
     private void refreshMachines() {
         Log.d(TAG, "Atualizando máquinas...");
         loadMachines();

@@ -646,9 +646,16 @@ public class SupabaseHelper {
     // ===== MÉTODOS PARA OPERAÇÕES =====
     
     public boolean createTransaction(String machineId, String service, double price, String paymentCode, String transactionId) {
+        return createTransaction(machineId, service, price, paymentCode, transactionId, "card");
+    }
+
+    /**
+     * @param supabasePaymentMethod valor aceito pela constraint de transactions: credit, pix, card, etc.
+     */
+    public boolean createTransaction(String machineId, String service, double price, String paymentCode, String transactionId, String supabasePaymentMethod) {
         try {
             if (isOnline()) {
-                return createTransactionInSupabase(machineId, service, price, paymentCode, transactionId);
+                return createTransactionInSupabase(machineId, service, price, paymentCode, transactionId, supabasePaymentMethod);
             } else {
                 // Salvar localmente para sincronização posterior
                 return saveTransactionLocally(machineId, service, price, paymentCode, transactionId);
@@ -669,7 +676,7 @@ public class SupabaseHelper {
             JSONObject payload = new JSONObject();
             payload.put("_machine_id", machineId);
             payload.put("_laundry_id", currentLaundryId);
-            payload.put("_payment_method", paymentMethod == null || paymentMethod.isEmpty() ? "card" : paymentMethod);
+            payload.put("_payment_method", paymentMethod == null || paymentMethod.isEmpty() ? "credit" : paymentMethod);
 
             HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
             connection.setRequestMethod("POST");
@@ -704,7 +711,7 @@ public class SupabaseHelper {
         }
     }
     
-    private boolean createTransactionInSupabase(String machineId, String service, double price, String paymentCode, String transactionId) {
+    private boolean createTransactionInSupabase(String machineId, String service, double price, String paymentCode, String transactionId, String supabasePaymentMethod) {
         try {
             String url = SUPABASE_URL + "/rest/v1/rpc/create_totem_transaction";
 
@@ -712,7 +719,8 @@ public class SupabaseHelper {
             transaction.put("_machine_id", machineId);
             transaction.put("_total_amount", price);
             transaction.put("_duration_minutes", findMachineDuration(machineId));
-            transaction.put("_payment_method", "card");
+            String method = supabasePaymentMethod == null || supabasePaymentMethod.isEmpty() ? "credit" : supabasePaymentMethod;
+            transaction.put("_payment_method", method);
             transaction.put("_laundry_id", currentLaundryId);
 
             HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();

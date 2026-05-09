@@ -10,6 +10,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -36,6 +37,8 @@ public class CieloLioManager implements PaymentManager {
     private String pendingReference;
     private long pendingAmountCents;
     private String pendingPaymentCode;
+    /** credit | pix | card — inferido do retorno Cielo para alinhar Supabase/recibo. */
+    private volatile String lastDetectedSupabasePaymentMethod;
 
     public CieloLioManager(Context context) {
         this.context = context;
@@ -161,6 +164,7 @@ public class CieloLioManager implements PaymentManager {
             if (json.has("code") && json.has("reason")) {
                 int code = json.optInt("code", -1);
                 String reason = json.optString("reason", "Erro desconhecido");
+                Log.w(TAG, "Cielo erro (code=" + code + "): " + reason + " | payload=" + decoded);
                 if (callback != null) callback.onPaymentError("Erro Cielo (" + code + "): " + reason);
                 return;
             }
@@ -222,7 +226,9 @@ public class CieloLioManager implements PaymentManager {
                 authCode = cieloCode.isEmpty() ? txnId : cieloCode;
             }
 
-            Log.d(TAG, "Cielo APPROVED: ref=" + pendingReference + " paymentCode=" + pendingPaymentCode + " brand=" + brand + " maskSuffix=" + lastFour(mask));
+            lastDetectedSupabasePaymentMethod = resolveSupabaseMethodFromCieloPayment(payment);
+            Log.d(TAG, "Cielo APPROVED: ref=" + pendingReference + " solicitado=" + pendingPaymentCode
+                + " detectadoSupabase=" + lastDetectedSupabasePaymentMethod + " brand=" + brand + " maskSuffix=" + lastFour(mask));
             if (callback != null) callback.onPaymentSuccess(authCode, txnId);
         } catch (Exception e) {
             Log.e(TAG, "Erro ao processar callback Cielo", e);
@@ -233,6 +239,15 @@ public class CieloLioManager implements PaymentManager {
         }
     }
 
+    /**
+     * Consome o método inferido na última resposta de sucesso (chamar na thread do callback).
+     */
+    public synchronized String takeLastDetectedSupabasePaymentMethod() {
+        String s = lastDetectedSupabasePaymentMethod;
+        lastDetectedSupabasePaymentMethod = null;
+        return s;
+    }
+
     private JSONObject buildPaymentPayload(long amountCents, String paymentCode, String description, String reference) throws Exception {
         JSONObject payload = new JSONObject();
         payload.put("accessToken", accessToken);
@@ -240,11 +255,8 @@ public class CieloLioManager implements PaymentManager {
         payload.put("reference", reference);
         payload.put("value", String.valueOf(amountCents));
         payload.put("paymentCode", paymentCode);
-        // Doc Cielo: parcelas "não precisa informar" à vista. installments=0 no emulador costuma abrir fluxo de
-        // cartão com débito pré-selecionado; para PIX omitimos o campo para forçar fluxo carteira digital.
-        if (!"PIX".equalsIgnoreCase(paymentCode)) {
-            payload.put("installments", "0");
-        }
+        // À vista: installments "0" (string). Alguns firmwares rejeitam PIX sem o campo — enviamos também no PIX.
+        payload.put("installments", "0");
         payload.put("email", "cliente@toplavanderia.local");
 
         if (merchantCode != null && !merchantCode.isEmpty()) {
@@ -262,6 +274,46 @@ public class CieloLioManager implements PaymentManager {
         payload.put("items", items);
 
         return payload;
+    }
+
+    /**
+     * Mapeia payment_method do Supabase a partir do objeto payment do callback Cielo.
+     * @see <a href="https://developercielo.github.io/manual/cielo-lio">Manual Cielo LIO</a> (paymentFields.productName, statusCode)
+     */
+    private String resolveSupabaseMethodFromCieloPayment(JSONObject payment) {
+        String brand = payment != null ? payment.optString("brand", "") : "";
+        JSONObject pf = payment != null ? payment.optJSONObject("paymentFields") : null;
+        if (pf != null) {
+            String productName = pf.optString("productName", "");
+            String primary = pf.optString("primaryProductName", "");
+            String secondary = pf.optString("secondaryProductName", "");
+            String combined = (productName + " " + primary + " " + secondary).toUpperCase(Locale.ROOT);
+            if (combined.contains("PIX")) {
+                return "pix";
+            }
+            // Doc: captura QRCODE = 6 — pagamento via QR (ex.: PIX no fluxo misto)
+            String cardCaptureType = pf.optString("cardCaptureType", "");
+            if ("6".equals(cardCaptureType) && (brand == null || brand.isEmpty())) {
+                return "pix";
+            }
+            // Doc: statusCode — 0 em contexto PIX; 1 autorizada (cartão)
+            String statusCode = pf.optString("statusCode", "");
+            if ("0".equals(statusCode) && (brand == null || brand.isEmpty()) && !combined.contains("DEBITO")) {
+                return "pix";
+            }
+            if (combined.contains("DEBITO") || combined.contains("DÉBITO")) {
+                return "card";
+            }
+        }
+        if (pendingPaymentCode != null) {
+            if ("PIX".equalsIgnoreCase(pendingPaymentCode)) {
+                return "pix";
+            }
+            if ("DEBITO_AVISTA".equalsIgnoreCase(pendingPaymentCode)) {
+                return "card";
+            }
+        }
+        return "credit";
     }
 
     private String resolvePaymentCode(String paymentType) {
