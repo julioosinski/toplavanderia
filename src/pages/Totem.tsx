@@ -224,10 +224,69 @@ const Totem = () => {
   }, [systemSettings]);
 
   const handleMachineSelect = useCallback(
-    (machineId: string) => {
+    async (machineId: string) => {
       if (!canProcessPayments) return;
-      const machine = machines.find((m) => m.id === machineId);
+      let machine = machines.find((m) => m.id === machineId);
       if (!machine || machine.status !== "available") return;
+
+      // Garantir preço/tempo mais recentes antes de abrir pagamento.
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        let freshRow:
+          | { price_per_cycle: number | null; cycle_time_minutes: number | null; status: string | null }
+          | null
+          | undefined;
+
+        if (session) {
+          const { data } = await supabase
+            .from("machines")
+            .select("price_per_cycle, cycle_time_minutes, status")
+            .eq("id", machineId)
+            .eq("laundry_id", currentLaundry?.id)
+            .maybeSingle();
+          freshRow = data;
+        } else {
+          const { data } = await supabase.rpc("get_public_machines", {
+            _laundry_id: currentLaundry?.id ?? null,
+          });
+          freshRow = (data || []).find((row: { id: string }) => row.id === machineId) as
+            | { price_per_cycle: number | null; cycle_time_minutes: number | null; status: string | null }
+            | undefined;
+        }
+
+        if (!freshRow) {
+          toast({
+            title: "Falha ao sincronizar máquina",
+            description: "Não foi possível confirmar preço/tempo atualizados no servidor. Verifique a conexão do totem.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const freshStatus = String(freshRow.status || machine.status) as Machine["status"];
+        const freshPrice = Number(freshRow.price_per_cycle);
+        const freshDuration = Number(freshRow.cycle_time_minutes);
+        machine = {
+          ...machine,
+          status: freshStatus,
+          price: Number.isFinite(freshPrice) ? freshPrice : machine.price,
+          duration: Number.isFinite(freshDuration) ? freshDuration : machine.duration,
+        };
+        if (machine.status !== "available") {
+          return;
+        }
+      } catch (e) {
+        console.warn("[Totem] Falha ao obter dados mais recentes da máquina:", e);
+        toast({
+          title: "Erro de sincronização",
+          description: "Não foi possível validar preço/tempo atualizados. Tente novamente com internet estável.",
+          variant: "destructive",
+        });
+        return;
+      }
 
       const provider = (
         systemSettings?.paygo_provedor || (deviceMode === "smartpos" ? "cielo" : "paygo")
@@ -308,6 +367,7 @@ const Totem = () => {
     [
       canProcessPayments,
       machines,
+      currentLaundry?.id,
       systemSettings?.paygo_provedor,
       systemSettings?.cielo_client_id,
       systemSettings?.cielo_access_token,

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,10 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
   const [localSettings, setLocalSettings] = useState(settings);
   const { toast } = useToast();
   const { currentLaundry } = useLaundry();
+
+  useEffect(() => {
+    setLocalSettings(settings);
+  }, [settings]);
 
   const updateSetting = <K extends keyof SystemSettings>(key: K, value: SystemSettings[K]) => {
     setLocalSettings(prev => ({ ...prev, [key]: value }));
@@ -595,7 +599,7 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
         </CardHeader>
         <CardContent>
           <ESP32ConfigurationManager 
-            configurations={(localSettings.esp32_configurations || []).map(c => ({
+            configurations={(Array.isArray(localSettings.esp32_configurations) ? localSettings.esp32_configurations : []).map(c => ({
               id: c.id,
               name: c.name ?? '',
               host: c.host,

@@ -222,61 +222,79 @@ public class SupabaseHelper {
     public List<Machine> getAllMachines() {
         Log.d(TAG, "=== CARREGANDO MÁQUINAS ===");
         
-        // Se já temos dados reais carregados, retornar eles
-        if (realMachinesLoaded && realMachines != null && !realMachines.isEmpty()) {
-            Log.d(TAG, "Retornando dados reais do Supabase: " + realMachines.size());
-            return realMachines;
-        }
-        
-        // Retornar dados padrão se ainda não temos dados reais
-        List<Machine> machines = getDefaultMachines();
-        
-        // Carregar dados do Supabase em background se ainda não carregamos
-        if (!realMachinesLoaded) {
-            new Thread(() -> {
-                try {
-                    Log.d(TAG, "Tentando carregar dados reais do Supabase...");
+        // Sempre tentar refrescar em background para refletir mudanças de preço/tempo do painel.
+        new Thread(() -> {
+            try {
+                Log.d(TAG, "Tentando carregar dados reais do Supabase...");
+                
+                List<Machine> supabaseMachines = fetchMachinesFromSupabase();
+                
+                if (supabaseMachines != null && !supabaseMachines.isEmpty()) {
+                    Log.d(TAG, "✅ Dados reais do Supabase carregados: " + supabaseMachines.size());
                     
-                    // Tentar carregar dados do Supabase diretamente
-                    List<Machine> supabaseMachines = fetchMachinesFromSupabase();
+                    // Carregar status dos ESP32s para determinar disponibilidade real
+                    loadEsp32Status(supabaseMachines);
                     
-                    if (supabaseMachines != null && !supabaseMachines.isEmpty()) {
-                        Log.d(TAG, "✅ Dados reais do Supabase carregados: " + supabaseMachines.size());
-                        
-                        // Carregar status dos ESP32s para determinar disponibilidade real
-                        loadEsp32Status(supabaseMachines);
-                        
-                        for (Machine machine : supabaseMachines) {
-                            Log.d(TAG, "  - " + machine.getName() + " (" + machine.getType() + ") - " + machine.getStatus() + " (ESP32: " + machine.isEsp32Online() + ")");
-                        }
-                        
-                        // Armazenar dados reais
-                        realMachines = supabaseMachines;
-                        realMachinesLoaded = true;
-                        isOnline = true;
-                        
-                        Log.d(TAG, "Dados reais do Supabase prontos para exibição");
-                        
-                        // Notificar que os dados reais foram carregados
-                        if (listener != null) {
-                            listener.onMachinesLoaded(realMachines);
-                        }
-                    } else {
-                        Log.d(TAG, "❌ Falha ao carregar dados do Supabase - usando dados padrão");
+                    for (Machine machine : supabaseMachines) {
+                        Log.d(TAG, "  - " + machine.getName() + " (" + machine.getType() + ") - " + machine.getStatus() + " (ESP32: " + machine.isEsp32Online() + ")");
                     }
                     
-                } catch (Exception e) {
-                    Log.e(TAG, "Erro ao carregar máquinas do Supabase", e);
+                    // Armazenar dados reais
+                    realMachines = supabaseMachines;
+                    realMachinesLoaded = true;
+                    isOnline = true;
+                    
+                    Log.d(TAG, "Dados reais do Supabase prontos para exibição");
+                    
+                    // Notificar que os dados reais foram carregados
+                    if (listener != null) {
+                        listener.onMachinesLoaded(realMachines);
+                    }
+                } else {
+                    Log.d(TAG, "❌ Falha ao carregar dados do Supabase");
                 }
-            }).start();
+                
+            } catch (Exception e) {
+                Log.e(TAG, "Erro ao carregar máquinas do Supabase", e);
+            }
+        }).start();
+
+        List<Machine> machines;
+        if (realMachinesLoaded && realMachines != null && !realMachines.isEmpty()) {
+            machines = realMachines;
+        } else {
+            machines = getDefaultMachines();
         }
         
-        Log.d(TAG, "Máquinas carregadas: " + machines.size());
+        Log.d(TAG, "Máquinas retornadas: " + machines.size());
         for (Machine machine : machines) {
             Log.d(TAG, "  - " + machine.getName() + " (" + machine.getType() + ") - " + machine.getStatus());
         }
         
         return machines;
+    }
+
+    public Machine refreshMachineById(String machineId) {
+        try {
+            List<Machine> latest = fetchMachinesFromSupabase();
+            if (latest == null || latest.isEmpty()) {
+                return null;
+            }
+
+            loadEsp32Status(latest);
+            realMachines = latest;
+            realMachinesLoaded = true;
+            isOnline = true;
+
+            for (Machine machine : latest) {
+                if (machineId.equals(machine.getId())) {
+                    return machine;
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao atualizar máquina por ID", e);
+        }
+        return null;
     }
     
     /**

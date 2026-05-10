@@ -75,6 +75,45 @@ let systemSettingsRealtimeSequence = 0;
 
 const settingsCacheKey = (laundryId: string) => `${SETTINGS_CACHE_PREFIX}${laundryId}`;
 
+const parseUnknownJson = (value: unknown) => {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+};
+
+const normalizeEsp32Configurations = (value: unknown): ESP32Configuration[] => {
+  const parsed = parseUnknownJson(value);
+  if (!Array.isArray(parsed)) return [];
+
+  return parsed
+    .map((item): ESP32Configuration | null => {
+      if (!item || typeof item !== 'object') return null;
+      const config = item as Partial<ESP32Configuration>;
+      if (typeof config.id !== 'string' || typeof config.host !== 'string') return null;
+      return {
+        id: config.id,
+        host: config.host,
+        port: Number(config.port) || 80,
+        name: typeof config.name === 'string' ? config.name : '',
+        location: typeof config.location === 'string' ? config.location : '',
+        machines: Array.isArray(config.machines) ? config.machines.filter((m): m is string => typeof m === 'string') : [],
+      };
+    })
+    .filter((cfg): cfg is ESP32Configuration => cfg !== null);
+};
+
+const normalizeSystemSettings = (raw: SystemSettings, laundryId: string): SystemSettings => {
+  const defaults = totemSettingsDefaults(laundryId);
+  return {
+    ...defaults,
+    ...raw,
+    esp32_configurations: normalizeEsp32Configurations(raw.esp32_configurations),
+  };
+};
+
 const totemSettingsDefaults = (laundryId: string): SystemSettings => ({
   id: `totem-${laundryId}`,
   esp32_port: 80,
@@ -120,7 +159,7 @@ async function readCachedSettings(laundryId: string): Promise<SystemSettings | n
     if (!raw) return null;
     const parsed = JSON.parse(raw) as SystemSettings;
     if (!parsed?.id) return null;
-    return parsed;
+    return normalizeSystemSettings(parsed, laundryId);
   } catch (e) {
     console.warn('[useSystemSettings] cache read failed:', e);
     return null;
@@ -129,7 +168,7 @@ async function readCachedSettings(laundryId: string): Promise<SystemSettings | n
 
 async function writeCachedSettings(laundryId: string, data: SystemSettings): Promise<void> {
   try {
-    await nativeStorage.setItem(settingsCacheKey(laundryId), JSON.stringify(data));
+    await nativeStorage.setItem(settingsCacheKey(laundryId), JSON.stringify(normalizeSystemSettings(data, laundryId)));
   } catch (e) {
     console.warn('[useSystemSettings] cache write failed:', e);
   }
@@ -142,13 +181,13 @@ async function fetchTotemSettingsViaRpc(laundryId: string): Promise<SystemSettin
 
     const base = totemSettingsDefaults(laundryId);
     const rpcData = data as Partial<SystemSettings>;
-    return {
+    return normalizeSystemSettings({
       ...base,
       ...rpcData,
       // keep deterministic synthetic id for cache/query stability
       id: base.id,
       updated_at: new Date().toISOString(),
-    };
+    }, laundryId);
   } catch (e) {
     console.warn('[useSystemSettings] RPC get_totem_settings failed:', e);
     return null;
@@ -240,12 +279,12 @@ export const useSystemSettings = () => {
             return await readCachedSettings(currentLaundry.id);
           }
 
-          const created = newSettings as unknown as SystemSettings;
+          const created = normalizeSystemSettings(newSettings as unknown as SystemSettings, currentLaundry.id);
           await writeCachedSettings(currentLaundry.id, created);
           return created;
         }
 
-        const current = data as unknown as SystemSettings;
+        const current = normalizeSystemSettings(data as unknown as SystemSettings, currentLaundry.id);
         await writeCachedSettings(currentLaundry.id, current);
         return current;
       };
@@ -314,7 +353,6 @@ export const useSystemSettings = () => {
     if (!currentLaundry?.id) return;
 
     const channelName = `system-settings-changes-${currentLaundry.id}-${Date.now()}-${++systemSettingsRealtimeSequence}`;
-
     const channel = supabase
       .channel(channelName)
       .on(
@@ -372,10 +410,14 @@ export const usePayGOConfig = () => {
 export const useTEFConfig = () => {
   const { settings, isLoading } = useSystemSettings();
 
+  const tefConfigRaw = settings?.tef_config;
+  const tefConfig =
+    typeof tefConfigRaw === 'string' && tefConfigRaw.trim().length > 0
+      ? parseUnknownJson(tefConfigRaw)
+      : null;
+
   return {
-    tefConfig: settings?.tef_config 
-      ? JSON.parse(settings.tef_config) 
-      : null,
+    tefConfig,
     terminalId: settings?.tef_terminal_id,
     isLoading,
   };

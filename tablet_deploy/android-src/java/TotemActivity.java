@@ -732,15 +732,28 @@ public class TotemActivity extends Activity {
     
     private void handlePaymentSuccess(String authorizationCode, String transactionId) {
         try {
+            SupabaseHelper.Machine machineSnapshot = selectedMachine;
+            if (machineSnapshot != null) {
+                SupabaseHelper.Machine refreshed = supabaseHelper.refreshMachineById(machineSnapshot.getId());
+                if (refreshed != null) {
+                    machineSnapshot = refreshed;
+                    selectedMachine = refreshed;
+                }
+            }
+            if (machineSnapshot == null) {
+                handlePaymentError("Pagamento aprovado, mas a máquina selecionada não está disponível.");
+                return;
+            }
+
             Log.d(TAG, "=== PAGAMENTO APROVADO ===");
             Log.d(TAG, "Código: " + authorizationCode);
             Log.d(TAG, "Transação: " + transactionId);
             
             // Atualizar operação no Supabase
             boolean transactionUpdated = supabaseHelper.createTransaction(
-                selectedMachine.getId(),
-                selectedMachine.getTypeDisplay(),
-                selectedMachine.getPrice(),
+                machineSnapshot.getId(),
+                machineSnapshot.getTypeDisplay(),
+                machineSnapshot.getPrice(),
                 authorizationCode,
                 transactionId
             );
@@ -748,21 +761,21 @@ public class TotemActivity extends Activity {
             // NOVO: Acionar ESP32 via Edge Function
             Log.d(TAG, "=== ACIONANDO ESP32 ===");
             Log.d(TAG, "Endpoint: /functions/v1/esp32-control");
-            Log.d(TAG, "Payload: {esp32_id: " + selectedMachine.getEsp32Id() + ", relay_pin: " + selectedMachine.getRelayPin() + "}");
-            Log.d(TAG, "Acionando ESP32 para máquina: " + selectedMachine.getName());
+            Log.d(TAG, "Payload: {esp32_id: " + machineSnapshot.getEsp32Id() + ", relay_pin: " + machineSnapshot.getRelayPin() + "}");
+            Log.d(TAG, "Acionando ESP32 para máquina: " + machineSnapshot.getName());
             boolean esp32Activated = supabaseHelper.activateEsp32Relay(
-                selectedMachine.getEsp32Id(),      // ex: "lavadora_01"
-                selectedMachine.getRelayPin(),     // ex: 1
-                selectedMachine.getId(),           // UUID da máquina
+                machineSnapshot.getEsp32Id(),      // ex: "lavadora_01"
+                machineSnapshot.getRelayPin(),     // ex: 1
+                machineSnapshot.getId(),           // UUID da máquina
                 transactionId,                     // ID da transação
-                selectedMachine.getDuration()      // Tempo em minutos
+                machineSnapshot.getDuration()      // Tempo em minutos
             );
             
             if (esp32Activated) {
                 Log.d(TAG, "✅ ESP32 acionado com sucesso - máquina liberada");
                 
                 // Iniciar uso da máquina com tempo de duração
-                boolean statusUpdated = supabaseHelper.startMachineUsage(selectedMachine.getId(), selectedMachine.getDuration());
+                boolean statusUpdated = supabaseHelper.startMachineUsage(machineSnapshot.getId(), machineSnapshot.getDuration());
                 
                 // Mostrar tela de sucesso
                 showPaymentSuccess(authorizationCode, transactionId);

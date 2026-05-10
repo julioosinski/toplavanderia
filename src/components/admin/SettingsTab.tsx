@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Building2 } from "lucide-react";
 import { ESP32PendingApproval } from "./ESP32PendingApproval";
 import { ESP32ConfigQRCode } from "./ESP32ConfigQRCode";
+import { SectionErrorBoundary } from "@/components/system/SectionErrorBoundary";
 
 export const SettingsTab = () => {
   const { settings, isLoading, updateSettings, isUpdating } = useSystemSettings();
@@ -47,17 +48,23 @@ export const SettingsTab = () => {
 
       {isAdmin && (
         <>
-          <ESP32PendingApproval />
-          <ESP32ConfigQRCode />
+          <SectionErrorBoundary title="Falha ao carregar aprovação de ESP32.">
+            <ESP32PendingApproval />
+          </SectionErrorBoundary>
+          <SectionErrorBoundary title="Falha ao carregar gerador de firmware ESP32.">
+            <ESP32ConfigQRCode />
+          </SectionErrorBoundary>
         </>
       )}
 
-      <SettingsForm
-        settings={settings}
-        onUpdate={updateSettings}
-        isUpdating={isUpdating}
-        canEdit={isAdmin}
-      />
+      <SectionErrorBoundary title="Falha ao carregar formulário de configurações.">
+        <SettingsForm
+          settings={settings}
+          onUpdate={updateSettings}
+          isUpdating={isUpdating}
+          canEdit={isAdmin}
+        />
+      </SectionErrorBoundary>
     </div>
   );
 };

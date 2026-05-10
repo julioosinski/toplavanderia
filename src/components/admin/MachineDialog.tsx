@@ -207,7 +207,10 @@ export const MachineDialog = ({
       return;
     }
 
-    if (!formData.esp32_id || !formData.relay_pin) {
+    const normalizedEsp32Id = (formData.esp32_id || machine?.esp32_id || "").trim();
+    const normalizedRelayPin = Number(formData.relay_pin ?? machine?.relay_pin ?? 0);
+
+    if (!normalizedEsp32Id || !normalizedRelayPin) {
       toast({ title: "Erro", description: "ESP32 ID e Pino do Relé são obrigatórios", variant: "destructive" });
       return;
     }
@@ -220,8 +223,8 @@ export const MachineDialog = ({
         .from("machines")
         .select("id, name, esp32_id, relay_pin")
         .eq("laundry_id", currentLaundry.id)
-        .eq("esp32_id", formData.esp32_id)
-        .eq("relay_pin", formData.relay_pin);
+        .eq("esp32_id", normalizedEsp32Id)
+        .eq("relay_pin", normalizedRelayPin);
 
       if (checkError) throw checkError;
 
@@ -230,7 +233,7 @@ export const MachineDialog = ({
       if (conflicts.length > 0) {
         toast({
           title: "Conflito de Configuração",
-          description: `A combinação ESP32 "${formData.esp32_id}" + Relé ${formData.relay_pin} já está em uso pela máquina "${conflicts[0].name}"`,
+          description: `A combinação ESP32 "${normalizedEsp32Id}" + Relé ${normalizedRelayPin} já está em uso pela máquina "${conflicts[0].name}"`,
           variant: "destructive",
         });
         setLoading(false);
@@ -246,8 +249,8 @@ export const MachineDialog = ({
         price_per_cycle: formData.price_per_cycle,
         cycle_time_minutes: formData.cycle_time_minutes,
         temperature: formData.temperature,
-        esp32_id: formData.esp32_id,
-        relay_pin: formData.relay_pin,
+        esp32_id: normalizedEsp32Id,
+        relay_pin: normalizedRelayPin,
         laundry_id: currentLaundry.id,
       };
 
@@ -267,12 +270,12 @@ export const MachineDialog = ({
       }
 
       // Auto-approve ESP32 if pending or rejected
-      const selectedOpt = esp32Options.find(o => o.esp32_id === formData.esp32_id);
+      const selectedOpt = esp32Options.find(o => o.esp32_id === normalizedEsp32Id);
       if (selectedOpt && (selectedOpt.registration_status === 'pending' || selectedOpt.registration_status === 'rejected')) {
         await supabase
           .from('esp32_status')
           .update({ registration_status: 'approved', updated_at: new Date().toISOString() })
-          .eq('esp32_id', formData.esp32_id)
+          .eq('esp32_id', normalizedEsp32Id)
           .eq('laundry_id', currentLaundry.id);
       }
 

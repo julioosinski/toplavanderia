@@ -5,12 +5,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useLaundry } from "@/hooks/useLaundry";
+import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { Download, Settings, Copy, CheckCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { buildEsp32LavadoraFirmware } from "@/lib/esp32FirmwareDownload";
 
 export const ESP32ConfigurationDialog = () => {
   const { currentLaundry } = useLaundry();
+  const { settings } = useSystemSettings();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [esp32Id, setEsp32Id] = useState("");
@@ -23,8 +25,8 @@ export const ESP32ConfigurationDialog = () => {
   /** Igual a cycle_time_minutes da máquina */
   const [cycleTimeMinutes, setCycleTimeMinutes] = useState(40);
 
-  const wifiSsid = "2G Osinski";
-  const wifiPassword = "10203040";
+  const wifiSsid = settings?.wifi_ssid || "";
+  const wifiPassword = settings?.wifi_password || "";
   const laundryId = currentLaundry?.id || "";
 
   const generateArduinoCode = () => {
@@ -32,6 +34,15 @@ export const ESP32ConfigurationDialog = () => {
       toast({
         title: "Campos obrigatórios",
         description: "Preencha o ID do ESP32",
+        variant: "destructive"
+      });
+      return "";
+    }
+
+    if (!wifiSsid || !wifiPassword) {
+      toast({
+        title: "Wi-Fi não configurado",
+        description: "Defina SSID e senha em Configurações de Rede antes de gerar o firmware.",
         variant: "destructive"
       });
       return "";

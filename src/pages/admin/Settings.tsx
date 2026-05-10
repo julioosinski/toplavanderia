@@ -1,6 +1,7 @@
 import { SettingsTab } from "@/components/admin/SettingsTab";
 import { LaundryGuard } from "@/components/admin/LaundryGuard";
 import { useLaundry } from "@/hooks/useLaundry";
+import { SectionErrorBoundary } from "@/components/system/SectionErrorBoundary";
 
 export default function Settings() {
   const { currentLaundry } = useLaundry();
@@ -15,7 +16,9 @@ export default function Settings() {
           </p>
         </div>
 
-        <SettingsTab />
+        <SectionErrorBoundary title="Falha ao carregar os elementos da página de configurações.">
+          <SettingsTab />
+        </SectionErrorBoundary>
       </div>
     </LaundryGuard>
   );

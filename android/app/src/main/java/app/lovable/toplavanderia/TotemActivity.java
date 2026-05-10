@@ -829,7 +829,11 @@ public class TotemActivity extends Activity {
     }
     
     private void handlePaymentSuccess(String authorizationCode, String transactionId) {
-        final SupabaseHelper.Machine machineSnapshot = selectedMachine;
+        SupabaseHelper.Machine refreshedMachine = null;
+        if (selectedMachine != null) {
+            refreshedMachine = supabaseHelper.refreshMachineById(selectedMachine.getId());
+        }
+        final SupabaseHelper.Machine machineSnapshot = refreshedMachine != null ? refreshedMachine : selectedMachine;
         if (machineSnapshot == null) {
             handlePaymentError("Pagamento aprovado, mas a máquina selecionada não está disponível.");
             return;

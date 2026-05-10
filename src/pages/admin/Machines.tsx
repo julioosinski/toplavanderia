@@ -22,6 +22,7 @@ import {
 } from "@/lib/machineEsp32Sync";
 import { ESP32ConfigurationDialog } from "@/components/admin/ESP32ConfigurationDialog";
 import { ESP32PendingApproval } from "@/components/admin/ESP32PendingApproval";
+import { SectionErrorBoundary } from "@/components/system/SectionErrorBoundary";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,6 +57,11 @@ type Esp32StatusWithLaundry = Esp32StatusRow & {
 
 const getErrorMessage = (error: unknown) => {
   return error instanceof Error ? error.message : "Erro desconhecido";
+};
+
+const asNumber = (value: unknown, fallback = 0) => {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : fallback;
 };
 
 export default function Machines() {
@@ -293,21 +299,21 @@ export default function Machines() {
       accessorKey: "price_per_cycle",
       header: "Preço/ciclo",
       cell: ({ row }) => {
-        const price = row.getValue("price_per_cycle") as number;
+        const price = asNumber(row.getValue("price_per_cycle"));
         return `R$ ${price.toFixed(2)}`;
       },
     },
     {
       accessorKey: "total_uses",
       header: "Total de Usos",
-      cell: ({ row }) => row.getValue("total_uses") || 0,
+      cell: ({ row }) => asNumber(row.getValue("total_uses")),
     },
     {
       accessorKey: "total_revenue",
       header: "Receita Total",
       cell: ({ row }) => {
-        const revenue = row.getValue("total_revenue") as number;
-        return `R$ ${(revenue || 0).toFixed(2)}`;
+        const revenue = asNumber(row.getValue("total_revenue"));
+        return `R$ ${revenue.toFixed(2)}`;
       },
     },
     {
@@ -432,7 +438,9 @@ export default function Machines() {
           </div>
         </div>
 
-        <ESP32PendingApproval />
+        <SectionErrorBoundary title="Falha ao carregar pendências de ESP32.">
+          <ESP32PendingApproval />
+        </SectionErrorBoundary>
 
         <MachineDialog 
           machine={editingMachine ? { ...editingMachine, type: (editingMachine.type === 'washing' ? 'lavadora' : editingMachine.type === 'drying' ? 'secadora' : editingMachine.type) as 'lavadora' | 'secadora' } : null}
@@ -441,22 +449,24 @@ export default function Machines() {
           onOpenChange={setDialogOpen}
         />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Todas as Máquinas</CardTitle>
-            <CardDescription>
-              Lista completa de máquinas cadastradas
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <DataTable
-              columns={columns}
-              data={machines}
-              searchKey="name"
-              searchPlaceholder="Buscar por nome..."
-            />
-          </CardContent>
-        </Card>
+        <SectionErrorBoundary title="Falha ao carregar tabela de máquinas.">
+          <Card>
+            <CardHeader>
+              <CardTitle>Todas as Máquinas</CardTitle>
+              <CardDescription>
+                Lista completa de máquinas cadastradas
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DataTable
+                columns={columns}
+                data={machines}
+                searchKey="name"
+                searchPlaceholder="Buscar por nome..."
+              />
+            </CardContent>
+          </Card>
+        </SectionErrorBoundary>
       </div>
     </LaundryGuard>
   );

@@ -188,21 +188,11 @@ export const useMachines = (laundryId?: string | null) => {
 
         if (machinesError) throw machinesError;
 
-        // Fallback defensivo: se a lavanderia foi configurada, mas não retornou
-        // máquinas por filtro/associação, tentar carregar todas para não deixar
-        // o totem sem operação.
+        // Não misturar máquinas de lavanderias diferentes.
+        // Se não houver máquinas para a lavanderia atual, manter vazio para evitar
+        // cobrança com preço/tempo de outra unidade.
         if (laundryId && (!machinesData || machinesData.length === 0)) {
-          const fallbackResult = isAuthenticated
-            ? await supabase.from('machines').select('*').order('name')
-            : await supabase.rpc('get_public_machines', { _laundry_id: null });
-
-          if (!fallbackResult.error && fallbackResult.data && fallbackResult.data.length > 0) {
-            machinesData = fallbackResult.data as MachineSourceRow[];
-            toast({
-              title: "Aviso de configuração",
-              description: "Nenhuma máquina vinculada à lavanderia selecionada. Exibindo máquinas disponíveis do sistema.",
-            });
-          }
+          machinesData = [];
         }
 
         // Try direct table read (authenticated admins); fallback to RPC for totem/anon
