@@ -313,7 +313,7 @@ export const useSystemSettings = () => {
     if (!currentLaundry?.id) return;
 
     const channel = supabase
-      .channel('system-settings-changes')
+      .channel(`system-settings-changes-${currentLaundry.id}`)
       .on(
         'postgres_changes',
         {
