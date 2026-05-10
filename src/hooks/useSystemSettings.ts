@@ -71,6 +71,7 @@ export interface SystemSettings {
 
 const SYSTEM_SETTINGS_QUERY_TIMEOUT_MS = 15000;
 const SETTINGS_CACHE_PREFIX = 'system_settings_cache:';
+let systemSettingsRealtimeSequence = 0;
 
 const settingsCacheKey = (laundryId: string) => `${SETTINGS_CACHE_PREFIX}${laundryId}`;
 
@@ -312,8 +313,10 @@ export const useSystemSettings = () => {
   useEffect(() => {
     if (!currentLaundry?.id) return;
 
+    const channelName = `system-settings-changes-${currentLaundry.id}-${Date.now()}-${++systemSettingsRealtimeSequence}`;
+
     const channel = supabase
-      .channel(`system-settings-changes-${currentLaundry.id}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
