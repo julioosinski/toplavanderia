@@ -1,9 +1,9 @@
 /**
  * ESP32 Lavadora Individual — template gerado pelo admin (Configurar ESP32).
- * Fonte única: este arquivo. Placeholders __LAUNDRY_ID__, __ESP32_ID__, etc.
- * Ao alterar o firmware, sincronize também: public/arduino/ESP32_Lavadora_Individual_CORRIGIDO_v2.ino
+ * Fonte única: este arquivo. Placeholders __LAUNDRY_ID__, __MACHINE_NAME__, etc.
+ * Firmware gerado fica em: public/arduino/generated/
  *
- * Versão: 2.1.3 — ID auto via MAC; auto_register; portal cativo (DNS); AP + NVS
+ * Versão: 2.1.3 — ID auto via MAC; auto_register; portal cativo (DNS); AP + NVS; scan Wi-Fi
  */
 
 #include <WiFi.h>
