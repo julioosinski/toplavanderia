@@ -244,6 +244,22 @@ public class TotemActivity extends Activity {
             for (SupabaseHelper.Machine machine : machines) {
                 if (machine.getId().equals(status.machineId)) {
                     machine.setEsp32Online(status.esp32Online);
+
+                    // Sincronizar dados mutáveis (nome, tipo, preço, ciclo) do servidor
+                    if (status.machineName != null && !status.machineName.isEmpty()) {
+                        machine.setName(status.machineName);
+                    }
+                    if (status.machineType != null && !status.machineType.isEmpty()) {
+                        String mappedType = "washing".equals(status.machineType) || "lavadora".equals(status.machineType) ? "LAVAR"
+                                : "drying".equals(status.machineType) || "secadora".equals(status.machineType) ? "SECAR" : "LAVAR";
+                        machine.setType(mappedType);
+                    }
+                    if (status.pricePerCycle > 0) {
+                        machine.setPrice(status.pricePerCycle);
+                    }
+                    if (status.cycleTimeMinutes > 0) {
+                        machine.setDuration(status.cycleTimeMinutes);
+                    }
                     
                     if (status.isAvailable()) {
                         machine.setStatus("LIVRE");

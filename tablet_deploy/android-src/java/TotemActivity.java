@@ -192,13 +192,29 @@ public class TotemActivity extends Activity {
             }).start();
         }
 
-        // Atualizar lista de máquinas com status real
+        // Atualizar lista de máquinas com status real e dados mutáveis
         java.util.HashSet<String> seen = new java.util.HashSet<>();
         for (MachineStatusMonitor.MachineStatus status : statuses) {
             seen.add(status.machineId);
             for (SupabaseHelper.Machine machine : machines) {
                 if (machine.getId().equals(status.machineId)) {
                     machine.setEsp32Online(status.esp32Online);
+
+                    // Sincronizar dados mutáveis (nome, tipo, preço, ciclo) do servidor
+                    if (status.machineName != null && !status.machineName.isEmpty()) {
+                        machine.setName(status.machineName);
+                    }
+                    if (status.machineType != null && !status.machineType.isEmpty()) {
+                        String mappedType = "washing".equals(status.machineType) || "lavadora".equals(status.machineType) ? "LAVAR"
+                                : "drying".equals(status.machineType) || "secadora".equals(status.machineType) ? "SECAR" : "LAVAR";
+                        machine.setType(mappedType);
+                    }
+                    if (status.pricePerCycle > 0) {
+                        machine.setPrice(status.pricePerCycle);
+                    }
+                    if (status.cycleTimeMinutes > 0) {
+                        machine.setDuration(status.cycleTimeMinutes);
+                    }
                     
                     if (status.isAvailable()) {
                         machine.setStatus("LIVRE");

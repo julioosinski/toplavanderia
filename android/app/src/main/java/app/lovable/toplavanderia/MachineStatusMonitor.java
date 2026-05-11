@@ -134,6 +134,8 @@ public class MachineStatusMonitor {
                     if (status.cycleTimeMinutes <= 0) {
                         status.cycleTimeMinutes = DEFAULT_CYCLE_MINUTES;
                     }
+                    status.pricePerCycle = machine.optDouble("price_per_cycle", 0);
+                    status.capacityKg = machine.optDouble("capacity_kg", 0);
                     status.esp32Id = machine.optString("esp32_id", "");
                     status.relayPin = resolvedRelayPin(machine.optInt("relay_pin", 0));
 
@@ -361,6 +363,8 @@ public class MachineStatusMonitor {
         public String machineStatus;
         public String machineUpdatedAt;
         public int cycleTimeMinutes;
+        public double pricePerCycle;
+        public double capacityKg;
         public String esp32Id;
         public int relayPin;
         public boolean esp32Online;
