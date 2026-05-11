@@ -134,10 +134,16 @@ export default function ESP32Diagnostics() {
     setRefreshing(false);
   };
 
-  const onlineCount = esp32List.filter(e => isOnline(e.last_heartbeat)).length;
-  const offlineCount = esp32List.length - onlineCount;
+  // Mostrar apenas ESP32s vinculados a máquinas ou pendentes de aprovação
+  const linkedEsp32Ids = new Set(machineList.map(m => m.esp32_id).filter(Boolean));
+  const relevantEsp32 = esp32List.filter(
+    e => linkedEsp32Ids.has(e.esp32_id) || e.registration_status === "pending"
+  );
 
-  const filtered = esp32List.filter(e => {
+  const onlineCount = relevantEsp32.filter(e => isOnline(e.last_heartbeat)).length;
+  const offlineCount = relevantEsp32.length - onlineCount;
+
+  const filtered = relevantEsp32.filter(e => {
     if (filter === "online") return isOnline(e.last_heartbeat);
     if (filter === "offline") return !isOnline(e.last_heartbeat);
     return true;
@@ -209,7 +215,7 @@ export default function ESP32Diagnostics() {
                     <Activity className="h-4 w-4" />
                     Total
                   </div>
-                  <span className="text-2xl font-bold">{esp32List.length}</span>
+                  <span className="text-2xl font-bold">{relevantEsp32.length}</span>
                 </div>
               </CardContent>
             </Card>
@@ -293,8 +299,8 @@ export default function ESP32Diagnostics() {
                         {esp32.firmware_version && (
                           <span className="font-mono">{esp32.firmware_version}</span>
                         )}
-                        {esp32.ip_address && <span>{esp32.ip_address}</span>}
-                        {esp32.signal_strength != null && (
+                        {online && esp32.ip_address && <span>{esp32.ip_address}</span>}
+                        {online && esp32.signal_strength != null && (
                           <span className={`flex items-center gap-1 ${signal.color}`}>
                             <Wifi className="h-3 w-3" />
                             {esp32.signal_strength}dBm ({signal.text})
@@ -308,8 +314,8 @@ export default function ESP32Diagnostics() {
                     </div>
                   </CardHeader>
                   <CardContent className="pt-0">
-                    {/* Relés */}
-                    {renderRelayStatus(esp32.relay_status)}
+                    {/* Relés — só mostrar quando online (dados em tempo real) */}
+                    {online && renderRelayStatus(esp32.relay_status)}
 
                     {/* Máquinas vinculadas */}
                     {machines.length > 0 ? (
@@ -348,8 +354,8 @@ export default function ESP32Diagnostics() {
               <CardContent className="py-12 text-center">
                 <WifiOff className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                 <p className="text-muted-foreground">
-                  {esp32List.length === 0
-                    ? "Nenhum ESP32 registrado nesta lavanderia"
+                  {relevantEsp32.length === 0
+                    ? "Nenhum ESP32 vinculado a máquinas nesta lavanderia"
                     : `Nenhum ESP32 ${filter === "online" ? "online" : "offline"} no momento`}
                 </p>
               </CardContent>
