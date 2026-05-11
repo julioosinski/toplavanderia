@@ -15,7 +15,6 @@ export const ESP32ConfigurationDialog = () => {
   const { settings } = useSystemSettings();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
-  const [esp32Id, setEsp32Id] = useState("");
   const [machineName, setMachineName] = useState("");
   const [copied, setCopied] = useState(false);
   const [copiedLaundryId, setCopiedLaundryId] = useState(false);
@@ -30,19 +29,10 @@ export const ESP32ConfigurationDialog = () => {
   const laundryId = currentLaundry?.id || "";
 
   const generateArduinoCode = () => {
-    if (!esp32Id || !laundryId) {
+    if (!laundryId) {
       toast({
-        title: "Campos obrigatórios",
-        description: "Preencha o ID do ESP32",
-        variant: "destructive"
-      });
-      return "";
-    }
-
-    if (!wifiSsid || !wifiPassword) {
-      toast({
-        title: "Wi-Fi não configurado",
-        description: "Defina SSID e senha em Configurações de Rede antes de gerar o firmware.",
+        title: "Erro",
+        description: "Lavanderia não selecionada",
         variant: "destructive"
       });
       return "";
@@ -50,13 +40,13 @@ export const ESP32ConfigurationDialog = () => {
 
     const name =
       machineName.trim() ||
-      `${currentLaundry?.name ?? "Lavanderia"} — ${esp32Id}`;
+      `${currentLaundry?.name ?? "Lavanderia"}`;
 
     return buildEsp32LavadoraFirmware({
       wifiSsid,
       wifiPassword,
       laundryId,
-      esp32Id,
+      esp32Id: "__AUTO_MAC__",
       machineName: name,
       relayLogicalPin,
       cycleTimeMinutes,
@@ -71,18 +61,18 @@ export const ESP32ConfigurationDialog = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ESP32_${esp32Id}_${currentLaundry?.name || 'config'}.ino`;
+    a.download = `ESP32_${currentLaundry?.name || 'config'}_relay${relayLogicalPin}.ino`;
     a.click();
     URL.revokeObjectURL(url);
 
     toast({
       title: "Arquivo gerado!",
-      description: "Firmware v2.0.7 (relay_pin + tempo de ciclo do painel, heartbeat alinhado ao dashboard) — compile no Arduino IDE"
+      description: "Firmware v2.1.3 (ID auto via MAC, auto-registro, portal cativo DNS) — compile no Arduino IDE e use em qualquer ESP32"
     });
   };
 
   const handleCopyConfig = () => {
-    const config = `WiFi: ${wifiSsid}\nLavanderia: ${currentLaundry?.name}\nID: ${laundryId}\nESP32: ${esp32Id}`;
+    const config = `Lavanderia: ${currentLaundry?.name}\nID: ${laundryId}\nESP32 ID: gerado automaticamente via MAC`;
     navigator.clipboard.writeText(config);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -114,11 +104,10 @@ export const ESP32ConfigurationDialog = () => {
       </DialogTrigger>
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>Gerar Configuração ESP32</DialogTitle>
+          <DialogTitle>Gerar Firmware ESP32</DialogTitle>
           <DialogDescription>
-            Baixa o firmware alinhado ao repositório (v2.0.7): heartbeat com <code className="text-xs">relay_N</code> igual ao cadastro da máquina,
-            tempo de ciclo configurável, servidor local e
-            <strong> polling da fila Supabase</strong> (pagamento no totem via <code className="text-xs">pending_commands</code>).
+            Firmware v2.1.3: cada ESP32 gera seu ID automaticamente via MAC Address.
+            O mesmo arquivo .ino funciona em qualquer placa — basta fazer upload e o ESP aparecerá para aprovação no painel.
           </DialogDescription>
         </DialogHeader>
 
@@ -132,7 +121,7 @@ export const ESP32ConfigurationDialog = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">WiFi SSID:</span>
-                  <span className="font-medium">{wifiSsid}</span>
+                  <span className="font-medium">{wifiSsid || "Configurado no proprio ESP32 (AP)"}</span>
                 </div>
                 <div className="flex flex-col gap-2">
                   <div className="flex justify-between items-center">
@@ -157,20 +146,6 @@ export const ESP32ConfigurationDialog = () => {
               </div>
             </CardContent>
           </Card>
-
-          <div className="space-y-2">
-            <Label htmlFor="esp32_id">ID do ESP32 *</Label>
-            <Input
-              id="esp32_id"
-              value={esp32Id}
-              onChange={(e) => setEsp32Id(e.target.value)}
-              placeholder="Ex: main, Cj01, Cj02, lavadora_01"
-              className="font-mono"
-            />
-            <p className="text-xs text-muted-foreground">
-              Deve ser <strong>exatamente</strong> o mesmo valor do campo <code className="text-xs">esp32_id</code> da máquina no Supabase.
-            </p>
-          </div>
 
           <div className="space-y-2">
             <Label htmlFor="machine_name">Nome amigável (opcional)</Label>
@@ -215,21 +190,21 @@ export const ESP32ConfigurationDialog = () => {
               onClick={() => setShowPreview(!showPreview)} 
               variant="outline" 
               className="flex-1"
-              disabled={!esp32Id}
+              disabled={!laundryId}
             >
               {showPreview ? "Ocultar" : "Ver"} Preview
             </Button>
             <Button 
               onClick={handleDownload}
               className="flex-1"
-              disabled={!esp32Id}
+              disabled={!laundryId}
             >
               <Download className="mr-2 h-4 w-4" />
               Baixar .ino
             </Button>
           </div>
 
-          {showPreview && esp32Id && (
+          {showPreview && laundryId && (
             <Card className="bg-muted/30">
               <CardContent className="pt-4">
                 <pre className="text-xs overflow-x-auto p-2 bg-background rounded border max-h-64 overflow-y-auto">
@@ -241,14 +216,14 @@ export const ESP32ConfigurationDialog = () => {
 
           <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-4 space-y-2">
             <p className="text-sm text-amber-600 dark:text-amber-400">
-              <strong>⚠️ Configuração Física:</strong>
+              <strong>Como funciona:</strong>
             </p>
             <ul className="text-xs text-amber-600 dark:text-amber-400 space-y-1 ml-4">
-              <li>• Um ESP32 pode controlar múltiplas máquinas</li>
+              <li>• O mesmo .ino funciona em qualquer ESP32 — o ID é gerado pelo MAC</li>
+              <li>• No primeiro boot, o ESP abre rede própria para configurar Wi-Fi</li>
+              <li>• Após conectar, o ESP aparece em "Pendentes de Aprovação" no painel</li>
+              <li>• Credenciais ficam salvas e voltam após queda de energia</li>
               <li>• Cada máquina usa um relay_pin diferente (1, 2, 3...)</li>
-              <li>• ESP32 → Relay 1 → Máquina 1</li>
-              <li>• ESP32 → Relay 2 → Máquina 2</li>
-              <li>• Nunca use o mesmo relay_pin para duas máquinas!</li>
             </ul>
           </div>
         </div>

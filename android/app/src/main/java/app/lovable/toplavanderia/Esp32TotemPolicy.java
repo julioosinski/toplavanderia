@@ -25,7 +25,7 @@ public final class Esp32TotemPolicy {
      * Skew até este valor tratamos como relógio local errado e consideramos o heartbeat fresco.
      * Acima disso é provável dado inválido / bug (evita “sempre online” de timestamps absurdos).
      */
-    private static final long MAX_PLAUSIBLE_CLOCK_SKEW_MS = 900_000L; // 15 min
+    private static final long MAX_PLAUSIBLE_CLOCK_SKEW_MS = 7_200_000L; // 2h — terminais Cielo frequentemente têm relógio desajustado
 
     private static final class HbAnchor {
         final long tMillis;

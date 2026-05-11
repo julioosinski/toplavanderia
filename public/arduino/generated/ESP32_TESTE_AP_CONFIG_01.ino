@@ -1,6 +1,6 @@
 /**
  * ESP32 Lavadora Individual — template gerado pelo admin (Configurar ESP32).
- * Fonte única: este arquivo. Placeholders __LAUNDRY_ID__, __ESP32_ID__, etc.
+ * Fonte única: este arquivo. Placeholders 8ace0bcb-83a9-4555-a712-63ef5f52e709, esp32_teste_ap_01, etc.
  * Ao alterar o firmware, sincronize também: public/arduino/ESP32_Lavadora_Individual_CORRIGIDO_v2.ino
  *
  * Versão: 2.1.3 — ID auto via MAC; auto_register; portal cativo (DNS); AP + NVS
@@ -25,10 +25,9 @@ unsigned long lastWifiRetry = 0;
 const unsigned long WIFI_RETRY_INTERVAL = 15000;
 
 // ================== IDENTIFICAÇÃO ==================
-#define LAUNDRY_ID "__LAUNDRY_ID__"
-#define MACHINE_NAME "__MACHINE_NAME__"
+#define LAUNDRY_ID "8ace0bcb-83a9-4555-a712-63ef5f52e709"
+#define MACHINE_NAME "ESP32 Teste AP"
 // ESP32_ID gerado automaticamente a partir do MAC Address (único por chip).
-// Formato: "esp32_AABBCCDD" (últimos 4 bytes do MAC em hex minúsculo).
 char ESP32_ID[16];
 void buildEsp32Id() {
   uint8_t mac[6];
@@ -44,9 +43,9 @@ const char* supabaseApiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzd
 #define RELAY_PIN 2                // Pino físico do relé na placa (GPIO2)
 #define LED_PIN 2                  // LED embutido (GPIO2)
 /** Índice lógico no Supabase (relay_1, relay_2…) — substituído pelo painel "Configurar ESP32" */
-#define RELAY_LOGICAL_PIN __RELAY_LOGICAL_PIN__
+#define RELAY_LOGICAL_PIN 1
 /** Valor inicial do painel — atualizado dinamicamente pela resposta do heartbeat */
-int cycleTimeMinutes = __CYCLE_TIME_MINUTES__;
+int cycleTimeMinutes = 10;
 
 // ================== VARIÁVEIS DE CONTROLE ==================
 WebServer server(80);
@@ -237,7 +236,7 @@ void setup() {
   Serial.begin(115200);
   Serial.println("\n\n========================================");
   Serial.println("ESP32 Lavadora Individual v2.1.3");
-
+  
   // Configurar hardware
   pinMode(RELAY_PIN, OUTPUT);
   pinMode(LED_PIN, OUTPUT);

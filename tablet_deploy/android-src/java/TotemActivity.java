@@ -165,15 +165,41 @@ public class TotemActivity extends Activity {
         if (machines == null || statuses == null) return;
         
         Log.d(TAG, "Atualizando status de " + statuses.size() + " máquinas");
-        
-        // Atualizar lista de máquinas com status real
+
+        // Detectar máquinas novas ou removidas — recarregar lista completa se mudou.
+        java.util.HashSet<String> localIds = new java.util.HashSet<>();
+        for (SupabaseHelper.Machine m : machines) {
+            localIds.add(m.getId());
+        }
+        boolean hasNewMachine = false;
         for (MachineStatusMonitor.MachineStatus status : statuses) {
+            if (!localIds.contains(status.machineId)) {
+                hasNewMachine = true;
+                Log.d(TAG, "Nova máquina detectada pelo monitor: " + status.machineName + " (" + status.machineId + ")");
+                break;
+            }
+        }
+        boolean machineRemoved = statuses.size() < machines.size();
+
+        if (hasNewMachine || machineRemoved) {
+            Log.d(TAG, "Lista de máquinas mudou — recarregando do Supabase...");
+            new Thread(() -> {
+                try {
+                    supabaseHelper.getAllMachines();
+                } catch (Exception e) {
+                    Log.e(TAG, "Erro ao recarregar lista de máquinas", e);
+                }
+            }).start();
+        }
+
+        // Atualizar lista de máquinas com status real
+        java.util.HashSet<String> seen = new java.util.HashSet<>();
+        for (MachineStatusMonitor.MachineStatus status : statuses) {
+            seen.add(status.machineId);
             for (SupabaseHelper.Machine machine : machines) {
                 if (machine.getId().equals(status.machineId)) {
-                    // Atualizar status da máquina
                     machine.setEsp32Online(status.esp32Online);
                     
-                    // Mapear computed status para status da máquina
                     if (status.isAvailable()) {
                         machine.setStatus("LIVRE");
                     } else if (status.isRunning()) {
@@ -186,6 +212,12 @@ public class TotemActivity extends Activity {
                     
                     break;
                 }
+            }
+        }
+        for (SupabaseHelper.Machine machine : machines) {
+            if (!seen.contains(machine.getId())) {
+                machine.setEsp32Online(false);
+                machine.setStatus("OFFLINE");
             }
         }
         

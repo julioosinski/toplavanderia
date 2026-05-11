@@ -204,7 +204,40 @@ public class TotemActivity extends Activity {
         if (machines == null || statuses == null) return;
         
         Log.d(TAG, "Atualizando status de " + statuses.size() + " máquinas");
-        
+
+        // Se o monitor retornou máquinas que não existem na lista local,
+        // isso significa que uma nova máquina foi cadastrada — recarregar lista completa.
+        java.util.HashSet<String> localIds = new java.util.HashSet<>();
+        for (SupabaseHelper.Machine m : machines) {
+            localIds.add(m.getId());
+        }
+        boolean hasNewMachine = false;
+        for (MachineStatusMonitor.MachineStatus status : statuses) {
+            if (!localIds.contains(status.machineId)) {
+                hasNewMachine = true;
+                Log.d(TAG, "Nova máquina detectada pelo monitor: " + status.machineName + " (" + status.machineId + ")");
+                break;
+            }
+        }
+        // Se a quantidade de máquinas diminuiu (máquina removida), também recarregar.
+        boolean machineRemoved = statuses.size() < machines.size();
+
+        if (hasNewMachine || machineRemoved) {
+            Log.d(TAG, "Lista de máquinas mudou — recarregando do Supabase...");
+            new Thread(() -> {
+                try {
+                    List<SupabaseHelper.Machine> fresh = supabaseHelper.refreshMachineById(null) != null
+                            ? null : null;
+                    // refreshMachineById é para uma máquina — usar getAllMachines para lista completa.
+                    // getAllMachines já dispara background fetch e notifica via listener.
+                    supabaseHelper.getAllMachines();
+                } catch (Exception e) {
+                    Log.e(TAG, "Erro ao recarregar lista de máquinas", e);
+                }
+            }).start();
+            // Não retornar; ainda aplicar status disponível nas máquinas existentes abaixo.
+        }
+
         java.util.HashSet<String> seen = new java.util.HashSet<>();
         for (MachineStatusMonitor.MachineStatus status : statuses) {
             seen.add(status.machineId);

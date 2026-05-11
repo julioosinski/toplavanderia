@@ -9,7 +9,8 @@ export interface Esp32FirmwareParams {
   wifiSsid: string;
   wifiPassword: string;
   laundryId: string;
-  esp32Id: string;
+  /** @deprecated ESP32_ID agora é gerado via MAC — campo mantido por compatibilidade */
+  esp32Id?: string;
   /** Nome exibido na página HTTP do ESP32 */
   machineName: string;
   /**
@@ -29,7 +30,6 @@ export function buildEsp32LavadoraFirmware(params: Esp32FirmwareParams): string 
     wifiSsid,
     wifiPassword,
     laundryId,
-    esp32Id,
     machineName,
     relayLogicalPin,
     cycleTimeMinutes,
@@ -42,7 +42,6 @@ export function buildEsp32LavadoraFirmware(params: Esp32FirmwareParams): string 
     .replace(/__WIFI_SSID__/g, escapeCStr(wifiSsid))
     .replace(/__WIFI_PASSWORD__/g, escapeCStr(wifiPassword))
     .replace(/__LAUNDRY_ID__/g, escapeCStr(laundryId))
-    .replace(/__ESP32_ID__/g, escapeCStr(esp32Id))
     .replace(/__MACHINE_NAME__/g, escapeCStr(machineName))
     .replace(/__RELAY_LOGICAL_PIN__/g, String(relayPin))
     .replace(/__CYCLE_TIME_MINUTES__/g, String(cycleMin));
