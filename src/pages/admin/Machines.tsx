@@ -142,20 +142,26 @@ export default function Machines() {
     }
   }, [currentLaundryId, loadMachines]);
 
+  const dialogOpenRef = useRef(false);
+  dialogOpenRef.current = dialogOpen;
+
   useEffect(() => {
     if (!currentLaundry?.id) return;
     const lid = currentLaundry.id;
+    const reloadIfIdle = () => {
+      if (!dialogOpenRef.current) void loadMachinesRef.current();
+    };
     const channel = supabase
       .channel(`admin-machines-rt-${lid}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'machines', filter: `laundry_id=eq.${lid}` },
-        () => void loadMachinesRef.current()
+        reloadIfIdle
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'esp32_status', filter: `laundry_id=eq.${lid}` },
-        () => void loadMachinesRef.current()
+        reloadIfIdle
       )
       .subscribe();
     return () => {
