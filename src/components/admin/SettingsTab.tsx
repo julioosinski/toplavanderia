@@ -1,6 +1,4 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Settings, Save } from "lucide-react";
+import { Settings } from "lucide-react";
 import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { useLaundry } from "@/hooks/useLaundry";
 import { SettingsForm } from "./settings/SettingsForm";
@@ -38,20 +36,12 @@ export const SettingsTab = () => {
 
   return (
     <div className="space-y-6">
-      {/* Laundry Info Alert */}
-      <Alert>
-        <Building2 className="h-4 w-4" />
-        <AlertDescription>
-          Configurações de <strong>{currentLaundry?.name}</strong>
-        </AlertDescription>
-      </Alert>
-
       {isAdmin && (
         <>
           <SectionErrorBoundary title="Falha ao carregar aprovação de ESP32.">
             <ESP32PendingApproval />
           </SectionErrorBoundary>
-          <SectionErrorBoundary title="Falha ao carregar gerador de firmware ESP32.">
+          <SectionErrorBoundary title="Falha ao carregar gerador de firmware.">
             <ESP32ConfigQRCode />
           </SectionErrorBoundary>
         </>
