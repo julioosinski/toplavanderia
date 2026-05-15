@@ -2,9 +2,4 @@
   command = "pnpm build"
   publish = "dist"
 
-# SPA fallback — arquivos estáticos em public/ (ex.: termos-de-uso.html) têm prioridade no Netlify
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-  force = false
+# Redirecionamentos SPA: ver também public/_redirects (termos e privacidade antes do fallback)
