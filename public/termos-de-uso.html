@@ -5,93 +5,108 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Termos e Condições de Uso — Top Lavanderia</title>
   <style>
-    body { font-family: system-ui, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 2rem 1.25rem; color: #1a1a1a; }
-    h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
-    h2 { font-size: 1.1rem; margin-top: 1.75rem; }
-    p, li { font-size: 0.95rem; }
-    .meta { color: #555; font-size: 0.9rem; margin-bottom: 2rem; }
+    body { font-family: system-ui, sans-serif; line-height: 1.65; max-width: 820px; margin: 0 auto; padding: 2rem 1.25rem; color: #1a1a1a; }
+    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    .meta { color: #555; font-size: 0.9rem; margin-bottom: 1.5rem; }
+    .legal { white-space: pre-wrap; font-size: 0.92rem; line-height: 1.7; }
     a { color: #0d6efd; }
   </style>
 </head>
 <body>
   <h1>Termos e Condições de Uso</h1>
-  <p class="meta"><strong>Aplicativo:</strong> Top Lavanderia &nbsp;|&nbsp; <strong>Versão do documento:</strong> 1.0 &nbsp;|&nbsp; <strong>Última atualização:</strong> 15 de maio de 2026</p>
+  <p class="meta">Top Lavanderia — Versão 1.1 — 15 de maio de 2026 &nbsp;|&nbsp;
+    <a href="/politica-de-privacidade.html">Política de Privacidade</a> &nbsp;|&nbsp;
+    <a href="/termos-de-uso.txt">Baixar texto (.txt)</a>
+  </p>
+  <div class="legal">TERMOS E CONDIÇÕES DE USO DO APLICATIVO TOP LAVANDERIA
+Versão 1.1 | Última atualização: 15 de maio de 2026
 
-  <p>Estes Termos e Condições de Uso (“<strong>Termos</strong>”) regulam o acesso e a utilização do aplicativo <strong>Top Lavanderia</strong> (“<strong>Aplicativo</strong>”), disponibilizado por <strong>Top Automações Ltda</strong>, inscrita no CNPJ sob o nº <strong>43.652.666/0001-37</strong>, com sede na <strong>BR-101, Km 71, nº 9900, Bairro Rainha, Araquari/SC, CEP 89245-000, Brasil</strong> (“<strong>Desenvolvedor</strong>”, “<strong>nós</strong>”).</p>
+IDENTIFICAÇÃO DO DESENVOLVEDOR
+Razão social: Top Automações Ltda
+CNPJ: 43.652.666/0001-37
+Endereço: BR-101, Km 71, nº 9900, Bairro Rainha, Araquari/SC, CEP 89245-000, Brasil
+Site: https://paglav.com.br
+E-mail: julioosinski@hotmail.com
+Telefone: (47) 99140-7733
 
-  <p>Ao instalar, acessar ou utilizar o Aplicativo — inclusive em terminais <strong>Cielo Smart</strong> em modo totem (autoatendimento) — você declara ter lido, compreendido e concordado integralmente com estes Termos. Se não concordar, não utilize o Aplicativo.</p>
+1. INTRODUÇÃO E ACEITAÇÃO
+1.1. Estes Termos e Condições de Uso (“Termos”) constituem um contrato vinculante entre você (“Usuário”) e a Top Automações Ltda (“Desenvolvedor”, “nós”), regulando o acesso e a utilização do software Top Lavanderia (“Aplicativo”), em versões para painel administrativo web, totem de autoatendimento em dispositivos Android (incluindo terminais Cielo Smart) e componentes associados de integração com hardware e serviços de pagamento.
+1.2. Ao instalar, configurar, acessar ou utilizar o Aplicativo, o Usuário declara ser maior de 18 anos ou estar legalmente representado, ter capacidade civil para contratar e concordar integralmente com estes Termos e com a Política de Privacidade disponível em https://paglav.com.br/politica-de-privacidade.html.
+1.3. Caso não concorde com qualquer disposição, o Usuário deve abster-se imediatamente de utilizar o Aplicativo e, se aplicável, desinstalá-lo dos dispositivos sob sua responsabilidade.
 
-  <h2>1. Objeto e descrição do serviço</h2>
-  <p>O Top Lavanderia é uma solução de gestão e autoatendimento para lavanderias self-service. O Aplicativo permite, conforme o perfil de acesso:</p>
-  <ul>
-    <li>Seleção de máquinas (lavadora/secadora), consulta de preço e tempo de ciclo;</li>
-    <li>Processamento de pagamentos (cartão de crédito, débito e PIX) por integração com adquirentes homologados (ex.: Cielo Smart, PayGO);</li>
-    <li>Acionamento remoto de equipamentos via dispositivos IoT (ESP32);</li>
-    <li>Painel administrativo web para cadastro de lavanderias, máquinas, usuários, relatórios e configurações operacionais.</li>
-  </ul>
-  <p>O Aplicativo é destinado a <strong>estabelecimentos comerciais</strong> (lavanderias) e aos <strong>clientes finais</strong> desses estabelecimentos que utilizam o totem para pagar e liberar ciclos de lavagem/secagem.</p>
+2. DEFINIÇÕES
+2.1. “Estabelecimento” ou “Lavanderia”: pessoa jurídica ou empresário individual que opera unidade de lavanderia self-service e utiliza o Aplicativo para gestão e cobrança.
+2.2. “Cliente Final”: pessoa que utiliza o totem para selecionar máquina, pagar e liberar ciclo de lavagem ou secagem.
+2.3. “Totem”: instalação do Aplicativo em terminal fixo (tablet ou Cielo Smart) destinada ao autoatendimento do Cliente Final.
+2.4. “Painel Administrativo”: interface web restrita a administradores e operadores autorizados pelo Estabelecimento.
+2.5. “Dispositivo IoT”: equipamento eletrônico (ex.: ESP32) integrado a máquinas para liberação remota de ciclos.
+2.6. “Adquirente” ou “Processador de Pagamentos”: instituição ou aplicativo homologado (ex.: Cielo, PayGO) responsável pelo processamento financeiro das transações.
 
-  <h2>2. Perfis de usuário</h2>
-  <ul>
-    <li><strong>Administrador / operador:</strong> pessoa autorizada pelo estabelecimento para configurar o sistema, preços, máquinas e integrações.</li>
-    <li><strong>Cliente final (totem):</strong> pessoa que utiliza o terminal para escolher máquina, pagar e iniciar o ciclo.</li>
-    <li><strong>Desenvolvedor / suporte:</strong> equipe técnica responsável por manutenção, atualizações e suporte do Aplicativo.</li>
-  </ul>
+3. OBJETO E DESCRIÇÃO DO SERVIÇO
+3.1. O Top Lavanderia é uma plataforma tecnológica de automação para lavanderias self-service, que permite ao Estabelecimento: cadastrar e gerenciar máquinas; definir preços e tempos de ciclo; monitorar status em tempo real; receber pagamentos via cartão (crédito/débito) e PIX; liberar automaticamente máquinas após confirmação de pagamento; gerar relatórios operacionais e financeiros; e configurar integrações com dispositivos IoT e terminais de pagamento.
+3.2. O Cliente Final utiliza o Totem para visualizar máquinas disponíveis, valores, tempo estimado de ciclo, efetuar pagamento e receber confirmação de liberação do equipamento escolhido.
+3.3. O Desenvolvedor atua como fornecedor de tecnologia (software e infraestrutura de backend), não como operador da lavanderia, não como instituição financeira e não como prestador do serviço de lavagem em si.
 
-  <h2>3. Cadastro e configuração</h2>
-  <p>O totem pode ser vinculado a uma lavanderia mediante informação do <strong>CNPJ</strong> do estabelecimento. O administrador é responsável pela veracidade dos dados cadastrais (CNPJ, razão social, contatos, preços e configurações de pagamento).</p>
-  <p>Credenciais de acesso ao painel administrativo são pessoais e intransferíveis. O estabelecimento deve adotar boas práticas de segurança (senhas fortes, revogação de acessos de ex-colaboradores).</p>
+4. CADASTRO, CONFIGURAÇÃO E RESPONSABILIDADES DO ESTABELECIMENTO
+4.1. O Totem é vinculado ao Estabelecimento mediante informação do CNPJ e validações realizadas pelo sistema. O Estabelecimento garante a veracidade, atualidade e legalidade de todos os dados informados (razão social, CNPJ, endereço, contatos, dados bancários/comerciais junto ao adquirente, preços e políticas comerciais).
+4.2. O Estabelecimento é exclusivamente responsável pela contratação e manutenção de serviços de internet, energia elétrica, máquinas, instalações físicas, dispositivos IoT, terminais de pagamento e certificações exigidas por lei ou por operadoras de meios de pagamento.
+4.3. Credenciais de acesso ao Painel Administrativo são pessoais e intransferíveis. O Estabelecimento deve implementar controles internos de senha, perfis de acesso (administrador, operador) e revogação imediata de usuários desligados.
+4.4. O Estabelecimento deve manter ambiente seguro no local de instalação do Totem, incluindo proteção contra vandalismo, acesso não autorizado e manipulação de cabos, relés e equipamentos.
 
-  <h2>4. Pagamentos</h2>
-  <p>As transações financeiras são processadas por <strong>terceiros homologados</strong> (operadoras de pagamento, adquirentes e aplicativos de pagamento instalados no terminal). O Desenvolvedor <strong>não armazena dados completos de cartão</strong> (número, CVV ou senha) em seus servidores.</p>
-  <p>O estabelecimento comercial é o <strong>beneficiário</strong> das vendas realizadas no totem e responsável por tributos, emissão de documentos fiscais quando aplicável, políticas de reembolso e atendimento ao consumidor em relação ao serviço de lavanderia.</p>
-  <p>Em caso de falha de comunicação, cancelamento ou estorno, aplicam-se as regras do adquirente e do estabelecimento, observada a legislação consumerista brasileira.</p>
+5. PAGAMENTOS, PREÇOS E RELAÇÃO COM O CLIENTE FINAL
+5.1. As transações financeiras são processadas exclusivamente por Adquirentes e aplicativos de pagamento instalados no terminal, observando suas regras, taxas, prazos de liquidação, estornos e chargebacks. O Desenvolvedor não armazena número integral de cartão, CVV, senha ou dados magnéticos em seus servidores.
+5.2. O Estabelecimento define livremente os preços por ciclo exibidos no Totem, sendo o único responsável perante o Cliente Final pela cobrança, pela prestação do serviço de lavanderia, pela emissão de documentos fiscais quando exigidos, pelo cumprimento do Código de Defesa do Consumidor (Lei nº 8.078/1990) e por políticas de reembolso, reclamações e suporte presencial.
+5.3. Em caso de falha de pagamento, duplicidade, cancelamento, estorno ou divergência entre valor pago e ciclo liberado, o Estabelecimento e o Adquirente são os primeiros responsáveis pela solução junto ao Cliente Final, podendo o Desenvolvedor prestar suporte técnico limitado à análise de logs do Aplicativo.
+5.4. Comprovantes e vias de pagamento podem ser emitidos conforme regras do Adquirente e do terminal; o Desenvolvedor não garante impressão em todos os modelos de hardware.
 
-  <h2>5. Uso permitido e proibições</h2>
-  <p>É permitido utilizar o Aplicativo apenas para fins lícitos relacionados à operação de lavanderia self-service.</p>
-  <p><strong>É vedado:</strong></p>
-  <ul>
-    <li>Tentar burlar mecanismos de pagamento, autenticação ou controle de máquinas;</li>
-    <li>Realizar engenharia reversa, descompilar ou modificar o Aplicativo, salvo quando a lei permitir;</li>
-    <li>Inserir código malicioso, realizar ataques ou sobrecarga aos servidores;</li>
-    <li>Utilizar o Aplicativo para fins fraudulentos ou em desacordo com estes Termos;</li>
-    <li>Reproduzir marcas, logotipos ou conteúdo do Aplicativo sem autorização.</li>
-  </ul>
+6. INTEGRAÇÃO CIELO SMART, PAYGO E DISPOSITIVOS IoT
+6.1. Quando instalado em terminal Cielo Smart ou integrado a PayGO, o Aplicativo utiliza APIs, deep links ou SDKs disponibilizados por terceiros, sujeitos também aos termos desses fornecedores. O Usuário deve manter aplicativos de pagamento atualizados e homologados conforme orientações da Cielo e do Desenvolvedor.
+6.2. A liberação de máquinas depende da comunicação entre servidor, Totem, Dispositivo IoT e rede local (Wi-Fi). Falhas de sinal, configuração incorreta de ESP32, queda de energia ou manutenção de máquinas podem impedir a liberação mesmo com pagamento aprovado; nesses casos, o Estabelecimento deve adotar procedimento manual de atendimento ao Cliente Final.
+6.3. O Desenvolvedor poderá atualizar firmwares recomendados, templates de configuração e políticas de segurança (ex.: validação de heartbeat, tolerância de relógio) para proteger a operação.
 
-  <h2>6. Equipamentos e conectividade</h2>
-  <p>O funcionamento depende de: (i) conexão à internet; (ii) terminal de pagamento operacional; (iii) dispositivos ESP32 e máquinas corretamente configurados. O Desenvolvedor não garante operação ininterrupta em caso de falhas de rede, energia, hardware de terceiros ou manutenção programada.</p>
-  <p>O estabelecimento é responsável pela instalação física, manutenção elétrica e segurança dos equipamentos no local.</p>
+7. USO PERMITIDO E CONDUTAS PROIBIDAS
+7.1. É permitido utilizar o Aplicativo somente para fins lícitos relacionados à operação de lavanderia self-service e gestão empresarial do Estabelecimento.
+7.2. É expressamente proibido: (a) fraudar ou tentar fraudar pagamentos ou liberação de máquinas; (b) realizar engenharia reversa, descompilar ou modificar o Aplicativo, salvo nos limites legais; (c) introduzir vírus, malware ou realizar ataques aos servidores; (d) utilizar o Aplicativo para lavagem de dinheiro ou atividades ilícitas; (e) sublicenciar, revender ou disponibilizar o Aplicativo a terceiros sem autorização escrita; (f) remover avisos de propriedade intelectual; (g) sobrecarregar intencionalmente a infraestrutura.
 
-  <h2>7. Propriedade intelectual</h2>
-  <p>O Aplicativo, sua documentação, interface, código e marcas associadas são de propriedade do Desenvolvedor ou de seus licenciadores. Estes Termos não concedem qualquer licença além do uso necessário à operação conforme descrito aqui.</p>
+8. DISPONIBILIDADE, MANUTENÇÃO E SUPORTE
+8.1. O Desenvolvedor emprega esforços comercialmente razoáveis para manter o Aplicativo disponível, porém não garante funcionamento ininterrupto ou livre de erros, dado que depende de internet, serviços de nuvem, Adquirentes, operadoras e hardware de terceiros.
+8.2. Manutenções programadas ou emergenciais podem causar indisponibilidade temporária, preferencialmente com aviso prévio quando viável.
+8.3. Suporte técnico será prestado pelos canais oficiais (e-mail e telefone indicados no cabeçalho), em horário comercial, salvo contrato específico em contrário.
 
-  <h2>8. Privacidade e proteção de dados (LGPD)</h2>
-  <p>O tratamento de dados pessoais segue a <a href="/politica-de-privacidade.html">Política de Privacidade</a>, parte integrante destes Termos. Resumo:</p>
-  <ul>
-    <li>Dados de transação, logs técnicos e identificação do estabelecimento podem ser coletados para operação, suporte e segurança;</li>
-    <li>Bases legais incluem execução de contrato, legítimo interesse e cumprimento de obrigação legal;</li>
-    <li>O titular pode exercer direitos previstos na Lei nº 13.709/2018 (LGPD) pelo e-mail <strong><a href="mailto:julioosinski@hotmail.com">julioosinski@hotmail.com</a></strong>.</li>
-  </ul>
+9. PROPRIEDADE INTELECTUAL
+9.1. O Aplicativo, código-fonte, documentação, layout, marcas, logotipos e know-how são de titularidade do Desenvolvedor ou licenciadores, protegidos pela legislação brasileira e tratados internacionais aplicáveis.
+9.2. Estes Termos concedem licença limitada, não exclusiva, intransferível e revogável de uso, restrita à finalidade descrita, sem transferência de propriedade.
 
-  <h2>9. Limitação de responsabilidade</h2>
-  <p>Na máxima extensão permitida pela lei aplicável, o Desenvolvedor não se responsabiliza por: lucros cessantes; danos indiretos; perdas decorrentes de uso indevido; indisponibilidade causada por terceiros (adquirentes, operadoras, nuvem); ou conteúdo e conduta de estabelecimentos parceiros.</p>
-  <p>A responsabilidade total do Desenvolvedor, quando cabível, limita-se ao valor pago pelo estabelecimento pelos serviços do Aplicativo nos <strong>12 (doze) meses</strong> anteriores ao evento, salvo disposição legal em contrário.</p>
+10. PROTEÇÃO DE DADOS PESSOAIS (LGPD)
+10.1. O tratamento de dados pessoais rege-se pela Lei nº 13.709/2018 (LGPD) e pela Política de Privacidade do Aplicativo.
+10.2. O Estabelecimento, na medida em que definir finalidades de tratamento de dados de seus colaboradores e Clientes Finais em sistemas próprios, pode atuar como controlador adicional, devendo cumprir a LGPD e apenas utilizar dados exportados do Aplicativo conforme a lei.
+10.3. Titulares de dados podem exercer direitos de confirmação, acesso, correção, eliminação, portabilidade e oposição mediante solicitação ao e-mail julioosinski@hotmail.com, com prazo de resposta conforme a LGPD.
 
-  <h2>10. Suspensão e encerramento</h2>
-  <p>Podemos suspender ou encerrar o acesso em caso de violação destes Termos, ordem judicial, fraude ou risco à segurança. O estabelecimento pode deixar de utilizar o Aplicativo a qualquer momento, mediante desinstalação e comunicação ao suporte para exclusão de dados quando aplicável.</p>
+11. LIMITAÇÃO DE RESPONSABILIDADE E INDENIZAÇÃO
+11.1. Na máxima extensão permitida pela lei, o Desenvolvedor não será responsável por lucros cessantes, perda de dados, danos indiretos, incidentais ou consequenciais, nem por atos de Estabelecimentos, Clientes Finais, Adquirentes ou operadoras de telecomunicações.
+11.2. A responsabilidade total do Desenvolvedor, quando legalmente imputável, limita-se ao montante efetivamente pago pelo Estabelecimento pelos serviços do Aplicativo nos doze (12) meses anteriores ao evento, salvo dolo ou culpa grave reconhecidos judicialmente.
+11.3. O Estabelecimento obriga-se a indenizar o Desenvolvedor por reclamações, perdas e despesas decorrentes de uso indevido do Aplicativo, violação destes Termos ou infração a direitos de terceiros imputável ao Estabelecimento.
 
-  <h2>11. Alterações</h2>
-  <p>Estes Termos podem ser atualizados. A data da última versão constará no topo desta página. O uso continuado após a publicação de alterações constitui aceitação, salvo quando a lei exigir consentimento específico.</p>
+12. SUSPENSÃO, RESCISÃO E SOBREVIVÊNCIA
+12.1. O Desenvolvedor poderá suspender ou encerrar o acesso em caso de violação destes Termos, suspeita de fraude, ordem judicial ou exigência de autoridade competente.
+12.2. O Estabelecimento pode encerrar o uso a qualquer tempo, devendo comunicar o suporte para orientações sobre exportação e exclusão de dados, observados prazos legais de retenção.
+12.3. Disposições sobre propriedade intelectual, limitação de responsabilidade, foro e proteção de dados sobrevivem à rescisão.
 
-  <h2>12. Legislação e foro</h2>
-  <p>Aplica-se a legislação da <strong>República Federativa do Brasil</strong>. Fica eleito o foro da comarca de <strong>Araquari/SC</strong>, com renúncia a qualquer outro, salvo hipóteses de competência absoluta previstas em lei (incluindo o Código de Defesa do Consumidor para relações de consumo).</p>
+13. ALTERAÇÕES DESTES TERMOS
+13.1. Estes Termos podem ser alterados a qualquer tempo. A versão vigente será publicada em https://paglav.com.br/termos-de-uso.html com indicação da data de atualização.
+13.2. O uso continuado após a publicação de alterações constitui aceitação, ressalvadas hipóteses em que a lei exija consentimento específico.
 
-  <h2>13. Contato</h2>
-  <p><strong>Top Automações Ltda</strong><br />
-  BR-101, Km 71, nº 9900, Bairro Rainha, Araquari/SC, CEP 89245-000<br />
-  <strong>Site:</strong> <a href="https://paglav.com.br" rel="noopener">https://paglav.com.br</a><br />
-  <strong>E-mail:</strong> <a href="mailto:julioosinski@hotmail.com">julioosinski@hotmail.com</a> &nbsp;|&nbsp;
-  <strong>Telefone:</strong> (47) 99140-7733</p>
-  <p><strong>Assuntos legais e privacidade:</strong> <a href="mailto:julioosinski@hotmail.com">julioosinski@hotmail.com</a></p>
+14. LEGISLAÇÃO APLICÁVEL E FORO
+14.1. Aplica-se a legislação da República Federativa do Brasil.
+14.2. Fica eleito o foro da comarca de Araquari/SC para dirimir controvérsias decorrentes destes Termos, salvo competência absoluta diversa prevista em lei, inclusive no CDC para relações de consumo entre Cliente Final e Estabelecimento.
+
+15. DISPOSIÇÕES GERAIS
+15.1. A tolerância quanto a eventual descumprimento não implica renúncia de direito.
+15.2. Se qualquer cláusula for considerada inválida, as demais permanecem em vigor.
+15.3. Estes Termos constituem o acordo integral entre as partes quanto ao objeto aqui descrito, prevalecendo sobre entendimentos verbais anteriores incompatíveis.
+
+CONTATO OFICIAL
+Top Automações Ltda | julioosinski@hotmail.com | (47) 99140-7733 | https://paglav.com.br
+Termos completos: https://paglav.com.br/termos-de-uso.html</div>
 </body>
 </html>
