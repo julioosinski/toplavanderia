@@ -71,8 +71,8 @@ public class RealPayGoManager {
                     "Lovable",
                     false,  // suporta troco
                     false,  // suporta desconto
-                    true,   // suporta vias diferenciadas
-                    true,   // suporta vias reduzidas
+                    false,  // suporta vias diferenciadas
+                    false,  // suporta vias reduzidas
                     false,  // valor devido
                     null    // personalização
             );

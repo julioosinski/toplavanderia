@@ -73,8 +73,8 @@ public class RealPayGoManager implements PaymentManager {
                     "Lovable",
                     false,  // suporta troco
                     false,  // suporta desconto
-                    true,   // suporta vias diferenciadas
-                    true,   // suporta vias reduzidas
+                    false,  // vias diferenciadas (evita tela longa de comprovante no PayGo)
+                    false,  // vias reduzidas
                     false,  // valor devido
                     null    // personalização
             );

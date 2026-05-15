@@ -42,6 +42,7 @@ import org.json.JSONObject;
  */
 public class TotemActivity extends Activity {
     private static final String TAG = "TotemActivity";
+    private static final long POST_PAYMENT_SUCCESS_MS = 1000L;
     
     private SupabaseHelper supabaseHelper;
     private PaymentManager activePaymentManager;
@@ -468,37 +469,20 @@ public class TotemActivity extends Activity {
         
         // Título
         TextView title = new TextView(this);
-        title.setText("✅ MÁQUINA SELECIONADA");
+        title.setText("Confirmar pagamento");
         title.setTextSize(24);
         title.setTextColor(Color.WHITE);
         title.setGravity(android.view.Gravity.CENTER);
         title.setPadding(0, 0, 0, 20);
         layout.addView(title);
         
-        // Status do ESP32
-        TextView esp32StatusText = new TextView(this);
-        if (machine.isEsp32Online()) {
-            esp32StatusText.setText("🟢 ESP32 ONLINE - ID: " + machine.getEsp32Id());
-            esp32StatusText.setTextColor(Color.parseColor("#4CAF50"));
-        } else {
-            esp32StatusText.setText("🔴 ESP32 OFFLINE - ID: " + machine.getEsp32Id());
-            esp32StatusText.setTextColor(Color.parseColor("#F44336"));
-        }
-        esp32StatusText.setTextSize(14);
-        esp32StatusText.setGravity(android.view.Gravity.CENTER);
-        esp32StatusText.setPadding(10, 10, 10, 20);
-        esp32StatusText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        layout.addView(esp32StatusText);
-        
-        // Detalhes da máquina
         TextView details = new TextView(this);
-        details.setText("Máquina: " + machine.getName() + "\n" +
-                       "Tipo: " + machine.getTypeDisplay() + "\n" +
-                       "ESP32: " + machine.getEsp32Id() + " (Relay " + machine.getRelayPin() + ")\n" +
-                       "Preço: R$ " + new DecimalFormat("0.00").format(machine.getPrice()) + "\n" +
-                       "Duração: " + machine.getDuration() + " minutos\n\n" +
-                       "💳 PAGAMENTO SERÁ PROCESSADO NA PPC930\n" +
-                       "Insira seu cartão quando solicitado");
+        details.setText(machine.getName() + "\n" +
+                       machine.getTypeDisplay() + "\n\n" +
+                       "Valor: R$ " + new DecimalFormat("0.00").format(machine.getPrice()) + "\n" +
+                       "Tempo do ciclo: " + machine.getDuration() + " min\n\n" +
+                       "Pagamento no terminal\n" +
+                       "Siga as instruções na tela de pagamento");
         details.setTextSize(16);
         details.setTextColor(Color.WHITE);
         details.setGravity(android.view.Gravity.CENTER);
@@ -825,8 +809,7 @@ public class TotemActivity extends Activity {
                 // Iniciar uso da máquina com tempo de duração
                 boolean statusUpdated = supabaseHelper.startMachineUsage(machineSnapshot.getId(), machineSnapshot.getDuration());
                 
-                // Mostrar tela de sucesso
-                showPaymentSuccess(authorizationCode, transactionId);
+                showBriefPaymentSuccessAndReset(machineSnapshot);
             } else {
                 Log.e(TAG, "❌ Falha ao acionar ESP32");
                 handlePaymentError("Pagamento aprovado mas a máquina não pôde ser acionada. Entre em contato com a administração.");
@@ -838,44 +821,28 @@ public class TotemActivity extends Activity {
         }
     }
     
-    private void showPaymentSuccess(String authorizationCode, String transactionId) {
+    private void showBriefPaymentSuccessAndReset(SupabaseHelper.Machine machine) {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(50, 50, 50, 50);
-        layout.setBackgroundColor(Color.parseColor("#4CAF50"));
-        
+        layout.setBackgroundColor(Color.parseColor("#2E7D32"));
+        layout.setGravity(android.view.Gravity.CENTER);
+
         TextView successText = new TextView(this);
-        successText.setText("✅ PAGAMENTO APROVADO!\n\n" +
-                           "Máquina: " + selectedMachine.getName() + "\n" +
-                           "Valor: R$ " + new DecimalFormat("0.00").format(selectedMachine.getPrice()) + "\n" +
-                           "Código: " + authorizationCode + "\n" +
-                           "Transação: " + transactionId + "\n" +
-                           "Data: " + getCurrentTime() + "\n\n" +
-                           "🔓 MÁQUINA LIBERADA!\n" +
-                           "🎉 Você pode usar o serviço agora!\n\n" +
-                           "⏰ Tempo de uso: " + selectedMachine.getDuration() + " minutos");
-        successText.setTextSize(16);
+        String machineLabel = machine != null ? machine.getName() : "Máquina";
+        successText.setText("Pagamento aprovado\n\n" + machineLabel + " liberada.\nPode iniciar o ciclo.");
+        successText.setTextSize(20);
         successText.setGravity(android.view.Gravity.CENTER);
-        successText.setPadding(20, 20, 20, 20);
         successText.setTextColor(Color.WHITE);
         layout.addView(successText);
-        
-        // Botão para nova operação
-        Button newOperationButton = new Button(this);
-        newOperationButton.setText("🛒 NOVA OPERAÇÃO");
-        newOperationButton.setTextSize(18);
-        newOperationButton.setPadding(20, 25, 20, 25);
-        newOperationButton.setBackgroundColor(Color.WHITE);
-        newOperationButton.setTextColor(Color.parseColor("#4CAF50"));
-        newOperationButton.setOnClickListener(v -> {
+
+        setContentView(layout);
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
             selectedMachine = null;
             currentOperationId = -1;
             createTotemInterface();
             loadMachines();
-        });
-        layout.addView(newOperationButton);
-        
-        setContentView(layout);
+        }, POST_PAYMENT_SUCCESS_MS);
     }
     
     private void handlePaymentError(String error) {

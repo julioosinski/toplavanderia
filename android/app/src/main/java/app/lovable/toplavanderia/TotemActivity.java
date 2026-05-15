@@ -44,6 +44,8 @@ import org.json.JSONObject;
  */
 public class TotemActivity extends Activity {
     private static final String TAG = "TotemActivity";
+    /** Tela de sucesso após pagamento antes de voltar à seleção de máquinas. */
+    private static final long POST_PAYMENT_SUCCESS_MS = 1000L;
 
     private SupabaseHelper supabaseHelper;
     private PaymentManager activePaymentManager;
@@ -534,36 +536,20 @@ public class TotemActivity extends Activity {
         
         // Título
         TextView title = new TextView(this);
-        title.setText("✅ MÁQUINA SELECIONADA");
+        title.setText("Confirmar pagamento");
         title.setTextSize(24);
         title.setTextColor(Color.WHITE);
         title.setGravity(android.view.Gravity.CENTER);
         title.setPadding(0, 0, 0, 20);
         layout.addView(title);
         
-        // Status do ESP32
-        TextView esp32StatusText = new TextView(this);
-        if (machine.isEsp32Online()) {
-            esp32StatusText.setText("🟢 ESP32 ONLINE - ID: " + machine.getEsp32Id());
-            esp32StatusText.setTextColor(Color.parseColor("#4CAF50"));
-        } else {
-            esp32StatusText.setText("🔴 ESP32 OFFLINE - ID: " + machine.getEsp32Id());
-            esp32StatusText.setTextColor(Color.parseColor("#F44336"));
-        }
-        esp32StatusText.setTextSize(14);
-        esp32StatusText.setGravity(android.view.Gravity.CENTER);
-        esp32StatusText.setPadding(10, 10, 10, 20);
-        esp32StatusText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        layout.addView(esp32StatusText);
-        
-        // Detalhes da máquina
+        // Detalhes da máquina (sem dados técnicos de ESP32)
         TextView details = new TextView(this);
-        details.setText("Máquina: " + machine.getName() + "\n" +
-                       "Tipo: " + machine.getTypeDisplay() + "\n" +
-                       "ESP32: " + machine.getEsp32Id() + " (Relay " + machine.getRelayPin() + ")\n" +
-                       "Preço: R$ " + new DecimalFormat("0.00").format(machine.getPrice()) + "\n" +
-                       "Duração: " + machine.getDuration() + " minutos\n\n" +
-                       "💳 " + getPaymentInstructionTitle() + "\n" +
+        details.setText(machine.getName() + "\n" +
+                       machine.getTypeDisplay() + "\n\n" +
+                       "Valor: R$ " + new DecimalFormat("0.00").format(machine.getPrice()) + "\n" +
+                       "Tempo do ciclo: " + machine.getDuration() + " min\n\n" +
+                       getPaymentInstructionTitle() + "\n" +
                        getPaymentInstructionSubtitle());
         details.setTextSize(16);
         details.setTextColor(Color.WHITE);
@@ -932,7 +918,7 @@ public class TotemActivity extends Activity {
                     supabaseHelper.startMachineUsage(machineSnapshot.getId(), machineSnapshot.getDuration());
                     runOnUiThread(() -> {
                         triggerAutomaticReceiptPrint(machineSnapshot, authorizationCode, transactionId);
-                        resetToNewTransaction();
+                        showBriefPaymentSuccessAndReset(machineSnapshot);
                     });
                 } else {
                     Log.e(TAG, "❌ Falha ao acionar ESP32");
@@ -946,11 +932,35 @@ public class TotemActivity extends Activity {
     }
     
     private void triggerAutomaticReceiptPrint(SupabaseHelper.Machine machine, String authorizationCode, String transactionId) {
-        // No fluxo Cielo via deep link, o comprovante geralmente é gerenciado pelo app de pagamento.
-        // Aqui mantemos o gatilho explícito para rastreabilidade operacional no log.
-        Log.d(TAG, "🖨️ Impressão automática acionada - máquina=" + machine.getName()
+        // Comprovante: Cielo/PayGo no terminal; totem não exibe tela de impressão.
+        Log.d(TAG, "Pagamento concluído - máquina=" + machine.getName()
             + ", método=" + currentOperationSupabasePaymentMethod
             + ", auth=" + authorizationCode + ", txn=" + transactionId);
+    }
+
+    /** Feedback curto ao cliente e retorno automático à tela inicial (sem perguntar sobre comprovante). */
+    private void showBriefPaymentSuccessAndReset(SupabaseHelper.Machine machine) {
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setFillViewport(true);
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(dp(24), dp(32), dp(24), dp(32));
+        layout.setBackgroundColor(Color.parseColor("#2E7D32"));
+        layout.setGravity(android.view.Gravity.CENTER);
+
+        TextView successText = new TextView(this);
+        String machineLabel = machine != null ? machine.getName() : "Máquina";
+        successText.setText("Pagamento aprovado\n\n" + machineLabel + " liberada.\nPode iniciar o ciclo.");
+        successText.setTextSize(20);
+        successText.setTextColor(Color.WHITE);
+        successText.setGravity(android.view.Gravity.CENTER);
+        successText.setLineSpacing(dp(4), 1f);
+        layout.addView(successText);
+
+        scrollView.addView(layout);
+        setContentView(scrollView);
+
+        new Handler(Looper.getMainLooper()).postDelayed(this::resetToNewTransaction, POST_PAYMENT_SUCCESS_MS);
     }
 
     private void resetToNewTransaction() {
