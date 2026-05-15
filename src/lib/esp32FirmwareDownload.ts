@@ -17,7 +17,7 @@ export interface Esp32FirmwareParams {
    * Índice lógico do relé no JSON Supabase (`relay_1`, `relay_2`…), igual ao campo relay_pin da máquina no painel.
    */
   relayLogicalPin?: number;
-  /** Duração do ciclo em minutos (tempo de acionamento do relé até desligar automaticamente). */
+  /** Duração do ciclo em minutos (contagem no sistema; relé só recebe pulso de 100ms). */
   cycleTimeMinutes?: number;
 }
 

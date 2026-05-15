@@ -3,7 +3,7 @@
  * Fonte única: este arquivo. Placeholders __LAUNDRY_ID__, __MACHINE_NAME__, etc.
  * Firmware gerado fica em: public/arduino/generated/
  *
- * Versão: 2.1.3 — ID auto via MAC; auto_register; portal cativo (DNS); AP + NVS; scan Wi-Fi
+ * Versão: 2.2.0 — pulso de crédito 100ms no relé; contagem de ciclo via machineRunning
  */
 
 #include <WiFi.h>
@@ -57,6 +57,8 @@ unsigned long lastHeartbeat = 0;
 unsigned long lastPoll = 0;
 const unsigned long HEARTBEAT_INTERVAL = 30000;  // 30 segundos
 const unsigned long POLL_INTERVAL = 5000;        // fila pending_commands (esp32-control)
+/** Pulso no relé = 1 crédito na lavadora/secadora (PLC); não mantém relé ligado pelo tempo do ciclo */
+const unsigned long RELAY_PULSE_MS = 100;
 bool relayState = false;
 unsigned long machineStartTime = 0;
 bool machineRunning = false;
@@ -86,6 +88,19 @@ bool loadWiFiCredentials() {
   configuredSsid.trim();
   configuredPassword.trim();
   return configuredSsid.length() > 0;
+}
+
+/** Aciona relé por RELAY_PULSE_MS e inicia contagem do ciclo (machineRunning). */
+void pulseCreditRelay() {
+  digitalWrite(RELAY_PIN, HIGH);
+  digitalWrite(LED_PIN, HIGH);
+  delay(RELAY_PULSE_MS);
+  digitalWrite(RELAY_PIN, LOW);
+  digitalWrite(LED_PIN, LOW);
+  relayState = false;
+  machineRunning = true;
+  machineStartTime = millis();
+  Serial.printf("⚡ Pulso de crédito (%lu ms); ciclo: %d min\n", RELAY_PULSE_MS, cycleTimeMinutes);
 }
 
 void saveWiFiCredentials(const String& ssid, const String& password) {
@@ -298,15 +313,12 @@ void loop() {
     stopConfigPortal();
   }
 
-  // Fim do ciclo: desliga relé (mesma regra de tempo que o painel / dashboard)
-  if (machineRunning && relayState && cycleTimeMinutes > 0) {
+  // Fim do ciclo: contagem local (relé já está desligado após o pulso de crédito)
+  if (machineRunning && cycleTimeMinutes > 0) {
     unsigned long cycleMs = (unsigned long)cycleTimeMinutes * 60UL * 1000UL;
     if (now - machineStartTime >= cycleMs) {
-      Serial.printf("⏱️ Ciclo concluído (%d min); desligando relé\n", cycleTimeMinutes);
-      relayState = false;
+      Serial.printf("⏱️ Ciclo concluído (%d min)\n", cycleTimeMinutes);
       machineRunning = false;
-      digitalWrite(RELAY_PIN, LOW);
-      digitalWrite(LED_PIN, LOW);
       sendHeartbeat();
     }
   }
@@ -475,7 +487,7 @@ void handleStatus() {
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
   doc["network_status"] = "connected";
-  doc["firmware_version"] = "v2.1.2";
+  doc["firmware_version"] = "v2.2.0";
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
   doc["relay_status"] = relayState ? "on" : "off";
@@ -489,15 +501,10 @@ void handleStatus() {
 
 void handleStart() {
   Serial.println("▶️ Comando START recebido");
-  relayState = true;
-  machineRunning = true;
-  machineStartTime = millis();
-  digitalWrite(RELAY_PIN, HIGH);
-  digitalWrite(LED_PIN, HIGH);
-  
-  server.send(200, "application/json", "{\"success\":true,\"message\":\"Máquina iniciada\"}");
-  Serial.println("✅ Máquina iniciada com sucesso");
-  sendHeartbeat();  // Enviar status atualizado imediatamente
+  pulseCreditRelay();
+  server.send(200, "application/json", "{\"success\":true,\"message\":\"Crédito enviado (pulso)\"}");
+  Serial.println("✅ Pulso de crédito enviado");
+  sendHeartbeat();
 }
 
 void handleStop() {
@@ -589,12 +596,8 @@ void pollSupabaseCommands() {
           cycleTimeMinutes = newCycle;
         }
       }
-      relayState = true;
-      machineRunning = true;
-      machineStartTime = millis();
-      digitalWrite(RELAY_PIN, HIGH);
-      digitalWrite(LED_PIN, HIGH);
-      Serial.printf("⚡ Fila Supabase: ON (ciclo: %d min)\n", cycleTimeMinutes);
+      pulseCreditRelay();
+      Serial.printf("⚡ Fila Supabase: crédito (pulso %lu ms, ciclo: %d min)\n", RELAY_PULSE_MS, cycleTimeMinutes);
     } else if (action == "off" || action == "deactivate" || action == "turn_off") {
       relayState = false;
       machineRunning = false;
@@ -630,7 +633,7 @@ void sendHeartbeat() {
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
   doc["network_status"] = "connected";
-  doc["firmware_version"] = "v2.1.3";
+  doc["firmware_version"] = "v2.2.0";
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
   doc["device_name"] = MACHINE_NAME;
@@ -638,10 +641,10 @@ void sendHeartbeat() {
     doc["auto_register"] = true;
   }
   
-  // relay_N com N = relay_pin da máquina no painel (heartbeat alinhado ao dashboard / tablet)
+  // relay_N: estado lógico do ciclo (relé físico só pulsa 100ms; machineRunning = crédito ativo)
   JsonObject relayStatusObj = doc.createNestedObject("relay_status");
   String relayKey = "relay_" + String(RELAY_LOGICAL_PIN);
-  relayStatusObj[relayKey] = relayState ? "on" : "off";
+  relayStatusObj[relayKey] = machineRunning ? "on" : "off";
   
   String payload;
   serializeJson(doc, payload);
