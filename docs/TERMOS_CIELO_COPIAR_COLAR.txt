@@ -1,0 +1,34 @@
+TERMOS E CONDIÇÕES DE USO — TOP LAVANDERIA
+Versão 1.0 | Atualizado em 15/05/2026
+
+DESENVOLVEDOR: Top Automações Ltda | CNPJ 43.652.666/0001-37
+Endereço: BR-101, Km 71, nº 9900, Bairro Rainha, Araquari/SC, CEP 89245-000
+Site: https://paglav.com.br
+
+1. ACEITAÇÃO
+Ao instalar ou utilizar o aplicativo Top Lavanderia em terminais Cielo Smart ou outros dispositivos Android, o usuário (estabelecimento comercial ou cliente final) concorda com estes Termos, oferecidos pela Top Automações Ltda.
+
+2. SERVIÇO
+O Top Lavanderia permite: (a) autoatendimento no totem para seleção de máquinas, pagamento (cartão/PIX) e liberação de ciclos; (b) gestão administrativa de lavanderias, máquinas, preços e relatórios; (c) integração com dispositivos ESP32 para controle remoto de lavadoras e secadoras.
+
+3. RESPONSABILIDADES
+O estabelecimento é responsável pelos dados cadastrais (CNPJ), preços, operação das máquinas, atendimento ao consumidor, obrigações fiscais e política de reembolso. A Top Automações Ltda fornece a tecnologia de software; pagamentos são processados por adquirentes homologados (Cielo/PayGO), sem armazenamento de dados completos de cartão.
+
+4. USO PERMITIDO
+É proibido fraudar pagamentos, burlar segurança, modificar o aplicativo sem autorização ou utilizá-lo para fins ilícitos.
+
+5. DISPONIBILIDADE
+O serviço depende de internet, terminal de pagamento e equipamentos IoT. Interrupções por falhas de terceiros, manutenção ou força maior não geram garantia de disponibilidade contínua.
+
+6. PRIVACIDADE (LGPD)
+Dados de operação, transações e cadastro são tratados conforme a Política de Privacidade, para execução do serviço, suporte e segurança. Direitos do titular: julioosinski@hotmail.com
+
+7. LIMITAÇÃO DE RESPONSABILIDADE
+Na extensão legal permitida, a Top Automações Ltda não responde por danos indiretos ou falhas de adquirentes/operadoras. Relações de consumo entre cliente e lavanderia regem-se pelo CDC.
+
+8. ALTERAÇÕES E FORO
+Estes Termos podem ser atualizados. Lei brasileira. Foro: Araquari/SC.
+
+CONTATO: julioosinski@hotmail.com | (47) 99140-7733 | https://paglav.com.br
+Termos completos: https://paglav.com.br/termos-de-uso.html
+Privacidade: https://paglav.com.br/politica-de-privacidade.html

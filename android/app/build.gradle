@@ -6,7 +6,8 @@ plugins {
 def keystorePropsFile = rootProject.file('keystore.properties')
 def keystoreProps = new Properties()
 if (keystorePropsFile.exists()) {
-    keystoreProps.load(new FileInputStream(keystorePropsFile))
+    // UTF-8 BOM em keystore.properties quebra a chave storeFile no Properties.load.
+    keystoreProps.load(new StringReader(keystorePropsFile.getText('UTF-8').replace('\uFEFF', '')))
 }
 
 def envFile = rootProject.file('../.env')
@@ -63,6 +64,13 @@ android {
                 def storePath = keystoreProps['storeFile']
                 storeFile storePath ? rootProject.file(storePath) : null
             }
+            // Cielo (targetSdk >= 31): exige esquema v2; v1 evita falso "certificado alterado" na extração legada.
+            enableV1Signing true
+            enableV2Signing true
+        }
+        debug {
+            enableV1Signing true
+            enableV2Signing true
         }
     }
 
