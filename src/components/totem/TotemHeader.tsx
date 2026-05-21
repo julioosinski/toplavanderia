@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { Capacitor } from "@capacitor/core";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Monitor, Smartphone, WifiOff, Home } from "lucide-react";
@@ -13,6 +14,7 @@ interface TotemHeaderProps {
 }
 
 export const TotemHeader = ({ currentTime, deviceMode, isOffline, laundryName, onLogoTap, tapCount = 0 }: TotemHeaderProps) => {
+  const isNative = Capacitor.isNativePlatform();
   return (
     <div className="px-2 py-1 shrink-0">
       <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg px-3 py-1.5 shadow-lg">
