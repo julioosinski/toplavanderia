@@ -777,9 +777,11 @@ const Totem = () => {
               ))}
             </div>
           )}
-          <Link to="/auth" className="underline-offset-2 hover:underline text-gray-300">
-            Equipe
-          </Link>
+          {!isNative && (
+            <Link to="/auth" className="underline-offset-2 hover:underline text-gray-300">
+              Equipe
+            </Link>
+          )}
         </div>
       </div>
 
