@@ -1,58 +1,47 @@
 ## Objetivo
+Garantir que toda operação PIX (Cielo Smart POS, PayGO terminal, QR PayGO) gere uma linha em `public.transactions` com `payment_method='pix'` e termine em `status='completed'`, refletindo nos relatórios.
 
-Ao abrir o app na maquininha (Smart POS) ou totem, entrar automaticamente em **tela cheia bloqueada** (sem barra de status, sem botões do sistema, sem gestos do navegador). Apenas um **toque específico/secreto** libera o acesso às outras funções (admin, configurações, sair).
+## Etapa 1 — Investigação rápida (5 min)
+- Consultar logs do `esp32-monitor` / `transaction-webhook` no último dia para ver se houve tentativa PIX que falhou na escrita.
+- Confirmar com o usuário: a maquininha está rodando Cielo Smart POS (deep link) ou PayGO/PPC930? Isso decide qual caminho corrigir primeiro.
 
-## Situação atual
+## Etapa 2 — Fechar o ciclo PIX (status='completed')
+Hoje `create_totem_transaction` grava `status='pending'` e nada marca PIX como `completed`. Soluções (no mesmo PR):
 
-O projeto já tem as peças, mas elas não estão "amarradas":
+1. Em `src/pages/Totem.tsx` `activateMachine`, **após** o ESP32 confirmar o relé ligado, fazer `UPDATE transactions SET status='completed', completed_at=now() WHERE id = transactionId`. Isso vale para todos os métodos, não só PIX, e corrige também os 14 `credit pending` antigos por idempotência futura.
+2. Manter o trigger `update_machine_stats` (já soma revenue/uses quando vira `completed`).
 
-- `useKioskSecurity` — hook que faz fullscreen + bloqueia teclas/menu/contexto/back, mas só ativa quando alguém chama `enableSecurity()`.
-- `useCapacitorIntegration` — esconde StatusBar e bloqueia botão back no Android nativo.
-- Gestos administrativos no Totem — já existe o padrão de **7 toques no logo / footer** para abrir diagnóstico ou reconfigurar CNPJ.
-- `useDeviceMode` — detecta `totem` / `smartpos` / `pwa`.
+## Etapa 3 — Garantir gravação no caminho Cielo Deep Link
+Problema: `CieloResponseActivity` (nativo) recebe o callback mas o JS pode não estar resolvendo a `Promise`.
 
-Hoje a tela cheia depende de interação manual e o app não esconde funções administrativas atrás do gesto.
+Opções (escolher 1, ver pergunta abaixo):
 
-## Plano
+- **A. Via JS (preferido):** Confirmar que `CieloLioManager.handleDeepLinkResponse(uri)` chama de volta o plugin Capacitor (`paygo` plugin) com o resultado, e que `processPaygoPayment` resolve com `success:true`. Se não, adicionar `notifyListeners('cieloResult', {...})` no plugin nativo e escutar no `useUniversalPayment` para resolver a promise pendente.
+- **B. Via edge function:** `CieloResponseActivity` faz POST direto numa nova Edge Function `cielo-payment-callback` (com `verify_jwt=false`) que insere a transação `completed` no Supabase. Mais robusto se a app foi morta enquanto pagava.
 
-### 1. Ativar kiosk automaticamente ao abrir
-- Em `src/pages/Totem.tsx` (e equivalente da Smart POS), chamar `enableSecurity()` no mount quando `isNative` ou `mode !== 'pwa'`.
-- Em `useCapacitorIntegration`, já reforçar: `StatusBar.hide()`, immersive sticky, `keepScreenOn`. Garantir que rode na primeira renderização.
-- Re-entrar em fullscreen automaticamente se o usuário sair (já existe em `handleFullscreenChange`, apenas precisa estar `securityEnabled=true`).
-- PWA (navegador web admin) **não** entra em kiosk — segue normal.
+## Etapa 4 — Rede de segurança (cron polling)
+Criar `pg_cron` (ou job no `auto-release-machines`) que a cada 2 min:
+- Procura `transactions` com `status='pending'` e `payment_method='pix'` criadas há > 3 min.
+- Se houver `esp32_status.relay_status` indicando relé ligado para aquela máquina **ou** comando `pending_commands` executado com sucesso → marcar `completed`.
+- Caso contrário, após 10 min → marcar `cancelled` para limpar relatório.
 
-### 2. Esconder acesso a outras funções
-- Remover/ocultar no modo kiosk qualquer link visível para `/auth`, `/admin`, diagnóstico, etc.
-- A UI do totem mostra apenas: seleção operação → máquinas → pagamento.
+## Etapa 5 — Backfill (opcional)
+Se o usuário tiver extrato Cielo das operações PIX já feitas, criar script SQL para inserir essas transações históricas em `transactions` como `completed` para os relatórios passados ficarem corretos.
 
-### 3. Gesto secreto para liberar
-Padronizar **um único gesto** em vez dos múltiplos atuais. Sugestão:
+## Arquivos afetados
+- `src/pages/Totem.tsx` (Etapa 2)
+- `src/hooks/useUniversalPayment.ts` ou `src/plugins/paygo.ts` + `CieloLioManager.java` (Etapa 3A) **ou** nova `supabase/functions/cielo-payment-callback/index.ts` + `CieloResponseActivity.java` (Etapa 3B)
+- Nova migration `pg_cron` (Etapa 4)
 
-- **7 toques rápidos no logo do header** (≤ 3s) → abre modal com PIN.
-- PIN validado via `validate_admin_pin` (RPC já existente, fallback `1234`).
-- Após PIN correto → menu com: "Área da equipe (/auth)", "Diagnóstico", "Reconfigurar CNPJ", "Sair do modo kiosk".
+## Detalhes técnicos
+- O `payment_method` já é normalizado para `'pix'` por `normalizePaymentMethod` em `Totem.tsx:411`.
+- A Etapa 2 (`UPDATE … completed`) já dispara o trigger `update_machine_stats` → revenue agrega sozinha.
+- `LaundryReportsTab` continua sem mudanças — o problema é só de escrita.
 
-Implementação:
-- Criar `src/components/totem/KioskUnlockGate.tsx` que envolve o header/logo, conta toques com debounce, abre `Dialog` com input PIN, e em sucesso renderiza um menu de ações.
-- Reaproveitar `useAdminAccess` para validar o PIN.
-- Ao escolher "Sair do modo kiosk" → `disableSecurity()` + navegar para `/auth`.
-
-### 4. Limites técnicos a comunicar
-- **Web fullscreen** (PWA no Chrome) pode ser cancelado pelo Android com swipe-down do sistema; mitigamos voltando ao fullscreen no `fullscreenchange`, mas não é 100% à prova de fuga.
-- Para bloqueio real (sem barra de notificação, sem home), no APK Android é preciso **screen pinning / Lock Task Mode** ou um app launcher de kiosk (ex.: SureLock). Isso é config do dispositivo, fora do código React. Vou documentar isso em `DEPLOYMENT_TOTEM/README_TOTEM.md`.
-- Na Cielo LIO / Smart POS, o app já roda como launcher quando configurado; o reforço por software aqui é suficiente.
-
-## Arquivos a alterar
-
-- `src/pages/Totem.tsx` — chamar `enableSecurity()` automaticamente no mount nativo; esconder atalhos administrativos.
-- `src/components/totem/TotemHeader.tsx` — montar `KioskUnlockGate` no logo (substituir gestos atuais espalhados).
-- `src/components/totem/KioskUnlockGate.tsx` *(novo)* — contador de toques + dialog PIN + menu de ações.
-- `src/hooks/useKioskSecurity.ts` — pequeno ajuste para expor estado consistente e evitar loop ao desligar.
-- `src/hooks/useCapacitorIntegration.ts` — garantir `StatusBar.hide()` e immersive logo na inicialização do totem.
-- `DEPLOYMENT_TOTEM/README_TOTEM.md` — instruções de Screen Pinning / Lock Task Mode no Android para reforço extra.
+## Atenção: requer rebuild do APK
+As correções de Etapa 2 e 3 são código JS/Java → **a maquininha precisa de novo APK** (a menos que você ative `server.url` no `capacitor.config.ts` antes, o que tornaria a Etapa 2 instantânea). Edge Function (3B) e cron (4) entram sem rebuild.
 
 ## Perguntas antes de implementar
-
-1. **Gesto secreto**: mantenho **7 toques no logo** (igual ao resto do app) ou prefere outro (ex.: pressionar 5s no canto, padrão de toques em 4 cantos)?
-2. **PIN**: usa o PIN admin atual (RPC `validate_admin_pin`, fallback 1234) ou quer definir um PIN exclusivo de "destravar kiosk"?
-3. **Botão "Área da equipe"** que existe hoje no rodapé do totem: removo (só acessível pelo gesto) ou mantenho visível?
+1. A maquininha hoje está em **Cielo Smart POS** (deep link Cielo LIO) ou **PayGO/PPC930**? (define Etapa 3)
+2. Prefere caminho **A (corrigir bridge JS, depende de novo APK)** ou **B (Edge Function recebendo callback nativo, sobrevive a app morto)**?
+3. Quer que eu rode a **Etapa 5 (backfill)** se você me passar o extrato Cielo dos PIX já feitos?
