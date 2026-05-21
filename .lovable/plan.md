@@ -1,59 +1,58 @@
-# Padronizar gerenciador de pacotes (pnpm)
+## Objetivo
 
-## Diagnóstico
+Ao abrir o app na maquininha (Smart POS) ou totem, entrar automaticamente em **tela cheia bloqueada** (sem barra de status, sem botões do sistema, sem gestos do navegador). Apenas um **toque específico/secreto** libera o acesso às outras funções (admin, configurações, sair).
 
-O repositório tem **três lockfiles** convivendo, o que causa builds diferentes entre ambientes:
+## Situação atual
 
-| Lockfile | Última atualização | Quem usa |
-|---|---|---|
-| `bun.lock` | 27/04 17:21 | Sandbox Lovable (bun) |
-| `pnpm-lock.yaml` | 27/04 17:19 | **Netlify** (`netlify.toml` → `pnpm build`) |
-| `package-lock.json` | 27/04 16:56 | Ninguém — resíduo |
+O projeto já tem as peças, mas elas não estão "amarradas":
 
-Problemas:
-- `package.json` não declara `packageManager`, então cada ambiente escolhe o seu.
-- Toda vez que o sandbox roda `bun add/remove`, só o `bun.lock` é regravado — `pnpm-lock.yaml` fica defasado e o Netlify pode resolver versões diferentes (ou falhar com `ERR_PNPM_OUTDATED_LOCKFILE`).
-- Versões hoje batem para `@tanstack/react-query` 5.56.2, mas isso é coincidência; sem unificação, voltará a divergir.
+- `useKioskSecurity` — hook que faz fullscreen + bloqueia teclas/menu/contexto/back, mas só ativa quando alguém chama `enableSecurity()`.
+- `useCapacitorIntegration` — esconde StatusBar e bloqueia botão back no Android nativo.
+- Gestos administrativos no Totem — já existe o padrão de **7 toques no logo / footer** para abrir diagnóstico ou reconfigurar CNPJ.
+- `useDeviceMode` — detecta `totem` / `smartpos` / `pwa`.
 
-## Decisão
+Hoje a tela cheia depende de interação manual e o app não esconde funções administrativas atrás do gesto.
 
-Padronizar em **pnpm** (que já é o que o Netlify e os scripts `supabase:*` usam) e eliminar os outros dois lockfiles.
+## Plano
 
-## Mudanças
+### 1. Ativar kiosk automaticamente ao abrir
+- Em `src/pages/Totem.tsx` (e equivalente da Smart POS), chamar `enableSecurity()` no mount quando `isNative` ou `mode !== 'pwa'`.
+- Em `useCapacitorIntegration`, já reforçar: `StatusBar.hide()`, immersive sticky, `keepScreenOn`. Garantir que rode na primeira renderização.
+- Re-entrar em fullscreen automaticamente se o usuário sair (já existe em `handleFullscreenChange`, apenas precisa estar `securityEnabled=true`).
+- PWA (navegador web admin) **não** entra em kiosk — segue normal.
 
-1. **`package.json`**
-   - Adicionar `"packageManager": "pnpm@9.x"` para que Lovable, Netlify e dev local usem a mesma ferramenta automaticamente.
-   - Adicionar `"engines": { "node": ">=20" }`.
+### 2. Esconder acesso a outras funções
+- Remover/ocultar no modo kiosk qualquer link visível para `/auth`, `/admin`, diagnóstico, etc.
+- A UI do totem mostra apenas: seleção operação → máquinas → pagamento.
 
-2. **Criar `.npmrc`** com:
-   ```
-   engine-strict=true
-   auto-install-peers=true
-   ```
+### 3. Gesto secreto para liberar
+Padronizar **um único gesto** em vez dos múltiplos atuais. Sugestão:
 
-3. **Remover lockfiles redundantes**
-   - Apagar `bun.lock`
-   - Apagar `package-lock.json`
-   - Manter apenas `pnpm-lock.yaml`
+- **7 toques rápidos no logo do header** (≤ 3s) → abre modal com PIN.
+- PIN validado via `validate_admin_pin` (RPC já existente, fallback `1234`).
+- Após PIN correto → menu com: "Área da equipe (/auth)", "Diagnóstico", "Reconfigurar CNPJ", "Sair do modo kiosk".
 
-4. **Regenerar `pnpm-lock.yaml`** rodando `pnpm install` para garantir consistência total com o `package.json` atual.
+Implementação:
+- Criar `src/components/totem/KioskUnlockGate.tsx` que envolve o header/logo, conta toques com debounce, abre `Dialog` com input PIN, e em sucesso renderiza um menu de ações.
+- Reaproveitar `useAdminAccess` para validar o PIN.
+- Ao escolher "Sair do modo kiosk" → `disableSecurity()` + navegar para `/auth`.
 
-5. **`netlify.toml`** — sem mudança (já está correto: `pnpm build`).
+### 4. Limites técnicos a comunicar
+- **Web fullscreen** (PWA no Chrome) pode ser cancelado pelo Android com swipe-down do sistema; mitigamos voltando ao fullscreen no `fullscreenchange`, mas não é 100% à prova de fuga.
+- Para bloqueio real (sem barra de notificação, sem home), no APK Android é preciso **screen pinning / Lock Task Mode** ou um app launcher de kiosk (ex.: SureLock). Isso é config do dispositivo, fora do código React. Vou documentar isso em `DEPLOYMENT_TOTEM/README_TOTEM.md`.
+- Na Cielo LIO / Smart POS, o app já roda como launcher quando configurado; o reforço por software aqui é suficiente.
 
-## Validação
+## Arquivos a alterar
 
-- Rodar `pnpm install` → deve completar sem warnings de lockfile desatualizado.
-- Rodar `pnpm build` localmente no sandbox → deve gerar `dist/` igual ao que o Netlify produzirá.
-- Após o merge, o próximo deploy do Netlify deve usar exatamente o mesmo `pnpm-lock.yaml`.
+- `src/pages/Totem.tsx` — chamar `enableSecurity()` automaticamente no mount nativo; esconder atalhos administrativos.
+- `src/components/totem/TotemHeader.tsx` — montar `KioskUnlockGate` no logo (substituir gestos atuais espalhados).
+- `src/components/totem/KioskUnlockGate.tsx` *(novo)* — contador de toques + dialog PIN + menu de ações.
+- `src/hooks/useKioskSecurity.ts` — pequeno ajuste para expor estado consistente e evitar loop ao desligar.
+- `src/hooks/useCapacitorIntegration.ts` — garantir `StatusBar.hide()` e immersive logo na inicialização do totem.
+- `DEPLOYMENT_TOTEM/README_TOTEM.md` — instruções de Screen Pinning / Lock Task Mode no Android para reforço extra.
 
-## O que NÃO muda
+## Perguntas antes de implementar
 
-- Versões de dependências em `package.json` permanecem idênticas.
-- Código da aplicação, configs do Vite, Capacitor, Supabase — intactos.
-- Os erros de TypeScript pré-existentes (ESP32Configuration, PaymentPayload) não são tratados aqui — são tarefa separada.
-
-## Detalhes técnicos
-
-- `packageManager` no `package.json` é respeitado pelo Corepack, Netlify e Lovable, eliminando ambiguidade.
-- `@rollup/rollup-linux-x64-gnu` e `@swc/core-linux-x64-gnu` continuam declarados como deps explícitas (necessárias para o ambiente Linux do Lovable/Netlify, conforme memória `build/native-binding-resolution`).
-- Após aprovar, será necessário clicar em **Publish → Update** para refletir no domínio `paglav.com.br`.
+1. **Gesto secreto**: mantenho **7 toques no logo** (igual ao resto do app) ou prefere outro (ex.: pressionar 5s no canto, padrão de toques em 4 cantos)?
+2. **PIN**: usa o PIN admin atual (RPC `validate_admin_pin`, fallback 1234) ou quer definir um PIN exclusivo de "destravar kiosk"?
+3. **Botão "Área da equipe"** que existe hoje no rodapé do totem: removo (só acessível pelo gesto) ou mantenho visível?

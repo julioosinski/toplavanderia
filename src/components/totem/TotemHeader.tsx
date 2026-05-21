@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { Capacitor } from "@capacitor/core";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Monitor, Smartphone, WifiOff, Home } from "lucide-react";
@@ -13,6 +14,7 @@ interface TotemHeaderProps {
 }
 
 export const TotemHeader = ({ currentTime, deviceMode, isOffline, laundryName, onLogoTap, tapCount = 0 }: TotemHeaderProps) => {
+  const isNative = Capacitor.isNativePlatform();
   return (
     <div className="px-2 py-1 shrink-0">
       <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg px-3 py-1.5 shadow-lg">
@@ -30,11 +32,13 @@ export const TotemHeader = ({ currentTime, deviceMode, isOffline, laundryName, o
           )}
         </div>
         <div className="flex items-center space-x-2">
-          <Link to="/">
-            <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-7 w-7" title="Início">
-              <Home className="h-3.5 w-3.5" />
-            </Button>
-          </Link>
+          {!isNative && (
+            <Link to="/">
+              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-7 w-7" title="Início">
+                <Home className="h-3.5 w-3.5" />
+              </Button>
+            </Link>
+          )}
           {isOffline && (
             <Badge variant="secondary" className="text-[10px] bg-amber-500/20 text-amber-100 border-0 px-1.5 py-0.5">
               <WifiOff className="mr-0.5 h-2.5 w-2.5" />Offline
