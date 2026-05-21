@@ -452,8 +452,21 @@ const Totem = () => {
           throw new Error(msg);
         }
 
+        // Marca a transação como concluída assim que o pagamento foi aprovado
+        // e o comando do ESP32 foi enfileirado. Isso garante que PIX/cartão/etc
+        // apareçam imediatamente nos relatórios (status='completed') e dispara
+        // o trigger update_machine_stats que agrega revenue/total_uses.
+        const { error: completeErr } = await supabase
+          .from('transactions')
+          .update({ status: 'completed', completed_at: new Date().toISOString() })
+          .eq('id', transactionId);
+        if (completeErr) {
+          console.warn('Falha ao marcar transação como concluída (relatório pode atrasar):', completeErr);
+        }
+
         rememberRunningAfterPayment(selectedMachine.id, selectedMachine.duration);
         await updateMachineStatus(selectedMachine.id, 'running', { suppressErrorToast: true });
+
       } catch (error) {
         console.error('Erro ao ativar máquina:', error);
         const description = error instanceof Error
