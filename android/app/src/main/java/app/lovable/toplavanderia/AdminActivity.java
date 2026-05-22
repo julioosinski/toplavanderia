@@ -33,6 +33,7 @@ public class AdminActivity extends Activity {
     
     private TextView statusText;
     private LinearLayout contentContainer;
+    private ScrollView contentScrollView;
     private Button backButton;
     
     @Override
@@ -50,118 +51,132 @@ public class AdminActivity extends Activity {
     }
     
     private void createAdminInterface() {
-        // Layout principal
         LinearLayout mainLayout = new LinearLayout(this);
         mainLayout.setOrientation(LinearLayout.VERTICAL);
         mainLayout.setBackgroundColor(Color.parseColor("#f5f5f5"));
-        mainLayout.setPadding(10, 10, 10, 10);
-        
-        // Cabeçalho
+
         createHeader(mainLayout);
-        
-        // Status
         createStatusBar(mainLayout);
-        
-        // Container de conteúdo
+
+        contentScrollView = new ScrollView(this);
+        contentScrollView.setFillViewport(true);
+        contentScrollView.setVerticalScrollBarEnabled(true);
+        contentScrollView.setScrollbarFadingEnabled(false);
+        contentScrollView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+        LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            0,
+            1f
+        );
+        contentScrollView.setLayoutParams(scrollParams);
+
         contentContainer = new LinearLayout(this);
         contentContainer.setOrientation(LinearLayout.VERTICAL);
-        contentContainer.setPadding(20, 20, 20, 20);
-        mainLayout.addView(contentContainer);
-        
-        // Botão voltar
+        contentContainer.setPadding(dp(12), dp(8), dp(12), dp(16));
+        contentScrollView.addView(contentContainer);
+        mainLayout.addView(contentScrollView);
+
         createBackButton(mainLayout);
-        
+
         setContentView(mainLayout);
-        
-        // Mostrar dashboard inicial
         showDashboard();
+    }
+
+    private void resetContentScroll() {
+        if (contentScrollView != null) {
+            contentScrollView.post(() -> contentScrollView.scrollTo(0, 0));
+        }
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
     
     private void createHeader(LinearLayout parent) {
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.VERTICAL);
-        header.setPadding(30, 30, 30, 30);
+        header.setPadding(dp(12), dp(10), dp(12), dp(10));
         header.setBackgroundColor(Color.parseColor("#673AB7"));
-        
-        // Título
+
         TextView title = new TextView(this);
-        title.setText("⚙️ PAINEL ADMINISTRATIVO");
-        title.setTextSize(24);
+        title.setText("Painel administrativo");
+        title.setTextSize(17);
         title.setTextColor(Color.WHITE);
         title.setGravity(android.view.Gravity.CENTER);
-        title.setPadding(0, 0, 0, 10);
         header.addView(title);
-        
-        // Subtítulo
+
         TextView subtitle = new TextView(this);
-        subtitle.setText("Gerenciamento do Sistema");
-        subtitle.setTextSize(16);
+        subtitle.setText("Gerenciamento do sistema");
+        subtitle.setTextSize(12);
         subtitle.setTextColor(Color.parseColor("#E1BEE7"));
         subtitle.setGravity(android.view.Gravity.CENTER);
         header.addView(subtitle);
-        
+
         parent.addView(header);
     }
     
     private void createStatusBar(LinearLayout parent) {
         LinearLayout statusBar = new LinearLayout(this);
         statusBar.setOrientation(LinearLayout.HORIZONTAL);
-        statusBar.setPadding(20, 15, 20, 15);
+        statusBar.setPadding(dp(12), dp(8), dp(12), dp(8));
         statusBar.setBackgroundColor(Color.WHITE);
-        
-        // Status do sistema
+
         statusText = new TextView(this);
-        statusText.setText("📊 Sistema: Online | PayGo: Conectado | PPC930: Ativa");
-        statusText.setTextSize(12);
+        statusText.setText("Sistema online");
+        statusText.setTextSize(11);
         statusText.setTextColor(Color.parseColor("#4CAF50"));
         statusText.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         statusBar.addView(statusText);
-        
-        // Tempo
+
         TextView timeText = new TextView(this);
         timeText.setText(getCurrentTime());
-        timeText.setTextSize(12);
+        timeText.setTextSize(11);
         timeText.setTextColor(Color.parseColor("#666666"));
         timeText.setGravity(android.view.Gravity.END);
         statusBar.addView(timeText);
-        
+
         parent.addView(statusBar);
     }
-    
+
     private void createBackButton(LinearLayout parent) {
         backButton = new Button(this);
-        backButton.setText("⬅️ VOLTAR AO TOTEM");
-        backButton.setTextSize(16);
-        backButton.setPadding(20, 15, 20, 15);
+        backButton.setText("Voltar ao totem");
+        backButton.setTextSize(14);
+        backButton.setMinHeight(dp(44));
+        backButton.setPadding(dp(12), dp(10), dp(12), dp(10));
         backButton.setBackgroundColor(Color.parseColor("#9E9E9E"));
         backButton.setTextColor(Color.WHITE);
         backButton.setOnClickListener(v -> finish());
+
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.setMargins(dp(8), dp(4), dp(8), dp(8));
+        backButton.setLayoutParams(params);
         parent.addView(backButton);
     }
     
     private void showDashboard() {
         contentContainer.removeAllViews();
-        
-        // Título
+
         TextView title = new TextView(this);
-        title.setText("📊 DASHBOARD");
-        title.setTextSize(20);
+        title.setText("Dashboard");
+        title.setTextSize(17);
         title.setTextColor(Color.parseColor("#333333"));
-        title.setPadding(0, 0, 0, 20);
+        title.setPadding(0, 0, 0, dp(12));
         contentContainer.addView(title);
-        
-        // Estatísticas
+
         showStatistics();
-        
-        // Botões de ação
         showActionButtons();
+        resetContentScroll();
     }
     
     private void showStatistics() {
         // Container de estatísticas
         LinearLayout statsContainer = new LinearLayout(this);
         statsContainer.setOrientation(LinearLayout.VERTICAL);
-        statsContainer.setPadding(20, 20, 20, 20);
+        statsContainer.setPadding(dp(10), dp(10), dp(10), dp(10));
         statsContainer.setBackgroundColor(Color.WHITE);
         
         // Estatísticas do dia (simuladas para demonstração)
@@ -206,9 +221,8 @@ public class AdminActivity extends Activity {
     private void createStatCard(LinearLayout parent, String title, String value, int color) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.HORIZONTAL);
-        card.setPadding(20, 15, 20, 15);
+        card.setPadding(dp(10), dp(8), dp(10), dp(8));
         card.setBackgroundColor(Color.parseColor("#f8f8f8"));
-        card.setPadding(20, 15, 20, 15);
         
         // Título
         TextView titleText = new TextView(this);
@@ -233,7 +247,7 @@ public class AdminActivity extends Activity {
         // Container de botões
         LinearLayout buttonsContainer = new LinearLayout(this);
         buttonsContainer.setOrientation(LinearLayout.VERTICAL);
-        buttonsContainer.setPadding(20, 20, 20, 20);
+        buttonsContainer.setPadding(0, dp(12), 0, 0);
         
         // Botões principais
         createActionButton(buttonsContainer, "🔄 GERENCIAR MÁQUINAS", Color.parseColor("#2196F3"), v -> showMachinesManagement());
@@ -249,8 +263,9 @@ public class AdminActivity extends Activity {
     private void createActionButton(LinearLayout parent, String text, int color, View.OnClickListener listener) {
         Button button = new Button(this);
         button.setText(text);
-        button.setTextSize(16);
-        button.setPadding(20, 20, 20, 20);
+        button.setTextSize(14);
+        button.setMinHeight(dp(44));
+        button.setPadding(dp(12), dp(10), dp(12), dp(10));
         button.setBackgroundColor(color);
         button.setTextColor(Color.WHITE);
         button.setOnClickListener(listener);
@@ -259,7 +274,7 @@ public class AdminActivity extends Activity {
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         );
-        params.setMargins(0, 0, 0, 10);
+        params.setMargins(0, 0, 0, dp(8));
         button.setLayoutParams(params);
         
         parent.addView(button);
@@ -292,6 +307,7 @@ public class AdminActivity extends Activity {
         addButton.setTextColor(Color.WHITE);
         addButton.setOnClickListener(v -> addMachine());
         contentContainer.addView(addButton);
+        resetContentScroll();
     }
     
     private void createMachineCard(SupabaseHelper.Machine machine) {
@@ -404,21 +420,19 @@ public class AdminActivity extends Activity {
         reportText.setPadding(20, 20, 20, 20);
         reportText.setBackgroundColor(Color.WHITE);
         contentContainer.addView(reportText);
+        resetContentScroll();
     }
-    
-    
+
     private void showSettings() {
         contentContainer.removeAllViews();
-        
-        // Título
+
         TextView title = new TextView(this);
-        title.setText("⚙️ CONFIGURAÇÕES");
-        title.setTextSize(20);
+        title.setText("Configurações");
+        title.setTextSize(17);
         title.setTextColor(Color.parseColor("#333333"));
-        title.setPadding(0, 0, 0, 20);
+        title.setPadding(0, 0, 0, dp(12));
         contentContainer.addView(title);
-        
-        // Configurações atuais
+
         TextView settingsText = new TextView(this);
         settingsText.setText("CONFIGURAÇÕES ATUAIS:\n\n" +
                            "Nome da empresa: Top Lavanderia\n" +
@@ -429,25 +443,25 @@ public class AdminActivity extends Activity {
                            "Sincronização automática: Ativada\n" +
                            "Intervalo de sincronização: 300 segundos\n" +
                            "Status Supabase: " + (supabaseHelper.isConnected() ? "Conectado" : "Desconectado"));
-        settingsText.setTextSize(14);
+        settingsText.setTextSize(13);
         settingsText.setTextColor(Color.parseColor("#333333"));
-        settingsText.setPadding(20, 20, 20, 20);
+        settingsText.setPadding(dp(12), dp(12), dp(12), dp(12));
         settingsText.setBackgroundColor(Color.WHITE);
         contentContainer.addView(settingsText);
-        
-        // Botão para editar configurações
+
         Button editButton = new Button(this);
-        editButton.setText("✏️ EDITAR CONFIGURAÇÕES");
-        editButton.setTextSize(16);
-        editButton.setPadding(20, 20, 20, 20);
+        editButton.setText("Editar configurações");
+        editButton.setTextSize(14);
+        editButton.setMinHeight(dp(44));
+        editButton.setPadding(dp(12), dp(10), dp(12), dp(10));
         editButton.setBackgroundColor(Color.parseColor("#FF9800"));
         editButton.setTextColor(Color.WHITE);
         editButton.setOnClickListener(v -> editSettings());
         contentContainer.addView(editButton);
+        resetContentScroll();
     }
-    
+
     private void editSettings() {
-        // Implementar edição de configurações
         Toast.makeText(this, "Edição de configurações em desenvolvimento", Toast.LENGTH_SHORT).show();
     }
     

@@ -641,29 +641,168 @@ public class SupabaseHelper {
     // ===== MÉTODOS PARA OPERAÇÕES =====
     
     public boolean createTransaction(String machineId, String service, double price, String paymentCode, String transactionId) {
-        return createTransaction(machineId, service, price, paymentCode, transactionId, "card");
+        return createTransaction(machineId, service, price, paymentCode, transactionId, "card") != null;
     }
 
-    /**
-     * @param supabasePaymentMethod valor aceito pela constraint de transactions: credit, pix, card, etc.
-     */
-    public boolean createTransaction(String machineId, String service, double price, String paymentCode, String transactionId, String supabasePaymentMethod) {
+    public String createTransaction(String machineId, String service, double price, String paymentCode, String transactionId, String supabasePaymentMethod) {
         try {
             if (isOnline()) {
                 return createTransactionInSupabase(machineId, service, price, paymentCode, transactionId, supabasePaymentMethod);
             } else {
-                // Salvar localmente para sincronização posterior
-                return saveTransactionLocally(machineId, service, price, paymentCode, transactionId);
+                saveTransactionLocally(machineId, service, price, paymentCode, transactionId);
+                return null;
             }
         } catch (Exception e) {
             Log.e(TAG, "Erro ao criar transação", e);
+            return null;
+        }
+    }
+
+    /**
+     * Valida PIN administrativo via RPC validate_admin_pin (mesmo fluxo do painel web).
+     */
+    public boolean validateAdminPin(String pin) {
+        if (pin == null || pin.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            String url = SUPABASE_URL + "/rest/v1/rpc/validate_admin_pin";
+            JSONObject payload = new JSONObject();
+            payload.put("_pin", pin.trim());
+
+            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
+
+            OutputStream os = connection.getOutputStream();
+            os.write(payload.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+
+            int responseCode = connection.getResponseCode();
+            if (responseCode != 200) {
+                Log.w(TAG, "validate_admin_pin HTTP " + responseCode);
+                connection.disconnect();
+                return false;
+            }
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                response.append(line);
+            }
+            br.close();
+            connection.disconnect();
+
+            String body = response.toString().trim();
+            return "true".equalsIgnoreCase(body);
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao validar PIN admin", e);
+            return false;
+        }
+    }
+
+    /**
+     * Conclui transação pending pelo ID retornado em create_totem_transaction.
+     */
+    public boolean completeTotemTransactionById(String transactionId, String paymentMethod) {
+        if (transactionId == null || transactionId.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            String url = SUPABASE_URL + "/rest/v1/rpc/complete_totem_transaction_by_id";
+            JSONObject payload = new JSONObject();
+            payload.put("_transaction_id", transactionId.trim());
+            payload.put("_payment_method", paymentMethod == null || paymentMethod.isEmpty() ? "credit" : paymentMethod);
+
+            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
+
+            OutputStream os = connection.getOutputStream();
+            os.write(payload.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+
+            int responseCode = connection.getResponseCode();
+            if (responseCode != 200) {
+                Log.e(TAG, "complete_totem_transaction_by_id HTTP " + responseCode);
+                connection.disconnect();
+                return false;
+            }
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                response.append(line);
+            }
+            br.close();
+            connection.disconnect();
+
+            String body = response.toString().trim();
+            boolean ok = "true".equalsIgnoreCase(body);
+            Log.d(TAG, "Transação concluída por ID (" + transactionId + "): " + ok);
+            return ok;
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao concluir transação por ID", e);
+            return false;
+        }
+    }
+
+    /**
+     * Cancela transação pending pelo ID (pagamento recusado/cancelado no totem).
+     */
+    public boolean cancelTotemTransactionById(String transactionId) {
+        if (transactionId == null || transactionId.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            String url = SUPABASE_URL + "/rest/v1/rpc/cancel_totem_transaction_by_id";
+            JSONObject payload = new JSONObject();
+            payload.put("_transaction_id", transactionId.trim());
+
+            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
+
+            OutputStream os = connection.getOutputStream();
+            os.write(payload.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+
+            int responseCode = connection.getResponseCode();
+            if (responseCode != 200) {
+                Log.e(TAG, "cancel_totem_transaction_by_id HTTP " + responseCode);
+                connection.disconnect();
+                return false;
+            }
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                response.append(line);
+            }
+            br.close();
+            connection.disconnect();
+
+            boolean ok = "true".equalsIgnoreCase(response.toString().trim());
+            Log.d(TAG, "Transação cancelada por ID (" + transactionId + "): " + ok);
+            return ok;
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao cancelar transação por ID", e);
             return false;
         }
     }
 
     /**
      * Finaliza a ultima transacao pendente da maquina/lavanderia como concluida.
-     * Isso evita contabilizar duas transacoes pendentes no fluxo do totem.
+     * Fallback quando não há ID armazenado.
      */
     public boolean completeLatestTotemTransaction(String machineId, String paymentMethod) {
         try {
@@ -692,8 +831,13 @@ public class SupabaseHelper {
                     response.append(line);
                 }
                 br.close();
-                Log.d(TAG, "Transação pendente finalizada: " + response);
+                String body = response.toString().trim();
                 connection.disconnect();
+                if (body.isEmpty() || "null".equalsIgnoreCase(body)) {
+                    Log.w(TAG, "Nenhuma transação pending para finalizar (machine=" + machineId + ")");
+                    return false;
+                }
+                Log.d(TAG, "Transação pendente finalizada: " + body);
                 return true;
             }
 
@@ -706,7 +850,7 @@ public class SupabaseHelper {
         }
     }
     
-    private boolean createTransactionInSupabase(String machineId, String service, double price, String paymentCode, String transactionId, String supabasePaymentMethod) {
+    private String createTransactionInSupabase(String machineId, String service, double price, String paymentCode, String transactionId, String supabasePaymentMethod) {
         try {
             String url = SUPABASE_URL + "/rest/v1/rpc/create_totem_transaction";
 
@@ -729,19 +873,33 @@ public class SupabaseHelper {
             os.close();
             
             int responseCode = connection.getResponseCode();
-            connection.disconnect();
-            
-            if (responseCode == 200) {
-                Log.d(TAG, "Transação criada no Supabase com sucesso");
-                return true;
-            } else {
+            if (responseCode != 200) {
                 Log.e(TAG, "Erro ao criar transação no Supabase: " + responseCode);
-                return false;
+                connection.disconnect();
+                return null;
             }
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                response.append(line);
+            }
+            br.close();
+            connection.disconnect();
+
+            String body = response.toString().trim();
+            if (body.isEmpty() || "null".equalsIgnoreCase(body)) {
+                Log.e(TAG, "create_totem_transaction retornou vazio");
+                return null;
+            }
+            String uuid = body.replace("\"", "").trim();
+            Log.d(TAG, "Transação criada no Supabase: " + uuid);
+            return uuid;
             
         } catch (Exception e) {
             Log.e(TAG, "Erro na comunicação com Supabase", e);
-            return false;
+            return null;
         }
     }
     
@@ -838,9 +996,9 @@ public class SupabaseHelper {
             payload.put("relay_pin", relayPin);
             payload.put("action", "on");
             payload.put("machine_id", machineId);
-            // Nao enviar transaction_id externo da adquirente (Cielo),
-            // pois a FK de pending_commands referencia public.transactions.id.
-            // O campo e opcional na edge function.
+            if (transactionId != null && !transactionId.isEmpty() && transactionId.matches("(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
+                payload.put("transaction_id", transactionId);
+            }
             
             // Fazer requisição HTTP POST
             HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();

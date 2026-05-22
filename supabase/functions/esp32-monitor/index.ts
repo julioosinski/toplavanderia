@@ -292,34 +292,16 @@ serve(async (req) => {
 
       const currentRelayStatus = (currentStatus?.relay_status as Record<string, string>) || {};
 
-      // Detect relay changes for transactions (using remapped keys)
+      // Detect relay changes — transações são criadas/concluídas pelo totem (RPC).
+      // Inserção automática aqui gerava duplicatas e completava a transação errada nos relatórios.
       if (currentStatus) {
         for (const [key, value] of Object.entries(remappedRelayStatus)) {
           const currentValue = currentRelayStatus[key];
-          const relayNumber = key.match(/\d+/)?.[0];
-          
           if (currentValue === 'off' && value === 'on') {
-            const machine = esp32Machines?.find(m => m.relay_pin === (relayNumber ? parseInt(relayNumber) : 1));
-            if (machine) {
-              const estimatedWeight = machine.capacity_kg * 0.8;
-              const totalAmount = estimatedWeight * machine.price_per_cycle;
-              await supabaseClient.from('transactions').insert({
-                machine_id: machine.id, laundry_id: heartbeatData.laundry_id,
-                status: 'pending', weight_kg: estimatedWeight,
-                duration_minutes: machine.cycle_time_minutes, total_amount: totalAmount,
-                payment_method: 'credit', started_at: new Date().toISOString()
-              });
-            }
+            console.log(`🔄 Relay ${key} ON (transação gerenciada pelo totem, sem insert automático)`);
           }
-          
           if (currentValue === 'on' && value === 'off') {
-            const machine = esp32Machines?.find(m => m.relay_pin === (relayNumber ? parseInt(relayNumber) : 1));
-            if (machine) {
-              await supabaseClient.from('transactions')
-                .update({ status: 'completed', completed_at: new Date().toISOString() })
-                .eq('machine_id', machine.id).eq('status', 'pending')
-                .order('started_at', { ascending: false }).limit(1);
-            }
+            console.log(`🔄 Relay ${key} OFF (conclusão gerenciada pelo totem)`);
           }
         }
       }

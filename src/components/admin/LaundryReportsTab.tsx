@@ -76,7 +76,7 @@ export const LaundryReportsTab = () => {
         .eq('laundry_id', currentLaundryId)
         .eq('status', 'completed')
         .gte('created_at', filters.startDate + 'T00:00:00')
-        .lte('created_at', filters.endDate + 'T23:59:59')
+        .lte('created_at', filters.endDate + 'T23:59:59.999')
         .order('created_at', { ascending: false });
 
       if (filters.machineId !== 'all') {
@@ -86,7 +86,12 @@ export const LaundryReportsTab = () => {
         query = query.eq('machines.type', filters.machineType);
       }
       if (filters.paymentMethod !== 'all') {
-        query = query.eq('payment_method', filters.paymentMethod);
+        if (filters.paymentMethod === 'debit') {
+          // Débito era gravado como "card" em versões anteriores do totem
+          query = query.in('payment_method', ['debit', 'card']);
+        } else {
+          query = query.eq('payment_method', filters.paymentMethod);
+        }
       }
 
       const { data, error } = await query;
@@ -173,7 +178,9 @@ export const LaundryReportsTab = () => {
     if (method === 'manual_release') return 'Liberação Manual';
     if (method === 'pix') return 'PIX';
     if (method === 'credit') return 'Crédito';
-    if (method === 'debit') return 'Débito';
+    if (method === 'debit' || method === 'card') return 'Débito';
+    if (method === 'cielo') return 'Cielo';
+    if (method === 'totem') return 'Totem';
     if (method.includes('*')) return `Cartão ${method}`;
     return method;
   };

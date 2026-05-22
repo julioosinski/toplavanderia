@@ -1,6 +1,7 @@
 package app.lovable.toplavanderia;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -9,9 +10,13 @@ import android.os.Bundle;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.InputType;
 import android.util.Log;
 import android.view.View;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.view.WindowManager;
+import android.widget.EditText;
 import android.widget.Button;
 import android.widget.GridLayout;
 import android.widget.ImageView;
@@ -46,6 +51,8 @@ public class TotemActivity extends Activity {
     private static final String TAG = "TotemActivity";
     /** Tela de sucesso após pagamento antes de voltar à seleção de máquinas. */
     private static final long POST_PAYMENT_SUCCESS_MS = 1000L;
+    private static final int ADMIN_SECRET_TAPS = 7;
+    private static final long ADMIN_TAP_WINDOW_MS = 3000L;
 
     private SupabaseHelper supabaseHelper;
     private PaymentManager activePaymentManager;
@@ -56,19 +63,28 @@ public class TotemActivity extends Activity {
     private List<SupabaseHelper.Machine> machines;
     private SupabaseHelper.Machine selectedMachine;
     private long currentOperationId = -1;
-    /** credit ou pix — alinhado à constraint do Supabase (transactions.payment_method). */
+    /** UUID Supabase da transação pending criada antes do pagamento. */
+    private String currentPendingTransactionId = null;
+    /** credit, debit ou pix — alinhado à constraint do Supabase (transactions.payment_method). */
     private String currentOperationSupabasePaymentMethod = "credit";
+    private LinearLayout rootLayout;
+    private ScrollView machinesScrollView;
 
     private TextView statusText;
     private TextView timeText;
+    private TextView titleText;
     private LinearLayout machinesContainer;
     private Button adminButton;
     private Button refreshButton;
+    private int adminTapCount = 0;
+    private final Handler adminTapHandler = new Handler(Looper.getMainLooper());
+    private Runnable adminTapResetRunnable;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         applyKeepScreenAwake();
+        applyImmersiveMode();
         try {
             // Inicializar componentes
             supabaseHelper = new SupabaseHelper(this);
@@ -161,6 +177,7 @@ public class TotemActivity extends Activity {
     protected void onResume() {
         super.onResume();
         applyKeepScreenAwake();
+        applyImmersiveMode();
         try {
             if (statusMonitor != null) {
                 statusMonitor.startMonitoring();
@@ -188,10 +205,21 @@ public class TotemActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (adminTapResetRunnable != null) {
+            adminTapHandler.removeCallbacks(adminTapResetRunnable);
+        }
         if (statusMonitor != null) {
             statusMonitor.stopMonitoring();
         }
         super.onDestroy();
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) {
+            applyImmersiveMode();
+        }
     }
     
     /**
@@ -200,6 +228,79 @@ public class TotemActivity extends Activity {
      */
     private void applyKeepScreenAwake() {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+
+    /**
+     * Tela cheia imersiva dentro do totem (compatível com Cielo: não bloqueia o app de pagamento).
+     */
+    private void applyImmersiveMode() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            getWindow().setDecorFitsSystemWindows(false);
+            WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+            return;
+        }
+        View decorView = getWindow().getDecorView();
+        decorView.setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_FULLSCREEN
+        );
+    }
+
+    private void handleAdminSecretTap() {
+        adminTapCount++;
+        if (adminTapResetRunnable != null) {
+            adminTapHandler.removeCallbacks(adminTapResetRunnable);
+        }
+        adminTapResetRunnable = () -> adminTapCount = 0;
+        adminTapHandler.postDelayed(adminTapResetRunnable, ADMIN_TAP_WINDOW_MS);
+
+        if (adminTapCount >= ADMIN_SECRET_TAPS) {
+            adminTapCount = 0;
+            if (adminTapResetRunnable != null) {
+                adminTapHandler.removeCallbacks(adminTapResetRunnable);
+            }
+            showAdminPinDialog();
+        }
+    }
+
+    private void showAdminPinDialog() {
+        final EditText pinInput = new EditText(this);
+        pinInput.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+        pinInput.setHint("PIN administrativo");
+        pinInput.setPadding(dp(16), dp(12), dp(16), dp(12));
+
+        new AlertDialog.Builder(this)
+            .setTitle("Acesso administrativo")
+            .setMessage("Digite o PIN para abrir configurações do totem.")
+            .setView(pinInput)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Entrar", (dialog, which) -> {
+                String pin = pinInput.getText() != null ? pinInput.getText().toString().trim() : "";
+                if (pin.isEmpty()) {
+                    Toast.makeText(this, "PIN obrigatório", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                new Thread(() -> {
+                    boolean ok = supabaseHelper != null && supabaseHelper.validateAdminPin(pin);
+                    runOnUiThread(() -> {
+                        if (ok) {
+                            Toast.makeText(this, "Acesso liberado", Toast.LENGTH_SHORT).show();
+                            openAdminPanel();
+                        } else {
+                            Toast.makeText(this, "PIN inválido", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                }).start();
+            })
+            .show();
     }
 
     private void updateMachineStatuses(List<MachineStatusMonitor.MachineStatus> statuses) {
@@ -289,32 +390,30 @@ public class TotemActivity extends Activity {
     }
     
     private void createTotemInterface() {
-        // Layout principal com ScrollView para evitar overflow
-        ScrollView scrollView = new ScrollView(this);
-        scrollView.setFillViewport(true);
-        scrollView.setBackgroundColor(Color.parseColor("#0D1117"));
-        
-        LinearLayout mainLayout = new LinearLayout(this);
-        mainLayout.setOrientation(LinearLayout.VERTICAL);
-        mainLayout.setBackgroundColor(Color.parseColor("#0D1117"));
-        mainLayout.setPadding(20, 30, 20, 30);
-        
-        // Logo da lavanderia (se disponível)
+        rootLayout = new LinearLayout(this);
+        rootLayout.setOrientation(LinearLayout.VERTICAL);
+        rootLayout.setBackgroundColor(Color.parseColor("#0D1117"));
+        rootLayout.setLayoutParams(new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.MATCH_PARENT
+        ));
+
+        // Cabeçalho fixo compacto no topo (gesto admin: 7 toques)
+        LinearLayout headerBar = new LinearLayout(this);
+        headerBar.setOrientation(LinearLayout.HORIZONTAL);
+        headerBar.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        headerBar.setBackgroundColor(Color.parseColor("#161B22"));
+        headerBar.setPadding(dp(12), dp(6), dp(12), dp(6));
+
         String logoUrl = supabaseHelper.getLaundryLogo();
         if (logoUrl != null && !logoUrl.isEmpty()) {
             ImageView logoImage = new ImageView(this);
-            LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                200 // altura em pixels
-            );
-            logoParams.gravity = android.view.Gravity.CENTER;
-            logoParams.bottomMargin = 20;
+            LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(dp(36), dp(36));
+            logoParams.setMargins(0, 0, dp(8), 0);
             logoImage.setLayoutParams(logoParams);
             logoImage.setAdjustViewBounds(true);
             logoImage.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            mainLayout.addView(logoImage);
-            
-            // Carregar logo em background
+            headerBar.addView(logoImage);
             new Thread(() -> {
                 try {
                     URL url = new URL(logoUrl);
@@ -323,38 +422,49 @@ public class TotemActivity extends Activity {
                     connection.connect();
                     InputStream input = connection.getInputStream();
                     Bitmap bitmap = BitmapFactory.decodeStream(input);
-                    
                     runOnUiThread(() -> logoImage.setImageBitmap(bitmap));
                 } catch (Exception e) {
                     Log.e(TAG, "Erro ao carregar logo", e);
                 }
             }).start();
         }
-        
-        // Título da lavanderia dinâmico
-        TextView titleText = new TextView(this);
+
+        titleText = new TextView(this);
         String laundryName = supabaseHelper.getLaundryName();
-        titleText.setText("🧺 " + laundryName.toUpperCase());
-        titleText.setTextSize(28);
+        titleText.setText("🧺 " + laundryName.toUpperCase(Locale.getDefault()));
+        titleText.setTextSize(15);
         titleText.setTextColor(Color.WHITE);
-        titleText.setGravity(android.view.Gravity.CENTER);
-        titleText.setPadding(0, 0, 0, 40);
+        titleText.setSingleLine(true);
+        titleText.setEllipsize(android.text.TextUtils.TruncateAt.END);
         titleText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        mainLayout.addView(titleText);
-        
-        // Status de conectividade (oculto)
+        titleText.setClickable(true);
+        titleText.setFocusable(true);
+        titleText.setOnClickListener(v -> handleAdminSecretTap());
+        LinearLayout.LayoutParams titleParams = new LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+        );
+        titleText.setLayoutParams(titleParams);
+        headerBar.addView(titleText);
+        rootLayout.addView(headerBar);
+
         statusText = new TextView(this);
         statusText.setVisibility(android.view.View.GONE);
-        mainLayout.addView(statusText);
-        
-        // Container de máquinas
+        rootLayout.addView(statusText);
+
+        machinesScrollView = new ScrollView(this);
+        LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+        );
+        machinesScrollView.setLayoutParams(scrollParams);
+        machinesScrollView.setFillViewport(true);
+
         machinesContainer = new LinearLayout(this);
         machinesContainer.setOrientation(LinearLayout.VERTICAL);
-        machinesContainer.setPadding(0, 10, 0, 0);
-        mainLayout.addView(machinesContainer);
-        
-        scrollView.addView(mainLayout);
-        setContentView(scrollView);
+        machinesContainer.setPadding(dp(12), dp(8), dp(12), dp(12));
+        machinesScrollView.addView(machinesContainer);
+        rootLayout.addView(machinesScrollView);
+
+        setContentView(rootLayout);
     }
     
     
@@ -558,27 +668,32 @@ public class TotemActivity extends Activity {
         details.setBackgroundColor(Color.parseColor("#1976D2"));
         layout.addView(details);
         
-        // Botões de ação em coluna para não cortar.
-        LinearLayout buttonRow = new LinearLayout(this);
-        buttonRow.setOrientation(LinearLayout.VERTICAL);
-        buttonRow.setPadding(0, dp(16), 0, 0);
-        
-        // Botão confirmar
-        Button confirmButton = new Button(this);
-        confirmButton.setText("💳 CONFIRMAR E PAGAR");
-        confirmButton.setTextSize(16);
-        confirmButton.setPadding(dp(16), dp(16), dp(16), dp(16));
-        confirmButton.setBackgroundColor(Color.parseColor("#4CAF50"));
-        confirmButton.setTextColor(Color.WHITE);
-        LinearLayout.LayoutParams confirmParams = new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        );
-        confirmParams.setMargins(0, 0, 0, dp(10));
-        confirmButton.setLayoutParams(confirmParams);
-        confirmButton.setOnClickListener(v -> processPayment(machine));
-        buttonRow.addView(confirmButton);
-        
+        // Botões de forma de pagamento (Cielo LIO)
+        TextView payLabel = new TextView(this);
+        payLabel.setText("Forma de pagamento:");
+        payLabel.setTextSize(15);
+        payLabel.setTextColor(Color.WHITE);
+        payLabel.setGravity(android.view.Gravity.CENTER);
+        payLabel.setPadding(0, dp(8), 0, dp(8));
+        layout.addView(payLabel);
+
+        LinearLayout payRow = new LinearLayout(this);
+        payRow.setOrientation(LinearLayout.VERTICAL);
+
+        Button creditBtn = buildPaymentTypeButton("💳 CRÉDITO", Color.parseColor("#1976D2"),
+            () -> processPayment(machine, "credit"));
+        Button debitBtn = buildPaymentTypeButton("💳 DÉBITO", Color.parseColor("#1565C0"),
+            () -> processPayment(machine, "debit"));
+        Button pixBtn = buildPaymentTypeButton("📱 PIX", Color.parseColor("#00897B"),
+            () -> processPayment(machine, "pix"));
+
+        payRow.addView(creditBtn);
+        payRow.addView(debitBtn);
+        if ("cielo".equalsIgnoreCase(activeProvider)) {
+            payRow.addView(pixBtn);
+        }
+        layout.addView(payRow);
+
         // Botão cancelar
         Button cancelButton = new Button(this);
         cancelButton.setText("❌ CANCELAR");
@@ -593,14 +708,31 @@ public class TotemActivity extends Activity {
         cancelButton.setLayoutParams(cancelParams);
         cancelButton.setOnClickListener(v -> {
             selectedMachine = null;
+            currentPendingTransactionId = null;
             createTotemInterface();
             loadMachines();
         });
-        buttonRow.addView(cancelButton);
-        
-        layout.addView(buttonRow);
+        layout.addView(cancelButton);
+
         scrollView.addView(layout);
         setContentView(scrollView);
+    }
+
+    private Button buildPaymentTypeButton(String label, int bgColor, Runnable onClick) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setTextSize(16);
+        button.setPadding(dp(16), dp(14), dp(16), dp(14));
+        button.setBackgroundColor(bgColor);
+        button.setTextColor(Color.WHITE);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.setMargins(0, 0, 0, dp(10));
+        button.setLayoutParams(params);
+        button.setOnClickListener(v -> onClick.run());
+        return button;
     }
     
     /**
@@ -655,7 +787,7 @@ public class TotemActivity extends Activity {
 
                 // Criar operação no Supabase (fora da UI thread)
                 currentOperationId = System.currentTimeMillis();
-                boolean operationCreated = supabaseHelper.createTransaction(
+                String pendingTxId = supabaseHelper.createTransaction(
                     machine.getId(),
                     machine.getTypeDisplay(),
                     machine.getPrice(),
@@ -663,7 +795,8 @@ public class TotemActivity extends Activity {
                     "TXN" + currentOperationId,
                     supabaseMethod
                 );
-                if (!operationCreated) {
+                currentPendingTransactionId = pendingTxId;
+                if (pendingTxId == null) {
                     Log.w(TAG, "Falha ao criar operação no Supabase; prosseguindo com fluxo local de pagamento");
                 }
 
@@ -704,7 +837,7 @@ public class TotemActivity extends Activity {
             return "pix";
         }
         if ("debit".equalsIgnoreCase(t) || "debito".equalsIgnoreCase(t)) {
-            return "card";
+            return "debit";
         }
         return "credit";
     }
@@ -894,24 +1027,35 @@ public class TotemActivity extends Activity {
                 Log.d(TAG, "Payload: {esp32_id: " + machineSnapshot.getEsp32Id() + ", relay_pin: " + machineSnapshot.getRelayPin() + "}");
                 Log.d(TAG, "Acionando ESP32 para máquina: " + machineSnapshot.getName());
 
+                String methodForComplete = currentOperationSupabasePaymentMethod != null
+                    ? currentOperationSupabasePaymentMethod
+                    : "credit";
+
+                boolean txCompleted = false;
+                if (currentPendingTransactionId != null && !currentPendingTransactionId.isEmpty()) {
+                    txCompleted = supabaseHelper.completeTotemTransactionById(
+                        currentPendingTransactionId,
+                        methodForComplete
+                    );
+                }
+                if (!txCompleted) {
+                    txCompleted = supabaseHelper.completeLatestTotemTransaction(
+                        machineSnapshot.getId(),
+                        methodForComplete
+                    );
+                }
+                if (!txCompleted) {
+                    Log.w(TAG, "Não foi possível marcar a transação do totem como concluída");
+                }
+
+                String esp32TxId = currentPendingTransactionId != null ? currentPendingTransactionId : transactionId;
                 boolean esp32Activated = supabaseHelper.activateEsp32Relay(
                     machineSnapshot.getEsp32Id(),
                     machineSnapshot.getRelayPin(),
                     machineSnapshot.getId(),
-                    transactionId,
+                    esp32TxId,
                     machineSnapshot.getDuration()
                 );
-
-                String methodForComplete = currentOperationSupabasePaymentMethod != null
-                    ? currentOperationSupabasePaymentMethod
-                    : "credit";
-                boolean txCompleted = supabaseHelper.completeLatestTotemTransaction(
-                    machineSnapshot.getId(),
-                    methodForComplete
-                );
-                if (!txCompleted) {
-                    Log.w(TAG, "Não foi possível marcar a transação do totem como concluída");
-                }
 
                 if (esp32Activated) {
                     Log.d(TAG, "✅ ESP32 acionado com sucesso - máquina liberada");
@@ -966,6 +1110,7 @@ public class TotemActivity extends Activity {
     private void resetToNewTransaction() {
         selectedMachine = null;
         currentOperationId = -1;
+        currentPendingTransactionId = null;
         currentOperationSupabasePaymentMethod = "credit";
         createTotemInterface();
         loadMachines();
@@ -974,6 +1119,15 @@ public class TotemActivity extends Activity {
     private void handlePaymentError(String error) {
         Log.e(TAG, "=== ERRO NO PAGAMENTO ===");
         Log.e(TAG, "Erro: " + error);
+
+        final String pendingId = currentPendingTransactionId;
+        currentPendingTransactionId = null;
+        if (pendingId != null && !pendingId.isEmpty()) {
+            new Thread(() -> {
+                boolean cancelled = supabaseHelper.cancelTotemTransactionById(pendingId);
+                Log.d(TAG, "Pending cancelada após erro de pagamento (" + pendingId + "): " + cancelled);
+            }).start();
+        }
 
         String displayError = error;
         if ("cielo".equalsIgnoreCase(activeProvider) && error != null) {

@@ -165,7 +165,7 @@ public class CieloLioManager implements PaymentManager {
                 int code = json.optInt("code", -1);
                 String reason = json.optString("reason", "Erro desconhecido");
                 Log.w(TAG, "Cielo erro (code=" + code + "): " + reason + " | payload=" + decoded);
-                if (callback != null) callback.onPaymentError("Erro Cielo (" + code + "): " + reason);
+                if (callback != null) callback.onPaymentError(formatCieloErrorMessage(code, reason));
                 return;
             }
 
@@ -207,7 +207,7 @@ public class CieloLioManager implements PaymentManager {
 
             long paidAmount = payment.optLong("amount", json.optLong("paidAmount", -1));
             if (!isExpectedAmount(paidAmount)) {
-                rejectSuspiciousCallback("Valor Cielo divergente");
+                rejectSuspiciousCallback("Valor Cielo divergente (esperado=" + pendingAmountCents + ", recebido=" + paidAmount + ")");
                 return;
             }
 
@@ -255,8 +255,10 @@ public class CieloLioManager implements PaymentManager {
         payload.put("reference", reference);
         payload.put("value", String.valueOf(amountCents));
         payload.put("paymentCode", paymentCode);
-        // À vista: installments "0" (string). Alguns firmwares rejeitam PIX sem o campo — enviamos também no PIX.
-        payload.put("installments", "0");
+        // PIX: omitir installments e receiptPrintPermission — firmware Cielo Smart rejeita "Json inválido" com esses campos.
+        if (!"PIX".equalsIgnoreCase(paymentCode)) {
+            payload.put("installments", "0");
+        }
         payload.put("email", "cliente@toplavanderia.local");
 
         if (merchantCode != null && !merchantCode.isEmpty()) {
@@ -273,9 +275,9 @@ public class CieloLioManager implements PaymentManager {
         items.put(item);
         payload.put("items", items);
 
-        // Resposta Cielo usa receiptPrintPermission como string; no pedido pode reduzir prompt de impressão.
-        // Se o terminal retornar "Json inválido", remover esta linha.
-        payload.put("receiptPrintPermission", "0");
+        if (!"PIX".equalsIgnoreCase(paymentCode)) {
+            payload.put("receiptPrintPermission", "0");
+        }
 
         return payload;
     }
@@ -306,7 +308,7 @@ public class CieloLioManager implements PaymentManager {
                 return "pix";
             }
             if (combined.contains("DEBITO") || combined.contains("DÉBITO")) {
-                return "card";
+                return "debit";
             }
         }
         if (pendingPaymentCode != null) {
@@ -314,7 +316,7 @@ public class CieloLioManager implements PaymentManager {
                 return "pix";
             }
             if ("DEBITO_AVISTA".equalsIgnoreCase(pendingPaymentCode)) {
-                return "card";
+                return "debit";
             }
         }
         return "credit";
@@ -350,7 +352,39 @@ public class CieloLioManager implements PaymentManager {
     }
 
     private boolean isExpectedAmount(long paidAmount) {
-        return pendingAmountCents > 0 && paidAmount == pendingAmountCents;
+        if (pendingAmountCents <= 0) {
+            return false;
+        }
+        if (paidAmount == pendingAmountCents) {
+            return true;
+        }
+        // PIX: alguns firmwares omitem amount no callback ou retornam 0 apesar da autorização.
+        if ("PIX".equalsIgnoreCase(pendingPaymentCode) && paidAmount <= 0) {
+            Log.w(TAG, "PIX: amount ausente/zero no callback; aceitando pela referência e paymentCode");
+            return true;
+        }
+        return false;
+    }
+
+    private String formatCieloErrorMessage(int code, String reason) {
+        String r = reason == null ? "" : reason;
+        String lower = r.toLowerCase(Locale.ROOT);
+        if (lower.contains("-990")
+                || lower.contains("optin")
+                || lower.contains("opt-in")
+                || lower.contains("nao elegivel")
+                || lower.contains("não elegível")
+                || lower.contains("nao elegivel")) {
+            return "Erro Cielo (-990): PIX não habilitado neste terminal/estabelecimento. "
+                + "Habilite em Minha Conta Cielo → Autorizações → PIX e confira o merchantCode nas configurações do totem.";
+        }
+        if (lower.contains("-4007") || lower.contains("4007")) {
+            return "Erro Cielo (-4007): produto não permitido (ex.: débito). Verifique contrato Cielo e merchantCode.";
+        }
+        if (lower.contains("json") && (lower.contains("inválid") || lower.contains("invalid"))) {
+            return "Erro Cielo: parâmetros inválidos no pedido de pagamento. Detalhe: " + r;
+        }
+        return "Erro Cielo (" + code + "): " + r;
     }
 
     private void rejectSuspiciousCallback(String message) {

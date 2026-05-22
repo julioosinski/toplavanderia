@@ -48,8 +48,8 @@ android {
         applicationId "com.toplavanderia.app"
         minSdk 24
         targetSdk 35
-        versionCode 19
-        versionName "2.2.6"
+        versionCode 24
+        versionName "2.2.11"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField "String", "SUPABASE_URL", quoteBuildConfig(readConfigValue('supabaseUrl', 'VITE_SUPABASE_URL'))
         buildConfigField "String", "SUPABASE_ANON_KEY", quoteBuildConfig(readConfigValue('supabaseAnonKey', 'VITE_SUPABASE_PUBLISHABLE_KEY'))
@@ -84,7 +84,11 @@ android {
             shrinkResources true
             debuggable false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            if (keystorePropsFile.exists()) {
+            def useDebugSigning = (findProperty('useDebugSigning') ?: 'false').toString().toBoolean()
+            if (useDebugSigning) {
+                signingConfig signingConfigs.debug
+                logger.lifecycle('Release: assinatura DEBUG (mesma do APK instalado na LIO).')
+            } else if (keystorePropsFile.exists()) {
                 signingConfig signingConfigs.release
             } else {
                 signingConfig signingConfigs.debug
