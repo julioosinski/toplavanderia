@@ -53,8 +53,10 @@ logs/
 *.tmp
 *.temp
 
-# APK files (keep only the latest)
+# APK files (ignore everywhere except releases/ for totem builds)
 *.apk
+!releases/
+!releases/*.apk
 !TopLavanderia_Tablet_Package_v1.0.0.zip
 
 # Supabase
