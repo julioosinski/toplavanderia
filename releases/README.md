@@ -2,27 +2,31 @@
 
 Builds do totem nativo Android (`com.toplavanderia.app`) para Cielo Smart / DX8000.
 
-## Cielo Lio Store (produção) — use este
+## Cielo Lio Store — atualização (mesmo certificado do protótipo)
+
+A Cielo **exige o mesmo certificado** da versão já publicada. O protótipo/certificação usou assinatura **debug** (`~/.android/debug.keystore`).
 
 ```powershell
 cd android
-.\gradlew assembleCieloRelease
+.\gradlew assembleCieloRelease -PcieloSameCertAsPrototype=true
 ```
 
 Saída: `android/app/build/outputs/apk/cieloRelease/app-cieloRelease.apk`
 
-Copie para `releases/TopLavanderia-Totem-2.2.12-cieloRelease.apk` e **envie este arquivo** à Cielo (assinatura `toplavanderia-release.jks`).
+- Sem minify (evita crash no startup)
+- Assinatura **V1 + V2** (targetSdk 35 — V2 obrigatório)
+- Certificado **debug** = mesmo do APK homologado na maquininha
 
-Teste antes de enviar:
+Envie: `releases/TopLavanderia-Totem-2.2.13-cieloStore.apk`
 
-```powershell
-adb uninstall com.toplavanderia.app
-adb install -r releases/TopLavanderia-Totem-2.2.12-cieloRelease.apk
-```
+### SHA-256 dos certificados (referência)
 
-Na primeira abertura, configure o **CNPJ** da lavanderia.
+| Keystore | SHA-256 (início) | Uso |
+|----------|------------------|-----|
+| Debug (`androiddebugkey`) | `99:E6:CD:F0:...` | **Cielo Store** (protótipo já publicado) |
+| Release (`toplavanderia-release.jks`) | `63:5A:ED:7E:...` | App novo / Play Store (não usar para update Cielo) |
 
-## Desenvolvimento local (mesma assinatura debug da LIO)
+## Desenvolvimento local (ADB na LIO)
 
 ```powershell
 cd android
@@ -34,5 +38,5 @@ adb install -r app\build\outputs\apk\release\app-release.apk
 
 | Arquivo | versionName | Uso |
 |---------|-------------|-----|
-| `TopLavanderia-Totem-2.2.12-cieloRelease.apk` | 2.2.12 | **Cielo Store** — sem PayGo no boot, sem minify |
-| `TopLavanderia-Totem-2.2.11.apk` | 2.2.11 | Testes ADB debug-sign |
+| `TopLavanderia-Totem-2.2.13-cieloStore.apk` | 2.2.13 | **Reenvio Cielo Store** (cert debug + sem minify) |
+| `TopLavanderia-Totem-2.2.12-cieloRelease.apk` | 2.2.12 | ❌ Assinatura release — rejeitado pela Cielo |

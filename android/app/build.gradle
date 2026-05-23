@@ -48,8 +48,8 @@ android {
         applicationId "com.toplavanderia.app"
         minSdk 24
         targetSdk 35
-        versionCode 25
-        versionName "2.2.12"
+        versionCode 26
+        versionName "2.2.13"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField "String", "SUPABASE_URL", quoteBuildConfig(readConfigValue('supabaseUrl', 'VITE_SUPABASE_URL'))
         buildConfigField "String", "SUPABASE_ANON_KEY", quoteBuildConfig(readConfigValue('supabaseAnonKey', 'VITE_SUPABASE_PUBLISHABLE_KEY'))
@@ -95,19 +95,24 @@ android {
                 logger.lifecycle('Release: assinatura debug (defina android/keystore.properties + .jks para AAB/Play Store).')
             }
         }
-        // Build para Cielo Lio Store: sem R8/shrink (evita crash no startup) + assinatura release.
+        // Build para Cielo Lio Store: sem R8/shrink. Assinatura = mesma da versão já publicada (prototipo = debug).
         cieloRelease {
             initWith release
             minifyEnabled false
             shrinkResources false
             debuggable false
             matchingFallbacks = ['release', 'debug']
-            if (keystorePropsFile.exists()) {
+            def useDebugSigning = (findProperty('useDebugSigning') ?: 'false').toString().toBoolean()
+            def cieloSameCertAsPrototype = (findProperty('cieloSameCertAsPrototype') ?: 'true').toString().toBoolean()
+            if (useDebugSigning || cieloSameCertAsPrototype) {
+                signingConfig signingConfigs.debug
+                logger.lifecycle('cieloRelease: assinatura DEBUG (mesmo certificado do prototipo/certificacao Cielo).')
+            } else if (keystorePropsFile.exists()) {
                 signingConfig signingConfigs.release
-                logger.lifecycle('cieloRelease: assinatura RELEASE (enviar este APK à Cielo Store).')
+                logger.lifecycle('cieloRelease: assinatura RELEASE (somente app novo na Cielo Store, sem versao anterior).')
             } else {
                 signingConfig signingConfigs.debug
-                logger.lifecycle('cieloRelease: ATENCAO — keystore.properties ausente; usando assinatura debug.')
+                logger.lifecycle('cieloRelease: assinatura debug (keystore.properties ausente).')
             }
         }
     }
