@@ -42,7 +42,7 @@ public class AdminActivity extends Activity {
         
         // Inicializar componentes
         supabaseHelper = new SupabaseHelper(this);
-        payGoManager = new RealPayGoManager(this);
+        payGoManager = null;
         
         // Criar interface
         createAdminInterface();
@@ -471,6 +471,9 @@ public class AdminActivity extends Activity {
     }
     
     private void testPayGo() {
+        if (payGoManager == null) {
+            payGoManager = new RealPayGoManager(this);
+        }
         payGoManager.testPayGo();
         Toast.makeText(this, "Teste do PayGo iniciado", Toast.LENGTH_SHORT).show();
     }

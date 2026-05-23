@@ -45,7 +45,6 @@ public class RealPayGoManager implements PaymentManager {
         this.context = context;
         this.isProcessing = false;
         this.isInitialized = false;
-        initializePayGo();
     }
 
     @Override
@@ -60,8 +59,18 @@ public class RealPayGoManager implements PaymentManager {
 
     @Override
     public boolean isInitialized() {
+        ensureInitialized();
         return isInitialized;
     }
+
+    private synchronized void ensureInitialized() {
+        if (isInitialized || initializationFailed) {
+            return;
+        }
+        initializePayGo();
+    }
+
+    private boolean initializationFailed;
 
     private void initializePayGo() {
         try {
@@ -71,21 +80,22 @@ public class RealPayGoManager implements PaymentManager {
                     "Top Lavanderia",
                     "1.0",
                     "Lovable",
-                    false,  // suporta troco
-                    false,  // suporta desconto
-                    false,  // vias diferenciadas (evita tela longa de comprovante no PayGo)
-                    false,  // vias reduzidas
-                    false,  // valor devido
-                    null    // personalização
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    null
             );
 
             transacao = Transacoes.obtemInstancia(dadosAutomacao, context);
             isInitialized = true;
-            Log.d(TAG, "✅ PayGo initialized – real PPC930 communication active");
+            Log.d(TAG, "PayGo initialized – PPC930 communication active");
 
-        } catch (Exception e) {
-            Log.e(TAG, "❌ Failed to initialize PayGo", e);
+        } catch (Throwable t) {
+            Log.e(TAG, "Failed to initialize PayGo", t);
             isInitialized = false;
+            initializationFailed = true;
         }
     }
 
@@ -97,6 +107,7 @@ public class RealPayGoManager implements PaymentManager {
             if (callback != null) callback.onPaymentError("Já há uma transação em processamento");
             return;
         }
+        ensureInitialized();
         if (!isInitialized) {
             if (callback != null) callback.onPaymentError("PayGo não inicializado. Verifique se o PayGo Integrado está instalado.");
             return;
@@ -267,6 +278,7 @@ public class RealPayGoManager implements PaymentManager {
 
     public void testPayGo() {
         Log.d(TAG, "Testing PayGo...");
+        ensureInitialized();
         if (!isInitialized) {
             if (callback != null) callback.onPaymentError("PayGo não inicializado");
             return;

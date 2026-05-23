@@ -16,10 +16,11 @@
 -keep class br.com.setis.interfaceautomacao.** { *; }
 -keep class org.apache.commons.** { *; }
 
-# JNI
+# JNI / libs nativas (PayGo .aar)
 -keepclasseswithmembernames class * {
     native <methods>;
 }
+-keep class br.com.setis.** { *; }
 
 # Evitar ofuscar enums e Parcelables usados por libs
 -keepclassmembers enum * { *; }

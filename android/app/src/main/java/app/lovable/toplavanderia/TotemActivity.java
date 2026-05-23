@@ -108,30 +108,8 @@ public class TotemActivity extends Activity {
                 }
             });
             
-            // Initialize payment managers
-            payGoManager = new RealPayGoManager(this);
-            cieloManager = new CieloLioManager(this);
-
-            // Determine provider from settings (default paygo)
-            activeProvider = supabaseHelper.getPaymentProvider();
-            if (!"cielo".equalsIgnoreCase(activeProvider) && isCieloSmartTerminal()) {
-                Log.d(TAG, "Terminal Cielo detectado: priorizando provedor Cielo LIO");
-                activeProvider = "cielo";
-            }
-            if ("cielo".equalsIgnoreCase(activeProvider)) {
-                String cId = supabaseHelper.getCieloClientId();
-                String cToken = supabaseHelper.getCieloAccessToken();
-                String cMerchant = supabaseHelper.getCieloMerchantCode();
-                String cEnv = supabaseHelper.getCieloEnvironment();
-                if (cId != null && !cId.isEmpty()) {
-                    cieloManager.configure(cId, cToken, cMerchant, cEnv);
-                }
-                activePaymentManager = cieloManager;
-                Log.d(TAG, "Provedor de pagamento: Cielo LIO");
-            } else {
-                activePaymentManager = payGoManager;
-                Log.d(TAG, "Provedor de pagamento: PayGo");
-            }
+            // Pagamento: Cielo LIO não carrega PayGo no boot (evita crash na Cielo Store sem PayGo instalado).
+            initializePaymentManagers();
 
             // Unified payment callback
             PaymentCallback paymentCallback = new PaymentCallback() {
@@ -1376,6 +1354,36 @@ public class TotemActivity extends Activity {
         layout.addView(details);
 
         setContentView(layout);
+    }
+
+    /**
+     * Inicializa apenas o provedor necessário. Terminais Cielo Smart não carregam PayGo no boot.
+     */
+    private void initializePaymentManagers() {
+        activeProvider = supabaseHelper.getPaymentProvider();
+        if (!"cielo".equalsIgnoreCase(activeProvider) && isCieloSmartTerminal()) {
+            Log.d(TAG, "Terminal Cielo detectado: priorizando provedor Cielo LIO");
+            activeProvider = "cielo";
+        }
+
+        cieloManager = new CieloLioManager(this);
+
+        if ("cielo".equalsIgnoreCase(activeProvider)) {
+            String cId = supabaseHelper.getCieloClientId();
+            String cToken = supabaseHelper.getCieloAccessToken();
+            String cMerchant = supabaseHelper.getCieloMerchantCode();
+            String cEnv = supabaseHelper.getCieloEnvironment();
+            if (cId != null && !cId.isEmpty()) {
+                cieloManager.configure(cId, cToken, cMerchant, cEnv);
+            }
+            activePaymentManager = cieloManager;
+            payGoManager = null;
+            Log.d(TAG, "Provedor de pagamento: Cielo LIO (PayGo não carregado)");
+        } else {
+            payGoManager = new RealPayGoManager(this);
+            activePaymentManager = payGoManager;
+            Log.d(TAG, "Provedor de pagamento: PayGo");
+        }
     }
 
     private boolean isCieloSmartTerminal() {
