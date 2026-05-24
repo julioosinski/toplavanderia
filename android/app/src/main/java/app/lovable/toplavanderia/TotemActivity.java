@@ -320,10 +320,12 @@ public class TotemActivity extends Activity {
         }
 
         java.util.HashSet<String> seen = new java.util.HashSet<>();
+        int matchedCount = 0;
         for (MachineStatusMonitor.MachineStatus status : statuses) {
             seen.add(status.machineId);
             for (SupabaseHelper.Machine machine : machines) {
                 if (machine.getId().equals(status.machineId)) {
+                    matchedCount++;
                     machine.setEsp32Online(status.esp32Online);
 
                     // Sincronizar dados mutáveis (nome, tipo, preço, ciclo) do servidor
@@ -356,12 +358,16 @@ public class TotemActivity extends Activity {
                 }
             }
         }
-        // Resposta incompleta ou máquina sumiu do RPC: não manter ESP "online" por cache velho
-        for (SupabaseHelper.Machine machine : machines) {
-            if (!seen.contains(machine.getId())) {
-                machine.setEsp32Online(false);
-                machine.setStatus("OFFLINE");
+        // Só marcar offline se houve match (evita lista placeholder "1","2" vs UUIDs do RPC)
+        if (matchedCount > 0) {
+            for (SupabaseHelper.Machine machine : machines) {
+                if (!seen.contains(machine.getId())) {
+                    machine.setEsp32Online(false);
+                    machine.setStatus("OFFLINE");
+                }
             }
+        } else if (!machines.isEmpty()) {
+            Log.w(TAG, "Monitor sem match com lista local — aguardando fetch de máquinas");
         }
         
         displayMachines();
@@ -501,6 +507,17 @@ public class TotemActivity extends Activity {
         // Linha de secadoras (parte inferior)
         if (!secadoras.isEmpty()) {
             createMachineRow("🌪️ SECADORAS", secadoras);
+        }
+
+        if (lavadoras.isEmpty() && secadoras.isEmpty()
+            && supabaseHelper != null && supabaseHelper.isConfigured()) {
+            TextView loading = new TextView(this);
+            loading.setText("⏳ Carregando máquinas…");
+            loading.setTextSize(18);
+            loading.setTextColor(Color.parseColor("#8B949E"));
+            loading.setGravity(android.view.Gravity.CENTER);
+            loading.setPadding(dp(16), dp(48), dp(16), dp(16));
+            machinesContainer.addView(loading);
         }
         
         Log.d(TAG, "Interface atualizada - Lavadoras: " + lavadoras.size() + ", Secadoras: " + secadoras.size());

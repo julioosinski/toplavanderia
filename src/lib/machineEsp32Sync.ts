@@ -100,6 +100,10 @@ export function isEsp32Reachable(
     if (-ageMs > maxSkew) return false;
     ageMs = 0;
   }
+  if (esp32.is_online === true) {
+    // Servidor confirmou online; relógio local errado na maquininha não deve forçar offline.
+    return ageMs <= 180_000;
+  }
   if (lastHb.getTime() > now + maxSkew) return false;
   return ageMs <= staleMs;
 }

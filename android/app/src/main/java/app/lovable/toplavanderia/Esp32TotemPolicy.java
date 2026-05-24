@@ -135,9 +135,19 @@ public final class Esp32TotemPolicy {
             return old;
         });
         long frozenMs = rt - anchor.elapsedRealtimeAtT;
+        boolean frozenStale = frozenMs > HEARTBEAT_STALE_MS;
+
+        // Supabase já marcou online (heartbeat < 3 min no servidor). Na Cielo o relógio local
+        // costuma estar adiantado → wallStale daria falso offline. Detecta queda só quando o
+        // timestamp do heartbeat para de atualizar (frozenStale).
+        boolean serverSaysOnline = esp32Status.has("is_online")
+            && !esp32Status.isNull("is_online")
+            && readBooleanLoose(esp32Status, "is_online");
+        if (serverSaysOnline) {
+            return !frozenStale;
+        }
 
         boolean wallStale = ageMs > HEARTBEAT_STALE_MS;
-        boolean frozenStale = frozenMs > HEARTBEAT_STALE_MS;
         if (wallStale || frozenStale) {
             return false;
         }

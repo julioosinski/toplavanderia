@@ -295,6 +295,9 @@ public class SupabaseHelper {
         List<Machine> machines;
         if (realMachinesLoaded && realMachines != null && !realMachines.isEmpty()) {
             machines = realMachines;
+        } else if (isConfigured()) {
+            // Totem configurado: não exibir placeholders (esp32_id "main") como offline
+            machines = new ArrayList<>();
         } else {
             machines = getDefaultMachines();
         }
@@ -465,12 +468,12 @@ public class SupabaseHelper {
                 Log.d(TAG, "Máquinas carregadas do Supabase: " + machines.size());
             } else {
                 Log.e(TAG, "Erro ao buscar máquinas do Supabase: " + responseCode);
-                machines = getDefaultMachines();
+                machines = new ArrayList<>();
             }
             
         } catch (Exception e) {
             Log.e(TAG, "Erro na comunicação com Supabase", e);
-            machines = getDefaultMachines();
+            machines = new ArrayList<>();
         } finally {
             if (connection != null) {
                 connection.disconnect();
