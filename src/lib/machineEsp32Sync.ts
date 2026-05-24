@@ -93,16 +93,14 @@ export function isEsp32Reachable(
   if (esp32.is_online === false) return false;
   const lastHb = esp32.last_heartbeat ? new Date(esp32.last_heartbeat) : null;
   if (!lastHb || Number.isNaN(lastHb.getTime())) return false;
+  // Servidor confirmou online — não usar relógio local (Cielo pode estar horas/dias desajustado).
+  if (esp32.is_online === true) return true;
   const now = Date.now();
   let ageMs = now - lastHb.getTime();
-  const maxSkew = 900_000; // 15 min — mesmo critério do Android (relógio local vs servidor)
+  const maxSkew = 900_000; // 15 min — relógio local vs servidor
   if (ageMs < 0) {
     if (-ageMs > maxSkew) return false;
     ageMs = 0;
-  }
-  if (esp32.is_online === true) {
-    // Servidor confirmou online; relógio local errado na maquininha não deve forçar offline.
-    return ageMs <= 180_000;
   }
   if (lastHb.getTime() > now + maxSkew) return false;
   return ageMs <= staleMs;

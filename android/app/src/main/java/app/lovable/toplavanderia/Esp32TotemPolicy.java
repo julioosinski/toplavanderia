@@ -114,18 +114,11 @@ public final class Esp32TotemPolicy {
             return false;
         }
 
-        long now = System.currentTimeMillis();
-        long ageMs = now - t;
-        if (ageMs < 0) {
-            long futureByLocalClock = -ageMs;
-            if (futureByLocalClock > MAX_PLAUSIBLE_CLOCK_SKEW_MS) {
-                return false;
-            }
-            ageMs = 0;
-        }
-        if (t > now + MAX_PLAUSIBLE_CLOCK_SKEW_MS) {
-            return false;
-        }
+        // Supabase is_online=true → confiar no servidor; relógio da Cielo pode estar horas/dias errado
+        // (logs: heartbeat age -96608s quando o terminal está ~27h atrás do UTC do banco).
+        boolean serverSaysOnline = esp32Status.has("is_online")
+            && !esp32Status.isNull("is_online")
+            && readBooleanLoose(esp32Status, "is_online");
 
         long rt = SystemClock.elapsedRealtime();
         HbAnchor anchor = HB_ANCHORS.compute(esp32Id, (k, old) -> {
@@ -137,14 +130,21 @@ public final class Esp32TotemPolicy {
         long frozenMs = rt - anchor.elapsedRealtimeAtT;
         boolean frozenStale = frozenMs > HEARTBEAT_STALE_MS;
 
-        // Supabase já marcou online (heartbeat < 3 min no servidor). Na Cielo o relógio local
-        // costuma estar adiantado → wallStale daria falso offline. Detecta queda só quando o
-        // timestamp do heartbeat para de atualizar (frozenStale).
-        boolean serverSaysOnline = esp32Status.has("is_online")
-            && !esp32Status.isNull("is_online")
-            && readBooleanLoose(esp32Status, "is_online");
         if (serverSaysOnline) {
             return !frozenStale;
+        }
+
+        long now = System.currentTimeMillis();
+        long ageMs = now - t;
+        if (ageMs < 0) {
+            long futureByLocalClock = -ageMs;
+            if (futureByLocalClock > MAX_PLAUSIBLE_CLOCK_SKEW_MS) {
+                return false;
+            }
+            ageMs = 0;
+        }
+        if (t > now + MAX_PLAUSIBLE_CLOCK_SKEW_MS) {
+            return false;
         }
 
         boolean wallStale = ageMs > HEARTBEAT_STALE_MS;
