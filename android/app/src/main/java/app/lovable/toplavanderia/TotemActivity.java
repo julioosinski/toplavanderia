@@ -84,7 +84,7 @@ public class TotemActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         applyKeepScreenAwake();
-        applyImmersiveMode();
+        // Imersivo só após setContentView (L400/Cielo: DecorView null em onCreate quebra getInsetsController).
         try {
             // Inicializar componentes
             supabaseHelper = new SupabaseHelper(this);
@@ -210,26 +210,40 @@ public class TotemActivity extends Activity {
 
     /**
      * Tela cheia imersiva dentro do totem (compatível com Cielo: não bloqueia o app de pagamento).
+     * L400 e terminais antigos: DecorView pode ser null antes de setContentView — usar flags legadas.
      */
     private void applyImmersiveMode() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            getWindow().setDecorFitsSystemWindows(false);
-            WindowInsetsController controller = getWindow().getInsetsController();
-            if (controller != null) {
-                controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
-                controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-            }
+        View decorView = getWindow() != null ? getWindow().getDecorView() : null;
+        if (decorView == null) {
             return;
         }
-        View decorView = getWindow().getDecorView();
-        decorView.setSystemUiVisibility(
+        final int legacyFlags =
             View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                 | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                 | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                 | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                 | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_FULLSCREEN
-        );
+                | View.SYSTEM_UI_FLAG_FULLSCREEN;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                getWindow().setDecorFitsSystemWindows(false);
+                WindowInsetsController controller = decorView.getWindowInsetsController();
+                if (controller != null) {
+                    controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                    controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                    return;
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "WindowInsetsController indisponível, usando UI flags legadas", e);
+            }
+        }
+        decorView.setSystemUiVisibility(legacyFlags);
+    }
+
+    private void setTotemContentView(View view) {
+        setContentView(view);
+        applyImmersiveMode();
     }
 
     private void handleAdminSecretTap() {
@@ -448,7 +462,7 @@ public class TotemActivity extends Activity {
         machinesScrollView.addView(machinesContainer);
         rootLayout.addView(machinesScrollView);
 
-        setContentView(rootLayout);
+        setTotemContentView(rootLayout);
     }
     
     
@@ -710,7 +724,7 @@ public class TotemActivity extends Activity {
         layout.addView(cancelButton);
 
         scrollView.addView(layout);
-        setContentView(scrollView);
+        setTotemContentView(scrollView);
     }
 
     private Button buildPaymentTypeButton(String label, int bgColor, Runnable onClick) {
@@ -988,7 +1002,7 @@ public class TotemActivity extends Activity {
         processingText.setTextColor(Color.WHITE);
         layout.addView(processingText);
         
-        setContentView(layout);
+        setTotemContentView(layout);
     }
     
     private void handlePaymentSuccess(String authorizationCode, String transactionId) {
@@ -1097,7 +1111,7 @@ public class TotemActivity extends Activity {
         layout.addView(successText);
 
         scrollView.addView(layout);
-        setContentView(scrollView);
+        setTotemContentView(scrollView);
 
         new Handler(Looper.getMainLooper()).postDelayed(this::resetToNewTransaction, POST_PAYMENT_SUCCESS_MS);
     }
@@ -1159,7 +1173,7 @@ public class TotemActivity extends Activity {
         });
         layout.addView(retryButton);
         
-        setContentView(layout);
+        setTotemContentView(layout);
     }
 
     /**
@@ -1344,7 +1358,7 @@ public class TotemActivity extends Activity {
         
         layout.addView(confirmButton);
         
-        setContentView(layout);
+        setTotemContentView(layout);
     }
 
     private void showFatalErrorScreen(String message) {
@@ -1370,7 +1384,7 @@ public class TotemActivity extends Activity {
         details.setGravity(android.view.Gravity.CENTER);
         layout.addView(details);
 
-        setContentView(layout);
+        setTotemContentView(layout);
     }
 
     /**
