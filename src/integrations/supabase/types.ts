@@ -834,7 +834,15 @@ export type Database = {
       }
     }
     Functions: {
+      cancel_totem_transaction_by_id: {
+        Args: { _transaction_id: string }
+        Returns: boolean
+      }
       cleanup_old_logs: { Args: never; Returns: undefined }
+      complete_totem_transaction_by_id: {
+        Args: { _payment_method?: string; _transaction_id: string }
+        Returns: boolean
+      }
       create_default_system_settings: {
         Args: { _laundry_id: string }
         Returns: string
