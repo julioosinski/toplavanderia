@@ -925,6 +925,10 @@ export type Database = {
         }
         Returns: string
       }
+      user_belongs_to_laundry: {
+        Args: { _laundry_id: string; _user_id: string }
+        Returns: boolean
+      }
       validate_admin_pin: { Args: { _pin: string }; Returns: boolean }
     }
     Enums: {
