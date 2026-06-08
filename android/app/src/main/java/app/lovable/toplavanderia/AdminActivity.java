@@ -1,6 +1,7 @@
 package app.lovable.toplavanderia;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.Handler;
@@ -48,6 +49,14 @@ public class AdminActivity extends Activity {
         createAdminInterface();
         
         Log.d(TAG, "AdminActivity criada com sucesso");
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (contentContainer != null) {
+            showDashboard();
+        }
     }
     
     private void createAdminInterface() {
@@ -255,8 +264,16 @@ public class AdminActivity extends Activity {
         createActionButton(buttonsContainer, "⚙️ CONFIGURAÇÕES", Color.parseColor("#FF9800"), v -> showSettings());
         createActionButton(buttonsContainer, "🔄 SINCRONIZAR", Color.parseColor("#9C27B0"), v -> syncData());
         createActionButton(buttonsContainer, "🧪 TESTAR PAYGO", Color.parseColor("#607D8B"), v -> testPayGo());
+        if ("cielo".equalsIgnoreCase(supabaseHelper.getPaymentProvider())) {
+            boolean a11yOn = CieloReceiptAccessibilityHelper.isServiceEnabled(this);
+            String label = a11yOn
+                ? "✅ COMPROVANTE CIELO (ativo)"
+                : "⚡ ATIVAR PULAR COMPROVANTE CIELO";
+            createActionButton(buttonsContainer, label, Color.parseColor("#5C6BC0"), v -> openCieloReceiptAccessibilitySettings());
+        }
+        createActionButton(buttonsContainer, "⚡ TESTAR PULSO ESP32", Color.parseColor("#00897B"), v -> testEsp32CreditPulse());
         createActionButton(buttonsContainer, "🗑️ LIMPAR DADOS", Color.parseColor("#F44336"), v -> clearData());
-        
+
         contentContainer.addView(buttonsContainer);
     }
     
@@ -481,6 +498,53 @@ public class AdminActivity extends Activity {
     private void clearData() {
         // Implementar limpeza de dados
         Toast.makeText(this, "Limpeza de dados em desenvolvimento", Toast.LENGTH_SHORT).show();
+    }
+
+    private void openCieloReceiptAccessibilitySettings() {
+        Toast.makeText(
+            this,
+            "Ative: Top Lavanderia — pular comprovante Cielo",
+            Toast.LENGTH_LONG
+        ).show();
+        startActivity(CieloReceiptAccessibilityHelper.buildSettingsIntent());
+    }
+
+    /** Enfileira pulso de 100 ms no primeiro ESP32 online (validação pós-pagamento). */
+    private void testEsp32CreditPulse() {
+        new Thread(() -> {
+            List<SupabaseHelper.Machine> machines = supabaseHelper.getAllMachines();
+            SupabaseHelper.Machine target = null;
+            for (SupabaseHelper.Machine machine : machines) {
+                if (machine.isEsp32Online()) {
+                    target = machine;
+                    break;
+                }
+            }
+            if (target == null) {
+                runOnUiThread(() -> Toast.makeText(
+                    this,
+                    "Nenhum ESP32 online no momento.",
+                    Toast.LENGTH_LONG
+                ).show());
+                return;
+            }
+
+            final SupabaseHelper.Machine selected = target;
+            boolean ok = supabaseHelper.activateEsp32Relay(
+                selected.getEsp32Id(),
+                selected.getRelayPin(),
+                selected.getId(),
+                null,
+                selected.getDuration()
+            );
+            runOnUiThread(() -> Toast.makeText(
+                this,
+                ok
+                    ? "Pulso enviado: " + selected.getName() + " (" + selected.getEsp32Id() + ")"
+                    : "Falha ao enfileirar pulso para " + selected.getName(),
+                Toast.LENGTH_LONG
+            ).show());
+        }).start();
     }
     
     private String getCurrentTime() {

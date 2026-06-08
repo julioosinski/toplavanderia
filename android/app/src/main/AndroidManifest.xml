@@ -81,6 +81,24 @@
             </intent-filter>
         </activity>
 
+        <service
+            android:name="app.lovable.toplavanderia.CieloPaymentForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <service
+            android:name="app.lovable.toplavanderia.CieloReceiptAccessibilityService"
+            android:exported="false"
+            android:label="@string/cielo_receipt_accessibility_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/cielo_receipt_accessibility_service" />
+        </service>
+
         <!-- Provider for file sharing -->
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -117,5 +135,8 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
 </manifest>

@@ -32,8 +32,23 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
     setLocalSettings(prev => ({ ...prev, [key]: value }));
   };
 
+  const isUuidLike = (value: string | null | undefined) =>
+    !!value && value.length >= 32 && value.includes("-");
+
   const handleSave = () => {
     if (!canEdit) return;
+    if (
+      localSettings.paygo_provedor === "cielo" &&
+      isUuidLike(localSettings.cielo_merchant_code)
+    ) {
+      toast({
+        title: "Código EC inválido",
+        description:
+          "Use o número do estabelecimento na Cielo (só dígitos), não o ID da lavanderia no sistema.",
+        variant: "destructive",
+      });
+      return;
+    }
     onUpdate(localSettings);
     toast({
       title: "Configurações salvas",
@@ -198,6 +213,20 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
           {(localSettings.paygo_provedor === 'cielo') && (
             <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
               <h4 className="text-sm font-semibold">Credenciais Cielo LIO</h4>
+              <Alert>
+                <AlertDescription>
+                  No terminal DX8000: <strong>Ajuda → Sobre a máquina</strong> para ver o <strong>número do EC</strong> (só dígitos).
+                  Deixe o EC vazio se o terminal já estiver vinculado ao estabelecimento correto.
+                  Em produção use <strong>Access Token de produção</strong> do portal Cielo Desenvolvedores.
+                </AlertDescription>
+              </Alert>
+              {localSettings.cielo_environment === 'sandbox' && (
+                <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/30">
+                  <AlertDescription>
+                    Ambiente <strong>sandbox</strong> costuma falhar em terminais Cielo Smart de produção. Use <strong>production</strong> com token de produção.
+                  </AlertDescription>
+                </Alert>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="cielo-client-id">Client ID</Label>

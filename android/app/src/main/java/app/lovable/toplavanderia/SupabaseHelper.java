@@ -157,6 +157,10 @@ public class SupabaseHelper {
     /** Cache of system settings fetched from Supabase */
     private JSONObject cachedSystemSettings = null;
 
+    public void clearSettingsCache() {
+        cachedSystemSettings = null;
+    }
+
     private JSONObject fetchSystemSettings() {
         if (cachedSystemSettings != null) return cachedSystemSettings;
         if (currentLaundryId == null) return null;
@@ -308,6 +312,25 @@ public class SupabaseHelper {
         }
         
         return machines;
+    }
+
+    /** Atualiza cache local imediatamente (ex.: máquina acabou de ser paga no totem). */
+    public void patchCachedMachineStatus(String machineId, String status, Boolean esp32Online) {
+        if (machineId == null || machineId.isEmpty() || realMachines == null) {
+            return;
+        }
+        for (Machine machine : realMachines) {
+            if (machineId.equals(machine.getId())) {
+                if (status != null && !status.isEmpty()) {
+                    machine.setStatus(status);
+                }
+                if (esp32Online != null) {
+                    machine.setEsp32Online(esp32Online);
+                }
+                Log.d(TAG, "Cache local patched: " + machine.getName() + " -> " + status);
+                break;
+            }
+        }
     }
 
     public Machine refreshMachineById(String machineId) {
@@ -1139,7 +1162,7 @@ public class SupabaseHelper {
     }
     
     private boolean updateMachineStatusLocally(String machineId, String status) {
-        // Implementar atualização local
+        patchCachedMachineStatus(machineId, status, null);
         Log.d(TAG, "Status da máquina atualizado localmente");
         return true;
     }

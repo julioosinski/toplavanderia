@@ -91,7 +91,7 @@ interface SuccessScreenProps {
   onReset: () => void;
 }
 
-const SUCCESS_SCREEN_SECONDS = 5;
+const SUCCESS_SCREEN_SECONDS = 1;
 
 export const SuccessScreen = ({ machine, transactionData, onReset }: SuccessScreenProps) => {
   const [countdown, setCountdown] = useState(SUCCESS_SCREEN_SECONDS);
