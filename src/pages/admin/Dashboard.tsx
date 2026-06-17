@@ -234,7 +234,7 @@ export default function Dashboard() {
         const esp32Map = new Map(esp32List.map(e => [e.esp32_id, e]));
         const enriched = (laundryMachines as ConsolidatedMachineRow[]).map((m) => {
           const esp32 = esp32Map.get(m.esp32_id || '');
-          const computed = computeMachineStatus(m, esp32);
+          const computed = computeMachineStatus(m, esp32, { staleMs: ESP32_ADMIN_HEARTBEAT_STALE_MS });
           return toDashboardMachine(m, computed.status, esp32);
         });
         return { laundryId: laundry.id, laundryName: laundry.name, machines: enriched };
