@@ -176,16 +176,18 @@ export default function Dashboard() {
       const periodQuery = supabase
         .from('transactions')
         .select('total_amount, created_at, status')
+        .eq('status', 'completed')
         .gte('created_at', fromISO)
         .lte('created_at', toISO);
       if (!isViewingAll && currentLaundryId) periodQuery.eq('laundry_id', currentLaundryId);
 
-      // Monthly revenue (current calendar month, always)
+      // Monthly revenue (current calendar month, always) — somente concluídas
       const now = new Date();
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
       const monthlyQuery = supabase
         .from('transactions')
         .select('total_amount')
+        .eq('status', 'completed')
         .gte('created_at', monthStart);
       if (!isViewingAll && currentLaundryId) monthlyQuery.eq('laundry_id', currentLaundryId);
 

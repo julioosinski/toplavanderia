@@ -1,43 +1,43 @@
-## Objetivo
+# Diagnóstico: valores do dashboard NÃO são reais
 
-No `/admin/dashboard`, os 4 cards de KPI (Receita Total, Receita Mensal, Transações Hoje, Disponíveis) hoje truncam o valor (`truncate` + fonte grande em telas estreitas) e não permitem mudar o período. Vamos:
+Conferi o código (`src/pages/admin/Dashboard.tsx`, função `loadRevenueData`) contra os dados reais da tabela `transactions`. Há um bug claro de cálculo: o dashboard soma **todas** as transações, incluindo `cancelled` e `pending`, inflando a receita.
 
-1. Garantir que os valores apareçam **sem corte**, em qualquer largura.
-2. Tornar cada card **clicável** para abrir um seletor de período que controla o que é mostrado.
+## Evidência (lavanderia principal, dados atuais)
 
-## Mudanças (somente UI no `src/pages/admin/Dashboard.tsx`)
+| status     | nº transações | soma `total_amount` |
+|------------|---------------|---------------------|
+| completed  | 76            | R$ 164,00           |
+| cancelled  | 65            | R$ 121,00           |
+| pending    | 7             | R$ 31,00            |
 
-### 1. Cards sem corte
-- Remover `truncate` dos `<p>` de valor.
-- Trocar tamanho fixo `text-lg sm:text-2xl` por classe responsiva fluida (`text-base sm:text-xl lg:text-2xl`) com `whitespace-nowrap` + `tabular-nums` e `leading-tight`.
-- Permitir o card quebrar em 2 linhas (ícone em cima do texto em telas estreitas) trocando `flex items-center` por layout que prioriza o número.
-- Formatar moeda com `Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' })` para ficar consistente.
+- **Receita real (completed):** R$ 164,00 / 76 transações
+- **Valor exibido hoje no dashboard:** ~R$ 316,00 / 148 transações (soma tudo)
 
-### 2. Período configurável
-- Adicionar estado `dateRange: { from: Date; to: Date }` com padrão **mês atual** (1º dia → hoje).
-- Adicionar `preset: 'today' | '7d' | '30d' | 'month' | 'custom'`.
-- Recalcular `loadRevenueData` em função de `dateRange`:
-  - `Receita do Período` (substitui "Receita Total" — agregada de `transactions.total_amount` no intervalo)
-  - `Receita Mensal` continua mês corrente (independe do filtro), OU passa a refletir o intervalo — **a decidir** (ver pergunta).
-  - `Transações no Período` (substitui "Transações Hoje")
-  - `Disponíveis` continua tempo-real (não depende de data).
-- Mostrar um chip acima dos cards: `Período: 01/06/2026 – 17/06/2026` com botão "Alterar".
+A consulta em `loadRevenueData` seleciona `status` mas nunca filtra por ele:
+```ts
+.select('total_amount, created_at, status')
+.gte('created_at', fromISO).lte('created_at', toISO)
+// faltam: .eq('status', 'completed')
+```
+O mesmo problema existe na `monthlyQuery` (sem filtro de status) e em `ConsolidatedReportsTab.tsx` (relatórios consolidados do super admin).
 
-### 3. Cards como botões
-- Envolver cada `<Card>` num `<button>` (ou `role="button"` + `tabIndex`) com hover/focus.
-- Ao clicar em qualquer card de valor financeiro/transações → abre `Dialog` (shadcn) com:
-  - Presets: Hoje, 7 dias, 30 dias, Mês atual, Personalizado.
-  - Se "Personalizado": dois `Calendar` (shadcn datepicker, `pointer-events-auto`) para `from`/`to`.
-  - Botões: Cancelar / Aplicar.
-- Clicar no card "Disponíveis" navega para `/admin/machines` (atalho útil, mantém padrão de botão).
+Observação: o gatilho `update_machine_stats` no banco já incrementa `machines.total_revenue` apenas quando `status='completed'`, então os totais por máquina estão corretos — só o dashboard/relatório está errado.
 
-### 4. Persistência leve
-- Salvar o preset escolhido em `localStorage` (`dashboard:dateRange`) para manter na próxima visita.
+## Correção proposta
 
-## Arquivos
-- `src/pages/admin/Dashboard.tsx` (edição)
-- Nenhum novo arquivo; reutiliza `Dialog`, `Calendar`, `Button`, `Popover` já existentes em `@/components/ui`.
+1. **`src/pages/admin/Dashboard.tsx` → `loadRevenueData`**
+   - Adicionar `.eq('status', 'completed')` em `periodQuery` e `monthlyQuery`.
+   - `periodTransactions` passa a contar somente transações concluídas (alinha com a receita exibida).
+   - Manter o filtro de período (`created_at`) atual.
 
-## Pergunta antes de implementar
+2. **`src/components/admin/ConsolidatedReportsTab.tsx` → `loadConsolidatedStats`**
+   - Adicionar `.eq('status', 'completed')` na query `transactions` para que "Receita no Período", "Transações" e "Ranking de Eficiência" reflitam a realidade.
 
-Quer que **todos** os 3 cards financeiros (Receita Total, Receita Mensal, Transações) passem a respeitar o período escolhido — virando "Receita do Período / Ticket Médio / Transações do Período" — ou prefere manter "Receita Mensal" fixa no mês corrente e só os outros dois passam a usar o filtro?
+3. **(Opcional, recomendado) Tooltip/legenda**
+   - Acrescentar dica curta ("Considera apenas transações concluídas") abaixo dos cards "Receita do Período" e "Receita Mensal" para evitar dúvidas futuras.
+
+## Fora de escopo
+- Não mudar regra de negócio do gatilho de banco (já está correta).
+- Não alterar a lógica de status das máquinas (card "Disponíveis"), que usa estado real do ESP32.
+
+Quer que eu inclua também o item 3 (legenda) ou prefere apenas o fix de cálculo (itens 1 e 2)?
