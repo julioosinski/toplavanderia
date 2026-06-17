@@ -44,7 +44,10 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    if (!await isMachineControlAuthorized(req, supabase)) {
+    const secret = Deno.env.get("MACHINE_CONTROL_SECRET");
+    const hasSecret = !!secret && req.headers.get("x-machine-control-secret") === secret;
+    const callingUser = hasSecret ? null : await getAuthorizedUser(req, supabase);
+    if (!hasSecret && !callingUser) {
       return new Response(
         JSON.stringify({ error: "Machine control unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -81,6 +84,17 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: "Machine not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // For JWT-only callers, require admin/operator role for THIS machine's laundry
+    if (!hasSecret && callingUser) {
+      const allowed = await userCanControlMachine(supabase, callingUser.id, machine.laundry_id as string | null);
+      if (!allowed) {
+        return new Response(
+          JSON.stringify({ error: "Insufficient role for this laundry" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     // Idempotente: totem pode reenviar "running" se já estiver em ciclo (evita 409 e toast falso de "RLS")
