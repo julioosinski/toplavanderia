@@ -67,21 +67,62 @@ const toDashboardMachine = (
   };
 };
 
+type PresetKey = 'today' | '7d' | '30d' | 'month' | 'custom';
+
+const PRESET_LABELS: Record<PresetKey, string> = {
+  today: 'Hoje',
+  '7d': 'Últimos 7 dias',
+  '30d': 'Últimos 30 dias',
+  month: 'Mês atual',
+  custom: 'Personalizado',
+};
+
+const startOfDay = (d: Date) => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
+const endOfDay = (d: Date) => { const x = new Date(d); x.setHours(23,59,59,999); return x; };
+
+function rangeFromPreset(preset: PresetKey, custom?: { from: Date; to: Date }): { from: Date; to: Date } {
+  const now = new Date();
+  if (preset === 'today') return { from: startOfDay(now), to: endOfDay(now) };
+  if (preset === '7d') { const f = new Date(now); f.setDate(f.getDate() - 6); return { from: startOfDay(f), to: endOfDay(now) }; }
+  if (preset === '30d') { const f = new Date(now); f.setDate(f.getDate() - 29); return { from: startOfDay(f), to: endOfDay(now) }; }
+  if (preset === 'month') { const f = new Date(now.getFullYear(), now.getMonth(), 1); return { from: startOfDay(f), to: endOfDay(now) }; }
+  return { from: startOfDay(custom?.from ?? now), to: endOfDay(custom?.to ?? now) };
+}
+
+const fmtBRL = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n);
+
 export default function Dashboard() {
+  const navigate = useNavigate();
   const { currentLaundry, isSuperAdmin, laundries, isViewingAllLaundries } = useLaundry();
   const isViewingAll = isSuperAdmin && isViewingAllLaundries;
   const currentLaundryId = currentLaundry?.id;
   const laundryIdForMachines = isViewingAll ? undefined : currentLaundryId;
   const { machines, loading: machinesLoading, refreshMachines } = useMachines(laundryIdForMachines);
 
-  // Revenue/transaction stats — fetched independently at a slower cadence
-  const [revenueStats, setRevenueStats] = useState({ totalRevenue: 0, monthlyRevenue: 0, todayTransactions: 0 });
+  // Period filter
+  const [preset, setPreset] = useState<PresetKey>(() => {
+    try { return (localStorage.getItem('dashboard:preset') as PresetKey) || 'month'; } catch { return 'month'; }
+  });
+  const [customRange, setCustomRange] = useState<{ from: Date; to: Date }>(() => {
+    try {
+      const raw = localStorage.getItem('dashboard:customRange');
+      if (raw) { const p = JSON.parse(raw); return { from: new Date(p.from), to: new Date(p.to) }; }
+    } catch { /* noop */ }
+    const now = new Date();
+    return { from: startOfDay(now), to: endOfDay(now) };
+  });
+  const dateRange = useMemo(() => rangeFromPreset(preset, customRange), [preset, customRange]);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [draftPreset, setDraftPreset] = useState<PresetKey>(preset);
+  const [draftRange, setDraftRange] = useState<{ from?: Date; to?: Date }>(customRange);
+
+  // Period stats
+  const [periodStats, setPeriodStats] = useState({ periodRevenue: 0, monthlyRevenue: 0, periodTransactions: 0 });
   const [revenueLoading, setRevenueLoading] = useState(true);
   const initialLoadDone = useRef(false);
 
   const [machinesByLaundry, setMachinesByLaundry] = useState<MachinesByLaundry>({});
 
-  // Machine stats derived reactively from useMachines — updates in ≤5s
   const machineStats = useMemo(() => ({
     totalMachines: machines.length,
     activeMachines: machines.filter(m => m.status === 'available').length,
@@ -92,42 +133,43 @@ export default function Dashboard() {
   const loadRevenueData = useCallback(async () => {
     if (!currentLaundryId && !isViewingAll) return;
     try {
-      // Only show skeleton on first load
       if (!initialLoadDone.current) setRevenueLoading(true);
 
-      const transactionsQuery = supabase.from('transactions').select('*');
-      const machinesQuery = supabase.from('machines').select('total_revenue');
-      if (!isViewingAll && currentLaundryId) {
-        transactionsQuery.eq('laundry_id', currentLaundryId);
-        machinesQuery.eq('laundry_id', currentLaundryId);
-      }
-      const [{ data: transactionsData }, { data: machinesData }] = await Promise.all([
-        transactionsQuery,
-        machinesQuery,
-      ]);
+      const fromISO = dateRange.from.toISOString();
+      const toISO = dateRange.to.toISOString();
 
-      const transactions = (transactionsData || []) as TransactionRow[];
-      const machineRevenueRows = (machinesData || []) as MachineRevenueRow[];
-      const today = new Date(); today.setHours(0, 0, 0, 0);
-      const todayTransactions = transactions.filter(t => t.created_at && new Date(t.created_at) >= today).length;
-      const totalRevenue = machineRevenueRows.reduce((sum, m) => sum + (Number(m.total_revenue) || 0), 0);
+      const periodQuery = supabase
+        .from('transactions')
+        .select('total_amount, created_at, status')
+        .gte('created_at', fromISO)
+        .lte('created_at', toISO);
+      if (!isViewingAll && currentLaundryId) periodQuery.eq('laundry_id', currentLaundryId);
 
-      const currentMonth = new Date().getMonth();
-      const currentYear = new Date().getFullYear();
-      const monthlyRevenue = transactions.filter(t => {
-        if (!t.created_at) return false;
-        const date = new Date(t.created_at);
-        return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
-      }).reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0);
+      // Monthly revenue (current calendar month, always)
+      const now = new Date();
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const monthlyQuery = supabase
+        .from('transactions')
+        .select('total_amount')
+        .gte('created_at', monthStart);
+      if (!isViewingAll && currentLaundryId) monthlyQuery.eq('laundry_id', currentLaundryId);
 
-      setRevenueStats({ totalRevenue, monthlyRevenue, todayTransactions });
+      const [{ data: periodData }, { data: monthlyData }] = await Promise.all([periodQuery, monthlyQuery]);
+      const periodTx = (periodData || []) as TransactionRow[];
+      const monthlyTx = (monthlyData || []) as TransactionRow[];
+
+      const periodRevenue = periodTx.reduce((s, t) => s + (Number(t.total_amount) || 0), 0);
+      const monthlyRevenue = monthlyTx.reduce((s, t) => s + (Number(t.total_amount) || 0), 0);
+
+      setPeriodStats({ periodRevenue, monthlyRevenue, periodTransactions: periodTx.length });
       initialLoadDone.current = true;
     } catch (error) {
       console.error("Erro ao carregar dados de receita:", error);
     } finally {
       setRevenueLoading(false);
     }
-  }, [currentLaundryId, isViewingAll]);
+  }, [currentLaundryId, isViewingAll, dateRange.from, dateRange.to]);
+
 
   const loadConsolidatedMachines = useCallback(async () => {
     if (!isViewingAll) return;
