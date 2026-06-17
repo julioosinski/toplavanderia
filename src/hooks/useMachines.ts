@@ -7,8 +7,6 @@ import { Droplets, Wind, type LucideIcon } from 'lucide-react';
 import { useMachineAutoStatus } from './useMachineAutoStatus';
 import { nativeStorage, getItemWithTimeout } from '@/utils/nativeStorage';
 import {
-  ESP32_ADMIN_HEARTBEAT_STALE_MS,
-  resolvedRelayPin,
   computeMachineStatus,
   type Esp32StatusRow,
   type MachineRow,
