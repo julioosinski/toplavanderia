@@ -71,10 +71,8 @@ const isAuthenticatedUser = async (req: Request, supabase: SupabaseClient) => {
 
 const isNetworkTestAuthorized = async (req: Request, supabase: SupabaseClient) => {
   const secret = Deno.env.get('ESP32_NETWORK_TEST_SECRET');
-  if (!secret) return true;
-
-  return req.headers.get('x-esp32-network-test-secret') === secret ||
-    await isAuthenticatedUser(req, supabase);
+  if (secret && req.headers.get('x-esp32-network-test-secret') === secret) return true;
+  return await isAuthenticatedUser(req, supabase);
 };
 
 serve(async (req) => {

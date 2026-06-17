@@ -10,20 +10,27 @@ const getErrorMessage = (error: unknown) => {
   return error instanceof Error ? error.message : "Unexpected error";
 };
 
-const isAuthenticatedUser = async (req: Request, supabase: ReturnType<typeof createClient>) => {
+const getAuthorizedUser = async (req: Request, supabase: ReturnType<typeof createClient>) => {
   const token = req.headers.get("Authorization")?.replace("Bearer ", "");
-  if (!token) return false;
-
+  if (!token) return null;
   const { data: { user } } = await supabase.auth.getUser(token);
-  return Boolean(user);
+  return user ?? null;
 };
 
-const isMachineControlAuthorized = async (req: Request, supabase: ReturnType<typeof createClient>) => {
-  const secret = Deno.env.get("MACHINE_CONTROL_SECRET");
-  if (!secret) return true;
-
-  return req.headers.get("x-machine-control-secret") === secret ||
-    await isAuthenticatedUser(req, supabase);
+const userCanControlMachine = async (
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  laundryId: string | null,
+) => {
+  const { data: roles } = await supabase
+    .from("user_roles")
+    .select("role, laundry_id")
+    .eq("user_id", userId);
+  if (!roles) return false;
+  return roles.some((r: { role: string; laundry_id: string | null }) =>
+    r.role === "super_admin" ||
+    ((r.role === "admin" || r.role === "operator") && laundryId !== null && r.laundry_id === laundryId)
+  );
 };
 
 Deno.serve(async (req) => {

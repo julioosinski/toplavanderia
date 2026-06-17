@@ -35,10 +35,8 @@ const isAuthenticatedUser = async (req: Request, supabase: ReturnType<typeof cre
 
 const isHealthCheckAuthorized = async (req: Request, supabase: ReturnType<typeof createClient>) => {
   const secret = Deno.env.get('ESP32_HEALTH_CHECK_SECRET');
-  if (!secret) return true;
-
-  return req.headers.get('x-esp32-health-check-secret') === secret ||
-    await isAuthenticatedUser(req, supabase);
+  if (secret && req.headers.get('x-esp32-health-check-secret') === secret) return true;
+  return await isAuthenticatedUser(req, supabase);
 };
 
 serve(async (req) => {
