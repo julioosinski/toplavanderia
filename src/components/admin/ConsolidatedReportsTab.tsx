@@ -47,6 +47,7 @@ export const ConsolidatedReportsTab = () => {
           .from('transactions')
           .select('id, total_amount')
           .eq('laundry_id', laundry.id)
+          .eq('status', 'completed')
           .gte('created_at', startDate + 'T00:00:00')
           .lte('created_at', endDate + 'T23:59:59');
 
