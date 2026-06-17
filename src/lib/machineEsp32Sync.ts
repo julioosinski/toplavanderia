@@ -14,6 +14,13 @@ export const ESP32_HEARTBEAT_STALE_MINUTES = 1;
  */
 export const ESP32_TOTEM_HEARTBEAT_STALE_MS = 42_000;
 
+/**
+ * Admin/web: janela ligeiramente maior que o intervalo de heartbeat (~30s) — 90s permite
+ * 2 ciclos perdidos antes de considerar a máquina offline na UI administrativa.
+ * Evita esperar o cleanup do banco (3 min) para refletir um ESP que parou de responder.
+ */
+export const ESP32_ADMIN_HEARTBEAT_STALE_MS = 90_000;
+
 function relayKey(pin: number): string {
   return `relay_${pin}`;
 }

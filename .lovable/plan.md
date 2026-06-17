@@ -1,43 +1,58 @@
-# Diagnóstico: valores do dashboard NÃO são reais
+## Problema
 
-Conferi o código (`src/pages/admin/Dashboard.tsx`, função `loadRevenueData`) contra os dados reais da tabela `transactions`. Há um bug claro de cálculo: o dashboard soma **todas** as transações, incluindo `cancelled` e `pending`, inflando a receita.
+O Dashboard mostra **2 máquinas disponíveis** (Lavadora 03 e Secadora 03), mas você confirma que **todos os ESP32s estão fisicamente desligados**.
 
-## Evidência (lavanderia principal, dados atuais)
+No banco esses dois ainda estão com `is_online=true` e `last_heartbeat` recente (últimos minutos). A função `isEsp32Reachable` em `src/lib/machineEsp32Sync.ts` confia cegamente em `is_online=true` e **ignora a idade do heartbeat**:
 
-| status     | nº transações | soma `total_amount` |
-|------------|---------------|---------------------|
-| completed  | 76            | R$ 164,00           |
-| cancelled  | 65            | R$ 121,00           |
-| pending    | 7             | R$ 31,00            |
-
-- **Receita real (completed):** R$ 164,00 / 76 transações
-- **Valor exibido hoje no dashboard:** ~R$ 316,00 / 148 transações (soma tudo)
-
-A consulta em `loadRevenueData` seleciona `status` mas nunca filtra por ele:
 ```ts
-.select('total_amount, created_at, status')
-.gte('created_at', fromISO).lte('created_at', toISO)
-// faltam: .eq('status', 'completed')
+// Servidor confirmou online — não usar relógio local
+if (esp32.is_online === true) return true;
 ```
-O mesmo problema existe na `monthlyQuery` (sem filtro de status) e em `ConsolidatedReportsTab.tsx` (relatórios consolidados do super admin).
 
-Observação: o gatilho `update_machine_stats` no banco já incrementa `machines.total_revenue` apenas quando `status='completed'`, então os totais por máquina estão corretos — só o dashboard/relatório está errado.
+Resultado: enquanto a flag `is_online` no banco não for derrubada (cleanup só roda a cada 3 min), a UI segue contando como disponível mesmo sem heartbeat fresco. Se a flag ficar travada em `true` por bug do firmware/cleanup, a máquina nunca aparece offline.
 
-## Correção proposta
+## Correção
 
-1. **`src/pages/admin/Dashboard.tsx` → `loadRevenueData`**
-   - Adicionar `.eq('status', 'completed')` em `periodQuery` e `monthlyQuery`.
-   - `periodTransactions` passa a contar somente transações concluídas (alinha com a receita exibida).
-   - Manter o filtro de período (`created_at`) atual.
+### 1. `src/lib/machineEsp32Sync.ts` — endurecer `isEsp32Reachable`
 
-2. **`src/components/admin/ConsolidatedReportsTab.tsx` → `loadConsolidatedStats`**
-   - Adicionar `.eq('status', 'completed')` na query `transactions` para que "Receita no Período", "Transações" e "Ranking de Eficiência" reflitam a realidade.
+Sempre exigir heartbeat recente, independente de `is_online`. Manter a tolerância de skew de relógio (15 min) só para dispositivos com horário desajustado, mas **a janela de staleness passa a valer sempre**.
 
-3. **(Opcional, recomendado) Tooltip/legenda**
-   - Acrescentar dica curta ("Considera apenas transações concluídas") abaixo dos cards "Receita do Período" e "Receita Mensal" para evitar dúvidas futuras.
+```ts
+export function isEsp32Reachable(esp32, staleMs = ESP32_TOTEM_HEARTBEAT_STALE_MS): boolean {
+  if (!esp32) return false;
+  if (esp32.is_online === false) return false;
+  const lastHb = esp32.last_heartbeat ? new Date(esp32.last_heartbeat) : null;
+  if (!lastHb || Number.isNaN(lastHb.getTime())) return false;
+
+  const now = Date.now();
+  const maxSkew = 900_000; // 15 min de tolerância de relógio
+  let ageMs = now - lastHb.getTime();
+  if (ageMs < 0) ageMs = -ageMs > maxSkew ? Number.POSITIVE_INFINITY : 0;
+
+  return ageMs <= staleMs; // <-- agora vale SEMPRE
+}
+```
+
+### 2. Admin usa janela mais curta
+
+No `computeMachineStatus` o Dashboard/admin já pode passar `staleMs` explicitamente. Vou adicionar uma constante `ESP32_ADMIN_HEARTBEAT_STALE_MS = 90_000` (1,5 min) e usá-la em:
+
+- `src/hooks/useMachines.ts` → ao chamar `computeMachineStatus(machine, esp32, { staleMs: ESP32_ADMIN_HEARTBEAT_STALE_MS })` quando o consumidor não é totem (web/admin).
+- `src/pages/admin/Dashboard.tsx` (`loadConsolidatedMachines`) idem.
+
+Assim, máquina sem heartbeat há mais de 90 s no admin → cai para `offline` imediatamente, sem esperar o cleanup do banco (3 min).
+
+### 3. Validação
+
+Após o ajuste, com os dados atuais do banco:
+
+- Lavadora 03 e Secadora 03 (heartbeat ~6 min atrás) → `offline`
+- Card "Disponíveis" deve mostrar **0 / 9**
+- Banner amarelo com contagem de offline aparece
+
+Vou verificar abrindo o preview no `/admin` e confirmando o número.
 
 ## Fora de escopo
-- Não mudar regra de negócio do gatilho de banco (já está correta).
-- Não alterar a lógica de status das máquinas (card "Disponíveis"), que usa estado real do ESP32.
 
-Quer que eu inclua também o item 3 (legenda) ou prefere apenas o fix de cálculo (itens 1 e 2)?
+- Não vou mexer no firmware nem no cleanup do banco — só na lógica de exibição.
+- Não vou alterar o totem (continua usando `ESP32_TOTEM_HEARTBEAT_STALE_MS = 42 s`, que já é mais agressivo).
