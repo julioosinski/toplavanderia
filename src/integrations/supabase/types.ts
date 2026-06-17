@@ -839,6 +839,9 @@ export type Database = {
         Returns: boolean
       }
       cleanup_old_logs: { Args: never; Returns: undefined }
+      cleanup_orphan_esp32_status: { Args: never; Returns: undefined }
+      cleanup_pending_commands: { Args: never; Returns: undefined }
+      cleanup_stale_pending_transactions: { Args: never; Returns: undefined }
       complete_totem_transaction_by_id: {
         Args: { _payment_method?: string; _transaction_id: string }
         Returns: boolean
