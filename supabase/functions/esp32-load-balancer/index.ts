@@ -74,10 +74,8 @@ const isAuthenticatedUser = async (req: Request, supabase: SupabaseClient) => {
 
 const isLoadBalancerAuthorized = async (req: Request, supabase: SupabaseClient) => {
   const secret = Deno.env.get('ESP32_LOAD_BALANCER_SECRET');
-  if (!secret) return true;
-
-  return req.headers.get('x-esp32-load-balancer-secret') === secret ||
-    await isAuthenticatedUser(req, supabase);
+  if (secret && req.headers.get('x-esp32-load-balancer-secret') === secret) return true;
+  return await isAuthenticatedUser(req, supabase);
 };
 
 serve(async (req) => {

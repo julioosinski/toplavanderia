@@ -20,10 +20,8 @@ const isAuthenticatedUser = async (req: Request, supabase: ReturnType<typeof cre
 
 const isTotemSettingsAuthorized = async (req: Request, supabase: ReturnType<typeof createClient>) => {
   const secret = Deno.env.get('TOTEM_SETTINGS_SECRET');
-  if (!secret) return true;
-
-  return req.headers.get('x-totem-settings-secret') === secret ||
-    await isAuthenticatedUser(req, supabase);
+  if (secret && req.headers.get('x-totem-settings-secret') === secret) return true;
+  return await isAuthenticatedUser(req, supabase);
 };
 
 serve(async (req) => {

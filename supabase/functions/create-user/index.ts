@@ -118,6 +118,14 @@ serve(async (req) => {
       )
     }
 
+    // Apenas super_admins podem criar outros admins
+    if (role === 'admin' && !isSuperAdmin) {
+      return new Response(
+        JSON.stringify({ error: 'Apenas super admins podem criar outros admins' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     // Tentar criar o usuário usando admin API
     let userId: string
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({

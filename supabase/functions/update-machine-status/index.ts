@@ -10,20 +10,27 @@ const getErrorMessage = (error: unknown) => {
   return error instanceof Error ? error.message : "Unexpected error";
 };
 
-const isAuthenticatedUser = async (req: Request, supabase: ReturnType<typeof createClient>) => {
+const getAuthorizedUser = async (req: Request, supabase: ReturnType<typeof createClient>) => {
   const token = req.headers.get("Authorization")?.replace("Bearer ", "");
-  if (!token) return false;
-
+  if (!token) return null;
   const { data: { user } } = await supabase.auth.getUser(token);
-  return Boolean(user);
+  return user ?? null;
 };
 
-const isMachineControlAuthorized = async (req: Request, supabase: ReturnType<typeof createClient>) => {
-  const secret = Deno.env.get("MACHINE_CONTROL_SECRET");
-  if (!secret) return true;
-
-  return req.headers.get("x-machine-control-secret") === secret ||
-    await isAuthenticatedUser(req, supabase);
+const userCanControlMachine = async (
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  laundryId: string | null,
+) => {
+  const { data: roles } = await supabase
+    .from("user_roles")
+    .select("role, laundry_id")
+    .eq("user_id", userId);
+  if (!roles) return false;
+  return roles.some((r: { role: string; laundry_id: string | null }) =>
+    r.role === "super_admin" ||
+    ((r.role === "admin" || r.role === "operator") && laundryId !== null && r.laundry_id === laundryId)
+  );
 };
 
 Deno.serve(async (req) => {
@@ -37,7 +44,10 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    if (!await isMachineControlAuthorized(req, supabase)) {
+    const secret = Deno.env.get("MACHINE_CONTROL_SECRET");
+    const hasSecret = !!secret && req.headers.get("x-machine-control-secret") === secret;
+    const callingUser = hasSecret ? null : await getAuthorizedUser(req, supabase);
+    if (!hasSecret && !callingUser) {
       return new Response(
         JSON.stringify({ error: "Machine control unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -74,6 +84,17 @@ Deno.serve(async (req) => {
         JSON.stringify({ error: "Machine not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // For JWT-only callers, require admin/operator role for THIS machine's laundry
+    if (!hasSecret && callingUser) {
+      const allowed = await userCanControlMachine(supabase, callingUser.id, machine.laundry_id as string | null);
+      if (!allowed) {
+        return new Response(
+          JSON.stringify({ error: "Insufficient role for this laundry" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     // Idempotente: totem pode reenviar "running" se já estiver em ciclo (evita 409 e toast falso de "RLS")

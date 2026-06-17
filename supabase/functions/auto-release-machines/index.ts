@@ -14,8 +14,7 @@ const getErrorMessage = (error: unknown) => {
 
 const isCronAuthorized = (req: Request) => {
   const secret = Deno.env.get("AUTO_RELEASE_CRON_SECRET");
-  if (!secret) return true;
-
+  if (!secret) return false;
   return req.headers.get("x-cron-secret") === secret;
 };
 
