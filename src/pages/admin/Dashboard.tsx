@@ -132,7 +132,7 @@ export default function Dashboard() {
   const isViewingAll = isSuperAdmin && isViewingAllLaundries;
   const currentLaundryId = currentLaundry?.id;
   const laundryIdForMachines = isViewingAll ? undefined : currentLaundryId;
-  const { machines, loading: machinesLoading, refreshMachines } = useMachines(laundryIdForMachines);
+  const { machines, loading: machinesLoading, refreshMachines } = useMachines(laundryIdForMachines, { staleMs: ESP32_ADMIN_HEARTBEAT_STALE_MS });
 
   // Period filter
   const [preset, setPreset] = useState<PresetKey>(() => {
