@@ -64,7 +64,42 @@ const toDashboardMachine = (
     relay_pin: row.relay_pin || undefined,
     location: row.location || undefined,
     ip_address: esp32?.ip_address || undefined,
-  };
+};
+
+interface StatCardProps {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  hint?: string;
+  onClick?: () => void;
+}
+
+const StatCard = ({ icon, label, value, hint, onClick }: StatCardProps) => (
+  <Card
+    role={onClick ? "button" : undefined}
+    tabIndex={onClick ? 0 : undefined}
+    onClick={onClick}
+    onKeyDown={(e) => { if (onClick && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onClick(); } }}
+    className={cn(
+      "transition-all",
+      onClick && "cursor-pointer hover:shadow-md hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    )}
+  >
+    <CardContent className="p-4 sm:p-6">
+      <div className="flex items-start gap-3 sm:gap-4">
+        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
+          {icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs sm:text-sm text-muted-foreground">{label}</p>
+          <p className="text-xl sm:text-2xl font-bold leading-tight tabular-nums break-words">{value}</p>
+          {hint && <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">{hint}</p>}
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+);
+
 };
 
 type PresetKey = 'today' | '7d' | '30d' | 'month' | 'custom';
