@@ -395,12 +395,17 @@ export const useMachines = (laundryId?: string | null) => {
       });
 
     const pollMs = Capacitor.isNativePlatform() ? POLL_MACHINES_NATIVE_MS : POLL_MACHINES_MS;
-    const poll = setInterval(runBg, pollMs);
+    // Pausa o polling quando a aba/janela não está visível para economizar
+    // queries do Supabase e bateria do tablet. Refetch imediato ao voltar.
+    const poll = setInterval(() => {
+      if (document.visibilityState === 'visible') runBg();
+    }, pollMs);
 
     const onVisible = () => {
       if (document.visibilityState === 'visible') runBg();
     };
     document.addEventListener('visibilitychange', onVisible);
+
 
     let appHandle: { remove: () => Promise<void> } | undefined;
     if (Capacitor.isNativePlatform()) {

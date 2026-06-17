@@ -136,10 +136,12 @@ export default function Dashboard() {
       esp32ByLaundry.set(e.laundry_id, arr);
     });
 
-    for (const laundry of laundries) {
-      const { data: laundryMachines } = await supabase
-        .from('machines').select('*').eq('laundry_id', laundry.id);
-      if (laundryMachines && laundryMachines.length > 0) {
+    // Paraleliza a leitura das máquinas por lavanderia
+    const results = await Promise.all(
+      laundries.map(async (laundry) => {
+        const { data: laundryMachines } = await supabase
+          .from('machines').select('*').eq('laundry_id', laundry.id);
+        if (!laundryMachines || laundryMachines.length === 0) return null;
         const esp32List = esp32ByLaundry.get(laundry.id) || [];
         const esp32Map = new Map(esp32List.map(e => [e.esp32_id, e]));
         const enriched = (laundryMachines as ConsolidatedMachineRow[]).map((m) => {
@@ -147,9 +149,12 @@ export default function Dashboard() {
           const computed = computeMachineStatus(m, esp32);
           return toDashboardMachine(m, computed.status, esp32);
         });
-        groupedMachines[laundry.id] = { laundryName: laundry.name, machines: enriched };
-      }
-    }
+        return { laundryId: laundry.id, laundryName: laundry.name, machines: enriched };
+      })
+    );
+    results.forEach((r) => {
+      if (r) groupedMachines[r.laundryId] = { laundryName: r.laundryName, machines: r.machines };
+    });
     setMachinesByLaundry(groupedMachines);
   }, [isViewingAll, laundries]);
 
@@ -157,11 +162,36 @@ export default function Dashboard() {
     void loadRevenueData();
     void loadConsolidatedMachines();
     const interval = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
       void loadRevenueData();
       void loadConsolidatedMachines();
     }, 15000);
-    return () => clearInterval(interval);
-  }, [loadConsolidatedMachines, loadRevenueData]);
+
+    // Realtime para visão consolidada (todas lavanderias) — atualiza sem esperar o ciclo de 15s
+    let machinesCh: ReturnType<typeof supabase.channel> | null = null;
+    let esp32Ch: ReturnType<typeof supabase.channel> | null = null;
+    if (isViewingAll) {
+      machinesCh = supabase
+        .channel('dashboard-consolidated-machines')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'machines' }, () => {
+          void loadConsolidatedMachines();
+        })
+        .subscribe();
+      esp32Ch = supabase
+        .channel('dashboard-consolidated-esp32')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'esp32_status' }, () => {
+          void loadConsolidatedMachines();
+        })
+        .subscribe();
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (machinesCh) supabase.removeChannel(machinesCh);
+      if (esp32Ch) supabase.removeChannel(esp32Ch);
+    };
+  }, [isViewingAll, loadConsolidatedMachines, loadRevenueData]);
+
 
   if (revenueLoading && !initialLoadDone.current) {
     return (
