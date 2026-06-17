@@ -14,6 +14,13 @@ export const ESP32_HEARTBEAT_STALE_MINUTES = 1;
  */
 export const ESP32_TOTEM_HEARTBEAT_STALE_MS = 42_000;
 
+/**
+ * Admin/web: janela ligeiramente maior que o intervalo de heartbeat (~30s) — 90s permite
+ * 2 ciclos perdidos antes de considerar a máquina offline na UI administrativa.
+ * Evita esperar o cleanup do banco (3 min) para refletir um ESP que parou de responder.
+ */
+export const ESP32_ADMIN_HEARTBEAT_STALE_MS = 90_000;
+
 function relayKey(pin: number): string {
   return `relay_${pin}`;
 }
@@ -93,16 +100,18 @@ export function isEsp32Reachable(
   if (esp32.is_online === false) return false;
   const lastHb = esp32.last_heartbeat ? new Date(esp32.last_heartbeat) : null;
   if (!lastHb || Number.isNaN(lastHb.getTime())) return false;
-  // Servidor confirmou online — não usar relógio local (Cielo pode estar horas/dias desajustado).
-  if (esp32.is_online === true) return true;
+
   const now = Date.now();
+  const maxSkew = 900_000; // 15 min — tolerância de relógio local desajustado
   let ageMs = now - lastHb.getTime();
-  const maxSkew = 900_000; // 15 min — relógio local vs servidor
   if (ageMs < 0) {
+    // Heartbeat "no futuro" — só aceita se estiver dentro da janela de skew
     if (-ageMs > maxSkew) return false;
     ageMs = 0;
   }
   if (lastHb.getTime() > now + maxSkew) return false;
+
+  // Janela de staleness vale SEMPRE — não confiar em is_online sem heartbeat fresco.
   return ageMs <= staleMs;
 }
 

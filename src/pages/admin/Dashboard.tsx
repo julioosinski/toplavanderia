@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { DollarSign, Receipt, Activity, CheckCircle, AlertTriangle, Droplets, Wind, CalendarRange } from "lucide-react";
 import { useLaundry } from "@/hooks/useLaundry";
 import { supabase } from "@/integrations/supabase/client";
-import { computeMachineStatus, type Esp32StatusRow, type MachineRow } from "@/lib/machineEsp32Sync";
+import { computeMachineStatus, ESP32_ADMIN_HEARTBEAT_STALE_MS, type Esp32StatusRow, type MachineRow } from "@/lib/machineEsp32Sync";
 import { LaundryDashboardSelector } from "@/components/admin/LaundryDashboardSelector";
 import { MachineStatusGrid } from "@/components/admin/MachineStatusGrid";
 import { ConsolidatedMachineStatus } from "@/components/admin/ConsolidatedMachineStatus";
@@ -132,7 +132,7 @@ export default function Dashboard() {
   const isViewingAll = isSuperAdmin && isViewingAllLaundries;
   const currentLaundryId = currentLaundry?.id;
   const laundryIdForMachines = isViewingAll ? undefined : currentLaundryId;
-  const { machines, loading: machinesLoading, refreshMachines } = useMachines(laundryIdForMachines);
+  const { machines, loading: machinesLoading, refreshMachines } = useMachines(laundryIdForMachines, { staleMs: ESP32_ADMIN_HEARTBEAT_STALE_MS });
 
   // Period filter
   const [preset, setPreset] = useState<PresetKey>(() => {
@@ -234,7 +234,7 @@ export default function Dashboard() {
         const esp32Map = new Map(esp32List.map(e => [e.esp32_id, e]));
         const enriched = (laundryMachines as ConsolidatedMachineRow[]).map((m) => {
           const esp32 = esp32Map.get(m.esp32_id || '');
-          const computed = computeMachineStatus(m, esp32);
+          const computed = computeMachineStatus(m, esp32, { staleMs: ESP32_ADMIN_HEARTBEAT_STALE_MS });
           return toDashboardMachine(m, computed.status, esp32);
         });
         return { laundryId: laundry.id, laundryName: laundry.name, machines: enriched };

@@ -7,8 +7,6 @@ import { Droplets, Wind, type LucideIcon } from 'lucide-react';
 import { useMachineAutoStatus } from './useMachineAutoStatus';
 import { nativeStorage, getItemWithTimeout } from '@/utils/nativeStorage';
 import {
-  ESP32_TOTEM_HEARTBEAT_STALE_MS,
-  resolvedRelayPin,
   computeMachineStatus,
   type Esp32StatusRow,
   type MachineRow,
@@ -73,7 +71,8 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   });
 }
 
-export const useMachines = (laundryId?: string | null) => {
+export const useMachines = (laundryId?: string | null, opts?: { staleMs?: number }) => {
+  const staleMs = opts?.staleMs;
   const [machines, setMachines] = useState<Machine[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +97,7 @@ export const useMachines = (laundryId?: string | null) => {
     const mappedType = typeMapping[machine.type] || 'lavadora';
 
     // Use unified status computation — ESP32 relay is the authority
-    const computed = computeMachineStatus(machine, esp32);
+    const computed = computeMachineStatus(machine, esp32, staleMs ? { staleMs } : undefined);
     let machineStatus: Machine['status'] = computed.status;
     const hardwareLinkLost = computed.hardwareLinkLost;
 
@@ -152,7 +151,7 @@ export const useMachines = (laundryId?: string | null) => {
       ip_address: esp32?.ip_address,
       ...(hardwareLinkLost ? { hardwareLinkLost: true } : {}),
     };
-  }, []);
+  }, [staleMs]);
 
   const fetchMachines = useCallback(async (options?: { background?: boolean }) => {
     const background = options?.background === true;
