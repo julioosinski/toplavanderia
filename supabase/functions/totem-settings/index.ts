@@ -53,10 +53,43 @@ serve(async (req) => {
       });
     }
 
+    // Service role: inclui credenciais Cielo (removidas do RPC público get_totem_settings por segurança).
     const { data, error } = await supabaseClient
-      .rpc('get_totem_settings', { _laundry_id: laundry_id });
+      .from('system_settings')
+      .select(`
+        paygo_enabled,
+        paygo_host,
+        paygo_port,
+        paygo_timeout,
+        paygo_retry_attempts,
+        paygo_retry_delay,
+        paygo_provedor,
+        paygo_automation_key,
+        paygo_cnpj_cpf,
+        default_cycle_time,
+        default_price,
+        auto_mode,
+        enable_esp32_monitoring,
+        heartbeat_interval_seconds,
+        cielo_client_id,
+        cielo_access_token,
+        cielo_merchant_code,
+        cielo_environment
+      `)
+      .eq('laundry_id', laundry_id)
+      .maybeSingle();
 
     if (error) throw error;
+
+    if (!data) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Configurações não encontradas para esta lavanderia',
+      }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     return new Response(JSON.stringify({ success: true, settings: data }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

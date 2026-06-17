@@ -8,6 +8,7 @@ final class SupabaseConfig {
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg";
     static final String SUPABASE_URL = normalizeUrl(selectValue(BuildConfig.SUPABASE_URL, DEFAULT_SUPABASE_URL));
     static final String SUPABASE_ANON_KEY = selectValue(BuildConfig.SUPABASE_ANON_KEY, DEFAULT_SUPABASE_ANON_KEY);
+    static final String TOTEM_SETTINGS_SECRET = selectValue(BuildConfig.TOTEM_SETTINGS_SECRET, "");
 
     private SupabaseConfig() {}
 
@@ -31,6 +32,13 @@ final class SupabaseConfig {
         connection.setRequestProperty("apikey", SUPABASE_ANON_KEY);
         connection.setRequestProperty("Authorization", "Bearer " + SUPABASE_ANON_KEY);
         connection.setRequestProperty("Content-Type", "application/json");
+    }
+
+    static void applyTotemSettingsHeaders(HttpURLConnection connection) {
+        applyJsonHeaders(connection);
+        if (TOTEM_SETTINGS_SECRET != null && !TOTEM_SETTINGS_SECRET.isEmpty()) {
+            connection.setRequestProperty("x-totem-settings-secret", TOTEM_SETTINGS_SECRET);
+        }
     }
 
     static boolean isConfigured() {

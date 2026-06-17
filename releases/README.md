@@ -17,7 +17,7 @@ Saída: `android/app/build/outputs/apk/cieloRelease/app-cieloRelease.apk`
 - Assinatura **V1 + V2** (targetSdk 35 — V2 obrigatório)
 - Certificado **debug** = mesmo do APK homologado na maquininha
 
-Envie: `releases/TopLavanderia-Totem-2.2.28-cieloStore.apk` (homologação Cielo LIO Store)
+Envie: `releases/TopLavanderia-Totem-2.2.33.apk` (homologação Cielo LIO Store)
 
 ### SHA-256 dos certificados (referência)
 
@@ -38,7 +38,12 @@ adb install -r app\build\outputs\apk\release\app-release.apk
 
 | Arquivo | versionName | Uso |
 |---------|-------------|-----|
-| `TopLavanderia-Totem-2.2.28-cieloStore.apk` | 2.2.28 | **Homologação Cielo** — fix -4281, janitor pedidos, UX pós-pagamento |
+| `TopLavanderia-Totem-2.2.33.apk` | 2.2.33 | **Homologação Cielo** — volta à grade pós-pagamento, máquina OCUPADA, credenciais via edge function |
+| `TopLavanderia-Totem-2.2.32-cieloStore.apk` | 2.2.32 | Fix corrida ESP32 / status OCUPADA após pagamento |
+| `TopLavanderia-Totem-2.2.31-cieloStore.apk` | 2.2.31 | Fluxo pagamento direto (crédito/débito/PIX), sem telas extras |
+| `TopLavanderia-Totem-2.2.30-cieloStore.apk` | 2.2.30 | Credenciais Cielo via totem-settings edge function |
+| `TopLavanderia-Totem-2.2.29-cieloStore.apk` | 2.2.29 | Primeira build com edge function de credenciais |
+| `TopLavanderia-Totem-2.2.28-cieloStore.apk` | 2.2.28 | Fix -4281, janitor pedidos, UX pós-pagamento |
 | `TopLavanderia-Totem-2.2.16-cieloStore.apk` | 2.2.16 | **Fix crash L400** (modo imersivo antes de setContentView) |
 | `TopLavanderia-Totem-2.2.15-cieloStore.apk` | 2.2.15 | Fix relógio Cielo (~27h skew) + detecção ESP online |
 | `TopLavanderia-Totem-2.2.14-cieloStore.apk` | 2.2.14 | Fix detecção ESP online (relógio Cielo + lista máquinas) |

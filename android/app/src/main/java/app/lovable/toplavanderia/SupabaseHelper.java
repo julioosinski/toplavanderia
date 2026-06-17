@@ -156,9 +156,22 @@ public class SupabaseHelper {
 
     /** Cache of system settings fetched from Supabase */
     private JSONObject cachedSystemSettings = null;
+    private volatile boolean settingsFetchInProgress = false;
 
     public void clearSettingsCache() {
         cachedSystemSettings = null;
+    }
+
+    /** Pré-carrega configurações em background (credenciais Cielo para pagamento). */
+    public void prefetchSystemSettings() {
+        if (cachedSystemSettings != null || currentLaundryId == null) return;
+        new Thread(() -> {
+            try {
+                fetchSystemSettings();
+            } catch (Exception e) {
+                Log.w(TAG, "prefetchSystemSettings falhou", e);
+            }
+        }).start();
     }
 
     private JSONObject fetchSystemSettings() {
@@ -166,15 +179,89 @@ public class SupabaseHelper {
         if (currentLaundryId == null) return null;
         // Evita NetworkOnMainThreadException durante bootstrap da Activity.
         if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
-            new Thread(() -> {
-                try {
-                    fetchSystemSettings();
-                } catch (Exception ignored) {
-                    // Keep silent: settings are optional for first paint.
-                }
-            }).start();
+            if (!settingsFetchInProgress) {
+                settingsFetchInProgress = true;
+                new Thread(() -> {
+                    try {
+                        fetchSystemSettings();
+                    } catch (Exception ignored) {
+                        // Keep silent: settings are optional for first paint.
+                    } finally {
+                        settingsFetchInProgress = false;
+                    }
+                }).start();
+            }
             return null;
         }
+        try {
+            JSONObject fromEdge = fetchSystemSettingsViaEdgeFunction();
+            if (fromEdge != null) {
+                cachedSystemSettings = fromEdge;
+                return cachedSystemSettings;
+            }
+
+            JSONObject fromRpc = fetchSystemSettingsViaRpc();
+            if (fromRpc != null) {
+                cachedSystemSettings = fromRpc;
+                return cachedSystemSettings;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error fetching system settings", e);
+        }
+        return null;
+    }
+
+    private JSONObject fetchSystemSettingsViaEdgeFunction() {
+        if (!SupabaseConfig.isConfigured()) return null;
+        if (SupabaseConfig.TOTEM_SETTINGS_SECRET == null || SupabaseConfig.TOTEM_SETTINGS_SECRET.isEmpty()) {
+            Log.w(TAG, "TOTEM_SETTINGS_SECRET ausente no APK — credenciais Cielo indisponíveis via edge function");
+            return null;
+        }
+        try {
+            String url = SUPABASE_URL + "/functions/v1/totem-settings";
+            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyTotemSettingsHeaders(connection);
+            connection.setDoOutput(true);
+            connection.setConnectTimeout(8000);
+            connection.setReadTimeout(8000);
+
+            JSONObject body = new JSONObject();
+            body.put("laundry_id", currentLaundryId);
+            OutputStream os = connection.getOutputStream();
+            os.write(body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            os.close();
+
+            int code = connection.getResponseCode();
+            java.io.InputStream stream = code >= 200 && code < 300
+                ? connection.getInputStream()
+                : connection.getErrorStream();
+            if (stream == null) return null;
+
+            BufferedReader reader = new BufferedReader(new InputStreamReader(stream));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) sb.append(line);
+            reader.close();
+
+            JSONObject response = new JSONObject(sb.toString());
+            if (!response.optBoolean("success", false)) {
+                Log.w(TAG, "totem-settings edge function: " + response.optString("error", "erro desconhecido"));
+                return null;
+            }
+            JSONObject settings = response.optJSONObject("settings");
+            if (settings != null) {
+                Log.d(TAG, "Configurações carregadas via totem-settings (Cielo: "
+                    + (settings.optString("cielo_client_id", "").isEmpty() ? "vazio" : "ok") + ")");
+            }
+            return settings;
+        } catch (Exception e) {
+            Log.e(TAG, "Error fetching totem-settings edge function", e);
+            return null;
+        }
+    }
+
+    private JSONObject fetchSystemSettingsViaRpc() {
         try {
             String url = SUPABASE_URL + "/rest/v1/rpc/get_totem_settings";
             HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
@@ -197,11 +284,10 @@ public class SupabaseHelper {
                 String line;
                 while ((line = reader.readLine()) != null) sb.append(line);
                 reader.close();
-                cachedSystemSettings = new JSONObject(sb.toString());
-                return cachedSystemSettings;
+                return new JSONObject(sb.toString());
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error fetching system settings", e);
+            Log.e(TAG, "Error fetching get_totem_settings RPC", e);
         }
         return null;
     }

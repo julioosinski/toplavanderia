@@ -129,6 +129,7 @@ public class TotemActivity extends Activity {
             });
             
             // Pagamento: Cielo LIO não carrega PayGo no boot (evita crash na Cielo Store sem PayGo instalado).
+            supabaseHelper.prefetchSystemSettings();
             initializePaymentManagers();
 
             // Unified payment callback
@@ -181,7 +182,9 @@ public class TotemActivity extends Activity {
         super.onNewIntent(intent);
         setIntent(intent);
         if (intent != null && intent.getBooleanExtra(EXTRA_CIELO_PAYMENT_RETURN, false)) {
-            showCieloAwaitingScreenIfNeeded();
+            if (lastSucceededOperationId > 0 || selectedMachine == null) {
+                restoreMachineGrid();
+            }
         }
     }
 
@@ -190,7 +193,6 @@ public class TotemActivity extends Activity {
         super.onResume();
         applyKeepScreenAwake();
         applyImmersiveMode();
-        showCieloAwaitingScreenIfNeeded();
         try {
             if (statusMonitor != null) {
                 statusMonitor.startMonitoring();
@@ -198,6 +200,11 @@ public class TotemActivity extends Activity {
                 Log.d(TAG, "Monitor de status iniciado + poll imediato");
             }
             if (supabaseHelper != null && supabaseHelper.isConfigured()) {
+                if ("cielo".equalsIgnoreCase(activeProvider)
+                        && lastSucceededOperationId > 0
+                        && !isMachineGridVisible()) {
+                    restoreMachineGrid();
+                }
                 loadMachines();
             } else {
                 Log.d(TAG, "onResume sem configuração do totem; mantendo tela de configuração");
@@ -279,6 +286,19 @@ public class TotemActivity extends Activity {
     private void setTotemContentView(View view) {
         setContentView(view);
         applyImmersiveMode();
+    }
+
+    /** Garante que a grade de máquinas está na tela (não a confirmação de pagamento). */
+    private boolean isMachineGridVisible() {
+        return rootLayout != null && rootLayout.getParent() != null;
+    }
+
+    private void restoreMachineGrid() {
+        if (!isMachineGridVisible()) {
+            createTotemInterface();
+        }
+        applyOptimisticMachineStatuses();
+        displayMachines();
     }
 
     private void handleAdminSecretTap() {
@@ -394,7 +414,11 @@ public class TotemActivity extends Activity {
                     }
                     
                     if (status.isAvailable()) {
-                        machine.setStatus("LIVRE");
+                        if (isOptimisticallyOccupied(machine.getId())) {
+                            machine.setStatus("OCUPADA");
+                        } else {
+                            machine.setStatus("LIVRE");
+                        }
                     } else if (status.isRunning()) {
                         machine.setStatus("OCUPADA");
                         clearOptimisticOccupiedIfConfirmed(machine.getId());
@@ -717,7 +741,6 @@ public class TotemActivity extends Activity {
     
     private void selectMachine(SupabaseHelper.Machine machine) {
         Log.d(TAG, "Máquina selecionada: " + machine.getName());
-        
         selectedMachine = machine;
         showPaymentConfirmation(machine);
     }
@@ -766,9 +789,9 @@ public class TotemActivity extends Activity {
         LinearLayout payRow = new LinearLayout(this);
         payRow.setOrientation(LinearLayout.VERTICAL);
 
-        Button creditBtn = buildPaymentTypeButton("💳 CRÉDITO", Color.parseColor("#1976D2"),
+        Button creditBtn = buildPaymentTypeButton("💳 CRÉDITO À VISTA", Color.parseColor("#1976D2"),
             () -> processPayment(machine, "credit"));
-        Button debitBtn = buildPaymentTypeButton("💳 DÉBITO", Color.parseColor("#1565C0"),
+        Button debitBtn = buildPaymentTypeButton("💳 DÉBITO À VISTA", Color.parseColor("#1565C0"),
             () -> processPayment(machine, "debit"));
         Button pixBtn = buildPaymentTypeButton("📱 PIX", Color.parseColor("#00897B"),
             () -> processPayment(machine, "pix"));
@@ -929,17 +952,15 @@ public class TotemActivity extends Activity {
                     }
                     cancelPendingSuccessScreen();
                     awaitingPaymentCallback = true;
-                    if ("cielo".equalsIgnoreCase(activeProvider)) {
-                        showCieloAwaitingScreen(machine);
-                    } else {
-                        showPaymentProcessing(machine, managerPaymentType);
-                    }
                     activePaymentManager.processPayment(
                         machine.getPrice(),
                         managerPaymentType,
                         "Top Lavanderia - " + machine.getName(),
                         cieloReference
                     );
+                    if (!"cielo".equalsIgnoreCase(activeProvider)) {
+                        showPaymentProcessing(machine, managerPaymentType);
+                    }
                 });
             } catch (Exception e) {
                 awaitingPaymentCallback = false;
@@ -1111,44 +1132,6 @@ public class TotemActivity extends Activity {
         }
     }
     
-    private void showCieloAwaitingScreenIfNeeded() {
-        if (!awaitingPaymentCallback || selectedMachine == null) {
-            return;
-        }
-        showCieloAwaitingScreen(selectedMachine);
-    }
-
-    /** Tela neutra enquanto a Cielo finaliza — sem botões de forma de pagamento. */
-    private void showCieloAwaitingScreen(SupabaseHelper.Machine machine) {
-        ScrollView scrollView = new ScrollView(this);
-        scrollView.setFillViewport(true);
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(dp(32), dp(48), dp(32), dp(48));
-        layout.setBackgroundColor(Color.parseColor("#0D1117"));
-        layout.setGravity(android.view.Gravity.CENTER);
-
-        TextView title = new TextView(this);
-        title.setText("Finalizando pagamento");
-        title.setTextSize(22);
-        title.setTextColor(Color.WHITE);
-        title.setGravity(android.view.Gravity.CENTER);
-        title.setPadding(0, 0, 0, dp(16));
-        layout.addView(title);
-
-        TextView details = new TextView(this);
-        String machineLabel = machine != null ? machine.getName() : "Máquina";
-        details.setText(machineLabel + "\n\nAguarde, quase pronto...");
-        details.setTextSize(17);
-        details.setTextColor(Color.parseColor("#B0BEC5"));
-        details.setGravity(android.view.Gravity.CENTER);
-        details.setLineSpacing(dp(4), 1f);
-        layout.addView(details);
-
-        scrollView.addView(layout);
-        setTotemContentView(scrollView);
-    }
-
     private void showPaymentProcessing(SupabaseHelper.Machine machine) {
         showPaymentProcessing(machine, currentOperationSupabasePaymentMethod);
     }
@@ -1214,18 +1197,35 @@ public class TotemActivity extends Activity {
         awaitingPaymentCallback = false;
         paymentLaunchInProgress.set(false);
         lastSucceededOperationId = operationId;
+
+        final String machineId = machineSnapshot.getId();
+        final String pendingTxId = currentPendingTransactionId;
+        final int durationMinutes = machineSnapshot.getDuration() > 0
+            ? machineSnapshot.getDuration()
+            : 40;
+        final String esp32Id = machineSnapshot.getEsp32Id();
+        final int relayPin = machineSnapshot.getRelayPin();
+        final String methodForComplete = currentOperationSupabasePaymentMethod != null
+            ? currentOperationSupabasePaymentMethod
+            : "credit";
+
         if (supabaseHelper != null) {
-            supabaseHelper.patchCachedMachineStatus(machineSnapshot.getId(), "OCUPADA", true);
+            supabaseHelper.patchCachedMachineStatus(machineId, "OCUPADA", true);
         }
 
-        // Feedback imediato (1s) — ESP32/Supabase em paralelo, sem bloquear a UI.
+        // Cielo: volta à grade sem tela verde; pós-pagamento (ESP32) roda antes de limpar sessão.
         runOnUiThread(() -> {
-            if (!isCurrentPaymentOperation(operationId)) {
+            if (!isCurrentPaymentOperation(operationId) && operationId != lastSucceededOperationId) {
                 return;
             }
-            markMachineOptimisticallyOccupied(machineSnapshot.getId());
+            markMachineOptimisticallyOccupied(machineId);
             triggerAutomaticReceiptPrint(machineSnapshot, authorizationCode, transactionId);
-            showBriefPaymentSuccessAndReset(machineSnapshot, operationId);
+            if ("cielo".equalsIgnoreCase(activeProvider)) {
+                selectedMachine = null;
+                restoreMachineGrid();
+            } else {
+                showBriefPaymentSuccessAndReset(machineSnapshot, operationId);
+            }
         });
 
         try {
@@ -1235,23 +1235,19 @@ public class TotemActivity extends Activity {
 
             Log.d(TAG, "=== ACIONANDO ESP32 ===");
             Log.d(TAG, "Endpoint: /functions/v1/esp32-control");
-            Log.d(TAG, "Payload: {esp32_id: " + machineSnapshot.getEsp32Id() + ", relay_pin: " + machineSnapshot.getRelayPin() + "}");
-            Log.d(TAG, "Acionando ESP32 para máquina: " + machineSnapshot.getName());
-
-            String methodForComplete = currentOperationSupabasePaymentMethod != null
-                ? currentOperationSupabasePaymentMethod
-                : "credit";
+            Log.d(TAG, "Payload: {esp32_id: " + esp32Id + ", relay_pin: " + relayPin + "}");
+            Log.d(TAG, "Acionando ESP32 para máquina: " + machineSnapshot.getName() + " (" + durationMinutes + " min)");
 
             boolean txCompleted = false;
-            if (currentPendingTransactionId != null && !currentPendingTransactionId.isEmpty()) {
+            if (pendingTxId != null && !pendingTxId.isEmpty()) {
                 txCompleted = supabaseHelper.completeTotemTransactionById(
-                    currentPendingTransactionId,
+                    pendingTxId,
                     methodForComplete
                 );
             }
             if (!txCompleted) {
                 txCompleted = supabaseHelper.completeLatestTotemTransaction(
-                    machineSnapshot.getId(),
+                    machineId,
                     methodForComplete
                 );
             }
@@ -1259,30 +1255,33 @@ public class TotemActivity extends Activity {
                 Log.w(TAG, "Não foi possível marcar a transação do totem como concluída");
             }
 
-            String esp32TxId = currentPendingTransactionId != null ? currentPendingTransactionId : transactionId;
+            String esp32TxId = pendingTxId != null && !pendingTxId.isEmpty() ? pendingTxId : transactionId;
             boolean esp32Activated = supabaseHelper.activateEsp32Relay(
-                machineSnapshot.getEsp32Id(),
-                machineSnapshot.getRelayPin(),
-                machineSnapshot.getId(),
+                esp32Id,
+                relayPin,
+                machineId,
                 esp32TxId,
-                machineSnapshot.getDuration()
+                durationMinutes
             );
 
             if (esp32Activated) {
-                Log.d(TAG, "✅ ESP32 acionado com sucesso - máquina liberada");
-                supabaseHelper.patchCachedMachineStatus(machineSnapshot.getId(), "OCUPADA", true);
-                supabaseHelper.startMachineUsage(machineSnapshot.getId(), machineSnapshot.getDuration());
-                runOnUiThread(() -> {
-                    applyOptimisticMachineStatuses();
-                    if (machinesContainer != null) {
-                        displayMachines();
-                    }
-                });
+                Log.d(TAG, "✅ ESP32 acionado com sucesso - máquina liberada por " + durationMinutes + " min");
+                supabaseHelper.patchCachedMachineStatus(machineId, "OCUPADA", true);
+                // activateEsp32Relay já agenda desligamento; startMachineUsage reforça status no Supabase.
+                supabaseHelper.startMachineUsage(machineId, durationMinutes);
             } else {
                 Log.e(TAG, "❌ Falha ao acionar ESP32 (pagamento já aprovado na Cielo)");
             }
+
+            if ("cielo".equalsIgnoreCase(activeProvider)) {
+                final boolean activated = esp32Activated;
+                runOnUiThread(() -> finishCieloPaymentSession(operationId, activated));
+            }
         } catch (Exception e) {
             Log.e(TAG, "Erro ao finalizar pós-pagamento (ESP32/Supabase)", e);
+            if ("cielo".equalsIgnoreCase(activeProvider)) {
+                runOnUiThread(() -> finishCieloPaymentSession(operationId, false));
+            }
         }
     }
     
@@ -1329,6 +1328,33 @@ public class TotemActivity extends Activity {
             }
         };
         adminTapHandler.postDelayed(pendingSuccessResetRunnable, POST_PAYMENT_SUCCESS_MS);
+    }
+
+    private boolean isOptimisticallyOccupied(String machineId) {
+        if (optimisticOccupiedMachineId == null || machineId == null) {
+            return false;
+        }
+        if (System.currentTimeMillis() - optimisticOccupiedAtMs > OPTIMISTIC_OCCUPIED_MAX_MS) {
+            return false;
+        }
+        return optimisticOccupiedMachineId.equals(machineId);
+    }
+
+    private void finishCieloPaymentSession(long operationId, boolean esp32Activated) {
+        if (operationId != currentOperationId && operationId != lastSucceededOperationId) {
+            return;
+        }
+        currentOperationId = -1;
+        currentPendingTransactionId = null;
+        selectedMachine = null;
+        paymentLaunchInProgress.set(false);
+        awaitingPaymentCallback = false;
+        restoreMachineGrid();
+        if (esp32Activated && statusMonitor != null) {
+            // Poll após ESP32 ligado — evita marcar LIVRE antes do relé responder.
+            statusMonitor.requestImmediatePoll();
+        }
+        Log.d(TAG, "Sessão Cielo encerrada (ESP32=" + esp32Activated + ")");
     }
 
     private void resetToNewTransaction() {

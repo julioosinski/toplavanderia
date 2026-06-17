@@ -17,6 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSystemSettings } from "@/hooks/useSystemSettings";
 import type { UniversalPaymentResponse } from "@/hooks/useUniversalPayment";
 import { useDeviceMode } from "@/hooks/useDeviceMode";
+import { fetchTotemPaymentCredentials } from "@/lib/totemSettingsApi";
 
 interface PaymentPayload {
   method?: string;
@@ -318,26 +319,22 @@ const Totem = () => {
           );
 
           if (!hasRefreshedCreds && currentLaundry?.id) {
-            const rpcResult = await Promise.race([
-              supabase.rpc("get_totem_settings", { _laundry_id: currentLaundry.id }),
-              new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error("rpc_sync_timeout")), 4000)
-              ),
+            const edgeCreds = await Promise.race([
+              fetchTotemPaymentCredentials(currentLaundry.id),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
             ]);
 
-            if (rpcResult && typeof rpcResult === "object" && "data" in rpcResult) {
-              const data = (rpcResult as { data: Record<string, unknown> }).data;
+            if (edgeCreds) {
               hasRefreshedCreds = Boolean(
-                String(data?.cielo_client_id ?? "").trim() &&
-                  String(data?.cielo_access_token ?? "").trim()
+                edgeCreds.cielo_client_id?.trim() && edgeCreds.cielo_access_token?.trim()
               );
               if (hasRefreshedCreds) {
                 setRuntimePaymentOverrides({
-                  provider: String(data?.paygo_provedor ?? "cielo"),
-                  cieloClientId: String(data?.cielo_client_id ?? ""),
-                  cieloAccessToken: String(data?.cielo_access_token ?? ""),
-                  cieloMerchantCode: String(data?.cielo_merchant_code ?? ""),
-                  cieloEnvironment: String(data?.cielo_environment ?? "sandbox"),
+                  provider: String(edgeCreds.paygo_provedor ?? "cielo"),
+                  cieloClientId: String(edgeCreds.cielo_client_id ?? ""),
+                  cieloAccessToken: String(edgeCreds.cielo_access_token ?? ""),
+                  cieloMerchantCode: String(edgeCreds.cielo_merchant_code ?? ""),
+                  cieloEnvironment: String(edgeCreds.cielo_environment ?? "sandbox"),
                 });
               }
             }

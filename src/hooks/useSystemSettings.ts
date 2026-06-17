@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { toast } from "@/hooks/use-toast";
 import { useLaundry } from '@/hooks/useLaundry';
 import { nativeStorage } from '@/utils/nativeStorage';
+import { enrichSettingsWithPaymentCredentials } from '@/lib/totemSettingsApi';
 
 export interface ESP32Configuration {
   id: string;
@@ -181,13 +182,15 @@ async function fetchTotemSettingsViaRpc(laundryId: string): Promise<SystemSettin
 
     const base = totemSettingsDefaults(laundryId);
     const rpcData = data as Partial<SystemSettings>;
-    return normalizeSystemSettings({
+    const merged = normalizeSystemSettings({
       ...base,
       ...rpcData,
       // keep deterministic synthetic id for cache/query stability
       id: base.id,
       updated_at: new Date().toISOString(),
     }, laundryId);
+
+    return await enrichSettingsWithPaymentCredentials(laundryId, merged);
   } catch (e) {
     console.warn('[useSystemSettings] RPC get_totem_settings failed:', e);
     return null;
@@ -285,8 +288,9 @@ export const useSystemSettings = () => {
         }
 
         const current = normalizeSystemSettings(data as unknown as SystemSettings, currentLaundry.id);
-        await writeCachedSettings(currentLaundry.id, current);
-        return current;
+        const enriched = await enrichSettingsWithPaymentCredentials(currentLaundry.id, current);
+        await writeCachedSettings(currentLaundry.id, enriched);
+        return enriched;
       };
 
       try {

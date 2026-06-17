@@ -158,7 +158,7 @@ public class CieloLioManager implements PaymentManager {
             }
 
             String paymentCode = resolvePaymentCode(paymentType);
-            int installments = resolveInstallments(paymentCode);
+            int installments = paymentCode != null ? resolveInstallments(paymentCode) : 0;
             Log.d(TAG, "Cielo checkout: jsType=" + paymentType + " -> paymentCode=" + paymentCode
                 + " cents=" + amountCents + " installments=" + installments + " staleClosed=" + closed);
 
@@ -356,11 +356,14 @@ public class CieloLioManager implements PaymentManager {
         payload.put("clientID", clientId);
         payload.put("reference", reference);
         payload.put("value", String.valueOf(amountCents));
-        payload.put("paymentCode", paymentCode);
-        // PIX: omitir installments e receiptPrintPermission — firmware Cielo Smart rejeita "Json inválido" com esses campos.
-        int installments = resolveInstallments(paymentCode);
-        if (installments >= 0) {
-            payload.put("installments", installments);
+
+        // Com paymentCode: pagamento direto (crédito/débito/PIX fixos, sem tela de parcelas).
+        if (paymentCode != null && !paymentCode.isEmpty()) {
+            payload.put("paymentCode", paymentCode);
+            int installments = resolveInstallments(paymentCode);
+            if (installments >= 0) {
+                payload.put("installments", installments);
+            }
         }
 
         String ec = merchantCodeForPayload();
@@ -425,6 +428,9 @@ public class CieloLioManager implements PaymentManager {
      * Parcelas: doc Cielo — 0 = à vista (crédito e débito). PIX omite o campo.
      */
     private int resolveInstallments(String paymentCode) {
+        if (paymentCode == null || paymentCode.isEmpty()) {
+            return 0;
+        }
         if ("PIX".equalsIgnoreCase(paymentCode)) {
             return -1;
         }
