@@ -64,6 +64,7 @@ const toDashboardMachine = (
     relay_pin: row.relay_pin || undefined,
     location: row.location || undefined,
     ip_address: esp32?.ip_address || undefined,
+  };
 };
 
 interface StatCardProps {
@@ -100,7 +101,6 @@ const StatCard = ({ icon, label, value, hint, onClick }: StatCardProps) => (
   </Card>
 );
 
-};
 
 type PresetKey = 'today' | '7d' | '30d' | 'month' | 'custom';
 
