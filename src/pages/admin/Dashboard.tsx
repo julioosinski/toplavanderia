@@ -289,61 +289,124 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* Stats Cards */}
-      <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-center space-x-3 sm:space-x-4">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
-                <DollarSign className="text-primary" size={20} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs sm:text-sm text-muted-foreground truncate">Receita Total</p>
-                <p className="text-lg sm:text-2xl font-bold truncate">R$ {revenueStats.totalRevenue.toFixed(2)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-center space-x-3 sm:space-x-4">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
-                <Receipt className="text-primary" size={20} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs sm:text-sm text-muted-foreground truncate">Receita Mensal</p>
-                <p className="text-lg sm:text-2xl font-bold truncate">R$ {revenueStats.monthlyRevenue.toFixed(2)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-center space-x-3 sm:space-x-4">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
-                <Activity className="text-primary" size={20} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs sm:text-sm text-muted-foreground truncate">Transações Hoje</p>
-                <p className="text-lg sm:text-2xl font-bold">{revenueStats.todayTransactions}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 sm:p-6">
-            <div className="flex items-center space-x-3 sm:space-x-4">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/10 rounded-full flex items-center justify-center shrink-0">
-                <CheckCircle className="text-primary" size={20} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs sm:text-sm text-muted-foreground truncate">Disponíveis</p>
-                <p className="text-lg sm:text-2xl font-bold">{machineStats.activeMachines} / {machineStats.totalMachines}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Period chip + selector */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          onClick={() => { setDraftPreset(preset); setDraftRange(customRange); setDialogOpen(true); }}
+        >
+          <CalendarRange size={16} />
+          <span className="font-medium">{PRESET_LABELS[preset]}:</span>
+          <span className="text-muted-foreground">
+            {format(dateRange.from, "dd/MM/yyyy", { locale: ptBR })} – {format(dateRange.to, "dd/MM/yyyy", { locale: ptBR })}
+          </span>
+        </Button>
       </div>
+
+      {/* Stats Cards — clicáveis, valores sem corte */}
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          icon={<DollarSign className="text-primary" size={20} />}
+          label="Receita do Período"
+          value={fmtBRL(periodStats.periodRevenue)}
+          onClick={() => { setDraftPreset(preset); setDraftRange(customRange); setDialogOpen(true); }}
+        />
+        <StatCard
+          icon={<Receipt className="text-primary" size={20} />}
+          label="Receita Mensal"
+          value={fmtBRL(periodStats.monthlyRevenue)}
+          hint="Mês corrente"
+          onClick={() => { setDraftPreset(preset); setDraftRange(customRange); setDialogOpen(true); }}
+        />
+        <StatCard
+          icon={<Activity className="text-primary" size={20} />}
+          label="Transações do Período"
+          value={String(periodStats.periodTransactions)}
+          onClick={() => { setDraftPreset(preset); setDraftRange(customRange); setDialogOpen(true); }}
+        />
+        <StatCard
+          icon={<CheckCircle className="text-primary" size={20} />}
+          label="Disponíveis"
+          value={`${machineStats.activeMachines} / ${machineStats.totalMachines}`}
+          hint="Tempo real"
+          onClick={() => navigate('/admin/machines')}
+        />
+      </div>
+
+      {/* Period dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Período exibido</DialogTitle>
+            <DialogDescription>Escolha o intervalo dos valores do dashboard.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {(['today','7d','30d','month','custom'] as PresetKey[]).map(k => (
+                <Button
+                  key={k}
+                  variant={draftPreset === k ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setDraftPreset(k)}
+                >
+                  {PRESET_LABELS[k]}
+                </Button>
+              ))}
+            </div>
+            {draftPreset === 'custom' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">De</p>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full justify-start">
+                        {draftRange.from ? format(draftRange.from, "dd/MM/yyyy", { locale: ptBR }) : 'Selecionar'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar mode="single" selected={draftRange.from} onSelect={(d) => setDraftRange(r => ({ ...r, from: d }))} initialFocus className={cn("p-3 pointer-events-auto")} />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Até</p>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full justify-start">
+                        {draftRange.to ? format(draftRange.to, "dd/MM/yyyy", { locale: ptBR }) : 'Selecionar'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar mode="single" selected={draftRange.to} onSelect={(d) => setDraftRange(r => ({ ...r, to: d }))} initialFocus className={cn("p-3 pointer-events-auto")} />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
+            <Button
+              onClick={() => {
+                if (draftPreset === 'custom' && (!draftRange.from || !draftRange.to)) return;
+                setPreset(draftPreset);
+                if (draftPreset === 'custom' && draftRange.from && draftRange.to) {
+                  const r = { from: draftRange.from, to: draftRange.to };
+                  setCustomRange(r);
+                  try { localStorage.setItem('dashboard:customRange', JSON.stringify({ from: r.from.toISOString(), to: r.to.toISOString() })); } catch { /* noop */ }
+                }
+                try { localStorage.setItem('dashboard:preset', draftPreset); } catch { /* noop */ }
+                setDialogOpen(false);
+              }}
+            >
+              Aplicar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
 
       {/* Machine Status Section */}
       {isViewingAll ? (
