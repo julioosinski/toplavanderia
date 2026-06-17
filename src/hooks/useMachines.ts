@@ -151,7 +151,7 @@ export const useMachines = (laundryId?: string | null, opts?: { staleMs?: number
       ip_address: esp32?.ip_address,
       ...(hardwareLinkLost ? { hardwareLinkLost: true } : {}),
     };
-  }, []);
+  }, [staleMs]);
 
   const fetchMachines = useCallback(async (options?: { background?: boolean }) => {
     const background = options?.background === true;
