@@ -3,7 +3,7 @@
  * Fonte única: este arquivo. Placeholders __LAUNDRY_ID__, __MACHINE_NAME__, etc.
  * Firmware gerado fica em: public/arduino/generated/
  *
- * Versão: 2.2.2 — reconexão automática em queda temporária; portal só após 2 min ou boot sem rede
+ * Versão: 2.2.3 — reconexão indefinida à rede salva; pulso de crédito 1 s no relé
  */
 
 #include <WiFi.h>
@@ -21,16 +21,15 @@ const char* AP_PASSWORD = "toplav123";
 String configuredSsid = "";
 String configuredPassword = "";
 bool configModeActive = false;
-/** Mantém AP de configuração até o usuário salvar nova rede (mudança de local/rede). */
+/** Portal obrigatório só sem credenciais ou após reset manual (/wifi/reset). */
 bool configPortalSticky = false;
 unsigned long lastWifiRetry = 0;
 unsigned long staConnectStartedAt = 0;
-/** Desde quando está desconectado (queda temporária de sinal). */
 unsigned long disconnectStartedAt = 0;
 const unsigned long WIFI_RETRY_INTERVAL = 15000;
 const unsigned long STA_CONNECT_TIMEOUT_MS = 12000;
-/** Tempo tentando a rede salva antes de exigir reconfiguração manual. */
-const unsigned long STICKY_PORTAL_AFTER_MS = 120000;
+/** Após este tempo offline, abre AP auxiliar (reconexão automática continua). */
+const unsigned long CONFIG_PORTAL_HINT_AFTER_MS = 120000;
 
 void connectWiFi(bool waitForResult);
 void startConfigPortal();
@@ -70,8 +69,8 @@ unsigned long lastHeartbeat = 0;
 unsigned long lastPoll = 0;
 const unsigned long HEARTBEAT_INTERVAL = 30000;  // 30 segundos
 const unsigned long POLL_INTERVAL = 5000;        // fila pending_commands (esp32-control)
-/** Pulso no relé = 1 crédito na lavadora/secadora (PLC); não mantém relé ligado pelo tempo do ciclo */
-const unsigned long RELAY_PULSE_MS = 100;
+/** Pulso no relé = 1 crédito na lavadora/secadora (PLC); duração exigida pelo equipamento: 1 s */
+const unsigned long RELAY_PULSE_MS = 1000;
 bool relayState = false;
 unsigned long machineStartTime = 0;
 bool machineRunning = false;
@@ -276,7 +275,7 @@ String urlEncodeQueryValue(const char* in) {
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n========================================");
-  Serial.println("ESP32 Lavadora Individual v2.2.2");
+  Serial.println("ESP32 Lavadora Individual v2.2.3");
 
   // Configurar hardware
   pinMode(RELAY_PIN, OUTPUT);
@@ -311,8 +310,9 @@ void setup() {
   connectWiFi(true);
   if (WiFi.status() == WL_CONNECTED) {
     sendHeartbeat();
-  } else {
-    enterConfigPortalSticky("⚠️ Wi-Fi salvo indisponível. Configure a nova rede no portal.");
+  } else if (configuredSsid.length() > 0) {
+    disconnectStartedAt = millis();
+    Serial.println("⚠️ Wi-Fi indisponível no boot — reconexão automática à rede salva.");
   }
 }
 
@@ -327,17 +327,25 @@ void loop() {
   if (WiFi.status() != WL_CONNECTED) {
     if (disconnectStartedAt == 0) {
       disconnectStartedAt = now;
-      Serial.println("📡 Wi-Fi caiu — tentando reconectar à rede salva...");
+      Serial.println("📡 Wi-Fi caiu — reconexão automática à rede salva (sem limite de tempo).");
     }
 
-    if (configPortalSticky) {
-      // Rede mudou / boot sem SSID: portal fixo até o usuário salvar nova rede.
-    } else if (now - disconnectStartedAt >= STICKY_PORTAL_AFTER_MS) {
-      enterConfigPortalSticky("❌ Sem conexão por 2 min — abra o portal e confira a rede Wi-Fi.");
-    } else if (configuredSsid.length() > 0 && (now - lastWifiRetry >= WIFI_RETRY_INTERVAL)) {
+    if (configuredSsid.length() > 0 && (now - lastWifiRetry >= WIFI_RETRY_INTERVAL)) {
       lastWifiRetry = now;
       Serial.println("🔄 Reconectando ao Wi-Fi salvo...");
       connectWiFi(false);
+    }
+
+    if (configPortalSticky && !configModeActive) {
+      startConfigPortal();
+    } else if (
+      configuredSsid.length() > 0
+      && !configPortalSticky
+      && (now - disconnectStartedAt >= CONFIG_PORTAL_HINT_AFTER_MS)
+      && !configModeActive
+    ) {
+      Serial.println("ℹ️ Portal auxiliar aberto — reconexão automática continua.");
+      startConfigPortal();
     }
 
     if (staConnectStartedAt > 0 && (now - staConnectStartedAt >= STA_CONNECT_TIMEOUT_MS)) {
@@ -431,7 +439,7 @@ void connectWiFi(bool waitForResult) {
     Serial.printf("   Sinal: %d dBm\n", WiFi.RSSI());
   } else {
     staConnectStartedAt = 0;
-    enterConfigPortalSticky("\n❌ Falha ao conectar WiFi — configure a rede no portal cativo.");
+    Serial.println("\n❌ Falha ao conectar WiFi — nova tentativa automática em breve.");
   }
 }
 
@@ -570,7 +578,7 @@ void handleStatus() {
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
   doc["network_status"] = "connected";
-  doc["firmware_version"] = "v2.2.2";
+  doc["firmware_version"] = "v2.2.3";
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
   doc["relay_status"] = relayState ? "on" : "off";
@@ -715,7 +723,7 @@ void sendHeartbeat() {
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
   doc["network_status"] = "connected";
-  doc["firmware_version"] = "v2.2.2";
+  doc["firmware_version"] = "v2.2.3";
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
   doc["device_name"] = MACHINE_NAME;
@@ -723,7 +731,7 @@ void sendHeartbeat() {
     doc["auto_register"] = true;
   }
   
-  // relay_N: estado lógico do ciclo (relé físico só pulsa 100ms; machineRunning = crédito ativo)
+  // relay_N: estado lógico do ciclo (relé físico pulsa 1 s; machineRunning = crédito ativo)
   JsonObject relayStatusObj = doc.createNestedObject("relay_status");
   String relayKey = "relay_" + String(RELAY_LOGICAL_PIN);
   relayStatusObj[relayKey] = machineRunning ? "on" : "off";
