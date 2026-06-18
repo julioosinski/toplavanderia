@@ -72,6 +72,9 @@ verify_jwt = false
 [functions.esp32-control]
 verify_jwt = false
 
+[functions.esp32-firmware-ota]
+verify_jwt = false
+
 [functions.auto-release-machines]
 verify_jwt = false
 

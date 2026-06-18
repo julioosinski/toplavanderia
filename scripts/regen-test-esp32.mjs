@@ -15,7 +15,7 @@ const out = template
   .replace(/__CYCLE_TIME_MINUTES__/g, '10');
 
 const header = `/**
- * ESP32 Lavadora Individual — gerado do template v2.2.3 (pulso 1 s de crédito).
+ * ESP32 Lavadora Individual — gerado do template v2.2.4 (OTA Wi-Fi + pulso 1 s de crédito).
  * Lavanderia: 8ace0bcb-83a9-4555-a712-63ef5f52e709 | relay_1 | ciclo inicial 10 min
  */
 

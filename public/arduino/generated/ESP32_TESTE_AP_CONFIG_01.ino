@@ -1,15 +1,19 @@
 /**
- * ESP32 Lavadora Individual — gerado do template v2.2.3 (pulso 1 s de crédito).
+ * ESP32 Lavadora Individual — gerado do template v2.2.4 (OTA Wi-Fi + pulso 1 s de crédito).
  * Lavanderia: 8ace0bcb-83a9-4555-a712-63ef5f52e709 | relay_1 | ciclo inicial 10 min
  */
 
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <HTTPUpdate.h>
 #include <DNSServer.h>
 #include <WebServer.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <cstdio>
+
+#define FIRMWARE_VERSION "v2.2.4"
 
 // ================== CONFIGURAÇÕES WIFI ==================
 // Wi-Fi é configurado via rede AP do próprio ESP32 e salvo em memória persistente (NVS).
@@ -32,6 +36,8 @@ void connectWiFi(bool waitForResult);
 void startConfigPortal();
 void enterConfigPortalSticky(const char* reason);
 void clearWiFiCredentials();
+void pollOtaUpdate();
+void reportOtaResult(const String& jobId, bool success, const String& message);
 
 // ================== IDENTIFICAÇÃO ==================
 #define LAUNDRY_ID "8ace0bcb-83a9-4555-a712-63ef5f52e709"
@@ -64,8 +70,10 @@ const byte DNS_PORT = 53;
 Preferences preferences;
 unsigned long lastHeartbeat = 0;
 unsigned long lastPoll = 0;
+unsigned long lastOtaPoll = 0;
 const unsigned long HEARTBEAT_INTERVAL = 30000;  // 30 segundos
 const unsigned long POLL_INTERVAL = 5000;        // fila pending_commands (esp32-control)
+const unsigned long OTA_POLL_INTERVAL = 30000;     // verifica atualização OTA remota
 /** Pulso no relé = 1 crédito na lavadora/secadora (PLC); duração exigida pelo equipamento: 1 s */
 const unsigned long RELAY_PULSE_MS = 1000;
 bool relayState = false;
@@ -272,7 +280,7 @@ String urlEncodeQueryValue(const char* in) {
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n========================================");
-  Serial.println("ESP32 Lavadora Individual v2.2.3");
+  Serial.println("ESP32 Lavadora Individual " FIRMWARE_VERSION);
 
   // Configurar hardware
   pinMode(RELAY_PIN, OUTPUT);
@@ -377,6 +385,11 @@ void loop() {
   if (now - lastPoll >= POLL_INTERVAL) {
     pollSupabaseCommands();
     lastPoll = now;
+  }
+
+  if (now - lastOtaPoll >= OTA_POLL_INTERVAL) {
+    pollOtaUpdate();
+    lastOtaPoll = now;
   }
 
   // Enviar heartbeat periódico
@@ -575,7 +588,7 @@ void handleStatus() {
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
   doc["network_status"] = "connected";
-  doc["firmware_version"] = "v2.2.3";
+  doc["firmware_version"] = FIRMWARE_VERSION;
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
   doc["relay_status"] = relayState ? "on" : "off";
@@ -700,6 +713,91 @@ void pollSupabaseCommands() {
   }
 }
 
+// ================== OTA (atualização remota via Wi-Fi) ==================
+void reportOtaResult(const String& jobId, bool success, const String& message) {
+  if (WiFi.status() != WL_CONNECTED || jobId.length() == 0) return;
+
+  HTTPClient http;
+  http.begin(String(supabaseUrl) + "/functions/v1/esp32-firmware-ota?action=report");
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("apikey", supabaseApiKey);
+  http.addHeader("Authorization", String("Bearer ") + String(supabaseApiKey));
+
+  StaticJsonDocument<512> doc;
+  doc["job_id"] = jobId;
+  doc["esp32_id"] = ESP32_ID;
+  doc["success"] = success;
+  if (success) {
+    doc["firmware_version"] = FIRMWARE_VERSION;
+  } else {
+    doc["error_message"] = message;
+  }
+
+  String payload;
+  serializeJson(doc, payload);
+  int code = http.POST(payload);
+  Serial.printf("📦 OTA report HTTP %d (%s)\n", code, success ? "ok" : "fail");
+  http.end();
+}
+
+void pollOtaUpdate() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  HTTPClient http;
+  String enc = urlEncodeQueryValue(ESP32_ID);
+  String url = String(supabaseUrl) + "/functions/v1/esp32-firmware-ota?action=poll&esp32_id=" + enc;
+  http.begin(url);
+  http.addHeader("apikey", supabaseApiKey);
+  http.addHeader("Authorization", String("Bearer ") + String(supabaseApiKey));
+
+  int code = http.GET();
+  if (code != 200) {
+    Serial.printf("❌ OTA poll HTTP %d\n", code);
+    http.end();
+    return;
+  }
+
+  String response = http.getString();
+  http.end();
+
+  DynamicJsonDocument doc(2048);
+  if (deserializeJson(doc, response)) {
+    Serial.println("❌ OTA poll JSON inválido");
+    return;
+  }
+  if (!doc["success"].as<bool>() || doc["ota"].isNull()) {
+    return;
+  }
+
+  JsonObject ota = doc["ota"].as<JsonObject>();
+  String jobId = ota["job_id"].as<String>();
+  String targetVersion = ota["version"].as<String>();
+  String otaUrl = ota["url"].as<String>();
+
+  if (otaUrl.length() == 0 || jobId.length() == 0) {
+    Serial.println("❌ OTA poll sem URL/job");
+    return;
+  }
+
+  Serial.printf("📦 OTA %s → %s (job %s)\n", FIRMWARE_VERSION, targetVersion.c_str(), jobId.c_str());
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  client.setTimeout(120000);
+
+  httpUpdate.rebootOnUpdate(true);
+  httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+
+  t_httpUpdate_return ret = httpUpdate.update(client, otaUrl);
+  if (ret == HTTP_UPDATE_OK) {
+    Serial.println("✅ OTA aplicado — reiniciando...");
+  } else {
+    String err = String(httpUpdate.getLastError()) + " " + httpUpdate.getLastErrorString().c_str();
+    Serial.printf("❌ OTA falhou: %s\n", err.c_str());
+    reportOtaResult(jobId, false, err);
+  }
+}
+
 // ================== HEARTBEAT ==================
 void sendHeartbeat() {
   if (WiFi.status() != WL_CONNECTED) {
@@ -720,7 +818,7 @@ void sendHeartbeat() {
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
   doc["network_status"] = "connected";
-  doc["firmware_version"] = "v2.2.3";
+  doc["firmware_version"] = FIRMWARE_VERSION;
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
   doc["device_name"] = MACHINE_NAME;

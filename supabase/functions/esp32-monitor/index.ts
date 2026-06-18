@@ -359,6 +359,35 @@ serve(async (req) => {
         }
       }
 
+      // Marca job OTA como concluído quando o heartbeat reporta a versão alvo.
+      const reportedVersion = String(heartbeatData.firmware_version ?? '').trim();
+      if (reportedVersion && esp32Id) {
+        const { data: otaJob } = await supabaseClient
+          .from('esp32_ota_jobs')
+          .select('id, firmware_version')
+          .eq('esp32_id', esp32Id)
+          .eq('status', 'downloading')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const normalizeVer = (v: string) => v.replace(/^v/i, '').trim();
+        if (
+          otaJob &&
+          normalizeVer(otaJob.firmware_version) === normalizeVer(reportedVersion)
+        ) {
+          await supabaseClient
+            .from('esp32_ota_jobs')
+            .update({
+              status: 'completed',
+              completed_at: new Date().toISOString(),
+              error_message: null,
+            })
+            .eq('id', otaJob.id);
+          console.log(`✅ OTA job ${otaJob.id} concluído (${reportedVersion})`);
+        }
+      }
+
       return new Response(JSON.stringify({
         success: true, message: 'Heartbeat received', next_interval: 30, config
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

@@ -24,6 +24,7 @@
     "supabase:deploy:update-machine-status": "pnpm dlx supabase functions deploy update-machine-status --project-ref rkdybjzwiwwqqzjfmerm --no-verify-jwt --use-api",
     "supabase:deploy:esp32-control": "pnpm dlx supabase functions deploy esp32-control --project-ref rkdybjzwiwwqqzjfmerm --no-verify-jwt --use-api",
     "supabase:deploy:esp32-monitor": "pnpm dlx supabase functions deploy esp32-monitor --project-ref rkdybjzwiwwqqzjfmerm --no-verify-jwt --use-api",
+    "supabase:deploy:esp32-firmware-ota": "pnpm dlx supabase functions deploy esp32-firmware-ota --project-ref rkdybjzwiwwqqzjfmerm --no-verify-jwt --use-api",
     "supabase:deploy:transaction-webhook": "pnpm dlx supabase functions deploy transaction-webhook --project-ref rkdybjzwiwwqqzjfmerm --no-verify-jwt --use-api",
     "supabase:deploy:auto-release-machines": "pnpm dlx supabase functions deploy auto-release-machines --project-ref rkdybjzwiwwqqzjfmerm --no-verify-jwt --use-api",
     "supabase:deploy:totem-settings": "pnpm dlx supabase functions deploy totem-settings --project-ref rkdybjzwiwwqqzjfmerm --no-verify-jwt --use-api",
