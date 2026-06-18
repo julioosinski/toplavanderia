@@ -58,8 +58,9 @@ export const ESP32ConfigQRCode = () => {
           Gerar Firmware ESP32
         </CardTitle>
         <CardDescription>
-          O ESP32 gera seu ID automaticamente via MAC. Após upload, ele abre rede
-          própria para configurar Wi-Fi e aparece em "Pendentes" para aprovação.
+          O ESP32 gera seu ID automaticamente via MAC. Após upload, se não houver Wi-Fi salvo
+          ou a rede mudar, ele abre o AP <strong>TopLavanderia-…</strong> (senha <code>toplav123</code>)
+          com o painel &quot;Configurar Wi-Fi&quot; no celular.
         </CardDescription>
       </CardHeader>
       <CardContent>

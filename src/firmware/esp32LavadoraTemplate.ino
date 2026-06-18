@@ -3,7 +3,7 @@
  * Fonte única: este arquivo. Placeholders __LAUNDRY_ID__, __MACHINE_NAME__, etc.
  * Firmware gerado fica em: public/arduino/generated/
  *
- * Versão: 2.2.0 — pulso de crédito 100ms no relé; contagem de ciclo via machineRunning
+ * Versão: 2.2.2 — reconexão automática em queda temporária; portal só após 2 min ou boot sem rede
  */
 
 #include <WiFi.h>
@@ -21,8 +21,21 @@ const char* AP_PASSWORD = "toplav123";
 String configuredSsid = "";
 String configuredPassword = "";
 bool configModeActive = false;
+/** Mantém AP de configuração até o usuário salvar nova rede (mudança de local/rede). */
+bool configPortalSticky = false;
 unsigned long lastWifiRetry = 0;
+unsigned long staConnectStartedAt = 0;
+/** Desde quando está desconectado (queda temporária de sinal). */
+unsigned long disconnectStartedAt = 0;
 const unsigned long WIFI_RETRY_INTERVAL = 15000;
+const unsigned long STA_CONNECT_TIMEOUT_MS = 12000;
+/** Tempo tentando a rede salva antes de exigir reconfiguração manual. */
+const unsigned long STICKY_PORTAL_AFTER_MS = 120000;
+
+void connectWiFi(bool waitForResult);
+void startConfigPortal();
+void enterConfigPortalSticky(const char* reason);
+void clearWiFiCredentials();
 
 // ================== IDENTIFICAÇÃO ==================
 #define LAUNDRY_ID "__LAUNDRY_ID__"
@@ -113,9 +126,18 @@ void saveWiFiCredentials(const String& ssid, const String& password) {
   configuredPassword = password;
 }
 
+void enterConfigPortalSticky(const char* reason) {
+  configPortalSticky = true;
+  if (reason) {
+    Serial.println(reason);
+  }
+  startConfigPortal();
+}
+
 void startConfigPortal() {
   String apSsid = getConfigApSsid();
-  WiFi.mode(WIFI_AP);
+  // AP+STA: portal permanece ativo enquanto tenta (ou escaneia) redes.
+  WiFi.mode(WIFI_AP_STA);
   WiFi.softAP(apSsid.c_str(), AP_PASSWORD);
   delay(120);
   configModeActive = true;
@@ -125,7 +147,7 @@ void startConfigPortal() {
   Serial.println("\n⚙️ Modo configuração WiFi ativo (portal cativo)");
   Serial.printf("   AP SSID: %s\n", apSsid.c_str());
   Serial.printf("   AP Senha: %s\n", AP_PASSWORD);
-  Serial.printf("   Abra no celular: http://%s\n", WiFi.softAPIP().toString().c_str());
+  Serial.printf("   Abra no celular: http://%s/wifi\n", WiFi.softAPIP().toString().c_str());
   Serial.println("   (Android/iOS costumam abrir sozinhos após conectar no Wi-Fi do ESP)\n");
 }
 
@@ -198,6 +220,9 @@ String buildConfigPortalHtml() {
   h += "<label style='margin-top:16px'>Senha da rede</label>";
   h += "<input id='in_pass' name='password' type='password' maxlength='64' placeholder='Digite a senha do Wi-Fi'/>";
   h += "<button type='submit' id='btn' disabled>Conectar</button>";
+  h += "</form>";
+  h += "<form method='POST' action='/wifi/reset' style='margin-top:12px'>";
+  h += "<button type='submit' class='rescan' style='margin-top:0;color:#fca5a5;border-color:#7f1d1d'>Esquecer rede salva e reconfigurar</button>";
   h += "</form></div>";
   h += "<p class='foot'>Top Lavanderia · Equipamento: " + String(ESP32_ID) + "</p>";
   h += "<script>";
@@ -251,7 +276,7 @@ String urlEncodeQueryValue(const char* in) {
 void setup() {
   Serial.begin(115200);
   Serial.println("\n\n========================================");
-  Serial.println("ESP32 Lavadora Individual v2.1.3");
+  Serial.println("ESP32 Lavadora Individual v2.2.2");
 
   // Configurar hardware
   pinMode(RELAY_PIN, OUTPUT);
@@ -261,6 +286,8 @@ void setup() {
 
   // WiFi precisa estar inicializado ANTES de ler o MAC e antes de server.begin()
   WiFi.mode(WIFI_AP_STA);
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(true);
   delay(100);
 
   buildEsp32Id();
@@ -276,16 +303,17 @@ void setup() {
   Serial.println("========================================\n");
 
   if (!loadWiFiCredentials()) {
-    Serial.println("⚠️ Sem Wi-Fi salvo. Iniciando configuração via AP.");
-    startConfigPortal();
+    enterConfigPortalSticky("⚠️ Sem Wi-Fi salvo. Iniciando configuração via AP.");
     return;
   }
 
   // Conectar WiFi usando credenciais salvas
-  connectWiFi();
-  
-  // Enviar primeiro heartbeat
-  sendHeartbeat();
+  connectWiFi(true);
+  if (WiFi.status() == WL_CONNECTED) {
+    sendHeartbeat();
+  } else {
+    enterConfigPortalSticky("⚠️ Wi-Fi salvo indisponível. Configure a nova rede no portal.");
+  }
 }
 
 void loop() {
@@ -297,18 +325,35 @@ void loop() {
   unsigned long now = millis();
 
   if (WiFi.status() != WL_CONNECTED) {
-    if (!configModeActive) {
-      startConfigPortal();
+    if (disconnectStartedAt == 0) {
+      disconnectStartedAt = now;
+      Serial.println("📡 Wi-Fi caiu — tentando reconectar à rede salva...");
     }
-    if (configuredSsid.length() > 0 && (now - lastWifiRetry >= WIFI_RETRY_INTERVAL)) {
+
+    if (configPortalSticky) {
+      // Rede mudou / boot sem SSID: portal fixo até o usuário salvar nova rede.
+    } else if (now - disconnectStartedAt >= STICKY_PORTAL_AFTER_MS) {
+      enterConfigPortalSticky("❌ Sem conexão por 2 min — abra o portal e confira a rede Wi-Fi.");
+    } else if (configuredSsid.length() > 0 && (now - lastWifiRetry >= WIFI_RETRY_INTERVAL)) {
       lastWifiRetry = now;
-      Serial.println("🔄 Tentando reconectar ao Wi-Fi salvo...");
-      connectWiFi();
+      Serial.println("🔄 Reconectando ao Wi-Fi salvo...");
+      connectWiFi(false);
     }
+
+    if (staConnectStartedAt > 0 && (now - staConnectStartedAt >= STA_CONNECT_TIMEOUT_MS)) {
+      staConnectStartedAt = 0;
+    }
+
     delay(10);
     return;
   }
 
+  if (disconnectStartedAt != 0) {
+    Serial.println("✅ Wi-Fi reconectado à rede salva.");
+  }
+  disconnectStartedAt = 0;
+  configPortalSticky = false;
+  staConnectStartedAt = 0;
   if (configModeActive) {
     stopConfigPortal();
   }
@@ -338,36 +383,67 @@ void loop() {
 }
 
 // ================== CONEXÃO WIFI ==================
-void connectWiFi() {
+void connectWiFi(bool waitForResult) {
   if (configuredSsid.length() == 0) {
-    Serial.println("❌ Nenhuma credencial Wi-Fi salva.");
-    startConfigPortal();
+    enterConfigPortalSticky("❌ Nenhuma credencial Wi-Fi salva.");
     return;
   }
 
   Serial.println("📡 Conectando ao WiFi...");
   Serial.printf("   SSID: %s\n", configuredSsid.c_str());
-  
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(configuredSsid.c_str(), configuredPassword.c_str());
-  
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 30) {
-    delay(500);
-    Serial.print(".");
-    attempts++;
+
+  if (configModeActive || configPortalSticky) {
+    WiFi.mode(WIFI_AP_STA);
+    String apSsid = getConfigApSsid();
+    WiFi.softAP(apSsid.c_str(), AP_PASSWORD);
+    if (configModeActive) {
+      dnsServer.stop();
+      dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
+    }
+  } else {
+    WiFi.mode(WIFI_STA);
   }
-  
+
+  WiFi.disconnect(false, true);
+  delay(80);
+  WiFi.begin(configuredSsid.c_str(), configuredPassword.c_str());
+  staConnectStartedAt = millis();
+
+  if (!waitForResult) {
+    return;
+  }
+
+  unsigned long started = millis();
+  while (WiFi.status() != WL_CONNECTED && (millis() - started) < STA_CONNECT_TIMEOUT_MS) {
+    server.handleClient();
+    if (configModeActive) {
+      dnsServer.processNextRequest();
+    }
+    delay(50);
+    Serial.print(".");
+  }
+
   if (WiFi.status() == WL_CONNECTED) {
+    configPortalSticky = false;
     stopConfigPortal();
     Serial.println("\n✅ WiFi conectado com sucesso!");
     Serial.printf("   IP: %s\n", WiFi.localIP().toString().c_str());
     Serial.printf("   Sinal: %d dBm\n", WiFi.RSSI());
   } else {
-    Serial.println("\n❌ Falha ao conectar WiFi!");
-    Serial.println("   Entre no AP de configuração para revisar SSID/senha.");
-    startConfigPortal();
+    staConnectStartedAt = 0;
+    enterConfigPortalSticky("\n❌ Falha ao conectar WiFi — configure a rede no portal cativo.");
   }
+}
+
+void clearWiFiCredentials() {
+  preferences.begin(WIFI_NAMESPACE, false);
+  preferences.clear();
+  preferences.end();
+  configuredSsid = "";
+  configuredPassword = "";
+  configPortalSticky = true;
+  WiFi.disconnect(true, true);
+  enterConfigPortalSticky("🧹 Credenciais Wi-Fi apagadas — selecione a nova rede.");
 }
 
 // ================== ROTAS HTTP ==================
@@ -424,7 +500,14 @@ void setupRoutes() {
         "<p><a href='/wifi'>Ver status / tentar de novo</a></p></div></body></html>";
     server.send(200, "text/html", ok);
     delay(300);
-    connectWiFi();
+    configPortalSticky = false;
+    connectWiFi(true);
+  });
+
+  server.on("/wifi/reset", HTTP_POST, []() {
+    clearWiFiCredentials();
+    server.sendHeader("Location", "/wifi", true);
+    server.send(302, "text/plain", "");
   });
 
   // Detecção de “rede sem internet” — ajuda o celular a abrir o portal automaticamente
@@ -487,7 +570,7 @@ void handleStatus() {
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
   doc["network_status"] = "connected";
-  doc["firmware_version"] = "v2.2.0";
+  doc["firmware_version"] = "v2.2.2";
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
   doc["relay_status"] = relayState ? "on" : "off";
@@ -615,8 +698,7 @@ void pollSupabaseCommands() {
 // ================== HEARTBEAT ==================
 void sendHeartbeat() {
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("❌ WiFi desconectado, tentando reconectar...");
-    connectWiFi();
+    Serial.println("❌ WiFi desconectado — reconexão automática em andamento.");
     return;
   }
   
@@ -633,7 +715,7 @@ void sendHeartbeat() {
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
   doc["network_status"] = "connected";
-  doc["firmware_version"] = "v2.2.0";
+  doc["firmware_version"] = "v2.2.2";
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
   doc["device_name"] = MACHINE_NAME;
