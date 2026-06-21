@@ -121,6 +121,65 @@ export type Database = {
           },
         ]
       }
+      esp32_ota_jobs: {
+        Row: {
+          checksum_sha256: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          error_message: string | null
+          esp32_id: string
+          file_size: number | null
+          firmware_version: string
+          id: string
+          laundry_id: string
+          started_at: string | null
+          status: string
+          storage_path: string
+          updated_at: string
+        }
+        Insert: {
+          checksum_sha256?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          esp32_id: string
+          file_size?: number | null
+          firmware_version: string
+          id?: string
+          laundry_id: string
+          started_at?: string | null
+          status?: string
+          storage_path: string
+          updated_at?: string
+        }
+        Update: {
+          checksum_sha256?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          esp32_id?: string
+          file_size?: number | null
+          firmware_version?: string
+          id?: string
+          laundry_id?: string
+          started_at?: string | null
+          status?: string
+          storage_path?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "esp32_ota_jobs_laundry_id_fkey"
+            columns: ["laundry_id"]
+            isOneToOne: false
+            referencedRelation: "laundries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       esp32_status: {
         Row: {
           created_at: string
