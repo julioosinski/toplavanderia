@@ -66,6 +66,8 @@ public class TotemActivity extends Activity {
     private MachineStatusMonitor statusMonitor;
     private List<SupabaseHelper.Machine> machines;
     private SupabaseHelper.Machine selectedMachine;
+    /** Máquina do pagamento em curso — sobrevive ao retorno da Cielo (selectedMachine pode ser limpo cedo). */
+    private SupabaseHelper.Machine paymentContextMachine;
     private long currentOperationId = -1;
     /** UUID Supabase da transação pending criada antes do pagamento. */
     private String currentPendingTransactionId = null;
@@ -191,10 +193,19 @@ public class TotemActivity extends Activity {
         super.onNewIntent(intent);
         setIntent(intent);
         if (intent != null && intent.getBooleanExtra(EXTRA_CIELO_PAYMENT_RETURN, false)) {
+            if (isCieloPaymentInProgress()) {
+                Log.d(TAG, "Retorno Cielo com pagamento em andamento — mantendo contexto da máquina");
+                return;
+            }
             if (lastSucceededOperationId > 0 || selectedMachine == null) {
                 restoreHomeScreen();
             }
         }
+    }
+
+    /** Evita limpar selectedMachine entre pagamentos consecutivos no fluxo Cielo. */
+    private boolean isCieloPaymentInProgress() {
+        return awaitingPaymentCallback || paymentLaunchInProgress.get() || currentOperationId > 0;
     }
 
     @Override
@@ -211,7 +222,8 @@ public class TotemActivity extends Activity {
             if (supabaseHelper != null && supabaseHelper.isConfigured()) {
                 if ("cielo".equalsIgnoreCase(activeProvider)
                         && lastSucceededOperationId > 0
-                        && !isMachineGridVisible()) {
+                        && !isMachineGridVisible()
+                        && !isCieloPaymentInProgress()) {
                     restoreHomeScreen();
                 }
                 loadMachines();
@@ -1228,6 +1240,7 @@ public class TotemActivity extends Activity {
 
                 cancelPendingSuccessScreen();
                 awaitingPaymentCallback = true;
+                paymentContextMachine = machine;
                 final String managerPaymentType = paymentTypeForManager == null || paymentTypeForManager.isEmpty()
                     ? "credit" : paymentTypeForManager;
                 final String paymentLabel = coffeeProductSnapshot != null
@@ -1467,11 +1480,16 @@ public class TotemActivity extends Activity {
             return;
         }
 
+        SupabaseHelper.Machine machineForRefresh = selectedMachine != null
+            ? selectedMachine
+            : paymentContextMachine;
         SupabaseHelper.Machine refreshedMachine = null;
-        if (selectedMachine != null) {
-            refreshedMachine = supabaseHelper.refreshMachineById(selectedMachine.getId());
+        if (machineForRefresh != null) {
+            refreshedMachine = supabaseHelper.refreshMachineById(machineForRefresh.getId());
         }
-        final SupabaseHelper.Machine machineSnapshot = refreshedMachine != null ? refreshedMachine : selectedMachine;
+        final SupabaseHelper.Machine machineSnapshot = refreshedMachine != null
+            ? refreshedMachine
+            : machineForRefresh;
         if (machineSnapshot == null) {
             runOnUiThread(() -> handlePaymentError("Pagamento aprovado, mas a máquina selecionada não está disponível."));
             return;
@@ -1654,6 +1672,7 @@ public class TotemActivity extends Activity {
         currentPendingTransactionId = null;
         selectedMachine = null;
         selectedCoffeeProduct = null;
+        paymentContextMachine = null;
         paymentLaunchInProgress.set(false);
         awaitingPaymentCallback = false;
         restoreHomeScreen();
@@ -1668,6 +1687,7 @@ public class TotemActivity extends Activity {
         cancelPendingSuccessScreen();
         selectedMachine = null;
         selectedCoffeeProduct = null;
+        paymentContextMachine = null;
         currentScreen = TotemScreen.HOME;
         currentOperationId = -1;
         lastSucceededOperationId = -1;
@@ -1698,6 +1718,7 @@ public class TotemActivity extends Activity {
 
         awaitingPaymentCallback = false;
         paymentLaunchInProgress.set(false);
+        paymentContextMachine = null;
         Log.e(TAG, "=== ERRO NO PAGAMENTO ===");
         Log.e(TAG, "Erro: " + error);
 
