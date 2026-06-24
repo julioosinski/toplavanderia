@@ -22,7 +22,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Pencil, Trash2, Coffee, Zap } from 'lucide-react';
+import { Plus, Pencil, Trash2, Coffee, Zap, Cpu } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { adminRemoteRelease } from '@/lib/deviceRemoteRelease';
 
 interface CoffeeProduct {
@@ -206,10 +207,18 @@ export default function CoffeeMenu() {
               Produtos exibidos no totem e liberáveis remotamente por lavanderia.
             </p>
           </div>
-          <Button onClick={openCreate} disabled={coffeeMachines.length === 0}>
-            <Plus className="mr-2 h-4 w-4" />
-            Novo produto
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" asChild>
+              <Link to="/admin/coffee-firmware">
+                <Cpu className="mr-2 h-4 w-4" />
+                Firmware ESP32
+              </Link>
+            </Button>
+            <Button onClick={openCreate} disabled={coffeeMachines.length === 0}>
+              <Plus className="mr-2 h-4 w-4" />
+              Novo produto
+            </Button>
+          </div>
         </div>
 
         {coffeeMachines.length === 0 && (

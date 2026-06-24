@@ -1,0 +1,532 @@
+/**
+ * ESP32 Poltrona de Massagem — Top Lavanderia
+ * Perfil: timed_session — pending_commands action "on" / "off" via esp32-monitor
+ *
+ * Placeholders (substituir ao gerar pelo admin ou manualmente):
+ *   __LAUNDRY_ID__     — UUID da lavanderia (ex.: Sinuelo)
+ *   __MACHINE_NAME__   — Nome exibido no heartbeat
+ *   __DEFAULT_CYCLE_MINUTES__ — Tempo padrão se o comando não trouxer cycle_time_minutes
+ *
+ * Hardware (igual firmware Poltrona Relax):
+ *   Relé massagem: GPIO 26 (BC547 — lógica normal: HIGH=ligado)
+ *   DFPlayer Mini: TX=GPIO16, RX=GPIO17 (UART2, 9600)
+ *   Botão reset Wi-Fi: GPIO 0 (BOOT), segure 5s
+ *
+ * Áudios no SD (raiz, FAT32): 001.mp3 … 007.mp3
+ */
+
+#include <WiFi.h>
+#include <WebServer.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+#include <DFRobotDFPlayerMini.h>
+#include <WiFiManager.h>
+#include <Preferences.h>
+#include <esp_task_wdt.h>
+#include <cstdio>
+
+#define FIRMWARE_VERSION "v1.0.0-toplav-poltrona"
+
+#define LAUNDRY_ID "__LAUNDRY_ID__"
+#define MACHINE_NAME "__MACHINE_NAME__"
+#define DEFAULT_CYCLE_MINUTES __DEFAULT_CYCLE_MINUTES__
+
+const char* supabaseUrl = "https://rkdybjzwiwwqqzjfmerm.supabase.co";
+const char* supabaseApiKey =
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg";
+
+// ===== Hardware =====
+const int RELAY_PIN = 26;
+const bool RELAY_LOGICA_INVERTIDA = false;  // BC547 — HIGH liga
+const int WIFI_RESET_BUTTON = 0;
+const int TEMPO_RESET_WIFI_MS = 5000;
+
+const int TEMPO_RESFRIAMENTO_SEG = 30;
+const int PAUSA_ANTES_RESFRIAMENTO_SEG = 2;
+
+// ===== Timers rede =====
+const unsigned long HEARTBEAT_INTERVAL_MS = 30000;
+const unsigned long POLL_INTERVAL_MS = 5000;
+const unsigned long HTTP_TIMEOUT_MS = 15000;
+
+// ===== DFPlayer / áudios =====
+HardwareSerial dfSerial(2);
+DFRobotDFPlayerMini dfPlayer;
+bool dfplayerDisponivel = false;
+bool ackEnabled = false;
+
+int volume_audio_001 = 27;
+int volume_audio_002 = 27;
+int volume_audio_003 = 27;
+int volume_audio_004 = 27;
+int volume_audio_005 = 27;
+int volume_audio_006 = 27;
+int volume_audio_007 = 18;
+
+unsigned long tempo_inicio_audios = 0;
+unsigned long ultimo_play_audio_007 = 0;
+int proximoAudioNum = 0;
+bool audiosPendentes = false;
+
+const unsigned long AUDIO_007_LOOP_MS = 70000;
+const unsigned long AUDIO_007_DURACAO_MS = 599000;
+
+// ===== Sessão =====
+String statusAtual = "disponivel";
+unsigned long tempoInicioCiclo = 0;
+unsigned long tempoTotalSeg = 0;
+unsigned long tempoRestanteSeg = 0;
+bool executandoResfriamento = false;
+unsigned long ultimoDesligamento = 0;
+const unsigned long COOLDOWN_MS = 5000;
+
+char ESP32_ID[16];
+WebServer server(80);
+Preferences preferences;
+
+unsigned long lastHeartbeat = 0;
+unsigned long lastPoll = 0;
+
+void buildEsp32Id() {
+  uint8_t mac[6];
+  WiFi.macAddress(mac);
+  snprintf(ESP32_ID, sizeof(ESP32_ID), "esp32_%02x%02x%02x%02x", mac[2], mac[3], mac[4], mac[5]);
+}
+
+void acionarRele(bool ligar) {
+  digitalWrite(RELAY_PIN, ligar
+    ? (RELAY_LOGICA_INVERTIDA ? LOW : HIGH)
+    : (RELAY_LOGICA_INVERTIDA ? HIGH : LOW));
+}
+
+void pararAudio() {
+  audiosPendentes = false;
+  proximoAudioNum = 0;
+  tempo_inicio_audios = 0;
+  ultimo_play_audio_007 = 0;
+  if (dfplayerDisponivel) {
+    dfPlayer.pause();
+  }
+}
+
+void executarCicloResfriamento() {
+  Serial.println("Resfriamento: pausa + relé 30s");
+  executandoResfriamento = true;
+  acionarRele(false);
+  delay(PAUSA_ANTES_RESFRIAMENTO_SEG * 1000UL);
+  esp_task_wdt_reset();
+
+  acionarRele(true);
+  for (int i = 0; i < TEMPO_RESFRIAMENTO_SEG; i++) {
+    delay(1000);
+    esp_task_wdt_reset();
+  }
+  acionarRele(false);
+  executandoResfriamento = false;
+  ultimoDesligamento = millis();
+}
+
+void pararPoltrona(bool comResfriamento) {
+  pararAudio();
+  acionarRele(false);
+  if (comResfriamento && statusAtual == "em_uso") {
+    executarCicloResfriamento();
+  }
+  statusAtual = "disponivel";
+  tempoTotalSeg = 0;
+  tempoRestanteSeg = 0;
+  tempoInicioCiclo = 0;
+}
+
+void iniciarPoltrona(int tempoMinutos) {
+  if (executandoResfriamento) {
+    Serial.println("Ignorando start — resfriamento em andamento");
+    return;
+  }
+  if (ultimoDesligamento > 0 && (millis() - ultimoDesligamento) < COOLDOWN_MS) {
+    Serial.println("Ignorando start — cooldown ativo");
+    return;
+  }
+
+  if (tempoMinutos <= 0) {
+    tempoMinutos = DEFAULT_CYCLE_MINUTES;
+  }
+
+  unsigned long tempoMinimoAudios = 1150;
+  tempoTotalSeg = (unsigned long)tempoMinutos * 60UL;
+  if (tempoTotalSeg < tempoMinimoAudios) {
+    tempoTotalSeg = tempoMinimoAudios;
+  }
+
+  acionarRele(true);
+  statusAtual = "em_uso";
+  tempoInicioCiclo = millis();
+  tempoRestanteSeg = tempoTotalSeg;
+  proximoAudioNum = 0;
+  audiosPendentes = true;
+
+  Serial.printf("Poltrona ON — %lu s (%d min solicitados)\n", tempoTotalSeg, tempoMinutos);
+}
+
+void gerenciarAudios() {
+  if (statusAtual != "em_uso" || !dfplayerDisponivel) {
+    return;
+  }
+
+  if (proximoAudioNum == 0) {
+    dfPlayer.volume(volume_audio_001);
+    delay(150);
+    dfPlayer.play(1);
+    tempo_inicio_audios = millis();
+    proximoAudioNum = 1;
+    return;
+  }
+
+  unsigned long elapsed = millis() - tempo_inicio_audios;
+
+  if (elapsed >= 4000 && proximoAudioNum == 1) {
+    dfPlayer.volume(volume_audio_002);
+    delay(100);
+    dfPlayer.play(2);
+    proximoAudioNum = 2;
+  } else if (elapsed >= 10000 && proximoAudioNum == 2) {
+    dfPlayer.volume(volume_audio_003);
+    delay(100);
+    dfPlayer.play(3);
+    proximoAudioNum = 3;
+  } else if (elapsed >= 20000 && proximoAudioNum == 3) {
+    dfPlayer.volume(volume_audio_004);
+    delay(100);
+    dfPlayer.play(4);
+    proximoAudioNum = 4;
+  } else if (elapsed >= 30000 && proximoAudioNum == 4) {
+    dfPlayer.volume(volume_audio_005);
+    delay(100);
+    dfPlayer.play(5);
+    proximoAudioNum = 5;
+  } else if (elapsed >= 50000 && proximoAudioNum == 5) {
+    dfPlayer.volume(volume_audio_006);
+    delay(100);
+    dfPlayer.play(6);
+    proximoAudioNum = 6;
+  } else if (elapsed >= AUDIO_007_LOOP_MS && proximoAudioNum == 6) {
+    dfPlayer.volume(volume_audio_007);
+    delay(100);
+    dfPlayer.play(7);
+    proximoAudioNum = 7;
+    ultimo_play_audio_007 = millis();
+  } else if (proximoAudioNum == 7) {
+    unsigned long loopElapsed = elapsed - AUDIO_007_LOOP_MS;
+    if (loopElapsed >= 18UL * 60UL * 1000UL) {
+      dfPlayer.pause();
+      proximoAudioNum = 8;
+    } else if (ultimo_play_audio_007 > 0 &&
+               (millis() - ultimo_play_audio_007) >= AUDIO_007_DURACAO_MS) {
+      dfPlayer.volume(volume_audio_007);
+      delay(100);
+      dfPlayer.play(7);
+      ultimo_play_audio_007 = millis();
+    }
+  }
+}
+
+void atualizarTimerSessao() {
+  if (statusAtual != "em_uso" || tempoTotalSeg == 0) {
+    return;
+  }
+  unsigned long decorrido = (millis() - tempoInicioCiclo) / 1000UL;
+  if (decorrido >= tempoTotalSeg) {
+    Serial.println("Tempo da sessão esgotado — encerrando com resfriamento");
+    pararPoltrona(true);
+    return;
+  }
+  tempoRestanteSeg = tempoTotalSeg - decorrido;
+}
+
+bool sendHeartbeat() {
+  if (WiFi.status() != WL_CONNECTED) {
+    return false;
+  }
+
+  HTTPClient http;
+  String url = String(supabaseUrl) + "/functions/v1/esp32-monitor?action=heartbeat";
+  http.begin(url);
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("apikey", supabaseApiKey);
+  http.addHeader("Authorization", String("Bearer ") + supabaseApiKey);
+
+  StaticJsonDocument<768> doc;
+  doc["esp32_id"] = ESP32_ID;
+  doc["laundry_id"] = LAUNDRY_ID;
+  doc["device_name"] = MACHINE_NAME;
+  doc["firmware_version"] = FIRMWARE_VERSION;
+  doc["ip_address"] = WiFi.localIP().toString();
+  doc["signal_strength"] = WiFi.RSSI();
+  doc["network_status"] = "connected";
+  doc["auto_register"] = true;
+  doc["uptime_seconds"] = millis() / 1000UL;
+
+  JsonObject relay = doc.createNestedObject("relay_status");
+  bool relayOn = (statusAtual == "em_uso" || executandoResfriamento);
+  relay[String("relay_1")] = relayOn ? "on" : "off";
+
+  String body;
+  serializeJson(doc, body);
+  int code = http.POST(body);
+  http.end();
+  return code == 200;
+}
+
+bool confirmCommand(const char* commandId) {
+  if (!commandId || strlen(commandId) == 0) {
+    return false;
+  }
+
+  HTTPClient http;
+  String url = String(supabaseUrl) + "/functions/v1/esp32-monitor?action=confirm_command";
+  http.begin(url);
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("apikey", supabaseApiKey);
+  http.addHeader("Authorization", String("Bearer ") + supabaseApiKey);
+
+  StaticJsonDocument<256> doc;
+  doc["command_id"] = commandId;
+  doc["esp32_id"] = ESP32_ID;
+  String body;
+  serializeJson(doc, body);
+  int code = http.POST(body);
+  http.end();
+  Serial.printf("confirm_command %s → HTTP %d\n", commandId, code);
+  return code == 200;
+}
+
+int parseCycleMinutes(JsonObject cmd) {
+  int minutes = cmd["cycle_time_minutes"] | 0;
+  if (minutes > 0) {
+    return minutes;
+  }
+  if (cmd.containsKey("payload")) {
+    JsonObject payload = cmd["payload"];
+    minutes = payload["cycle_time_minutes"] | 0;
+  }
+  if (minutes <= 0) {
+    minutes = DEFAULT_CYCLE_MINUTES;
+  }
+  return minutes;
+}
+
+void processCommand(JsonObject cmd) {
+  const char* action = cmd["action"] | "";
+  const char* cmdId = cmd["id"] | "";
+  if (strlen(cmdId) == 0) {
+    return;
+  }
+
+  if (strcmp(action, "on") == 0 || strcmp(action, "activate") == 0 || strcmp(action, "turn_on") == 0) {
+    int minutes = parseCycleMinutes(cmd);
+    iniciarPoltrona(minutes);
+    if (confirmCommand(cmdId)) {
+      sendHeartbeat();
+    }
+  } else if (strcmp(action, "off") == 0 || strcmp(action, "deactivate") == 0 || strcmp(action, "turn_off") == 0) {
+    if (statusAtual == "em_uso") {
+      pararPoltrona(true);
+    } else {
+      pararPoltrona(false);
+    }
+    confirmCommand(cmdId);
+    sendHeartbeat();
+  }
+}
+
+void pollCommands() {
+  if (WiFi.status() != WL_CONNECTED || executandoResfriamento) {
+    return;
+  }
+
+  HTTPClient http;
+  String url = String(supabaseUrl) + "/functions/v1/esp32-monitor?action=poll_commands&esp32_id=" + ESP32_ID;
+  http.begin(url);
+  http.setTimeout(HTTP_TIMEOUT_MS);
+  http.addHeader("apikey", supabaseApiKey);
+  http.addHeader("Authorization", String("Bearer ") + supabaseApiKey);
+
+  int code = http.GET();
+  if (code != 200) {
+    http.end();
+    return;
+  }
+
+  String payload = http.getString();
+  http.end();
+
+  StaticJsonDocument<4096> doc;
+  if (deserializeJson(doc, payload)) {
+    return;
+  }
+
+  JsonArray commands = doc["commands"].as<JsonArray>();
+  if (commands.isNull()) {
+    return;
+  }
+
+  for (JsonObject cmd : commands) {
+    processCommand(cmd);
+  }
+}
+
+void configurarWiFi() {
+  pinMode(WIFI_RESET_BUTTON, INPUT_PULLUP);
+
+  WiFiManager wifiManager;
+  wifiManager.setConfigPortalTimeout(180);
+  wifiManager.setConnectTimeout(20);
+
+  Serial.println("WiFiManager — portal PoltronaConfig se necessário");
+  if (!wifiManager.autoConnect("PoltronaConfig", "12345678")) {
+    Serial.println("Falha WiFi — reiniciando");
+    delay(2000);
+    ESP.restart();
+  }
+
+  preferences.begin("wifi_backup", false);
+  preferences.putString("ssid", WiFi.SSID());
+  preferences.putBool("configurado", true);
+  preferences.end();
+
+  Serial.printf("WiFi OK: %s — IP %s — RSSI %d\n",
+                WiFi.SSID().c_str(),
+                WiFi.localIP().toString().c_str(),
+                WiFi.RSSI());
+}
+
+bool initDfPlayer() {
+  dfSerial.begin(9600, SERIAL_8N1, 17, 16);
+  delay(2000);
+
+  if (dfPlayer.begin(dfSerial, true, true)) {
+    ackEnabled = true;
+  } else if (dfPlayer.begin(dfSerial, false, true)) {
+    ackEnabled = false;
+  } else {
+    return false;
+  }
+
+  delay(500);
+  dfPlayer.volume(28);
+  dfPlayer.EQ(DFPLAYER_EQ_NORMAL);
+  dfPlayer.outputDevice(DFPLAYER_DEVICE_SD);
+  delay(2000);
+  return true;
+}
+
+void setupHttpServer() {
+  server.on("/", HTTP_GET, []() {
+    String html = "<h1>Poltrona Top Lavanderia</h1><p>Status: " + statusAtual +
+                  "</p><p>ESP32: " + String(ESP32_ID) + "</p><p><a href='/status'>JSON</a></p>";
+    server.send(200, "text/html", html);
+  });
+
+  server.on("/status", HTTP_GET, []() {
+    StaticJsonDocument<512> doc;
+    doc["status"] = statusAtual;
+    doc["tempo_restante_segundos"] = tempoRestanteSeg;
+    doc["esp32_id"] = ESP32_ID;
+    doc["poltrona"] = MACHINE_NAME;
+    doc["online"] = true;
+    doc["dfplayer"] = dfplayerDisponivel;
+    String out;
+    serializeJson(doc, out);
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.send(200, "application/json", out);
+  });
+
+  server.on("/stop", HTTP_POST, []() {
+    pararPoltrona(statusAtual == "em_uso");
+    server.send(200, "application/json", "{\"success\":true}");
+  });
+
+  server.on("/test", HTTP_GET, []() {
+    acionarRele(true);
+    statusAtual = "em_uso";
+    tempoTotalSeg = 10;
+    tempoInicioCiclo = millis();
+    tempoRestanteSeg = 10;
+    audiosPendentes = false;
+    server.send(200, "application/json", "{\"success\":true,\"test_seconds\":10}");
+  });
+
+  server.onNotFound([]() {
+    server.send(404, "application/json", "{\"error\":\"not found\"}");
+  });
+
+  server.begin();
+}
+
+void setupWatchdog() {
+  esp_task_wdt_config_t cfg = {
+    .timeout_ms = 60000,
+    .idle_core_mask = 0,
+    .trigger_panic = true,
+  };
+  esp_task_wdt_deinit();
+  if (esp_task_wdt_init(&cfg) == ESP_OK) {
+    esp_task_wdt_add(nullptr);
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+  buildEsp32Id();
+
+  Serial.println();
+  Serial.println("=================================");
+  Serial.println(" Poltrona Massagem — Top Lavanderia");
+  Serial.printf(" Firmware %s\n", FIRMWARE_VERSION);
+  Serial.printf(" ESP32_ID: %s\n", ESP32_ID);
+  Serial.println("=================================");
+
+  pinMode(RELAY_PIN, INPUT_PULLUP);
+  delay(50);
+  pinMode(RELAY_PIN, OUTPUT);
+  acionarRele(false);
+
+  setupWatchdog();
+  configurarWiFi();
+  dfplayerDisponivel = initDfPlayer();
+  Serial.printf("DFPlayer: %s\n", dfplayerDisponivel ? "OK" : "indisponível (sem áudio)");
+
+  setupHttpServer();
+  sendHeartbeat();
+  lastHeartbeat = millis();
+  lastPoll = millis();
+}
+
+void loop() {
+  esp_task_wdt_reset();
+  server.handleClient();
+
+  if (WiFi.status() != WL_CONNECTED) {
+    WiFi.reconnect();
+    delay(500);
+    return;
+  }
+
+  gerenciarAudios();
+  atualizarTimerSessao();
+
+  unsigned long now = millis();
+  if (now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
+    sendHeartbeat();
+    lastHeartbeat = now;
+  }
+  if (now - lastPoll >= POLL_INTERVAL_MS) {
+    pollCommands();
+    lastPoll = now;
+  }
+
+  delay(50);
+}

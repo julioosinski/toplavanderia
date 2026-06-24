@@ -1,4 +1,6 @@
 import esp32FirmwareTemplate from '@/firmware/esp32LavadoraTemplate.ino?raw';
+import esp32PoltronaTemplate from '@/firmware/poltrona_massagem_top_lavanderia.ino?raw';
+import esp32CafeTemplate from '@/firmware/maquina_cafe_top_lavanderia.ino?raw';
 
 /** Escape conteúdo dentro de "..." em string C */
 function escapeCStr(s: string): string {
@@ -45,4 +47,40 @@ export function buildEsp32LavadoraFirmware(params: Esp32FirmwareParams): string 
     .replace(/__MACHINE_NAME__/g, escapeCStr(machineName))
     .replace(/__RELAY_LOGICAL_PIN__/g, String(relayPin))
     .replace(/__CYCLE_TIME_MINUTES__/g, String(cycleMin));
+}
+
+export interface Esp32PoltronaFirmwareParams {
+  laundryId: string;
+  machineName: string;
+  /** Duração padrão da sessão (min) quando o comando não informar cycle_time_minutes */
+  defaultCycleMinutes?: number;
+}
+
+/**
+ * Gera o .ino da poltrona a partir de `src/firmware/poltrona_massagem_top_lavanderia.ino`.
+ */
+export function buildEsp32PoltronaFirmware(params: Esp32PoltronaFirmwareParams): string {
+  const { laundryId, machineName, defaultCycleMinutes } = params;
+  const cycleMin = Math.max(1, Math.min(24 * 60, defaultCycleMinutes ?? 15));
+
+  return esp32PoltronaTemplate
+    .replace(/__LAUNDRY_ID__/g, escapeCStr(laundryId))
+    .replace(/__MACHINE_NAME__/g, escapeCStr(machineName))
+    .replace(/__DEFAULT_CYCLE_MINUTES__/g, String(cycleMin));
+}
+
+export interface Esp32CafeFirmwareParams {
+  laundryId: string;
+  machineName: string;
+}
+
+/**
+ * Gera o .ino da máquina de café a partir de `src/firmware/maquina_cafe_top_lavanderia.ino`.
+ */
+export function buildEsp32CafeFirmware(params: Esp32CafeFirmwareParams): string {
+  const { laundryId, machineName } = params;
+
+  return esp32CafeTemplate
+    .replace(/__LAUNDRY_ID__/g, escapeCStr(laundryId))
+    .replace(/__MACHINE_NAME__/g, escapeCStr(machineName));
 }

@@ -192,7 +192,7 @@ public class TotemActivity extends Activity {
         setIntent(intent);
         if (intent != null && intent.getBooleanExtra(EXTRA_CIELO_PAYMENT_RETURN, false)) {
             if (lastSucceededOperationId > 0 || selectedMachine == null) {
-                restoreMachineGrid();
+                restoreHomeScreen();
             }
         }
     }
@@ -212,7 +212,7 @@ public class TotemActivity extends Activity {
                 if ("cielo".equalsIgnoreCase(activeProvider)
                         && lastSucceededOperationId > 0
                         && !isMachineGridVisible()) {
-                    restoreMachineGrid();
+                    restoreHomeScreen();
                 }
                 loadMachines();
             } else {
@@ -280,6 +280,14 @@ public class TotemActivity extends Activity {
         }
         applyOptimisticMachineStatuses();
         displayCurrentScreen();
+    }
+
+    /** Após pagamento aprovado: tela inicial com Lavar/Secar/Massagem/Café. */
+    private void restoreHomeScreen() {
+        currentScreen = TotemScreen.HOME;
+        selectedMachine = null;
+        selectedCoffeeProduct = null;
+        restoreMachineGrid();
     }
 
     private void refreshCoffeeProductsAsync() {
@@ -1509,10 +1517,8 @@ public class TotemActivity extends Activity {
             triggerAutomaticReceiptPrint(machineSnapshot, authorizationCode, transactionId);
             if ("cielo".equalsIgnoreCase(activeProvider)) {
                 selectedMachine = null;
-                if (isCoffeePayment) {
-                    currentScreen = TotemScreen.CAFE;
-                }
-                restoreMachineGrid();
+                selectedCoffeeProduct = null;
+                restoreHomeScreen();
             } else {
                 showBriefPaymentSuccessAndReset(machineSnapshot, operationId);
             }
@@ -1650,7 +1656,7 @@ public class TotemActivity extends Activity {
         selectedCoffeeProduct = null;
         paymentLaunchInProgress.set(false);
         awaitingPaymentCallback = false;
-        restoreMachineGrid();
+        restoreHomeScreen();
         if (esp32Activated && statusMonitor != null) {
             // Poll após ESP32 ligado — evita marcar LIVRE antes do relé responder.
             statusMonitor.requestImmediatePoll();

@@ -22,6 +22,8 @@ import {
 } from "@/lib/machineEsp32Sync";
 import { adminRemoteRelease } from "@/lib/deviceRemoteRelease";
 import { ESP32ConfigurationDialog } from "@/components/admin/ESP32ConfigurationDialog";
+import { Link } from "react-router-dom";
+import { Armchair, Coffee } from "lucide-react";
 import { ESP32PendingApproval } from "@/components/admin/ESP32PendingApproval";
 import { SectionErrorBoundary } from "@/components/system/SectionErrorBoundary";
 import {
@@ -472,10 +474,24 @@ export default function Machines() {
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Máquinas</h1>
             <p className="text-sm text-muted-foreground">
-              Gerencie todas as máquinas de lavar e secar
+              Gerencie lavadoras, secadoras, poltronas e café
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" size="sm" className="sm:size-default" asChild>
+              <Link to="/admin/coffee-firmware">
+                <Coffee className="mr-1 sm:mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">Firmware Café</span>
+                <span className="sm:hidden">Café</span>
+              </Link>
+            </Button>
+            <Button variant="outline" size="sm" className="sm:size-default" asChild>
+              <Link to="/admin/massage-chair">
+                <Armchair className="mr-1 sm:mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">Firmware Poltrona</span>
+                <span className="sm:hidden">Poltrona</span>
+              </Link>
+            </Button>
             <ESP32ConfigurationDialog />
             <Button size="sm" className="sm:size-default" onClick={() => {
               setEditingMachine(null);

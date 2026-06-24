@@ -1,15 +1,15 @@
 /**
  * ESP32 Poltrona de Massagem — Top Lavanderia
- * Perfil: timed_session — usa o mesmo fluxo pending_commands action "on"/"off"
- *         com cycle_time_minutes (relé ligado durante a sessão + resfriamento no hardware).
  *
- * Para deploy: use o template esp32LavadoraTemplate.ino gerado pelo painel admin,
- * cadastrando a máquina como tipo "Poltrona de massagem" (device_profile timed_session).
+ * Firmware executável: poltrona_massagem_top_lavanderia.ino
+ * Perfil: timed_session — pending_commands action "on"/"off" via esp32-monitor
  *
- * Placeholders: __LAUNDRY_ID__, __MACHINE_NAME__, __RELAY_LOGICAL_PIN__, __CYCLE_TIME_MINUTES__
+ * Placeholders ao gerar pelo admin:
+ *   __LAUNDRY_ID__
+ *   __MACHINE_NAME__
+ *   __DEFAULT_CYCLE_MINUTES__  (ex.: 15)
+ *
+ * Hardware: relé GPIO 26, DFPlayer UART2 (TX=16, RX=17), áudios 001–007 no SD FAT32
  */
 
-// Este arquivo documenta a integração. O firmware executável é esp32LavadoraTemplate.ino
-// com cycle_time_minutes = duração da sessão de massagem (ex.: 15 min).
-
-#define POLTRONA_FIRMWARE_NOTE "Use esp32LavadoraTemplate.ino — action on/off via esp32-monitor"
+#define POLTRONA_FIRMWARE "poltrona_massagem_top_lavanderia.ino"
