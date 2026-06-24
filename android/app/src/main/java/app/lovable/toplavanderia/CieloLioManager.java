@@ -3,6 +3,8 @@ package app.lovable.toplavanderia;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Base64;
 import android.util.Log;
 
@@ -28,10 +30,13 @@ public class CieloLioManager implements PaymentManager {
     private static long lastConsumedCallbackAtMs;
     private static long lastDeepLinkLaunchAtMs;
     private static long cieloCooldownUntilMs;
-    private static final long MIN_MS_BETWEEN_DEEP_LINKS = 3500L;
-    private static final long COOLDOWN_AFTER_4281_MS = 12000L;
+    private static final long MIN_MS_BETWEEN_DEEP_LINKS = 4000L;
+    private static final long MIN_MS_BETWEEN_SUCCESSIVE_PAYMENTS = 2000L;
+    private static final long COOLDOWN_AFTER_4281_MS = 15000L;
+    private static long lastSuccessfulPaymentAtMs;
 
     private final Context context;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private PaymentCallback callback;
     private boolean isProcessing;
     private boolean isInitialized;
@@ -43,6 +48,8 @@ public class CieloLioManager implements PaymentManager {
     private String pendingReference;
     private long pendingAmountCents;
     private String pendingPaymentCode;
+    private String pendingCloudOrderId;
+    private String lastConfiguredSignature;
     /** credit | pix | card — inferido do retorno Cielo para alinhar Supabase/recibo. */
     private volatile String lastDetectedSupabasePaymentMethod;
 
@@ -50,16 +57,29 @@ public class CieloLioManager implements PaymentManager {
         this.context = context;
         this.isProcessing = false;
         this.isInitialized = false;
+        CieloOrderJanitor.loadLearnedMerchantId(context);
     }
 
     public void configure(String clientId, String accessToken, String merchantCode, String environment) {
-        this.clientId = safe(clientId);
-        this.accessToken = safe(accessToken);
-        this.merchantCode = safe(merchantCode);
-        this.environment = (environment != null && !environment.isEmpty()) ? environment : "sandbox";
+        String nextClientId = safe(clientId);
+        String nextAccessToken = safe(accessToken);
+        String nextMerchantCode = safe(merchantCode);
+        String nextEnvironment = (environment != null && !environment.isEmpty()) ? environment : "sandbox";
+        String signature = nextClientId + "|" + nextAccessToken + "|" + nextMerchantCode + "|" + nextEnvironment;
+        boolean credentialsUnchanged = signature.equals(lastConfiguredSignature)
+            && !nextClientId.isEmpty() && !nextAccessToken.isEmpty();
+
+        this.clientId = nextClientId;
+        this.accessToken = nextAccessToken;
+        this.merchantCode = nextMerchantCode;
+        this.environment = nextEnvironment;
 
         // Deep link only requires credentials locally to build request.
         this.isInitialized = !this.clientId.isEmpty() && !this.accessToken.isEmpty();
+        if (credentialsUnchanged) {
+            return;
+        }
+        lastConfiguredSignature = signature;
 
         if (looksLikeUuidMerchantCode(this.merchantCode)) {
             Log.e(TAG, "merchantCode parece UUID/lavanderia — use o código EC numérico da Cielo (painel Admin → Configurações)");
@@ -70,6 +90,19 @@ public class CieloLioManager implements PaymentManager {
 
         Log.d(TAG, "Configured Deep Link Cielo: merchant=" + this.merchantCode + " env=" + this.environment
             + " initialized=" + this.isInitialized);
+
+        if (isInitialized) {
+            final String cId = this.clientId;
+            final String cToken = this.accessToken;
+            final String cMerchant = merchantCodeForJanitor();
+            final String cEnv = this.environment;
+            new Thread(() -> {
+                int n = CieloOrderJanitor.closeOpenOrdersQuick(
+                    cId, cToken, cMerchant, CieloOrderJanitor.resolveEnvironment(cEnv));
+                Log.i(TAG, "Limpeza ao iniciar: " + n + " pedido(s) encerrado(s)"
+                    + (CieloOrderJanitor.hadRecentAuthFailure() ? " (API 401 — credenciais inválidas)" : ""));
+            }, "cielo-startup-purge").start();
+        }
     }
 
     /** EC Cielo é numérico; UUID no banco (id da lavanderia) quebra pagamento na LIO. */
@@ -86,17 +119,6 @@ public class CieloLioManager implements PaymentManager {
             return "Credenciais Cielo não configuradas (Client ID e Access Token no painel admin).";
         }
         return null;
-    }
-
-    /** EC inválido (UUID da lavanderia) não vai no JSON — terminal usa o EC padrão. */
-    private String merchantCodeForPayload() {
-        if (merchantCode == null || merchantCode.isEmpty()) {
-            return null;
-        }
-        if (looksLikeUuidMerchantCode(merchantCode)) {
-            return null;
-        }
-        return merchantCode;
     }
 
     @Override
@@ -116,57 +138,58 @@ public class CieloLioManager implements PaymentManager {
 
     @Override
     public void processPayment(double amount, String paymentType, String description, String orderId) {
+        new Thread(() -> processPaymentWorker(amount, paymentType, description, orderId), "cielo-pay").start();
+    }
+
+    private void processPaymentWorker(double amount, String paymentType, String description, String orderId) {
         long now = System.currentTimeMillis();
         if (now < cieloCooldownUntilMs) {
-            if (callback != null) {
-                callback.onPaymentError("Aguarde alguns segundos: terminal Cielo finalizando pedido anterior.");
-            }
+            notifyPaymentError("Aguarde alguns segundos: terminal Cielo finalizando pedido anterior.");
             return;
         }
         if (isProcessing) {
-            if (callback != null) callback.onPaymentError("Ja ha uma transacao em processamento");
+            notifyPaymentError("Ja ha uma transacao em processamento");
             return;
         }
         if (now - lastDeepLinkLaunchAtMs < MIN_MS_BETWEEN_DEEP_LINKS) {
-            if (callback != null) {
-                callback.onPaymentError("Aguarde: pagamento anterior ainda aberto na Cielo.");
-            }
+            notifyPaymentError("Aguarde: pagamento anterior ainda aberto na Cielo.");
+            return;
+        }
+        long sinceLastSuccess = now - lastSuccessfulPaymentAtMs;
+        if (lastSuccessfulPaymentAtMs > 0 && sinceLastSuccess < MIN_MS_BETWEEN_SUCCESSIVE_PAYMENTS) {
+            long waitSec = (MIN_MS_BETWEEN_SUCCESSIVE_PAYMENTS - sinceLastSuccess + 999L) / 1000L;
+            notifyPaymentError("Aguarde " + waitSec + " segundos: terminal Cielo finalizando o pagamento anterior.");
             return;
         }
 
         if (!isInitialized) {
-            String msg = "Credenciais Cielo nao configuradas (Client ID e Access Token).";
-            Log.w(TAG, msg);
-            if (callback != null) callback.onPaymentError(msg);
+            notifyPaymentError("Credenciais Cielo nao configuradas (Client ID e Access Token).");
             return;
         }
 
         try {
-            long amountCents = Math.round(amount * 100.0d);
-            // Referência curta e única — UUID longo pode ser truncado pela Cielo e colidir ("transação já efetuada").
+            long baseCents = Math.round(amount * 100.0d);
+            long amountCents = CieloAmountDedup.chargeCents(context, baseCents);
             String reference = buildUniqueCieloReference();
             if (orderId != null && !orderId.isEmpty()) {
-                Log.d(TAG, "Pending Supabase (correlação local, não enviada à Cielo): " + orderId);
-            }
-            int closed = CieloOrderJanitor.closeStaleOrders(clientId, accessToken, merchantCode, environment);
-            if (closed > 0) {
-                try {
-                    Thread.sleep(600L);
-                } catch (InterruptedException ignored) {
-                    Thread.currentThread().interrupt();
-                }
+                Log.d(TAG, "Pending Supabase (correlação local): " + orderId);
             }
 
             String paymentCode = resolvePaymentCode(paymentType);
-            int installments = paymentCode != null ? resolveInstallments(paymentCode) : 0;
-            Log.d(TAG, "Cielo checkout: jsType=" + paymentType + " -> paymentCode=" + paymentCode
-                + " cents=" + amountCents + " installments=" + installments + " staleClosed=" + closed);
+            String merchant = merchantCodeForJanitor();
+            String cieloEnv = CieloOrderJanitor.resolveEnvironment(environment);
+            // Pedidos ENTERED locais causam -4281; REST janitor pode falhar (401) — limpar fila local sempre.
+            CieloLocalOrderPurge.clearStuckLocalOrders(context, 0L);
+            int purged = CieloOrderJanitor.closeOpenOrdersQuick(
+                clientId, accessToken, merchant, cieloEnv);
+            Log.i(TAG, "Pré-checkout: local=ok cloud=" + purged + " pedido(s) merchant=" + merchant);
 
             JSONObject payload = buildPaymentPayload(amountCents, paymentCode, description, reference);
-            Log.d(TAG, "Cielo payload: " + payload.toString());
+            Log.d(TAG, "Cielo checkout: type=" + paymentType + " code=" + paymentCode
+                + " cents=" + amountCents + " purged=" + purged);
+
             String base64 = Base64.encodeToString(payload.toString().getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
             String checkoutUri = "lio://payment?request=" + Uri.encode(base64) + "&urlCallback=order://response";
-
             Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(checkoutUri));
 
             activeInstance = this;
@@ -174,27 +197,44 @@ public class CieloLioManager implements PaymentManager {
             pendingReference = reference;
             pendingAmountCents = amountCents;
             pendingPaymentCode = paymentCode;
-            if (callback != null) callback.onPaymentProcessing("Abrindo pagamento na Cielo...");
 
-            CieloPaymentForegroundService.start(context);
-            lastDeepLinkLaunchAtMs = System.currentTimeMillis();
-            context.startActivity(intent);
-            Log.d(TAG, "Deep link Cielo enviado (ref=" + reference + ", paymentCode=" + paymentCode + ")");
-        } catch (android.content.ActivityNotFoundException e) {
-            CieloPaymentForegroundService.stop(context);
-            isProcessing = false;
-            clearPendingTransaction();
-            Log.e(TAG, "App Cielo UriApp não encontrado (com.ads.lio.uriappclient)", e);
-            if (callback != null) {
-                callback.onPaymentError("App de pagamento Cielo não instalado neste terminal. Instale/atualize o UriApp pela LIO Store.");
-            }
+            mainHandler.post(() -> {
+                if (callback != null) {
+                    callback.onPaymentProcessing("Abrindo pagamento na Cielo...");
+                }
+                CieloPaymentForegroundService.start(context);
+                lastDeepLinkLaunchAtMs = System.currentTimeMillis();
+                try {
+                    context.startActivity(intent);
+                    Log.d(TAG, "Deep link Cielo enviado (ref=" + reference + ")");
+                } catch (android.content.ActivityNotFoundException e) {
+                    handleLaunchFailure("App de pagamento Cielo não instalado neste terminal.");
+                } catch (Exception e) {
+                    handleLaunchFailure("Erro ao abrir pagamento Cielo: " + e.getMessage());
+                }
+            });
         } catch (Exception e) {
-            CieloPaymentForegroundService.stop(context);
-            isProcessing = false;
-            clearPendingTransaction();
-            Log.e(TAG, "Erro ao iniciar pagamento Cielo via deep link", e);
-            if (callback != null) callback.onPaymentError("Erro ao iniciar pagamento Cielo: " + e.getMessage());
+            Log.e(TAG, "Erro ao preparar pagamento Cielo", e);
+            notifyPaymentError("Erro ao iniciar pagamento Cielo: " + e.getMessage());
         }
+    }
+
+    private void handleLaunchFailure(String message) {
+        CieloPaymentForegroundService.stop(context);
+        isProcessing = false;
+        clearPendingTransaction();
+        activeInstance = null;
+        if (callback != null) {
+            callback.onPaymentError(message);
+        }
+    }
+
+    private void notifyPaymentError(String message) {
+        mainHandler.post(() -> {
+            if (callback != null) {
+                callback.onPaymentError(message);
+            }
+        });
     }
 
     @Override
@@ -216,7 +256,7 @@ public class CieloLioManager implements PaymentManager {
             Log.w(TAG, "Resposta Cielo recebida sem instancia ativa");
             return;
         }
-        activeInstance.consumeDeepLinkResponse(uri);
+        new Thread(() -> activeInstance.consumeDeepLinkResponse(uri), "cielo-callback").start();
     }
 
     private void consumeDeepLinkResponse(Uri uri) {
@@ -229,7 +269,7 @@ public class CieloLioManager implements PaymentManager {
         CieloPaymentForegroundService.stop(context);
 
         if (uri == null) {
-            if (callback != null) callback.onPaymentError("Resposta Cielo invalida");
+            notifyPaymentError("Resposta Cielo invalida");
             return;
         }
 
@@ -238,7 +278,7 @@ public class CieloLioManager implements PaymentManager {
             String responseCode = uri.getQueryParameter("responsecode");
 
             if (responseBase64 == null || responseBase64.isEmpty()) {
-                if (callback != null) callback.onPaymentError("Resposta Cielo sem payload");
+                notifyPaymentError("Resposta Cielo sem payload");
                 return;
             }
 
@@ -252,15 +292,18 @@ public class CieloLioManager implements PaymentManager {
                 int code = json.optInt("code", -1);
                 String reason = json.optString("reason", "Erro desconhecido");
                 Log.w(TAG, "Cielo erro (code=" + code + "): " + reason + " | payload=" + decoded);
-                if (callback != null) callback.onPaymentError(formatCieloErrorMessage(code, reason));
+                schedulePostCheckoutCleanup("error-code-" + code);
+                if (CieloOrderJanitor.is4281Error(reason)) {
+                    CieloLocalOrderPurge.clearStuckLocalOrders(context, 0L);
+                }
+                notifyPaymentError(formatCieloErrorMessage(code, reason));
                 return;
             }
 
             // Doc Cielo: responsecode=0 sucesso; =2 cancelamento/erro.
             if ("2".equals(responseCode)) {
-                if (callback != null) {
-                    callback.onPaymentError("Pagamento cancelado ou recusado (responsecode=2)");
-                }
+                schedulePostCheckoutCleanup("cancelled");
+                notifyPaymentError("Pagamento cancelado ou recusado (responsecode=2)");
                 return;
             }
             if (responseCode != null && !responseCode.isEmpty() && !"0".equals(responseCode)) {
@@ -309,7 +352,7 @@ public class CieloLioManager implements PaymentManager {
             if (paymentFields != null) {
                 String statusCode = paymentFields.optString("statusCode", "");
                 if ("2".equals(statusCode)) {
-                    if (callback != null) callback.onPaymentError("Transacao cancelada pela Cielo (statusCode=2)");
+                    notifyPaymentError("Transacao cancelada pela Cielo (statusCode=2)");
                     activeInstance = null;
                     return;
                 }
@@ -329,12 +372,30 @@ public class CieloLioManager implements PaymentManager {
             }
 
             lastDetectedSupabasePaymentMethod = resolveSupabaseMethodFromCieloPayment(payment);
+            rememberMerchantFromPayment(payment);
+
+            String cieloOrderId = json.optString("id", "");
+            finalizePaidOrder(cieloOrderId);
+            new Thread(() -> {
+                try {
+                    Thread.sleep(800L);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                CieloLocalOrderPurge.clearStuckLocalOrders(context, 0L);
+            }, "cielo-post-success-purge").start();
+
             Log.d(TAG, "Cielo APPROVED: ref=" + pendingReference + " solicitado=" + pendingPaymentCode
                 + " detectadoSupabase=" + lastDetectedSupabasePaymentMethod + " brand=" + brand + " maskSuffix=" + lastFour(mask));
-            if (callback != null) callback.onPaymentSuccess(authCode, txnId);
+
+            if (callback != null) {
+                final String auth = authCode;
+                final String txn = txnId;
+                mainHandler.post(() -> callback.onPaymentSuccess(auth, txn));
+            }
         } catch (Exception e) {
             Log.e(TAG, "Erro ao processar callback Cielo", e);
-            if (callback != null) callback.onPaymentError("Erro ao processar retorno Cielo: " + e.getMessage());
+            notifyPaymentError("Erro ao processar retorno Cielo: " + e.getMessage());
         } finally {
             clearPendingTransaction();
             activeInstance = null;
@@ -366,16 +427,11 @@ public class CieloLioManager implements PaymentManager {
             }
         }
 
-        String ec = merchantCodeForPayload();
-        if (ec != null) {
-            payload.put("merchantCode", ec);
-        }
-
         JSONArray items = new JSONArray();
         JSONObject item = new JSONObject();
         item.put("name", description != null && !description.isEmpty() ? description : "Top Lavanderia");
         item.put("quantity", 1);
-        item.put("sku", "LAVANDERIA");
+        item.put("sku", "LAV-" + reference.substring(Math.max(0, reference.length() - 8)));
         item.put("unitOfMeasure", "unidade");
         item.put("unitPrice", (int) amountCents);
         items.put(item);
@@ -528,23 +584,71 @@ public class CieloLioManager implements PaymentManager {
             return "Erro Cielo: parâmetros inválidos no pedido de pagamento. Detalhe: " + r;
         }
         if (lower.contains("4281") || lower.contains("ja efetuada") || lower.contains("já efetuada") || lower.contains("already")) {
-            cieloCooldownUntilMs = System.currentTimeMillis() + COOLDOWN_AFTER_4281_MS;
-            CieloOrderJanitor.closeStaleOrders(clientId, accessToken, merchantCode, environment);
-            return "Erro Cielo (-4281): pedido anterior ainda aberto no terminal. "
-                + "Aguarde 12 segundos e tente de novo. Se persistir, reinicie o app Cielo no menu do terminal.";
+            cieloCooldownUntilMs = System.currentTimeMillis() + 8000L;
+            CieloLocalOrderPurge.clearStuckLocalOrders(context, 0L);
+            CieloOrderJanitor.scheduleCleanupWithRetry(
+                clientId, accessToken, merchantCodeForJanitor(),
+                CieloOrderJanitor.resolveEnvironment(environment), "4281");
+            return "Erro Cielo (-4281): mesma combinação cartão + valor bloqueada pelo adquirente.\n"
+                + "Tente de novo — o app alterna centavos automaticamente entre cobranças.";
+        }
+        if (lower.contains("4061") || lower.contains("falha de conex") || lower.contains("contactar a cielo")) {
+            return "Erro Cielo (-4061): terminal sem conexão com os servidores de pagamento da Cielo.\n"
+                + "Verifique Wi-Fi/dados móveis e, em Configurações → Data e hora, "
+                + "ative \"Usar data e hora da rede\" (relógio errado causa este erro).";
         }
         return "Erro Cielo (" + code + "): " + r;
     }
 
     private void rejectSuspiciousCallback(String message) {
         Log.w(TAG, message + " (ref=" + pendingReference + ", cents=" + pendingAmountCents + ")");
-        if (callback != null) callback.onPaymentError(message);
+        notifyPaymentError(message);
     }
 
     private void clearPendingTransaction() {
         pendingReference = null;
         pendingAmountCents = 0;
         pendingPaymentCode = null;
+        pendingCloudOrderId = null;
+    }
+
+    private void schedulePostCheckoutCleanup(String reason) {
+        CieloOrderJanitor.scheduleCleanupWithRetry(
+            clientId, accessToken, merchantCodeForJanitor(),
+            CieloOrderJanitor.resolveEnvironment(environment), reason);
+    }
+
+    private String merchantCodeForJanitor() {
+        return CieloOrderJanitor.resolveMerchantId(merchantCode);
+    }
+
+    private void rememberMerchantFromPayment(JSONObject payment) {
+        if (payment == null) {
+            return;
+        }
+        String mc = payment.optString("merchantCode", "");
+        JSONObject pf = payment.optJSONObject("paymentFields");
+        if (mc.isEmpty() && pf != null) {
+            mc = pf.optString("merchantCode", "");
+            if (mc.isEmpty()) {
+                mc = pf.optString("externalCallMerchantCode", "");
+            }
+        }
+        CieloOrderJanitor.learnMerchantId(context, mc);
+    }
+
+    private void finalizePaidOrder(String cieloOrderId) {
+        lastSuccessfulPaymentAtMs = System.currentTimeMillis();
+        String merchant = merchantCodeForJanitor();
+        String cieloEnv = CieloOrderJanitor.resolveEnvironment(environment);
+        if (cieloOrderId != null && !cieloOrderId.isEmpty()) {
+            CieloOrderJanitor.closeOrderById(
+                clientId, accessToken, merchant, cieloEnv, cieloOrderId);
+        }
+        int purged = CieloOrderJanitor.closeOpenOrdersQuick(
+            clientId, accessToken, merchant, cieloEnv);
+        Log.i(TAG, "Pós-pagamento: " + purged + " pedido(s) encerrado(s)");
+        schedulePostCheckoutCleanup("success");
     }
 
     private String lastFour(String value) {

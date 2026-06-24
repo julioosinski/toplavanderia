@@ -45,4 +45,12 @@ final class SupabaseConfig {
         return SUPABASE_URL != null && !SUPABASE_URL.isEmpty()
             && SUPABASE_ANON_KEY != null && !SUPABASE_ANON_KEY.isEmpty();
     }
+
+    static HttpURLConnection openConnection(String urlString) throws java.io.IOException {
+        return CieloSslWorkaround.openConnection(urlString);
+    }
+
+    static HttpURLConnection openConnection(java.net.URL url) throws java.io.IOException {
+        return CieloSslWorkaround.openConnection(url);
+    }
 }

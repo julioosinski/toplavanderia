@@ -54,8 +54,17 @@ public class AdminActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        ImmersiveModeHelper.enable(this);
         if (contentContainer != null) {
             showDashboard();
+        }
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) {
+            ImmersiveModeHelper.enable(this);
         }
     }
     

@@ -180,7 +180,7 @@ public class MachineStatusMonitor {
         HttpURLConnection connection = null;
         try {
             URL url = new URL(SUPABASE_URL + "/rest/v1/rpc/get_esp32_heartbeats");
-            connection = (HttpURLConnection) url.openConnection();
+            connection = SupabaseConfig.openConnection(url);
             connection.setRequestMethod("POST");
             SupabaseConfig.applyJsonHeaders(connection);
             connection.setDoOutput(true);
@@ -220,7 +220,7 @@ public class MachineStatusMonitor {
 
     private JSONArray fetchPublicMachines(String laundryId) {
         try {
-            HttpURLConnection connection = (HttpURLConnection) new URL(SUPABASE_URL + "/rest/v1/rpc/get_public_machines").openConnection();
+            HttpURLConnection connection = SupabaseConfig.openConnection(SUPABASE_URL + "/rest/v1/rpc/get_public_machines");
             connection.setRequestMethod("POST");
             SupabaseConfig.applyJsonHeaders(connection);
             connection.setDoOutput(true);

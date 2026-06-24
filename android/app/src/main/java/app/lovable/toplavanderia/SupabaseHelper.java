@@ -219,7 +219,7 @@ public class SupabaseHelper {
         }
         try {
             String url = SUPABASE_URL + "/functions/v1/totem-settings";
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
             connection.setRequestMethod("POST");
             SupabaseConfig.applyTotemSettingsHeaders(connection);
             connection.setDoOutput(true);
@@ -264,7 +264,7 @@ public class SupabaseHelper {
     private JSONObject fetchSystemSettingsViaRpc() {
         try {
             String url = SUPABASE_URL + "/rest/v1/rpc/get_totem_settings";
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
             connection.setRequestMethod("POST");
             SupabaseConfig.applyJsonHeaders(connection);
             connection.setDoOutput(true);
@@ -339,6 +339,12 @@ public class SupabaseHelper {
     public void setOnMachinesLoadedListener(OnMachinesLoadedListener listener) {
         this.listener = listener;
     }
+
+    private void notifyMachinesLoadFinished(List<Machine> loaded) {
+        if (listener != null) {
+            listener.onMachinesLoaded(loaded);
+        }
+    }
     
     // ===== MÉTODOS PARA MÁQUINAS =====
     
@@ -370,15 +376,17 @@ public class SupabaseHelper {
                     Log.d(TAG, "Dados reais do Supabase prontos para exibição");
                     
                     // Notificar que os dados reais foram carregados
-                    if (listener != null) {
-                        listener.onMachinesLoaded(realMachines);
-                    }
+                    notifyMachinesLoadFinished(realMachines);
                 } else {
                     Log.d(TAG, "❌ Falha ao carregar dados do Supabase");
+                    isOnline = false;
+                    notifyMachinesLoadFinished(new ArrayList<>());
                 }
-                
+
             } catch (Exception e) {
                 Log.e(TAG, "Erro ao carregar máquinas do Supabase", e);
+                isOnline = false;
+                notifyMachinesLoadFinished(new ArrayList<>());
             }
         }).start();
 
@@ -453,7 +461,7 @@ public class SupabaseHelper {
             Log.d(TAG, "Buscando lavanderia por CNPJ: " + cnpj);
             Log.d(TAG, "URL: " + url);
             
-            connection = (HttpURLConnection) new URL(url).openConnection();
+            connection = SupabaseConfig.openConnection(url);
             connection.setRequestMethod("POST");
             SupabaseConfig.applyJsonHeaders(connection);
             connection.setDoOutput(true);
@@ -530,7 +538,7 @@ public class SupabaseHelper {
             Log.d(TAG, "Buscando máquinas da lavanderia: " + currentLaundryId);
             Log.d(TAG, "URL: " + url);
             
-            connection = (HttpURLConnection) new URL(url).openConnection();
+            connection = SupabaseConfig.openConnection(url);
             connection.setRequestMethod("POST");
             SupabaseConfig.applyJsonHeaders(connection);
             connection.setDoOutput(true);
@@ -637,7 +645,7 @@ public class SupabaseHelper {
 
     private JSONArray fetchEsp32StatusViaRpc() throws Exception {
         URL url = new URL(SUPABASE_URL + "/rest/v1/rpc/get_esp32_heartbeats");
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        HttpURLConnection conn = SupabaseConfig.openConnection(url);
         conn.setRequestMethod("POST");
         SupabaseConfig.applyJsonHeaders(conn);
         conn.setDoOutput(true);
@@ -782,7 +790,7 @@ public class SupabaseHelper {
             JSONObject payload = new JSONObject();
             payload.put("_pin", pin.trim());
 
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
             connection.setRequestMethod("POST");
             SupabaseConfig.applyJsonHeaders(connection);
             connection.setDoOutput(true);
@@ -829,7 +837,7 @@ public class SupabaseHelper {
             payload.put("_transaction_id", transactionId.trim());
             payload.put("_payment_method", paymentMethod == null || paymentMethod.isEmpty() ? "credit" : paymentMethod);
 
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
             connection.setRequestMethod("POST");
             SupabaseConfig.applyJsonHeaders(connection);
             connection.setDoOutput(true);
@@ -877,7 +885,7 @@ public class SupabaseHelper {
             JSONObject payload = new JSONObject();
             payload.put("_transaction_id", transactionId.trim());
 
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
             connection.setRequestMethod("POST");
             SupabaseConfig.applyJsonHeaders(connection);
             connection.setDoOutput(true);
@@ -924,7 +932,7 @@ public class SupabaseHelper {
             payload.put("_laundry_id", currentLaundryId);
             payload.put("_payment_method", paymentMethod == null || paymentMethod.isEmpty() ? "credit" : paymentMethod);
 
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
             connection.setRequestMethod("POST");
             SupabaseConfig.applyJsonHeaders(connection);
             connection.setDoOutput(true);
@@ -974,7 +982,7 @@ public class SupabaseHelper {
             transaction.put("_payment_method", method);
             transaction.put("_laundry_id", currentLaundryId);
 
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
             connection.setRequestMethod("POST");
             SupabaseConfig.applyJsonHeaders(connection);
             connection.setDoOutput(true);
@@ -1113,7 +1121,7 @@ public class SupabaseHelper {
             }
             
             // Fazer requisição HTTP POST
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
             connection.setRequestMethod("POST");
             SupabaseConfig.applyJsonHeaders(connection);
             connection.setDoOutput(true);
@@ -1188,7 +1196,7 @@ public class SupabaseHelper {
                 payload.put("action", "off");
                 payload.put("machine_id", machineId);
                 
-                HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+                HttpURLConnection connection = SupabaseConfig.openConnection(url);
                 connection.setRequestMethod("POST");
                 SupabaseConfig.applyJsonHeaders(connection);
                 connection.setDoOutput(true);
@@ -1220,7 +1228,7 @@ public class SupabaseHelper {
             updateData.put("machine_id", machineId);
             updateData.put("status", mapStatusToSupabase(status));
             
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
             connection.setRequestMethod("POST");
             SupabaseConfig.applyJsonHeaders(connection);
             connection.setDoOutput(true);
@@ -1286,7 +1294,7 @@ public class SupabaseHelper {
             try {
                 String url = SUPABASE_URL + "/rest/v1/rpc/get_public_machines";
                 
-                HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+                HttpURLConnection connection = SupabaseConfig.openConnection(url);
                 connection.setRequestMethod("POST");
                 SupabaseConfig.applyJsonHeaders(connection);
                 connection.setDoOutput(true);

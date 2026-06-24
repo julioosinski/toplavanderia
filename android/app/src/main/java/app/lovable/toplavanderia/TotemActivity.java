@@ -98,7 +98,9 @@ public class TotemActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        CieloSslWorkaround.ensureInitialized();
         applyKeepScreenAwake();
+        DeviceClockGuard.checkAsync(this);
         // Imersivo só após setContentView (L400/Cielo: DecorView null em onCreate quebra getInsetsController).
         try {
             // Inicializar componentes
@@ -250,37 +252,9 @@ public class TotemActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
 
-    /**
-     * Tela cheia imersiva dentro do totem (compatível com Cielo: não bloqueia o app de pagamento).
-     * L400 e terminais antigos: DecorView pode ser null antes de setContentView — usar flags legadas.
-     */
+    /** Oculta botões de navegação do terminal; reaplica se o usuário deslizar na borda. */
     private void applyImmersiveMode() {
-        View decorView = getWindow() != null ? getWindow().getDecorView() : null;
-        if (decorView == null) {
-            return;
-        }
-        final int legacyFlags =
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_FULLSCREEN;
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            try {
-                getWindow().setDecorFitsSystemWindows(false);
-                WindowInsetsController controller = decorView.getWindowInsetsController();
-                if (controller != null) {
-                    controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
-                    controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-                    return;
-                }
-            } catch (Exception e) {
-                Log.w(TAG, "WindowInsetsController indisponível, usando UI flags legadas", e);
-            }
-        }
-        decorView.setSystemUiVisibility(legacyFlags);
+        ImmersiveModeHelper.enable(this);
     }
 
     private void setTotemContentView(View view) {
@@ -475,7 +449,7 @@ public class TotemActivity extends Activity {
             new Thread(() -> {
                 try {
                     URL url = new URL(logoUrl);
-                    HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+                    HttpURLConnection connection = SupabaseConfig.openConnection(url);
                     connection.setDoInput(true);
                     connection.connect();
                     InputStream input = connection.getInputStream();
@@ -627,7 +601,14 @@ public class TotemActivity extends Activity {
         if (lavadoras.isEmpty() && secadoras.isEmpty()
             && supabaseHelper != null && supabaseHelper.isConfigured()) {
             TextView loading = new TextView(this);
-            loading.setText("⏳ Carregando máquinas…");
+            if (supabaseHelper.isOnline()) {
+                loading.setText("⏳ Carregando máquinas…");
+            } else {
+                loading.setText("⚠️ Sem conexão com o servidor.\n\n"
+                        + "Verifique Wi-Fi e, nas configurações do terminal, "
+                        + "ative \"Data e hora automáticas\".\n\n"
+                        + "Toque em Atualizar abaixo para tentar novamente.");
+            }
             loading.setTextSize(18);
             loading.setTextColor(Color.parseColor("#8B949E"));
             loading.setGravity(android.view.Gravity.CENTER);
@@ -790,11 +771,11 @@ public class TotemActivity extends Activity {
         payRow.setOrientation(LinearLayout.VERTICAL);
 
         Button creditBtn = buildPaymentTypeButton("💳 CRÉDITO À VISTA", Color.parseColor("#1976D2"),
-            () -> processPayment(machine, "credit"));
+            () -> startPaymentFlow(machine, "credit"));
         Button debitBtn = buildPaymentTypeButton("💳 DÉBITO À VISTA", Color.parseColor("#1565C0"),
-            () -> processPayment(machine, "debit"));
+            () -> startPaymentFlow(machine, "debit"));
         Button pixBtn = buildPaymentTypeButton("📱 PIX", Color.parseColor("#00897B"),
-            () -> processPayment(machine, "pix"));
+            () -> startPaymentFlow(machine, "pix"));
 
         payRow.addView(creditBtn);
         payRow.addView(debitBtn);
@@ -847,11 +828,17 @@ public class TotemActivity extends Activity {
         return button;
     }
     
+    /** Feedback imediato na UI; trabalho pesado roda em background. */
+    private void startPaymentFlow(SupabaseHelper.Machine machine, String paymentType) {
+        showPaymentProcessing(machine, paymentType);
+        processPayment(machine, paymentType);
+    }
+
     /**
      * Abre o fluxo de pagamento (Cielo: crédito à vista no deep link; cartão/PIX/débito podem ser escolhidos na tela nativa).
      */
     private void processPayment(SupabaseHelper.Machine machine) {
-        processPayment(machine, "credit");
+        startPaymentFlow(machine, "credit");
     }
 
     /**
@@ -860,7 +847,6 @@ public class TotemActivity extends Activity {
     private void processPayment(SupabaseHelper.Machine machine, String paymentTypeForManager) {
         new Thread(() -> {
             try {
-                supabaseHelper.clearSettingsCache();
                 if (activePaymentManager != null && activePaymentManager.isProcessing()) {
                     runOnUiThread(() -> handlePaymentError("Aguarde: pagamento anterior ainda em processamento na maquininha."));
                     return;
@@ -876,25 +862,10 @@ public class TotemActivity extends Activity {
                 final String supabaseMethod = toSupabasePaymentMethod(paymentTypeForManager);
                 currentOperationSupabasePaymentMethod = supabaseMethod;
 
-                Log.d(TAG, "=== INICIANDO PROCESSAMENTO DE PAGAMENTO ===");
-                Log.d(TAG, "=== VALIDAÇÃO PRÉ-PAGAMENTO ===");
-                Log.d(TAG, "Máquina ID: " + machine.getId());
-                Log.d(TAG, "Máquina: " + machine.getName());
-                Log.d(TAG, "ESP32 ID: " + machine.getEsp32Id());
-                Log.d(TAG, "Status Atual: " + machine.getStatus());
-                Log.d(TAG, "ESP32 Online (cache): " + machine.isEsp32Online());
-                Log.d(TAG, "Valor: R$ " + machine.getPrice());
+                Log.d(TAG, "=== INICIANDO PAGAMENTO === " + machine.getName() + " tipo=" + paymentTypeForManager);
 
-                // ✅ NOVA VALIDAÇÃO: Verificar disponibilidade em tempo real
-                Log.d(TAG, "🔍 Validando disponibilidade da máquina em tempo real...");
-
-                boolean isStillAvailable = validateMachineAvailability(machine);
-
-                Log.d(TAG, "=== RESULTADO DA VALIDAÇÃO ===");
-                Log.d(TAG, "Disponível: " + isStillAvailable);
-
-                if (!isStillAvailable) {
-                    Log.w(TAG, "⚠️ PAGAMENTO BLOQUEADO - Máquina não disponível");
+                if (!validateMachineAvailabilityFast(machine)) {
+                    Log.w(TAG, "PAGAMENTO BLOQUEADO - Máquina não disponível");
                     paymentLaunchInProgress.set(false);
                     runOnUiThread(() -> {
                         handlePaymentError("Máquina não está mais disponível. Por favor, selecione outra.");
@@ -906,9 +877,6 @@ public class TotemActivity extends Activity {
                     return;
                 }
 
-                Log.d(TAG, "✅ Máquina disponível - prosseguindo com pagamento");
-
-                // Criar operação no Supabase (fora da UI thread)
                 currentOperationId = System.nanoTime();
                 final String cieloReference = UUID.randomUUID().toString();
                 String pendingTxId = supabaseHelper.createTransaction(
@@ -921,15 +889,11 @@ public class TotemActivity extends Activity {
                 );
                 currentPendingTransactionId = pendingTxId;
                 if (pendingTxId == null) {
-                    Log.w(TAG, "Falha ao criar operação no Supabase; prosseguindo com fluxo local de pagamento");
+                    Log.w(TAG, "Falha ao criar operação no Supabase; prosseguindo com fluxo local");
                 }
 
                 if ("cielo".equalsIgnoreCase(activeProvider)) {
-                    String cId = supabaseHelper.getCieloClientId();
-                    String cToken = supabaseHelper.getCieloAccessToken();
-                    String cMerchant = supabaseHelper.getCieloMerchantCode();
-                    String cEnv = supabaseHelper.getCieloEnvironment();
-                    cieloManager.configure(cId, cToken, cMerchant, cEnv);
+                    ensureCieloConfigured();
                     String configErr = cieloManager.getConfigurationError();
                     if (configErr != null) {
                         Log.e(TAG, "Pagamento bloqueado — config Cielo: " + configErr);
@@ -939,29 +903,27 @@ public class TotemActivity extends Activity {
                     }
                 }
 
-                Log.d(TAG, "Operação criada: ID " + currentOperationId + " refCielo=" + cieloReference);
+                if (activePaymentManager != null && !activePaymentManager.isInitialized()) {
+                    paymentLaunchInProgress.set(false);
+                    runOnUiThread(() -> handlePaymentError(
+                        "Pagamento não configurado. Verifique credenciais Cielo no painel admin.",
+                        currentOperationId));
+                    return;
+                }
 
+                cancelPendingSuccessScreen();
+                awaitingPaymentCallback = true;
                 final String managerPaymentType = paymentTypeForManager == null || paymentTypeForManager.isEmpty()
                     ? "credit" : paymentTypeForManager;
-                runOnUiThread(() -> {
-                    if (activePaymentManager != null && !activePaymentManager.isInitialized()) {
-                        awaitingPaymentCallback = false;
-                        paymentLaunchInProgress.set(false);
-                        handlePaymentError("Pagamento não configurado. Verifique credenciais Cielo no painel admin.", currentOperationId);
-                        return;
-                    }
-                    cancelPendingSuccessScreen();
-                    awaitingPaymentCallback = true;
-                    activePaymentManager.processPayment(
-                        machine.getPrice(),
-                        managerPaymentType,
-                        "Top Lavanderia - " + machine.getName(),
-                        cieloReference
-                    );
-                    if (!"cielo".equalsIgnoreCase(activeProvider)) {
-                        showPaymentProcessing(machine, managerPaymentType);
-                    }
-                });
+                activePaymentManager.processPayment(
+                    machine.getPrice(),
+                    managerPaymentType,
+                    "Top Lavanderia - " + machine.getName(),
+                    cieloReference
+                );
+                if (!"cielo".equalsIgnoreCase(activeProvider)) {
+                    runOnUiThread(() -> showPaymentProcessing(machine, managerPaymentType));
+                }
             } catch (Exception e) {
                 awaitingPaymentCallback = false;
                 paymentLaunchInProgress.set(false);
@@ -970,6 +932,17 @@ public class TotemActivity extends Activity {
                 runOnUiThread(() -> handlePaymentError("Erro ao processar pagamento: " + e.getMessage(), op));
             }
         }).start();
+    }
+
+    /** Confia no status da grade (evita 5–10s de rede no clique do botão). */
+    private boolean validateMachineAvailabilityFast(SupabaseHelper.Machine machine) {
+        if (machine == null) {
+            return false;
+        }
+        if (isOptimisticallyOccupied(machine.getId())) {
+            return false;
+        }
+        return machine.isAvailable();
     }
 
     private static String formatPaymentTypeLabel(String paymentType) {
@@ -1012,7 +985,7 @@ public class TotemActivity extends Activity {
             try {
                 String url = SupabaseConfig.SUPABASE_URL + "/rest/v1/rpc/get_public_machines";
                 
-                HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+                HttpURLConnection connection = SupabaseConfig.openConnection(url);
                 connection.setRequestMethod("POST");
                 SupabaseConfig.applyJsonHeaders(connection);
                 connection.setDoOutput(true);
@@ -1088,7 +1061,7 @@ public class TotemActivity extends Activity {
         try {
             String url = SupabaseConfig.SUPABASE_URL + "/rest/v1/rpc/get_esp32_heartbeats";
             
-            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
             connection.setRequestMethod("POST");
             SupabaseConfig.applyJsonHeaders(connection);
             connection.setDoOutput(true);
@@ -1470,6 +1443,13 @@ public class TotemActivity extends Activity {
             sb.append("Enquanto o débito não estiver liberado, use \"Crédito à vista\" no totem ou contate o suporte Cielo.");
         }
 
+        if (e.contains("4061") || e.contains("falha de conex") || e.contains("contactar a cielo")) {
+            sb.append("\n\n— Conexão Cielo (-4061) —\n");
+            sb.append("A maquininha não conseguiu falar com os servidores de pagamento da Cielo. ");
+            sb.append("Confira internet (Wi-Fi) e corrija Data e hora automática nas configurações do Android. ");
+            sb.append("Relógio desajustado costuma causar este erro após atualização do app.");
+        }
+
         if ((e.contains("pix") || (currentOperationSupabasePaymentMethod != null && "pix".equals(currentOperationSupabasePaymentMethod)))
                 && (e.contains("inválid") || e.contains("invalid") || e.contains("parâmetro") || e.contains("parametro") || e.contains("json"))) {
             sb.append("\n\n— PIX (parâmetros) —\n");
@@ -1648,6 +1628,19 @@ public class TotemActivity extends Activity {
         layout.addView(details);
 
         setTotemContentView(layout);
+    }
+
+    /** Configura Cielo (recarrega credenciais do painel a cada pagamento). */
+    private void ensureCieloConfigured() {
+        if (cieloManager == null) {
+            cieloManager = new CieloLioManager(this);
+        }
+        supabaseHelper.clearSettingsCache();
+        String cId = supabaseHelper.getCieloClientId();
+        String cToken = supabaseHelper.getCieloAccessToken();
+        String cMerchant = supabaseHelper.getCieloMerchantCode();
+        String cEnv = supabaseHelper.getCieloEnvironment();
+        cieloManager.configure(cId, cToken, cMerchant, cEnv);
     }
 
     /**
