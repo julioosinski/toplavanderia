@@ -737,8 +737,14 @@ public class SupabaseHelper {
             case "drying":
             case "secadora":
                 return "SECAR";
+            case "massage":
+            case "poltrona":
+                return "MASSAGEM";
+            case "coffee":
+            case "cafe":
+                return "CAFE";
             default:
-                return "LAVAR"; // Default para lavadora
+                return "LAVAR";
         }
     }
     
@@ -1431,8 +1437,189 @@ public class SupabaseHelper {
             switch (type) {
                 case "LAVAR": return "🧺 Lavar";
                 case "SECAR": return "🌪️ Secar";
+                case "MASSAGEM": return "💺 Massagem";
+                case "CAFE": return "☕ Café";
                 default: return "❓ Desconhecido";
             }
         }
+    }
+
+    /** Produto do cardápio de café (RPC get_coffee_products). */
+    public static class CoffeeProduct {
+        private String id;
+        private String name;
+        private double price;
+        private int priceCents;
+        private String machineId;
+        private int sortOrder;
+
+        public String getId() { return id; }
+        public void setId(String id) { this.id = id; }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public double getPrice() { return price; }
+        public void setPrice(double price) { this.price = price; }
+        public int getPriceCents() { return priceCents; }
+        public void setPriceCents(int priceCents) { this.priceCents = priceCents; }
+        public String getMachineId() { return machineId; }
+        public void setMachineId(String machineId) { this.machineId = machineId; }
+        public int getSortOrder() { return sortOrder; }
+        public void setSortOrder(int sortOrder) { this.sortOrder = sortOrder; }
+    }
+
+    public List<CoffeeProduct> fetchCoffeeProducts() {
+        List<CoffeeProduct> products = new ArrayList<>();
+        if (!isConfigured() || !isOnline()) {
+            return products;
+        }
+        try {
+            String url = SUPABASE_URL + "/rest/v1/rpc/get_coffee_products";
+            JSONObject body = new JSONObject();
+            body.put("_laundry_id", currentLaundryId);
+
+            HttpURLConnection connection = SupabaseConfig.openConnection(new URL(url));
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
+            connection.setConnectTimeout(15000);
+            connection.setReadTimeout(15000);
+
+            OutputStream os = connection.getOutputStream();
+            os.write(body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+
+            if (connection.getResponseCode() != 200) {
+                Log.e(TAG, "get_coffee_products HTTP " + connection.getResponseCode());
+                connection.disconnect();
+                return products;
+            }
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                response.append(line);
+            }
+            br.close();
+            connection.disconnect();
+
+            JSONArray arr = new JSONArray(response.toString());
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject json = arr.getJSONObject(i);
+                CoffeeProduct p = new CoffeeProduct();
+                p.setId(json.getString("id"));
+                p.setName(json.getString("name"));
+                p.setPrice(json.optDouble("price", 0));
+                p.setPriceCents(json.optInt("price_cents", (int) Math.round(p.getPrice() * 100)));
+                p.setMachineId(json.getString("machine_id"));
+                p.setSortOrder(json.optInt("sort_order", i));
+                products.add(p);
+            }
+            Log.d(TAG, "Produtos de café carregados: " + products.size());
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao buscar cardápio de café", e);
+        }
+        return products;
+    }
+
+    public String createCoffeeTransaction(String productId, String supabasePaymentMethod) {
+        try {
+            if (!isOnline()) {
+                return null;
+            }
+            String url = SUPABASE_URL + "/rest/v1/rpc/create_totem_coffee_transaction";
+            JSONObject payload = new JSONObject();
+            payload.put("_product_id", productId);
+            payload.put("_payment_method", supabasePaymentMethod == null || supabasePaymentMethod.isEmpty() ? "credit" : supabasePaymentMethod);
+            payload.put("_laundry_id", currentLaundryId);
+
+            HttpURLConnection connection = SupabaseConfig.openConnection(new URL(url));
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
+
+            OutputStream os = connection.getOutputStream();
+            os.write(payload.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+
+            if (connection.getResponseCode() != 200) {
+                Log.e(TAG, "create_totem_coffee_transaction HTTP " + connection.getResponseCode());
+                connection.disconnect();
+                return null;
+            }
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                response.append(line);
+            }
+            br.close();
+            connection.disconnect();
+
+            String body = response.toString().trim().replace("\"", "");
+            if (body.isEmpty() || "null".equalsIgnoreCase(body)) {
+                return null;
+            }
+            Log.d(TAG, "Transação café criada: " + body);
+            return body;
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao criar transação de café", e);
+            return null;
+        }
+    }
+
+    public boolean enqueueCoffeeCredit(String transactionId) {
+        if (transactionId == null || transactionId.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            String url = SUPABASE_URL + "/rest/v1/rpc/enqueue_coffee_credit_command";
+            JSONObject payload = new JSONObject();
+            payload.put("_transaction_id", transactionId.trim());
+            payload.put("_laundry_id", currentLaundryId);
+
+            HttpURLConnection connection = SupabaseConfig.openConnection(new URL(url));
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
+
+            OutputStream os = connection.getOutputStream();
+            os.write(payload.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+
+            int code = connection.getResponseCode();
+            if (code != 200) {
+                Log.e(TAG, "enqueue_coffee_credit_command HTTP " + code);
+                connection.disconnect();
+                return false;
+            }
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            String body = br.readLine();
+            br.close();
+            connection.disconnect();
+            boolean ok = body != null && "true".equalsIgnoreCase(body.trim());
+            Log.d(TAG, "Crédito café enfileirado (" + transactionId + "): " + ok);
+            return ok;
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao enfileirar crédito café", e);
+            return false;
+        }
+    }
+
+    public Machine findMachineById(String machineId) {
+        if (machineId == null || realMachines == null) {
+            return null;
+        }
+        for (Machine m : realMachines) {
+            if (machineId.equals(m.getId())) {
+                return m;
+            }
+        }
+        return null;
     }
 }

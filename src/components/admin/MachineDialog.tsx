@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 interface Machine {
   id?: string;
   name: string;
-  type: 'lavadora' | 'secadora';
+  type: 'lavadora' | 'secadora' | 'massage' | 'coffee';
   location?: string;
   capacity_kg: number;
   price_per_cycle: number;
@@ -160,8 +160,14 @@ export const MachineDialog = ({
     if (!justOpened) return;
 
     if (machine) {
+      const formType: Machine['type'] =
+        machine.type === 'drying' || machine.type === 'secadora' ? 'secadora'
+        : machine.type === 'massage' ? 'massage'
+        : machine.type === 'coffee' ? 'coffee'
+        : 'lavadora';
       setFormData({
         ...machine,
+        type: formType,
         cycle_time_minutes: machine.cycle_time_minutes || 40
       });
       setUseManualEsp32(false);
@@ -245,10 +251,23 @@ export const MachineDialog = ({
         return;
       }
 
-      const dbType = formData.type === 'lavadora' ? 'washing' : 'drying';
+      const dbTypeMap: Record<Machine['type'], string> = {
+        lavadora: 'washing',
+        secadora: 'drying',
+        massage: 'massage',
+        coffee: 'coffee',
+      };
+      const deviceProfileMap: Record<Machine['type'], string> = {
+        lavadora: 'credit_pulse',
+        secadora: 'credit_pulse',
+        massage: 'timed_session',
+        coffee: 'coin_dispense',
+      };
+      const dbType = dbTypeMap[formData.type];
       const dataToSave = {
         name: formData.name,
         type: dbType,
+        device_profile: deviceProfileMap[formData.type],
         location: formData.location,
         capacity_kg: formData.capacity_kg,
         price_per_cycle: formData.price_per_cycle,
@@ -340,7 +359,7 @@ export const MachineDialog = ({
               <Label htmlFor="type">Tipo</Label>
               <Select 
                 value={formData.type} 
-                onValueChange={(value: 'lavadora' | 'secadora') => setFormData({ ...formData, type: value })}
+                onValueChange={(value: Machine['type']) => setFormData({ ...formData, type: value })}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -348,6 +367,8 @@ export const MachineDialog = ({
                 <SelectContent>
                   <SelectItem value="lavadora">Lavadora</SelectItem>
                   <SelectItem value="secadora">Secadora</SelectItem>
+                  <SelectItem value="massage">Poltrona de massagem</SelectItem>
+                  <SelectItem value="coffee">Máquina de café</SelectItem>
                 </SelectContent>
               </Select>
             </div>

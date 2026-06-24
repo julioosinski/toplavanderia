@@ -52,7 +52,7 @@ serve(async (req) => {
 
       const { data: commands, error } = await supabaseClient
         .from('pending_commands')
-        .select('id, relay_pin, action, machine_id, transaction_id')
+        .select('id, relay_pin, action, machine_id, transaction_id, payload')
         .eq('esp32_id', esp32_id)
         .eq('status', 'pending')
         .order('created_at', { ascending: true })
@@ -68,13 +68,28 @@ serve(async (req) => {
       // Enrich ON commands with cycle_time_minutes from machines table
       const enrichedCommands = [];
       for (const cmd of (commands || [])) {
-        if (cmd.action === 'on' || cmd.action === 'activate' || cmd.action === 'turn_on') {
+        if (cmd.action === 'credito') {
+          const payload = (cmd.payload as Record<string, unknown> | null) ?? {};
+          enrichedCommands.push({
+            ...cmd,
+            valor_centavos: payload.valor_centavos ?? null,
+            product_id: payload.product_id ?? null,
+            product_name: payload.product_name ?? null,
+          });
+        } else if (cmd.action === 'on' || cmd.action === 'activate' || cmd.action === 'turn_on') {
+          const payload = (cmd.payload as Record<string, unknown> | null) ?? {};
           const { data: machine } = await supabaseClient
             .from('machines')
             .select('cycle_time_minutes')
             .eq('id', cmd.machine_id)
             .single();
-          enrichedCommands.push({ ...cmd, cycle_time_minutes: machine?.cycle_time_minutes ?? null });
+          const cycleFromPayload = payload.cycle_time_minutes;
+          enrichedCommands.push({
+            ...cmd,
+            cycle_time_minutes: typeof cycleFromPayload === 'number'
+              ? cycleFromPayload
+              : (machine?.cycle_time_minutes ?? null),
+          });
         } else {
           enrichedCommands.push(cmd);
         }
@@ -131,30 +146,31 @@ serve(async (req) => {
         });
       }
 
-      // Update machine status
-      const newStatus = command.action === 'on' ? 'running' : 'available';
-      await supabaseClient
-        .from('machines')
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq('id', command.machine_id);
+      // Café (credito): não altera status da máquina nem relay_status
+      if (command.action !== 'credito') {
+        const newStatus = command.action === 'on' ? 'running' : 'available';
+        await supabaseClient
+          .from('machines')
+          .update({ status: newStatus, updated_at: new Date().toISOString() })
+          .eq('id', command.machine_id);
 
-      // Update relay_status in esp32_status
-      const relayKey = `relay_${command.relay_pin}`;
-      const { data: currentStatus } = await supabaseClient
-        .from('esp32_status')
-        .select('relay_status')
-        .eq('esp32_id', esp32_id)
-        .single();
+        const relayKey = `relay_${command.relay_pin ?? 1}`;
+        const { data: currentStatus } = await supabaseClient
+          .from('esp32_status')
+          .select('relay_status')
+          .eq('esp32_id', esp32_id)
+          .single();
 
-      const updatedRelayStatus = {
-        ...(currentStatus?.relay_status as Record<string, string> || {}),
-        [relayKey]: command.action === 'on' ? 'on' : 'off'
-      };
+        const updatedRelayStatus = {
+          ...(currentStatus?.relay_status as Record<string, string> || {}),
+          [relayKey]: command.action === 'on' ? 'on' : 'off'
+        };
 
-      await supabaseClient
-        .from('esp32_status')
-        .update({ relay_status: updatedRelayStatus, updated_at: new Date().toISOString() })
-        .eq('esp32_id', esp32_id);
+        await supabaseClient
+          .from('esp32_status')
+          .update({ relay_status: updatedRelayStatus, updated_at: new Date().toISOString() })
+          .eq('esp32_id', esp32_id);
+      }
 
       console.log(`✅ Command ${command_id} confirmed by ${esp32_id}: relay_${command.relay_pin} → ${command.action}`);
 

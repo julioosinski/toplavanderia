@@ -18,6 +18,7 @@ import {
   Sun,
   Activity,
   Bluetooth,
+  Coffee,
   Home,
   Key,
 } from "lucide-react";
@@ -54,6 +55,7 @@ type RoleBadgeVariant = "default" | "secondary" | "outline";
 const menuItems = [
   { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
   { title: "Máquinas", url: "/admin/machines", icon: WashingMachine },
+  { title: "Cardápio Café", url: "/admin/coffee-menu", icon: Coffee },
   { title: "Transações", url: "/admin/transactions", icon: Receipt },
   { title: "Usuários", url: "/admin/users", icon: Users, adminOnly: true },
   { title: "Lavanderias", url: "/admin/laundries", icon: Store, superAdminOnly: true },

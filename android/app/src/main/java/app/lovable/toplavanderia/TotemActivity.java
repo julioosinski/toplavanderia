@@ -95,6 +95,12 @@ public class TotemActivity extends Activity {
     private long optimisticOccupiedAtMs;
     private static final long OPTIMISTIC_OCCUPIED_MAX_MS = 8 * 60 * 1000L;
 
+    private enum TotemScreen { HOME, LAVAR, SECAR, MASSAGEM, CAFE }
+
+    private TotemScreen currentScreen = TotemScreen.HOME;
+    private List<SupabaseHelper.CoffeeProduct> coffeeProducts = new ArrayList<>();
+    private SupabaseHelper.CoffeeProduct selectedCoffeeProduct;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -125,7 +131,8 @@ public class TotemActivity extends Activity {
                             return;
                         }
                         applyOptimisticMachineStatuses();
-                        displayMachines();
+                        refreshCoffeeProductsAsync();
+                        displayCurrentScreen();
                     });
                 }
             });
@@ -272,7 +279,343 @@ public class TotemActivity extends Activity {
             createTotemInterface();
         }
         applyOptimisticMachineStatuses();
-        displayMachines();
+        displayCurrentScreen();
+    }
+
+    private void refreshCoffeeProductsAsync() {
+        if (supabaseHelper == null || !supabaseHelper.isConfigured()) {
+            return;
+        }
+        new Thread(() -> {
+            List<SupabaseHelper.CoffeeProduct> loaded = supabaseHelper.fetchCoffeeProducts();
+            runOnUiThread(() -> {
+                coffeeProducts = loaded != null ? loaded : new ArrayList<>();
+                if (currentScreen == TotemScreen.HOME || currentScreen == TotemScreen.CAFE) {
+                    displayCurrentScreen();
+                }
+            });
+        }).start();
+    }
+
+    private void displayCurrentScreen() {
+        switch (currentScreen) {
+            case HOME:
+                displayHomeScreen();
+                break;
+            case CAFE:
+                displayCoffeeMenu();
+                break;
+            default:
+                displayCategoryMachines(currentScreen);
+                break;
+        }
+    }
+
+    private int countMachinesByType(String type) {
+        if (machines == null) return 0;
+        int count = 0;
+        for (SupabaseHelper.Machine m : machines) {
+            if (type.equals(m.getType())) count++;
+        }
+        return count;
+    }
+
+    private boolean isCoffeeAvailable() {
+        if (coffeeProducts == null || coffeeProducts.isEmpty()) return false;
+        SupabaseHelper.CoffeeProduct first = coffeeProducts.get(0);
+        SupabaseHelper.Machine coffeeMachine = supabaseHelper != null
+            ? supabaseHelper.findMachineById(first.getMachineId()) : null;
+        if (coffeeMachine == null) return true;
+        return coffeeMachine.isEsp32Online();
+    }
+
+    private void displayHomeScreen() {
+        if (machinesContainer == null) {
+            createTotemInterface();
+        }
+        machinesContainer.removeAllViews();
+
+        TextView hint = new TextView(this);
+        hint.setText("Escolha o serviço");
+        hint.setTextSize(22);
+        hint.setTextColor(Color.parseColor("#58A6FF"));
+        hint.setGravity(android.view.Gravity.CENTER);
+        hint.setPadding(0, dp(24), 0, dp(16));
+        hint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        machinesContainer.addView(hint);
+
+        GridLayout grid = new GridLayout(this);
+        grid.setColumnCount(2);
+        grid.setUseDefaultMargins(false);
+        grid.setPadding(dp(8), 0, dp(8), dp(24));
+
+        if (countMachinesByType("LAVAR") > 0) {
+            grid.addView(buildHomeCategoryButton("🧺 LAVAR", Color.parseColor("#238636"), () -> openCategory(TotemScreen.LAVAR)));
+        }
+        if (countMachinesByType("SECAR") > 0) {
+            grid.addView(buildHomeCategoryButton("🌪️ SECAR", Color.parseColor("#1F6FEB"), () -> openCategory(TotemScreen.SECAR)));
+        }
+        if (countMachinesByType("MASSAGEM") > 0) {
+            grid.addView(buildHomeCategoryButton("💺 MASSAGEM", Color.parseColor("#8957E5"), () -> openCategory(TotemScreen.MASSAGEM)));
+        }
+        if (coffeeProducts != null && !coffeeProducts.isEmpty()) {
+            grid.addView(buildHomeCategoryButton("☕ CAFÉ", Color.parseColor("#9E6A03"), () -> openCategory(TotemScreen.CAFE)));
+        }
+
+        if (grid.getChildCount() == 0) {
+            TextView loading = new TextView(this);
+            loading.setText("⏳ Carregando serviços…");
+            loading.setTextSize(18);
+            loading.setTextColor(Color.parseColor("#8B949E"));
+            loading.setGravity(android.view.Gravity.CENTER);
+            loading.setPadding(dp(16), dp(48), dp(16), dp(16));
+            machinesContainer.addView(loading);
+        } else {
+            machinesContainer.addView(grid);
+        }
+    }
+
+    private Button buildHomeCategoryButton(String label, int bgColor, Runnable onClick) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setTextSize(18);
+        button.setBackgroundColor(bgColor);
+        button.setTextColor(Color.WHITE);
+        button.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        button.setMinHeight(dp(120));
+        GridLayout.LayoutParams params = new GridLayout.LayoutParams();
+        params.width = 0;
+        params.height = GridLayout.LayoutParams.WRAP_CONTENT;
+        params.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f);
+        params.setMargins(dp(8), dp(8), dp(8), dp(8));
+        button.setLayoutParams(params);
+        button.setOnClickListener(v -> onClick.run());
+        return button;
+    }
+
+    private void openCategory(TotemScreen screen) {
+        currentScreen = screen;
+        selectedCoffeeProduct = null;
+        displayCurrentScreen();
+    }
+
+    private void goBackToHome() {
+        currentScreen = TotemScreen.HOME;
+        selectedMachine = null;
+        selectedCoffeeProduct = null;
+        displayCurrentScreen();
+    }
+
+    private void addBackToHomeButton() {
+        Button back = new Button(this);
+        back.setText("← Voltar");
+        back.setTextSize(14);
+        back.setBackgroundColor(Color.parseColor("#21262D"));
+        back.setTextColor(Color.WHITE);
+        back.setPadding(dp(12), dp(8), dp(12), dp(8));
+        back.setOnClickListener(v -> goBackToHome());
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.setMargins(0, 0, 0, dp(12));
+        back.setLayoutParams(params);
+        machinesContainer.addView(back);
+    }
+
+    private void displayCategoryMachines(TotemScreen screen) {
+        applyOptimisticMachineStatuses();
+        if (machinesContainer == null) {
+            createTotemInterface();
+        }
+        machinesContainer.removeAllViews();
+        addBackToHomeButton();
+
+        String filterType;
+        String title;
+        switch (screen) {
+            case LAVAR:
+                filterType = "LAVAR";
+                title = "🧺 LAVADORAS";
+                break;
+            case SECAR:
+                filterType = "SECAR";
+                title = "🌪️ SECADORAS";
+                break;
+            case MASSAGEM:
+                filterType = "MASSAGEM";
+                title = "💺 POLTRONAS DE MASSAGEM";
+                break;
+            default:
+                filterType = "LAVAR";
+                title = "🧺 LAVADORAS";
+        }
+
+        List<SupabaseHelper.Machine> filtered = new ArrayList<>();
+        if (machines != null) {
+            for (SupabaseHelper.Machine machine : machines) {
+                if (filterType.equals(machine.getType())) {
+                    filtered.add(machine);
+                }
+            }
+        }
+
+        if (!filtered.isEmpty()) {
+            createMachineRow(title, filtered);
+        } else {
+            TextView empty = new TextView(this);
+            empty.setText("Nenhum equipamento cadastrado nesta categoria.");
+            empty.setTextSize(16);
+            empty.setTextColor(Color.parseColor("#8B949E"));
+            empty.setGravity(android.view.Gravity.CENTER);
+            empty.setPadding(dp(16), dp(32), dp(16), dp(16));
+            machinesContainer.addView(empty);
+        }
+    }
+
+    private void displayCoffeeMenu() {
+        if (machinesContainer == null) {
+            createTotemInterface();
+        }
+        machinesContainer.removeAllViews();
+        addBackToHomeButton();
+
+        TextView title = new TextView(this);
+        title.setText("☕ CARDÁPIO DE CAFÉ");
+        title.setTextSize(20);
+        title.setTextColor(Color.parseColor("#58A6FF"));
+        title.setGravity(android.view.Gravity.CENTER);
+        title.setPadding(0, dp(8), 0, dp(16));
+        title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        machinesContainer.addView(title);
+
+        if (coffeeProducts == null || coffeeProducts.isEmpty()) {
+            TextView loading = new TextView(this);
+            loading.setText("⏳ Carregando cardápio…");
+            loading.setTextSize(16);
+            loading.setTextColor(Color.parseColor("#8B949E"));
+            loading.setGravity(android.view.Gravity.CENTER);
+            machinesContainer.addView(loading);
+            refreshCoffeeProductsAsync();
+            return;
+        }
+
+        boolean online = isCoffeeAvailable();
+        GridLayout grid = new GridLayout(this);
+        grid.setColumnCount(getResources().getConfiguration().screenWidthDp >= 720 ? 2 : 1);
+        grid.setUseDefaultMargins(false);
+
+        DecimalFormat priceFmt = new DecimalFormat("0.00");
+        for (SupabaseHelper.CoffeeProduct product : coffeeProducts) {
+            Button btn = new Button(this);
+            btn.setText(product.getName() + "\nR$ " + priceFmt.format(product.getPrice()));
+            btn.setTextSize(15);
+            btn.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            btn.setPadding(dp(12), dp(16), dp(12), dp(16));
+            GridLayout.LayoutParams params = new GridLayout.LayoutParams();
+            params.width = 0;
+            params.height = GridLayout.LayoutParams.WRAP_CONTENT;
+            params.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f);
+            params.setMargins(dp(6), dp(6), dp(6), dp(6));
+            btn.setLayoutParams(params);
+
+            if (online) {
+                btn.setBackgroundColor(Color.parseColor("#9E6A03"));
+                btn.setTextColor(Color.WHITE);
+                btn.setEnabled(true);
+                btn.setOnClickListener(v -> selectCoffeeProduct(product));
+            } else {
+                btn.setBackgroundColor(Color.parseColor("#21262D"));
+                btn.setTextColor(Color.parseColor("#7D8590"));
+                btn.setEnabled(false);
+            }
+            grid.addView(btn);
+        }
+        machinesContainer.addView(grid);
+
+        if (!online) {
+            TextView offline = new TextView(this);
+            offline.setText("🔴 Máquina de café offline — aguarde ou tente novamente.");
+            offline.setTextColor(Color.parseColor("#F85149"));
+            offline.setGravity(android.view.Gravity.CENTER);
+            offline.setPadding(dp(12), dp(16), dp(12), dp(8));
+            machinesContainer.addView(offline);
+        }
+    }
+
+    private void selectCoffeeProduct(SupabaseHelper.CoffeeProduct product) {
+        selectedCoffeeProduct = product;
+        SupabaseHelper.Machine coffeeMachine = supabaseHelper.findMachineById(product.getMachineId());
+        if (coffeeMachine == null) {
+            coffeeMachine = new SupabaseHelper.Machine();
+            coffeeMachine.setId(product.getMachineId());
+            coffeeMachine.setName("Máquina de Café");
+            coffeeMachine.setType("CAFE");
+            coffeeMachine.setPrice(product.getPrice());
+            coffeeMachine.setDuration(0);
+            coffeeMachine.setEsp32Online(true);
+        } else {
+            coffeeMachine.setPrice(product.getPrice());
+        }
+        selectedMachine = coffeeMachine;
+        showCoffeePaymentConfirmation(product, coffeeMachine);
+    }
+
+    private void showCoffeePaymentConfirmation(SupabaseHelper.CoffeeProduct product, SupabaseHelper.Machine machine) {
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setFillViewport(true);
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(dp(20), dp(20), dp(20), dp(20));
+        layout.setBackgroundColor(Color.parseColor("#9E6A03"));
+
+        TextView title = new TextView(this);
+        title.setText("Confirmar pedido de café");
+        title.setTextSize(24);
+        title.setTextColor(Color.WHITE);
+        title.setGravity(android.view.Gravity.CENTER);
+        layout.addView(title);
+
+        TextView details = new TextView(this);
+        details.setText(product.getName() + "\n\nValor: R$ " + new DecimalFormat("0.00").format(product.getPrice()) + "\n\n"
+            + getPaymentInstructionTitle() + "\n" + getPaymentInstructionSubtitle());
+        details.setTextSize(16);
+        details.setTextColor(Color.WHITE);
+        details.setGravity(android.view.Gravity.CENTER);
+        details.setPadding(20, 20, 20, 30);
+        layout.addView(details);
+
+        Button creditBtn = buildPaymentTypeButton("💳 CRÉDITO À VISTA", Color.parseColor("#6E4C00"),
+            () -> startCoffeePaymentFlow(product, machine, "credit"));
+        layout.addView(creditBtn);
+        Button debitBtn = buildPaymentTypeButton("💳 DÉBITO À VISTA", Color.parseColor("#5D3F00"),
+            () -> startCoffeePaymentFlow(product, machine, "debit"));
+        layout.addView(debitBtn);
+        if ("cielo".equalsIgnoreCase(activeProvider)) {
+            Button pixBtn = buildPaymentTypeButton("📱 PIX", Color.parseColor("#00897B"),
+                () -> startCoffeePaymentFlow(product, machine, "pix"));
+            layout.addView(pixBtn);
+        }
+
+        Button cancelButton = new Button(this);
+        cancelButton.setText("❌ CANCELAR");
+        cancelButton.setBackgroundColor(Color.parseColor("#F44336"));
+        cancelButton.setTextColor(Color.WHITE);
+        cancelButton.setOnClickListener(v -> {
+            selectedCoffeeProduct = null;
+            selectedMachine = null;
+            currentPendingTransactionId = null;
+            openCategory(TotemScreen.CAFE);
+        });
+        layout.addView(cancelButton);
+        scrollView.addView(layout);
+        setTotemContentView(scrollView);
+    }
+
+    private void startCoffeePaymentFlow(SupabaseHelper.CoffeeProduct product, SupabaseHelper.Machine machine, String paymentType) {
+        selectedCoffeeProduct = product;
+        selectedMachine = machine;
+        startPaymentFlow(machine, paymentType);
     }
 
     private void handleAdminSecretTap() {
@@ -377,7 +720,9 @@ public class TotemActivity extends Activity {
                     }
                     if (status.machineType != null && !status.machineType.isEmpty()) {
                         String mappedType = "washing".equals(status.machineType) || "lavadora".equals(status.machineType) ? "LAVAR"
-                                : "drying".equals(status.machineType) || "secadora".equals(status.machineType) ? "SECAR" : "LAVAR";
+                                : "drying".equals(status.machineType) || "secadora".equals(status.machineType) ? "SECAR"
+                                : "massage".equals(status.machineType) ? "MASSAGEM"
+                                : "coffee".equals(status.machineType) ? "CAFE" : "LAVAR";
                         machine.setType(mappedType);
                     }
                     if (status.pricePerCycle > 0) {
@@ -418,7 +763,7 @@ public class TotemActivity extends Activity {
             Log.w(TAG, "Monitor sem match com lista local — aguardando fetch de máquinas");
         }
         
-        displayMachines();
+        displayCurrentScreen();
     }
     
     private void createTotemInterface() {
@@ -517,7 +862,8 @@ public class TotemActivity extends Activity {
         
         machines = supabaseHelper.getAllMachines();
         applyOptimisticMachineStatuses();
-        displayMachines();
+        refreshCoffeeProductsAsync();
+        displayCurrentScreen();
         
         Log.d(TAG, "Interface inicial carregada, aguardando dados reais do Supabase...");
     }
@@ -562,61 +908,7 @@ public class TotemActivity extends Activity {
     }
     
     private void displayMachines() {
-        applyOptimisticMachineStatuses();
-        if (machinesContainer == null) {
-            Log.w(TAG, "machinesContainer nulo, recriando interface");
-            createTotemInterface();
-        }
-        if (machines == null) {
-            Log.w(TAG, "Lista de máquinas nula; exibindo lista vazia");
-            machines = new ArrayList<>();
-        }
-        machinesContainer.removeAllViews();
-        
-        Log.d(TAG, "=== EXIBINDO MÁQUINAS ===");
-        Log.d(TAG, "Total de máquinas: " + machines.size());
-        
-        // Separar máquinas por tipo
-        List<SupabaseHelper.Machine> lavadoras = new ArrayList<>();
-        List<SupabaseHelper.Machine> secadoras = new ArrayList<>();
-        
-        for (SupabaseHelper.Machine machine : machines) {
-            if ("LAVAR".equals(machine.getType())) {
-                lavadoras.add(machine);
-            } else if ("SECAR".equals(machine.getType())) {
-                secadoras.add(machine);
-            }
-        }
-        
-        // Linha de lavadoras (parte superior)
-        if (!lavadoras.isEmpty()) {
-            createMachineRow("🧺 LAVADORAS", lavadoras);
-        }
-        
-        // Linha de secadoras (parte inferior)
-        if (!secadoras.isEmpty()) {
-            createMachineRow("🌪️ SECADORAS", secadoras);
-        }
-
-        if (lavadoras.isEmpty() && secadoras.isEmpty()
-            && supabaseHelper != null && supabaseHelper.isConfigured()) {
-            TextView loading = new TextView(this);
-            if (supabaseHelper.isOnline()) {
-                loading.setText("⏳ Carregando máquinas…");
-            } else {
-                loading.setText("⚠️ Sem conexão com o servidor.\n\n"
-                        + "Verifique Wi-Fi e, nas configurações do terminal, "
-                        + "ative \"Data e hora automáticas\".\n\n"
-                        + "Toque em Atualizar abaixo para tentar novamente.");
-            }
-            loading.setTextSize(18);
-            loading.setTextColor(Color.parseColor("#8B949E"));
-            loading.setGravity(android.view.Gravity.CENTER);
-            loading.setPadding(dp(16), dp(48), dp(16), dp(16));
-            machinesContainer.addView(loading);
-        }
-        
-        Log.d(TAG, "Interface atualizada - Lavadoras: " + lavadoras.size() + ", Secadoras: " + secadoras.size());
+        displayCurrentScreen();
     }
     
     private void createMachineRow(String title, List<SupabaseHelper.Machine> machines) {
@@ -864,7 +1156,13 @@ public class TotemActivity extends Activity {
 
                 Log.d(TAG, "=== INICIANDO PAGAMENTO === " + machine.getName() + " tipo=" + paymentTypeForManager);
 
-                if (!validateMachineAvailabilityFast(machine)) {
+                if (selectedCoffeeProduct != null) {
+                    if (!isCoffeeAvailable()) {
+                        paymentLaunchInProgress.set(false);
+                        runOnUiThread(() -> handlePaymentError("Máquina de café indisponível no momento."));
+                        return;
+                    }
+                } else if (!validateMachineAvailabilityFast(machine)) {
                     Log.w(TAG, "PAGAMENTO BLOQUEADO - Máquina não disponível");
                     paymentLaunchInProgress.set(false);
                     runOnUiThread(() -> {
@@ -879,14 +1177,23 @@ public class TotemActivity extends Activity {
 
                 currentOperationId = System.nanoTime();
                 final String cieloReference = UUID.randomUUID().toString();
-                String pendingTxId = supabaseHelper.createTransaction(
-                    machine.getId(),
-                    machine.getTypeDisplay(),
-                    machine.getPrice(),
-                    "PENDING",
-                    "TXN" + currentOperationId,
-                    supabaseMethod
-                );
+                final SupabaseHelper.CoffeeProduct coffeeProductSnapshot = selectedCoffeeProduct;
+                String pendingTxId;
+                if (coffeeProductSnapshot != null) {
+                    pendingTxId = supabaseHelper.createCoffeeTransaction(
+                        coffeeProductSnapshot.getId(),
+                        supabaseMethod
+                    );
+                } else {
+                    pendingTxId = supabaseHelper.createTransaction(
+                        machine.getId(),
+                        machine.getTypeDisplay(),
+                        machine.getPrice(),
+                        "PENDING",
+                        "TXN" + currentOperationId,
+                        supabaseMethod
+                    );
+                }
                 currentPendingTransactionId = pendingTxId;
                 if (pendingTxId == null) {
                     Log.w(TAG, "Falha ao criar operação no Supabase; prosseguindo com fluxo local");
@@ -915,10 +1222,13 @@ public class TotemActivity extends Activity {
                 awaitingPaymentCallback = true;
                 final String managerPaymentType = paymentTypeForManager == null || paymentTypeForManager.isEmpty()
                     ? "credit" : paymentTypeForManager;
+                final String paymentLabel = coffeeProductSnapshot != null
+                    ? coffeeProductSnapshot.getName()
+                    : machine.getName();
                 activePaymentManager.processPayment(
                     machine.getPrice(),
                     managerPaymentType,
-                    "Top Lavanderia - " + machine.getName(),
+                    "Top Lavanderia - " + paymentLabel,
                     cieloReference
                 );
                 if (!"cielo".equalsIgnoreCase(activeProvider)) {
@@ -1181,8 +1491,10 @@ public class TotemActivity extends Activity {
         final String methodForComplete = currentOperationSupabasePaymentMethod != null
             ? currentOperationSupabasePaymentMethod
             : "credit";
+        final SupabaseHelper.CoffeeProduct coffeeSnapshot = selectedCoffeeProduct;
+        final boolean isCoffeePayment = coffeeSnapshot != null;
 
-        if (supabaseHelper != null) {
+        if (!isCoffeePayment && supabaseHelper != null) {
             supabaseHelper.patchCachedMachineStatus(machineId, "OCUPADA", true);
         }
 
@@ -1191,10 +1503,15 @@ public class TotemActivity extends Activity {
             if (!isCurrentPaymentOperation(operationId) && operationId != lastSucceededOperationId) {
                 return;
             }
-            markMachineOptimisticallyOccupied(machineId);
+            if (!isCoffeePayment) {
+                markMachineOptimisticallyOccupied(machineId);
+            }
             triggerAutomaticReceiptPrint(machineSnapshot, authorizationCode, transactionId);
             if ("cielo".equalsIgnoreCase(activeProvider)) {
                 selectedMachine = null;
+                if (isCoffeePayment) {
+                    currentScreen = TotemScreen.CAFE;
+                }
                 restoreMachineGrid();
             } else {
                 showBriefPaymentSuccessAndReset(machineSnapshot, operationId);
@@ -1206,11 +1523,6 @@ public class TotemActivity extends Activity {
             Log.d(TAG, "Código: " + authorizationCode);
             Log.d(TAG, "Transação: " + transactionId);
 
-            Log.d(TAG, "=== ACIONANDO ESP32 ===");
-            Log.d(TAG, "Endpoint: /functions/v1/esp32-control");
-            Log.d(TAG, "Payload: {esp32_id: " + esp32Id + ", relay_pin: " + relayPin + "}");
-            Log.d(TAG, "Acionando ESP32 para máquina: " + machineSnapshot.getName() + " (" + durationMinutes + " min)");
-
             boolean txCompleted = false;
             if (pendingTxId != null && !pendingTxId.isEmpty()) {
                 txCompleted = supabaseHelper.completeTotemTransactionById(
@@ -1218,7 +1530,7 @@ public class TotemActivity extends Activity {
                     methodForComplete
                 );
             }
-            if (!txCompleted) {
+            if (!txCompleted && !isCoffeePayment) {
                 txCompleted = supabaseHelper.completeLatestTotemTransaction(
                     machineId,
                     methodForComplete
@@ -1228,26 +1540,41 @@ public class TotemActivity extends Activity {
                 Log.w(TAG, "Não foi possível marcar a transação do totem como concluída");
             }
 
-            String esp32TxId = pendingTxId != null && !pendingTxId.isEmpty() ? pendingTxId : transactionId;
-            boolean esp32Activated = supabaseHelper.activateEsp32Relay(
-                esp32Id,
-                relayPin,
-                machineId,
-                esp32TxId,
-                durationMinutes
-            );
-
-            if (esp32Activated) {
-                Log.d(TAG, "✅ ESP32 acionado com sucesso - máquina liberada por " + durationMinutes + " min");
-                supabaseHelper.patchCachedMachineStatus(machineId, "OCUPADA", true);
-                // activateEsp32Relay já agenda desligamento; startMachineUsage reforça status no Supabase.
-                supabaseHelper.startMachineUsage(machineId, durationMinutes);
+            boolean hardwareOk;
+            if (isCoffeePayment) {
+                Log.d(TAG, "=== ENFILEIRANDO CRÉDITO CAFÉ ===");
+                hardwareOk = pendingTxId != null && supabaseHelper.enqueueCoffeeCredit(pendingTxId);
+                if (hardwareOk) {
+                    Log.d(TAG, "✅ Crédito café enfileirado para ESP32");
+                } else {
+                    Log.e(TAG, "❌ Falha ao enfileirar crédito café (pagamento já aprovado na Cielo)");
+                }
             } else {
-                Log.e(TAG, "❌ Falha ao acionar ESP32 (pagamento já aprovado na Cielo)");
+                Log.d(TAG, "=== ACIONANDO ESP32 ===");
+                Log.d(TAG, "Endpoint: /functions/v1/esp32-control");
+                Log.d(TAG, "Payload: {esp32_id: " + esp32Id + ", relay_pin: " + relayPin + "}");
+                Log.d(TAG, "Acionando ESP32 para máquina: " + machineSnapshot.getName() + " (" + durationMinutes + " min)");
+
+                String esp32TxId = pendingTxId != null && !pendingTxId.isEmpty() ? pendingTxId : transactionId;
+                hardwareOk = supabaseHelper.activateEsp32Relay(
+                    esp32Id,
+                    relayPin,
+                    machineId,
+                    esp32TxId,
+                    durationMinutes
+                );
+
+                if (hardwareOk) {
+                    Log.d(TAG, "✅ ESP32 acionado com sucesso - máquina liberada por " + durationMinutes + " min");
+                    supabaseHelper.patchCachedMachineStatus(machineId, "OCUPADA", true);
+                    supabaseHelper.startMachineUsage(machineId, durationMinutes);
+                } else {
+                    Log.e(TAG, "❌ Falha ao acionar ESP32 (pagamento já aprovado na Cielo)");
+                }
             }
 
             if ("cielo".equalsIgnoreCase(activeProvider)) {
-                final boolean activated = esp32Activated;
+                final boolean activated = hardwareOk;
                 runOnUiThread(() -> finishCieloPaymentSession(operationId, activated));
             }
         } catch (Exception e) {
@@ -1320,6 +1647,7 @@ public class TotemActivity extends Activity {
         currentOperationId = -1;
         currentPendingTransactionId = null;
         selectedMachine = null;
+        selectedCoffeeProduct = null;
         paymentLaunchInProgress.set(false);
         awaitingPaymentCallback = false;
         restoreMachineGrid();
@@ -1333,6 +1661,8 @@ public class TotemActivity extends Activity {
     private void resetToNewTransaction() {
         cancelPendingSuccessScreen();
         selectedMachine = null;
+        selectedCoffeeProduct = null;
+        currentScreen = TotemScreen.HOME;
         currentOperationId = -1;
         lastSucceededOperationId = -1;
         awaitingPaymentCallback = false;

@@ -20,6 +20,7 @@ import {
   type Esp32StatusRow,
   type MachineRow,
 } from "@/lib/machineEsp32Sync";
+import { adminRemoteRelease } from "@/lib/deviceRemoteRelease";
 import { ESP32ConfigurationDialog } from "@/components/admin/ESP32ConfigurationDialog";
 import { ESP32PendingApproval } from "@/components/admin/ESP32PendingApproval";
 import { SectionErrorBoundary } from "@/components/system/SectionErrorBoundary";
@@ -216,8 +217,15 @@ export default function Machines() {
       header: "Tipo",
       cell: ({ row }) => {
         const type = row.getValue("type") as string;
-        const label = type === "lavadora" || type === "washing" ? "Lavadora" : "Secadora";
-        return <span className="capitalize">{label}</span>;
+        const labels: Record<string, string> = {
+          lavadora: "Lavadora",
+          washing: "Lavadora",
+          secadora: "Secadora",
+          drying: "Secadora",
+          massage: "Poltrona",
+          coffee: "Café",
+        };
+        return <span>{labels[type] ?? type}</span>;
       },
     },
     {
@@ -341,6 +349,40 @@ export default function Machines() {
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
+                  const isCoffee = machine.type === 'coffee';
+                  const isMassage = machine.type === 'massage';
+                  if (isCoffee || isMassage) {
+                    if (
+                      !confirm(
+                        isCoffee
+                          ? 'Liberar crédito de café remotamente (valor do ciclo/preço cadastrado)?'
+                          : 'Liberar sessão de massagem remotamente (relé ON pelo tempo do ciclo)?'
+                      )
+                    ) {
+                      return;
+                    }
+                    const valorCentavos = isCoffee
+                      ? Math.round(asNumber(machine.price_per_cycle) * 100)
+                      : null;
+                    const { error } = await adminRemoteRelease({
+                      machineId: machine.id,
+                      valorCentavos: valorCentavos && valorCentavos > 0 ? valorCentavos : null,
+                    });
+                    if (error) {
+                      toast({
+                        title: 'Erro',
+                        description: error.message,
+                        variant: 'destructive',
+                      });
+                    } else {
+                      toast({
+                        title: 'Liberação remota enfileirada',
+                        description: 'Comando enviado ao ESP32.',
+                      });
+                      loadMachines();
+                    }
+                    return;
+                  }
                   if (
                     !confirm(
                       "Liberar no totem (disponível), atualizar relé no painel e enviar comando OFF ao ESP32?"
@@ -365,7 +407,9 @@ export default function Machines() {
                 }}
               >
                 <Unlock className="mr-2 h-4 w-4" />
-                Liberar máquina
+                {machine.type === 'coffee' || machine.type === 'massage'
+                  ? 'Liberar remoto'
+                  : 'Liberar máquina'}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {

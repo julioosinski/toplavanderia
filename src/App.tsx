@@ -15,6 +15,7 @@ import NoAccess from "./pages/NoAccess";
 const AdminLayout = lazy(() => import("./layouts/AdminLayout"));
 const Dashboard = lazy(() => import("./pages/admin/Dashboard"));
 const Machines = lazy(() => import("./pages/admin/Machines"));
+const CoffeeMenu = lazy(() => import("./pages/admin/CoffeeMenu"));
 const Transactions = lazy(() => import("./pages/admin/Transactions"));
 const Users = lazy(() => import("./pages/admin/Users"));
 const Laundries = lazy(() => import("./pages/admin/Laundries"));
@@ -62,6 +63,7 @@ const App = () => (
                 <Route index element={<Suspense fallback={<AdminFallback />}><Dashboard /></Suspense>} />
                 <Route path="dashboard" element={<Suspense fallback={<AdminFallback />}><Dashboard /></Suspense>} />
                 <Route path="machines" element={<Suspense fallback={<AdminFallback />}><Machines /></Suspense>} />
+                <Route path="coffee-menu" element={<Suspense fallback={<AdminFallback />}><CoffeeMenu /></Suspense>} />
                 <Route path="transactions" element={<Suspense fallback={<AdminFallback />}><Transactions /></Suspense>} />
                 <Route path="users" element={<Suspense fallback={<AdminFallback />}><Users /></Suspense>} />
                 <Route path="laundries" element={<Suspense fallback={<AdminFallback />}><Laundries /></Suspense>} />

@@ -7,10 +7,11 @@ const corsHeaders = {
 
 interface ESP32ControlRequest {
   esp32_id: string;
-  relay_pin: number;
-  action: 'on' | 'off';
+  relay_pin?: number;
+  action: 'on' | 'off' | 'credito';
   machine_id: string;
   transaction_id?: string;
+  payload?: Record<string, unknown>;
 }
 
 const getErrorMessage = (error: unknown) => {
@@ -51,17 +52,28 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { esp32_id, relay_pin, action, machine_id, transaction_id } = await req.json() as ESP32ControlRequest;
+    const { esp32_id, relay_pin, action, machine_id, transaction_id, payload } = await req.json() as ESP32ControlRequest;
 
-    console.log(`🎮 Controle ESP32: ${esp32_id} relay ${relay_pin} → ${action}`);
+    if (!esp32_id || !machine_id || !action) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'esp32_id, machine_id e action são obrigatórios' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+
+    const resolvedRelayPin = action === 'credito' ? (relay_pin ?? 0) : (relay_pin ?? 1);
+    const resolvedPayload = payload ?? {};
+
+    console.log(`🎮 Controle ESP32: ${esp32_id} relay ${resolvedRelayPin} → ${action}`);
 
     // Inserir comando na fila - o ESP32 vai buscar via polling
     const { data, error } = await supabase.from('pending_commands').insert({
       esp32_id,
-      relay_pin,
+      relay_pin: resolvedRelayPin,
       action,
       machine_id,
       transaction_id,
+      payload: resolvedPayload,
       status: 'pending'
     }).select().single();
 
