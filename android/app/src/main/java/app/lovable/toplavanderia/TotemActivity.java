@@ -340,6 +340,24 @@ public class TotemActivity extends Activity {
         return count;
     }
 
+    /** Exibe Massagem/Café na HOME só se houver equipamento cadastrado com esp32_id. */
+    private boolean hasRegisteredEsp32ForType(String type) {
+        if (machines == null) return false;
+        for (SupabaseHelper.Machine m : machines) {
+            if (!type.equals(m.getType())) continue;
+            String esp32Id = m.getEsp32Id();
+            if (esp32Id != null && !esp32Id.trim().isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isCoffeeHomeAvailable() {
+        if (coffeeProducts == null || coffeeProducts.isEmpty()) return false;
+        return hasRegisteredEsp32ForType("CAFE");
+    }
+
     private boolean isCoffeeAvailable() {
         if (coffeeProducts == null || coffeeProducts.isEmpty()) return false;
         SupabaseHelper.CoffeeProduct first = coffeeProducts.get(0);
@@ -370,15 +388,15 @@ public class TotemActivity extends Activity {
         grid.setPadding(dp(8), 0, dp(8), dp(24));
 
         if (countMachinesByType("LAVAR") > 0) {
-            grid.addView(buildHomeCategoryButton("🧺 LAVAR", Color.parseColor("#238636"), () -> openCategory(TotemScreen.LAVAR)));
+            grid.addView(buildHomeCategoryButton("🧺 LAVAR", Color.parseColor("#1F6FEB"), () -> openCategory(TotemScreen.LAVAR)));
         }
         if (countMachinesByType("SECAR") > 0) {
-            grid.addView(buildHomeCategoryButton("🌪️ SECAR", Color.parseColor("#1F6FEB"), () -> openCategory(TotemScreen.SECAR)));
+            grid.addView(buildHomeCategoryButton("🌪️ SECAR", Color.parseColor("#238636"), () -> openCategory(TotemScreen.SECAR)));
         }
-        if (countMachinesByType("MASSAGEM") > 0) {
+        if (hasRegisteredEsp32ForType("MASSAGEM")) {
             grid.addView(buildHomeCategoryButton("💺 MASSAGEM", Color.parseColor("#8957E5"), () -> openCategory(TotemScreen.MASSAGEM)));
         }
-        if (coffeeProducts != null && !coffeeProducts.isEmpty()) {
+        if (isCoffeeHomeAvailable()) {
             grid.addView(buildHomeCategoryButton("☕ CAFÉ", Color.parseColor("#9E6A03"), () -> openCategory(TotemScreen.CAFE)));
         }
 

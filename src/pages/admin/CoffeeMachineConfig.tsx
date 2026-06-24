@@ -278,13 +278,11 @@ export default function CoffeeMachineConfig() {
               <p className="font-semibold text-sm">Após gravar o firmware:</p>
               <ul className="list-disc ml-4 space-y-1">
                 <li>
-                  Configure Wi-Fi pelo AP <strong>TopLavanderia-…</strong> (senha{' '}
-                  <strong>toplav123</strong>) — use o firmware lavadora uma vez ou portal em
-                  Configurações
+                  Portal Wi-Fi: rede <strong>CafeConfig</strong>, senha <strong>toplav123</strong> (192.168.4.1)
                 </li>
-                <li>Anote o <strong>esp32_id</strong> no Serial Monitor e cadastre na máquina em Máquinas</li>
+                <li>Anote o <strong>esp32_id</strong> no Serial Monitor (115200 baud) e cadastre na máquina em Máquinas</li>
+                <li>Aprove o ESP em Pendentes de Aprovação (auto-registro via heartbeat)</li>
                 <li>Produtos e preços do totem ficam em Cardápio Café</li>
-                <li>Liberação remota envia pulsos conforme valor em centavos</li>
               </ul>
             </div>
           </CardContent>

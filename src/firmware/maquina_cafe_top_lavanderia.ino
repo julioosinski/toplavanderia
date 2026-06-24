@@ -4,33 +4,44 @@
  *
  * Placeholders: __LAUNDRY_ID__, __MACHINE_NAME__
  * Pinos moedeiro (MOSFET 2N7000): GPIO 19=R$1, 2=R$0,50, 23=R$0,10
+ *
+ * Wi-Fi: portal CafeConfig (senha toplav123) na primeira boot ou sem credenciais salvas.
  */
 
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
+#include <WiFiManager.h>
+#include <cstring>
 #include <cstdio>
 
-#define FIRMWARE_VERSION "v1.0.0-toplav"
+#define FIRMWARE_VERSION "v1.0.1-toplav-cafe"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
 
 const char* supabaseUrl = "https://rkdybjzwiwwqqzjfmerm.supabase.co";
-const char* supabaseApiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg";
+const char* supabaseApiKey =
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg";
 
 const char* WIFI_NAMESPACE = "wifi_cfg";
+const char* AP_SSID = "CafeConfig";
 const char* AP_PASSWORD = "toplav123";
-String configuredSsid = "";
-String configuredPassword = "";
+const unsigned long HTTP_TIMEOUT_MS = 15000;
 
 char ESP32_ID[16];
-void buildEsp32Id() {
-  uint8_t mac[6];
-  WiFi.macAddress(mac);
-  snprintf(ESP32_ID, sizeof(ESP32_ID), "esp32_%02x%02x%02x%02x", mac[2], mac[3], mac[4], mac[5]);
-}
+
+unsigned long lastHeartbeat = 0;
+unsigned long lastPoll = 0;
+unsigned long lastWifiRetry = 0;
+int wifiFailCount = 0;
+const unsigned long HEARTBEAT_INTERVAL_MS = 30000;
+const unsigned long POLL_INTERVAL_MS = 5000;
+const unsigned long WIFI_RETRY_INTERVAL_MS = 15000;
+const int MAX_WIFI_FAILS_BEFORE_PORTAL = 5;
+
+bool inserindoCredito = false;
 
 const int PINO_MOEDA_100 = 19;
 const int PINO_MOEDA_050 = 2;
@@ -41,45 +52,93 @@ const int NUM_MOEDAS = 3;
 const int TEMPO_PULSO_MOEDA = 100;
 const int TEMPO_ENTRE_MOEDAS = 300;
 
-unsigned long lastHeartbeat = 0;
-unsigned long lastPoll = 0;
-const unsigned long HEARTBEAT_INTERVAL = 30000;
-const unsigned long POLL_INTERVAL = 5000;
-
-bool inserindoCredito = false;
-
-bool loadWiFiCredentials() {
-  Preferences preferences;
-  preferences.begin(WIFI_NAMESPACE, true);
-  configuredSsid = preferences.getString("ssid", "");
-  configuredPassword = preferences.getString("pass", "");
-  preferences.end();
-  configuredSsid.trim();
-  return configuredSsid.length() > 0;
+void buildEsp32Id() {
+  uint8_t mac[6];
+  WiFi.macAddress(mac);
+  snprintf(ESP32_ID, sizeof(ESP32_ID), "esp32_%02x%02x%02x%02x", mac[2], mac[3], mac[4], mac[5]);
 }
 
-void connectWiFi() {
-  if (!loadWiFiCredentials()) {
-    Serial.println("Configure Wi-Fi via portal Top Lavanderia (template lavadora).");
+void initMoedeiroPins() {
+  for (int i = 0; i < NUM_MOEDAS; i++) {
+    pinMode(PINOS_MOEDAS[i], OUTPUT);
+    digitalWrite(PINOS_MOEDAS[i], LOW);
+  }
+  Serial.println("Pinos moedeiro OK (19/2/23)");
+}
+
+void saveWifiBackup() {
+  Preferences preferences;
+  preferences.begin(WIFI_NAMESPACE, false);
+  preferences.putString("ssid", WiFi.SSID());
+  preferences.putBool("configurado", true);
+  preferences.end();
+}
+
+bool setupWiFiPortal() {
+  Serial.println("\n--- Wi-Fi ---");
+  Serial.printf("Portal: %s | senha: %s\n", AP_SSID, AP_PASSWORD);
+  Serial.println("Sem rede salva: conecte no AP e configure pelo navegador (192.168.4.1).");
+
+  WiFiManager wifiManager;
+  wifiManager.setDebugOutput(true);
+  wifiManager.setConfigPortalTimeout(0);
+  wifiManager.setConnectTimeout(30);
+  wifiManager.setCaptivePortalEnable(true);
+
+  if (!wifiManager.autoConnect(AP_SSID, AP_PASSWORD)) {
+    Serial.println("Falha no portal Wi-Fi — reiniciando em 3s...");
+    delay(3000);
+    ESP.restart();
+    return false;
+  }
+
+  saveWifiBackup();
+  wifiFailCount = 0;
+  Serial.printf("Wi-Fi conectado: %s\n", WiFi.SSID().c_str());
+  Serial.printf("IP: %s | RSSI: %d dBm\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
+  return true;
+}
+
+void ensureWiFiConnected() {
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiFailCount = 0;
     return;
   }
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(configuredSsid.c_str(), configuredPassword.c_str());
-  Serial.printf("Conectando Wi-Fi: %s\n", configuredSsid.c_str());
-  int tries = 0;
-  while (WiFi.status() != WL_CONNECTED && tries < 40) {
-    delay(500);
-    tries++;
+
+  unsigned long now = millis();
+  if (now - lastWifiRetry < WIFI_RETRY_INTERVAL_MS) {
+    return;
   }
+  lastWifiRetry = now;
+
+  Serial.println("Wi-Fi offline — tentando reconectar...");
+  WiFi.reconnect();
+
+  for (int i = 0; i < 20 && WiFi.status() != WL_CONNECTED; i++) {
+    delay(500);
+  }
+
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("Wi-Fi OK: %s\n", WiFi.localIP().toString().c_str());
+    Serial.printf("Wi-Fi reconectado: %s\n", WiFi.localIP().toString().c_str());
+    wifiFailCount = 0;
+    return;
+  }
+
+  wifiFailCount++;
+  Serial.printf("Falha Wi-Fi (%d/%d)\n", wifiFailCount, MAX_WIFI_FAILS_BEFORE_PORTAL);
+
+  if (wifiFailCount >= MAX_WIFI_FAILS_BEFORE_PORTAL) {
+    Serial.println("Abrindo portal CafeConfig novamente...");
+    WiFiManager wifiManager;
+    wifiManager.resetSettings();
+    setupWiFiPortal();
   }
 }
 
 bool inserirCredito(int valor_centavos) {
   if (valor_centavos <= 0) return false;
   inserindoCredito = true;
-  Serial.printf("Inserindo crédito: %d centavos\n", valor_centavos);
+  Serial.printf("Inserindo credito: %d centavos\n", valor_centavos);
 
   int valor_restante = valor_centavos;
   int contagem_moedas[NUM_MOEDAS] = {0, 0, 0};
@@ -113,6 +172,7 @@ void sendHeartbeat() {
   HTTPClient http;
   String url = String(supabaseUrl) + "/functions/v1/esp32-monitor?action=heartbeat";
   http.begin(url);
+  http.setTimeout(HTTP_TIMEOUT_MS);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("apikey", supabaseApiKey);
   http.addHeader("Authorization", String("Bearer ") + supabaseApiKey);
@@ -122,23 +182,32 @@ void sendHeartbeat() {
   doc["laundry_id"] = LAUNDRY_ID;
   doc["device_name"] = MACHINE_NAME;
   doc["firmware_version"] = FIRMWARE_VERSION;
+  doc["device_profile"] = "coin_dispense";
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
   doc["network_status"] = "connected";
   doc["auto_register"] = true;
-  doc["uptime_seconds"] = millis() / 1000;
+  doc["uptime_seconds"] = millis() / 1000UL;
 
   String body;
   serializeJson(doc, body);
   int code = http.POST(body);
+  String response = http.getString();
   http.end();
-  Serial.printf("Heartbeat HTTP %d\n", code);
+
+  Serial.printf("Heartbeat HTTP %d", code);
+  if (code == 200) {
+    Serial.println(" — registrado/pending no painel");
+  } else {
+    Serial.printf(" — resposta: %s\n", response.substring(0, 120).c_str());
+  }
 }
 
 void confirmCommand(const char* commandId) {
   HTTPClient http;
   String url = String(supabaseUrl) + "/functions/v1/esp32-monitor?action=confirm_command";
   http.begin(url);
+  http.setTimeout(HTTP_TIMEOUT_MS);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("apikey", supabaseApiKey);
   http.addHeader("Authorization", String("Bearer ") + supabaseApiKey);
@@ -150,7 +219,7 @@ void confirmCommand(const char* commandId) {
   serializeJson(doc, body);
   int code = http.POST(body);
   http.end();
-  Serial.printf("Confirm command %s HTTP %d\n", commandId, code);
+  Serial.printf("Confirm %s HTTP %d\n", commandId, code);
 }
 
 void pollCommands() {
@@ -159,11 +228,13 @@ void pollCommands() {
   HTTPClient http;
   String url = String(supabaseUrl) + "/functions/v1/esp32-monitor?action=poll_commands&esp32_id=" + ESP32_ID;
   http.begin(url);
+  http.setTimeout(HTTP_TIMEOUT_MS);
   http.addHeader("apikey", supabaseApiKey);
   http.addHeader("Authorization", String("Bearer ") + supabaseApiKey);
 
   int code = http.GET();
   if (code != 200) {
+    Serial.printf("Poll comandos HTTP %d\n", code);
     http.end();
     return;
   }
@@ -175,7 +246,7 @@ void pollCommands() {
   if (deserializeJson(doc, payload)) return;
 
   JsonArray commands = doc["commands"].as<JsonArray>();
-  if (commands.isNull()) return;
+  if (commands.isNull() || commands.size() == 0) return;
 
   for (JsonObject cmd : commands) {
     const char* action = cmd["action"] | "";
@@ -196,33 +267,43 @@ void pollCommands() {
 
 void setup() {
   Serial.begin(115200);
-  delay(500);
+  delay(1500);
+
+  Serial.println();
+  Serial.println("=================================");
+  Serial.println(" ESP32 Cafe — Top Lavanderia");
+  Serial.printf(" Firmware %s\n", FIRMWARE_VERSION);
+  Serial.println("=================================");
+
   buildEsp32Id();
+  Serial.printf(" ESP32_ID: %s\n", ESP32_ID);
+  Serial.printf(" LAUNDRY_ID: %s\n", LAUNDRY_ID);
+  Serial.printf(" Nome: %s\n", MACHINE_NAME);
 
-  for (int i = 0; i < NUM_MOEDAS; i++) {
-    pinMode(PINOS_MOEDAS[i], OUTPUT);
-    digitalWrite(PINOS_MOEDAS[i], LOW);
-  }
+  initMoedeiroPins();
+  setupWiFiPortal();
 
-  connectWiFi();
+  Serial.println("Enviando heartbeat inicial...");
   sendHeartbeat();
   lastHeartbeat = millis();
   lastPoll = millis();
+  Serial.println("Sistema pronto.\n");
 }
 
 void loop() {
+  ensureWiFiConnected();
+
   if (WiFi.status() != WL_CONNECTED) {
-    connectWiFi();
-    delay(2000);
+    delay(500);
     return;
   }
 
   unsigned long now = millis();
-  if (now - lastHeartbeat >= HEARTBEAT_INTERVAL) {
+  if (now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
     sendHeartbeat();
     lastHeartbeat = now;
   }
-  if (now - lastPoll >= POLL_INTERVAL) {
+  if (now - lastPoll >= POLL_INTERVAL_MS) {
     pollCommands();
     lastPoll = now;
   }
