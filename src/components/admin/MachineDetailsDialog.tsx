@@ -8,11 +8,14 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { type Machine } from "@/hooks/useMachines";
-import { Clock, DollarSign, MapPin, Cpu, Wifi, Play } from "lucide-react";
+import { Clock, DollarSign, MapPin, Cpu, Wifi, Play, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { forceMachineReleased } from "@/lib/machineEsp32Sync";
+import { adminRemoteRelease } from "@/lib/deviceRemoteRelease";
 import { supabase } from "@/integrations/supabase/client";
 import { getMachineTypeMeta } from "@/lib/machineDisplayTypes";
 
@@ -32,6 +35,10 @@ export const MachineDetailsDialog = ({
   const { toast } = useToast();
   const [releasing, setReleasing] = useState(false);
   const [startingCycle, setStartingCycle] = useState(false);
+  const [coffeeCredits, setCoffeeCredits] = useState("");
+  const [releasingCoffee, setReleasingCoffee] = useState(false);
+
+  const parsedCoffeeCredits = Math.round(Number(coffeeCredits));
 
   if (!machine) return null;
 
@@ -107,17 +114,48 @@ export const MachineDetailsDialog = ({
     }
   };
 
+  const handleReleaseCoffeeCredits = async () => {
+    if (!Number.isFinite(parsedCoffeeCredits) || parsedCoffeeCredits <= 0) {
+      toast({
+        title: "Créditos inválidos",
+        description: "Informe um número inteiro maior que zero.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setReleasingCoffee(true);
+    try {
+      const { error } = await adminRemoteRelease({
+        machineId: machine.id,
+        valorCentavos: parsedCoffeeCredits,
+      });
+      if (error) throw error;
+
+      toast({
+        title: "Crédito enfileirado",
+        description: `${parsedCoffeeCredits} pulsos (R$ ${(parsedCoffeeCredits / 100).toFixed(2)}) — ESP32 executará em alguns segundos.`,
+      });
+      setCoffeeCredits("");
+      onAfterAction?.();
+    } catch (e) {
+      toast({
+        title: "Falha na liberação",
+        description: e instanceof Error ? e.message : "Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setReleasingCoffee(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <div className="flex items-center gap-3">
             <div
-              className={`w-12 h-12 bg-gradient-to-br ${
-                machine.type === "lavadora"
-                  ? "from-blue-500 to-blue-600"
-                  : "from-orange-500 to-orange-600"
-              } rounded-full flex items-center justify-center shadow`}
+              className={`w-12 h-12 ${typeMeta.iconBg} rounded-full flex items-center justify-center shadow`}
             >
               <IconComponent className="text-primary-foreground" size={20} />
             </div>
@@ -199,12 +237,45 @@ export const MachineDetailsDialog = ({
 
           <Separator />
 
+          {machine.type === "coffee" && (
+            <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
+              <Label htmlFor="coffee-credits-input">Créditos a liberar (pulsos ESP32)</Label>
+              <Input
+                id="coffee-credits-input"
+                type="number"
+                min={1}
+                step={1}
+                placeholder="Ex.: 350"
+                value={coffeeCredits}
+                onChange={(e) => setCoffeeCredits(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                1 pulso = R$ 0,01 · equivalente:{" "}
+                {Number.isFinite(parsedCoffeeCredits) && parsedCoffeeCredits > 0
+                  ? `R$ ${(parsedCoffeeCredits / 100).toFixed(2)}`
+                  : "—"}
+              </p>
+              <Button
+                className="w-full bg-amber-600 hover:bg-amber-700 text-primary-foreground"
+                disabled={
+                  releasingCoffee ||
+                  !Number.isFinite(parsedCoffeeCredits) ||
+                  parsedCoffeeCredits <= 0
+                }
+                onClick={() => void handleReleaseCoffeeCredits()}
+              >
+                <Zap size={16} className="mr-1" />
+                {releasingCoffee ? "Enfileirando…" : "Liberar créditos"}
+              </Button>
+            </div>
+          )}
+
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
               Fechar
             </Button>
 
-            {machine.status === "available" && (
+            {machine.status === "available" && machine.type !== "coffee" && (
               <Button
                 className="flex-1 bg-green-600 hover:bg-green-700 text-primary-foreground"
                 disabled={startingCycle}
