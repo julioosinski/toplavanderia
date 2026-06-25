@@ -559,35 +559,7 @@ public class TotemActivity extends Activity {
     private void openCategory(TotemScreen screen) {
         currentScreen = screen;
         selectedCoffeeProduct = null;
-        if (screen == TotemScreen.MASSAGEM) {
-            SupabaseHelper.Machine singleChair = findSingleAvailableMassageChair();
-            if (singleChair != null) {
-                selectMachine(singleChair);
-                return;
-            }
-        }
         displayCurrentScreen();
-    }
-
-    /** Poltrona única disponível e online → vai direto ao pagamento. */
-    private SupabaseHelper.Machine findSingleAvailableMassageChair() {
-        if (machines == null) {
-            return null;
-        }
-        SupabaseHelper.Machine found = null;
-        for (SupabaseHelper.Machine machine : machines) {
-            if (!"MASSAGEM".equals(machine.getType())) {
-                continue;
-            }
-            if (!"LIVRE".equals(machine.getStatus()) || !isMachineOnline(machine)) {
-                continue;
-            }
-            if (found != null) {
-                return null;
-            }
-            found = machine;
-        }
-        return found;
     }
 
     private void goBackToHome() {

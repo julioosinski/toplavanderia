@@ -17,12 +17,12 @@
 #include <cstring>
 #include <cstdio>
 
-#include "esp32_wifi_ota_common.h"
-
 #define FIRMWARE_VERSION "v1.1.0-toplav-cafe"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
+
+#include "esp32_wifi_ota_common.h"
 
 const char* supabaseUrl = "https://rkdybjzwiwwqqzjfmerm.supabase.co";
 const char* supabaseApiKey =

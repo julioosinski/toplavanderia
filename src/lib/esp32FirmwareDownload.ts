@@ -15,10 +15,29 @@ export function bundleEsp32WifiOtaHeader(inoContent: string): string {
   if (!inoContent.includes(ESP32_WIFI_OTA_INCLUDE)) {
     return inoContent;
   }
-  return inoContent.replace(
-    ESP32_WIFI_OTA_INCLUDE,
-    `// --- esp32_wifi_ota_common.h (embutido no download) ---\n${esp32WifiOtaCommon}\n// --- fim esp32_wifi_ota_common.h ---`,
-  );
+
+  const includeIdx = inoContent.indexOf(ESP32_WIFI_OTA_INCLUDE);
+  const beforeInclude = inoContent.slice(0, includeIdx);
+  let afterInclude = inoContent.slice(includeIdx + ESP32_WIFI_OTA_INCLUDE.length);
+
+  // Se FIRMWARE_VERSION estiver depois do include (template antigo), move para antes do header embutido.
+  const preHeaderDefines: string[] = [];
+  for (const name of ['FIRMWARE_VERSION', 'MACHINE_NAME', 'LAUNDRY_ID', 'DEFAULT_CYCLE_MINUTES']) {
+    const re = new RegExp(`\\r?\\n#define ${name}[^\\r\\n]*\\r?\\n`);
+    const match = afterInclude.match(re);
+    if (match) {
+      preHeaderDefines.push(match[0].trim());
+      afterInclude = afterInclude.replace(re, '\n');
+    }
+  }
+
+  const headerBlock =
+    `// --- esp32_wifi_ota_common.h (embutido no download) ---\n${esp32WifiOtaCommon}\n// --- fim esp32_wifi_ota_common.h ---\n`;
+
+  const defineBlock =
+    preHeaderDefines.length > 0 ? `${preHeaderDefines.join('\n')}\n\n` : '';
+
+  return `${beforeInclude}${defineBlock}${headerBlock}${afterInclude}`;
 }
 
 export function downloadTextFile(content: string, filename: string): void {
