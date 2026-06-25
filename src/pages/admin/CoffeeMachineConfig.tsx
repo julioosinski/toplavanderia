@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Coffee, Copy, CheckCircle, Download, Zap, Cpu, ExternalLink } from 'lucide-react';
-import { buildEsp32CafeFirmware } from '@/lib/esp32FirmwareDownload';
+import { buildEsp32CafeFirmware, downloadEsp32DeviceFirmware } from '@/lib/esp32FirmwareDownload';
 import { adminRemoteRelease } from '@/lib/deviceRemoteRelease';
 
 interface CoffeeMachine {
@@ -107,18 +107,12 @@ export default function CoffeeMachineConfig() {
 
     setDownloading(true);
     const safeName = (machineName.trim() || 'Cafe').replace(/\s+/g, '_');
-    const blob = new Blob([code], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `ESP32_Cafe_${safeName}.ino`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadEsp32DeviceFirmware(code, `ESP32_Cafe_${safeName}.ino`);
 
     toast({
       title: 'Firmware gerado!',
       description:
-        'Grave no ESP32, abra o Serial (115200) e confira ESP32_ID único (não esp32_03000000). Portal Wi-Fi: CafeConfig / toplav123.',
+        'Dois arquivos baixados (.ino + esp32_wifi_ota_common.h). Grave no ESP32 e configure Wi-Fi em TopLavanderia-{ESP32_ID} / toplav123. OTA remoto em Configurações.',
     });
     setDownloading(false);
   };
@@ -265,7 +259,7 @@ export default function CoffeeMachineConfig() {
               </Button>
               <Button onClick={handleDownload} disabled={!laundryId || downloading} className="gap-2">
                 <Download className="h-4 w-4" />
-                Baixar .ino
+                Baixar firmware (.ino + .h)
               </Button>
             </div>
 
@@ -279,13 +273,18 @@ export default function CoffeeMachineConfig() {
               <p className="font-semibold text-sm">Após gravar o firmware:</p>
               <ul className="list-disc ml-4 space-y-1">
                 <li>
-                  Portal Wi-Fi: rede <strong>CafeConfig</strong>, senha <strong>toplav123</strong> (192.168.4.1)
+                  Coloque <strong>esp32_wifi_ota_common.h</strong> na mesma pasta do .ino antes de compilar
+                </li>
+                <li>
+                  Portal Wi-Fi: rede <strong>TopLavanderia-{'{ESP32_ID}'}</strong>, senha{' '}
+                  <strong>toplav123</strong> — acesse <code>/wifi</code> no IP do AP
                 </li>
                 <li>
                   No Serial Monitor (115200), confirme <strong>ESP32_ID</strong> único (ex.:{' '}
                   <code>esp32_820c8834</code>) — se aparecer <code>esp32_03000000</code>, regrave o firmware
-                  v1.0.2+
+                  v1.1.0+
                 </li>
+                <li>Atualizações futuras via OTA em Configurações → Atualização OTA (Wi-Fi)</li>
                 <li>Anote o <strong>esp32_id</strong> no Serial Monitor (115200 baud) e cadastre na máquina em Máquinas</li>
                 <li>Aprove o ESP em Pendentes de Aprovação (auto-registro via heartbeat)</li>
                 <li>Produtos e preços do totem ficam em Cardápio Café</li>

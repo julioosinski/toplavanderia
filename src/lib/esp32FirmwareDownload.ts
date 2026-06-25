@@ -1,6 +1,28 @@
 import esp32FirmwareTemplate from '@/firmware/esp32LavadoraTemplate.ino?raw';
 import esp32PoltronaTemplate from '@/firmware/poltrona_massagem_top_lavanderia.ino?raw';
 import esp32CafeTemplate from '@/firmware/maquina_cafe_top_lavanderia.ino?raw';
+import esp32WifiOtaCommon from '@/firmware/esp32_wifi_ota_common.h?raw';
+
+/** Header compartilhado Wi-Fi + OTA — deve ficar na mesma pasta do .ino no Arduino IDE */
+export function getEsp32WifiOtaCommonHeader(): string {
+  return esp32WifiOtaCommon;
+}
+
+export function downloadTextFile(content: string, filename: string): void {
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Baixa o .ino gerado e o esp32_wifi_ota_common.h (obrigatório para café e poltrona). */
+export function downloadEsp32DeviceFirmware(inoContent: string, inoFilename: string): void {
+  downloadTextFile(inoContent, inoFilename);
+  downloadTextFile(getEsp32WifiOtaCommonHeader(), 'esp32_wifi_ota_common.h');
+}
 
 /** Escape conteúdo dentro de "..." em string C */
 function escapeCStr(s: string): string {

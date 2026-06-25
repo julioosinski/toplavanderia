@@ -210,7 +210,7 @@ export const ESP32FirmwareOta = () => {
         </CardTitle>
         <CardDescription>
           Envie o arquivo <code>.bin</code> compilado no Arduino IDE (Sketch → Export compiled Binary).
-          A primeira instalação com suporte OTA ainda exige upload USB com firmware v2.2.4+.
+          A primeira instalação com suporte OTA ainda exige upload USB (lavadoras v2.2.4+, café/poltrona v1.1.0+).
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">

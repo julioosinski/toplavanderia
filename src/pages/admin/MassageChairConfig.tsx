@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Armchair, Copy, CheckCircle, Download, Zap, Cpu } from 'lucide-react';
-import { buildEsp32PoltronaFirmware } from '@/lib/esp32FirmwareDownload';
+import { buildEsp32PoltronaFirmware, downloadEsp32DeviceFirmware } from '@/lib/esp32FirmwareDownload';
 import { adminRemoteRelease } from '@/lib/deviceRemoteRelease';
 
 interface MassageMachine {
@@ -116,18 +116,12 @@ export default function MassageChairConfig() {
 
     setDownloading(true);
     const safeName = (machineName.trim() || 'Poltrona').replace(/\s+/g, '_');
-    const blob = new Blob([code], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `ESP32_Poltrona_${safeName}.ino`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadEsp32DeviceFirmware(code, `ESP32_Poltrona_${safeName}.ino`);
 
     toast({
       title: 'Firmware gerado!',
       description:
-        'Compile no Arduino IDE (Huge APP 3MB) e grave no ESP32. Wi-Fi via portal PoltronaConfig.',
+        'Dois arquivos baixados (.ino + esp32_wifi_ota_common.h). Compile (Huge APP 3MB), grave e configure Wi-Fi em TopLavanderia-{ESP32_ID}.',
     });
     setDownloading(false);
   };
@@ -280,7 +274,7 @@ export default function MassageChairConfig() {
               </Button>
               <Button onClick={handleDownload} disabled={!laundryId || downloading} className="gap-2">
                 <Download className="h-4 w-4" />
-                Baixar .ino
+                Baixar firmware (.ino + .h)
               </Button>
             </div>
 
@@ -293,7 +287,14 @@ export default function MassageChairConfig() {
             <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-4 text-xs text-amber-700 dark:text-amber-400 space-y-1">
               <p className="font-semibold text-sm">Após gravar o firmware:</p>
               <ul className="list-disc ml-4 space-y-1">
-                <li>Portal Wi-Fi: rede <strong>PoltronaConfig</strong>, senha <strong>12345678</strong></li>
+                <li>
+                  Coloque <strong>esp32_wifi_ota_common.h</strong> na mesma pasta do .ino antes de compilar
+                </li>
+                <li>
+                  Portal Wi-Fi: rede <strong>TopLavanderia-{'{ESP32_ID}'}</strong>, senha{' '}
+                  <strong>toplav123</strong> — acesse <code>/wifi</code>
+                </li>
+                <li>Atualizações futuras via OTA em Configurações → Atualização OTA (Wi-Fi)</li>
                 <li>Anote o <strong>esp32_id</strong> no Serial Monitor e cadastre na máquina em Máquinas</li>
                 <li>Aprove o ESP em Pendentes de Aprovação (se auto-registro estiver ativo)</li>
                 <li>SD FAT32 na raiz: 001.mp3 … 007.mp3</li>

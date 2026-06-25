@@ -8,18 +8,18 @@
  *   GPIO 23 = R$ 0,10 (pino 7)  | GPIO 4 = R$ 0,25 (pino 8, inutilizado)
  * Pulso: 100 ms | intervalo entre moedas: 300 ms
  *
- * Wi-Fi: portal CafeConfig (senha toplav123) na primeira boot ou sem credenciais salvas.
+ * Wi-Fi: portal TopLavanderia-{ESP32_ID} (senha toplav123) — /wifi — reconexão + OTA remoto
  */
 
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <Preferences.h>
-#include <WiFiManager.h>
 #include <cstring>
 #include <cstdio>
 
-#define FIRMWARE_VERSION "v1.0.3-toplav-cafe"
+#include "esp32_wifi_ota_common.h"
+
+#define FIRMWARE_VERSION "v1.1.0-toplav-cafe"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
@@ -28,21 +28,14 @@ const char* supabaseUrl = "https://rkdybjzwiwwqqzjfmerm.supabase.co";
 const char* supabaseApiKey =
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg";
 
-const char* WIFI_NAMESPACE = "wifi_cfg";
-const char* AP_SSID = "CafeConfig";
-const char* AP_PASSWORD = "toplav123";
 const unsigned long HTTP_TIMEOUT_MS = 15000;
 
 char ESP32_ID[16];
 
 unsigned long lastHeartbeat = 0;
 unsigned long lastPoll = 0;
-unsigned long lastWifiRetry = 0;
-int wifiFailCount = 0;
 const unsigned long HEARTBEAT_INTERVAL_MS = 30000;
 const unsigned long POLL_INTERVAL_MS = 5000;
-const unsigned long WIFI_RETRY_INTERVAL_MS = 15000;
-const int MAX_WIFI_FAILS_BEFORE_PORTAL = 5;
 
 bool inserindoCredito = false;
 
@@ -82,73 +75,21 @@ void initMoedeiroPins() {
   Serial.println("   GPIO 4  -> R$ 0,25 (Moeda B) — nao utilizada");
 }
 
-void saveWifiBackup() {
-  Preferences preferences;
-  preferences.begin(WIFI_NAMESPACE, false);
-  preferences.putString("ssid", WiFi.SSID());
-  preferences.putBool("configurado", true);
-  preferences.end();
-}
-
-bool setupWiFiPortal() {
-  Serial.println("\n--- Wi-Fi ---");
-  Serial.printf("Portal: %s | senha: %s\n", AP_SSID, AP_PASSWORD);
-  Serial.println("Sem rede salva: conecte no AP e configure pelo navegador (192.168.4.1).");
-
-  WiFiManager wifiManager;
-  wifiManager.setDebugOutput(true);
-  wifiManager.setConfigPortalTimeout(0);
-  wifiManager.setConnectTimeout(30);
-  wifiManager.setCaptivePortalEnable(true);
-
-  if (!wifiManager.autoConnect(AP_SSID, AP_PASSWORD)) {
-    Serial.println("Falha no portal Wi-Fi — reiniciando em 3s...");
-    delay(3000);
-    ESP.restart();
-    return false;
-  }
-
-  saveWifiBackup();
-  wifiFailCount = 0;
-  Serial.printf("Wi-Fi conectado: %s\n", WiFi.SSID().c_str());
-  Serial.printf("IP: %s | RSSI: %d dBm\n", WiFi.localIP().toString().c_str(), WiFi.RSSI());
-  return true;
-}
-
-void ensureWiFiConnected() {
-  if (WiFi.status() == WL_CONNECTED) {
-    wifiFailCount = 0;
-    return;
-  }
-
-  unsigned long now = millis();
-  if (now - lastWifiRetry < WIFI_RETRY_INTERVAL_MS) {
-    return;
-  }
-  lastWifiRetry = now;
-
-  Serial.println("Wi-Fi offline — tentando reconectar...");
-  WiFi.reconnect();
-
-  for (int i = 0; i < 20 && WiFi.status() != WL_CONNECTED; i++) {
-    delay(500);
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("Wi-Fi reconectado: %s\n", WiFi.localIP().toString().c_str());
-    wifiFailCount = 0;
-    return;
-  }
-
-  wifiFailCount++;
-  Serial.printf("Falha Wi-Fi (%d/%d)\n", wifiFailCount, MAX_WIFI_FAILS_BEFORE_PORTAL);
-
-  if (wifiFailCount >= MAX_WIFI_FAILS_BEFORE_PORTAL) {
-    Serial.println("Abrindo portal CafeConfig novamente...");
-    WiFiManager wifiManager;
-    wifiManager.resetSettings();
-    setupWiFiPortal();
-  }
+void setupDeviceHttpRoutes() {
+  esp32HttpServer().on("/status", HTTP_GET, []() {
+    StaticJsonDocument<384> doc;
+    doc["esp32_id"] = ESP32_ID;
+    doc["device"] = MACHINE_NAME;
+    doc["firmware_version"] = FIRMWARE_VERSION;
+    doc["device_profile"] = "coin_dispense";
+    doc["ip"] = WiFi.localIP().toString();
+    doc["rssi"] = WiFi.RSSI();
+    doc["online"] = true;
+    String out;
+    serializeJson(doc, out);
+    esp32HttpServer().sendHeader("Access-Control-Allow-Origin", "*");
+    esp32HttpServer().send(200, "application/json", out);
+  });
 }
 
 bool inserirCredito(int valor_centavos) {
@@ -316,7 +257,9 @@ void setup() {
   Serial.printf(" Nome: %s\n", MACHINE_NAME);
 
   initMoedeiroPins();
-  setupWiFiPortal();
+  esp32WifiOtaRegisterPortalRoutes();
+  setupDeviceHttpRoutes();
+  esp32WifiOtaBegin();
 
   Serial.println("Enviando heartbeat inicial...");
   sendHeartbeat();
@@ -326,10 +269,8 @@ void setup() {
 }
 
 void loop() {
-  ensureWiFiConnected();
-
-  if (WiFi.status() != WL_CONNECTED) {
-    delay(500);
+  if (!esp32WifiOtaMaintain()) {
+    delay(10);
     return;
   }
 

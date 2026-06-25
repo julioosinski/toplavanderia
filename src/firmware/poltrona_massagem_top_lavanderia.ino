@@ -10,22 +10,19 @@
  * Hardware (igual firmware Poltrona Relax):
  *   Relé massagem: GPIO 26 (BC547 — lógica normal: HIGH=ligado)
  *   DFPlayer Mini: TX=GPIO16, RX=GPIO17 (UART2, 9600)
- *   Botão reset Wi-Fi: GPIO 0 (BOOT), segure 5s
- *
- * Áudios no SD (raiz, FAT32): 001.mp3 … 007.mp3
+ * Wi-Fi: portal TopLavanderia-{ESP32_ID} (senha toplav123) — /wifi — reconexão + OTA remoto
  */
 
 #include <WiFi.h>
-#include <WebServer.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <DFRobotDFPlayerMini.h>
-#include <WiFiManager.h>
-#include <Preferences.h>
 #include <esp_task_wdt.h>
 #include <cstdio>
 
-#define FIRMWARE_VERSION "v1.0.0-toplav-poltrona"
+#include "esp32_wifi_ota_common.h"
+
+#define FIRMWARE_VERSION "v1.1.0-toplav-poltrona"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
@@ -38,11 +35,10 @@ const char* supabaseApiKey =
 // ===== Hardware =====
 const int RELAY_PIN = 26;
 const bool RELAY_LOGICA_INVERTIDA = false;  // BC547 — HIGH liga
-const int WIFI_RESET_BUTTON = 0;
-const int TEMPO_RESET_WIFI_MS = 5000;
 
-const int TEMPO_RESFRIAMENTO_SEG = 30;
+// Áudios no SD (raiz, FAT32): 001.mp3 … 007.mp3
 const int PAUSA_ANTES_RESFRIAMENTO_SEG = 2;
+const int TEMPO_RESFRIAMENTO_SEG = 30;
 
 // ===== Timers rede =====
 const unsigned long HEARTBEAT_INTERVAL_MS = 30000;
@@ -81,8 +77,6 @@ unsigned long ultimoDesligamento = 0;
 const unsigned long COOLDOWN_MS = 5000;
 
 char ESP32_ID[16];
-WebServer server(80);
-Preferences preferences;
 
 unsigned long lastHeartbeat = 0;
 unsigned long lastPoll = 0;
@@ -379,31 +373,6 @@ void pollCommands() {
   }
 }
 
-void configurarWiFi() {
-  pinMode(WIFI_RESET_BUTTON, INPUT_PULLUP);
-
-  WiFiManager wifiManager;
-  wifiManager.setConfigPortalTimeout(180);
-  wifiManager.setConnectTimeout(20);
-
-  Serial.println("WiFiManager — portal PoltronaConfig se necessário");
-  if (!wifiManager.autoConnect("PoltronaConfig", "12345678")) {
-    Serial.println("Falha WiFi — reiniciando");
-    delay(2000);
-    ESP.restart();
-  }
-
-  preferences.begin("wifi_backup", false);
-  preferences.putString("ssid", WiFi.SSID());
-  preferences.putBool("configurado", true);
-  preferences.end();
-
-  Serial.printf("WiFi OK: %s — IP %s — RSSI %d\n",
-                WiFi.SSID().c_str(),
-                WiFi.localIP().toString().c_str(),
-                WiFi.RSSI());
-}
-
 bool initDfPlayer() {
   dfSerial.begin(9600, SERIAL_8N1, 17, 16);
   delay(2000);
@@ -424,47 +393,49 @@ bool initDfPlayer() {
   return true;
 }
 
-void setupHttpServer() {
-  server.on("/", HTTP_GET, []() {
+void setupDeviceHttpRoutes() {
+  esp32HttpServer().on("/", HTTP_GET, []() {
     String html = "<h1>Poltrona Top Lavanderia</h1><p>Status: " + statusAtual +
                   "</p><p>ESP32: " + String(ESP32_ID) + "</p><p><a href='/status'>JSON</a></p>";
-    server.send(200, "text/html", html);
+    esp32HttpServer().send(200, "text/html", html);
   });
 
-  server.on("/status", HTTP_GET, []() {
+  esp32HttpServer().on("/status", HTTP_GET, []() {
     StaticJsonDocument<512> doc;
     doc["status"] = statusAtual;
     doc["tempo_restante_segundos"] = tempoRestanteSeg;
     doc["esp32_id"] = ESP32_ID;
     doc["poltrona"] = MACHINE_NAME;
+    doc["firmware_version"] = FIRMWARE_VERSION;
+    doc["device_profile"] = "timed_session";
+    doc["ip"] = WiFi.localIP().toString();
+    doc["rssi"] = WiFi.RSSI();
     doc["online"] = true;
     doc["dfplayer"] = dfplayerDisponivel;
     String out;
     serializeJson(doc, out);
-    server.sendHeader("Access-Control-Allow-Origin", "*");
-    server.send(200, "application/json", out);
+    esp32HttpServer().sendHeader("Access-Control-Allow-Origin", "*");
+    esp32HttpServer().send(200, "application/json", out);
   });
 
-  server.on("/stop", HTTP_POST, []() {
+  esp32HttpServer().on("/stop", HTTP_POST, []() {
     pararPoltrona(statusAtual == "em_uso");
-    server.send(200, "application/json", "{\"success\":true}");
+    esp32HttpServer().send(200, "application/json", "{\"success\":true}");
   });
 
-  server.on("/test", HTTP_GET, []() {
+  esp32HttpServer().on("/test", HTTP_GET, []() {
     acionarRele(true);
     statusAtual = "em_uso";
     tempoTotalSeg = 10;
     tempoInicioCiclo = millis();
     tempoRestanteSeg = 10;
     audiosPendentes = false;
-    server.send(200, "application/json", "{\"success\":true,\"test_seconds\":10}");
+    esp32HttpServer().send(200, "application/json", "{\"success\":true,\"test_seconds\":10}");
   });
 
-  server.onNotFound([]() {
-    server.send(404, "application/json", "{\"error\":\"not found\"}");
+  esp32HttpServer().onNotFound([]() {
+    esp32HttpServer().send(404, "application/json", "{\"error\":\"not found\"}");
   });
-
-  server.begin();
 }
 
 void setupWatchdog() {
@@ -497,11 +468,13 @@ void setup() {
   acionarRele(false);
 
   setupWatchdog();
-  configurarWiFi();
+  esp32WifiOtaRegisterPortalRoutes();
+  setupDeviceHttpRoutes();
+  esp32WifiOtaBegin();
+
   dfplayerDisponivel = initDfPlayer();
   Serial.printf("DFPlayer: %s\n", dfplayerDisponivel ? "OK" : "indisponível (sem áudio)");
 
-  setupHttpServer();
   sendHeartbeat();
   lastHeartbeat = millis();
   lastPoll = millis();
@@ -509,11 +482,9 @@ void setup() {
 
 void loop() {
   esp_task_wdt_reset();
-  server.handleClient();
 
-  if (WiFi.status() != WL_CONNECTED) {
-    WiFi.reconnect();
-    delay(500);
+  if (!esp32WifiOtaMaintain()) {
+    delay(10);
     return;
   }
 
