@@ -1,9 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Building2, Droplets, Wind } from "lucide-react";
+import { Building2 } from "lucide-react";
 import { type Machine } from "@/hooks/useMachines";
-import { MachineStatusCard } from "./MachineStatusCard";
 import { useState } from "react";
 import { MachineDetailsDialog } from "./MachineDetailsDialog";
+import { MachineTypeSections } from "./MachineTypeSections";
 
 interface ConsolidatedMachineStatusProps {
   machinesByLaundry: Record<string, { laundryName: string; machines: Machine[] }>;
@@ -48,9 +48,6 @@ export const ConsolidatedMachineStatus = ({
       </div>
 
       {Object.entries(machinesByLaundry).map(([laundryId, { laundryName, machines }]) => {
-        const washers = machines.filter((m) => m.type === "lavadora");
-        const dryers = machines.filter((m) => m.type === "secadora");
-        
         const stats = {
           available: machines.filter((m) => m.status === "available").length,
           running: machines.filter((m) => m.status === "running").length,
@@ -75,43 +72,12 @@ export const ConsolidatedMachineStatus = ({
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Lavadoras */}
-              {washers.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Droplets size={16} className="text-blue-600" />
-                    <h4 className="font-semibold text-sm">Lavadoras ({washers.length})</h4>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
-                    {washers.map((machine) => (
-                      <MachineStatusCard
-                        key={machine.id}
-                        machine={machine}
-                        onClick={() => setSelectedMachine(machine)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Secadoras */}
-              {dryers.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Wind size={16} className="text-orange-600" />
-                    <h4 className="font-semibold text-sm">Secadoras ({dryers.length})</h4>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
-                    {dryers.map((machine) => (
-                      <MachineStatusCard
-                        key={machine.id}
-                        machine={machine}
-                        onClick={() => setSelectedMachine(machine)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
+              <MachineTypeSections
+                machines={machines}
+                typeFilter="all"
+                onSelectMachine={setSelectedMachine}
+                compact
+              />
             </CardContent>
           </Card>
         );

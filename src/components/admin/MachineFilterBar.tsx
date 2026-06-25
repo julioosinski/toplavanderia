@@ -37,6 +37,8 @@ export const MachineFilterBar = ({
           <SelectItem value="all">Todos Tipos</SelectItem>
           <SelectItem value="lavadora">Lavadoras</SelectItem>
           <SelectItem value="secadora">Secadoras</SelectItem>
+          <SelectItem value="massage">Poltronas</SelectItem>
+          <SelectItem value="coffee">Café</SelectItem>
         </SelectContent>
       </Select>
     </div>

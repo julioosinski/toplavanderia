@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
-import { DollarSign, Receipt, Activity, CheckCircle, AlertTriangle, Droplets, Wind, CalendarRange } from "lucide-react";
+import { DollarSign, Receipt, Activity, CheckCircle, AlertTriangle, CalendarRange } from "lucide-react";
 import { useLaundry } from "@/hooks/useLaundry";
 import { supabase } from "@/integrations/supabase/client";
 import { computeMachineStatus, ESP32_ADMIN_HEARTBEAT_STALE_MS, type Esp32StatusRow, type MachineRow } from "@/lib/machineEsp32Sync";
+import { getMachineTypeMeta, mapDbMachineType, sortMachinesByDisplayType } from "@/lib/machineDisplayTypes";
 import { LaundryDashboardSelector } from "@/components/admin/LaundryDashboardSelector";
 import { MachineStatusGrid } from "@/components/admin/MachineStatusGrid";
 import { ConsolidatedMachineStatus } from "@/components/admin/ConsolidatedMachineStatus";
@@ -17,7 +18,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-
 
 interface TransactionRow {
   created_at: string | null;
@@ -49,17 +49,18 @@ const toDashboardMachine = (
   status: Machine["status"],
   esp32?: Esp32StatusRow
 ): Machine => {
-  const type = row.type === "secadora" || row.type === "drying" ? "secadora" : "lavadora";
+  const type = mapDbMachineType(row.type);
+  const typeMeta = getMachineTypeMeta(type);
 
   return {
     id: row.id,
     name: row.name,
     type,
     title: row.name,
-    price: Number(row.price_per_cycle) || 18,
-    duration: row.cycle_time_minutes || 40,
+    price: Number(row.price_per_cycle) || (type === "coffee" ? 0 : 18),
+    duration: row.cycle_time_minutes || (type === "coffee" ? 0 : 40),
     status,
-    icon: type === "lavadora" ? Droplets : Wind,
+    icon: typeMeta.icon,
     esp32_id: row.esp32_id || undefined,
     relay_pin: row.relay_pin || undefined,
     location: row.location || undefined,
@@ -232,11 +233,13 @@ export default function Dashboard() {
         if (!laundryMachines || laundryMachines.length === 0) return null;
         const esp32List = esp32ByLaundry.get(laundry.id) || [];
         const esp32Map = new Map(esp32List.map(e => [e.esp32_id, e]));
-        const enriched = (laundryMachines as ConsolidatedMachineRow[]).map((m) => {
-          const esp32 = esp32Map.get(m.esp32_id || '');
-          const computed = computeMachineStatus(m, esp32, { staleMs: ESP32_ADMIN_HEARTBEAT_STALE_MS });
-          return toDashboardMachine(m, computed.status, esp32);
-        });
+        const enriched = sortMachinesByDisplayType(
+          (laundryMachines as ConsolidatedMachineRow[]).map((m) => {
+            const esp32 = esp32Map.get(m.esp32_id || '');
+            const computed = computeMachineStatus(m, esp32, { staleMs: ESP32_ADMIN_HEARTBEAT_STALE_MS });
+            return toDashboardMachine(m, computed.status, esp32);
+          })
+        );
         return { laundryId: laundry.id, laundryName: laundry.name, machines: enriched };
       })
     );

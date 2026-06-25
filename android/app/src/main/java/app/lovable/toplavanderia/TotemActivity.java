@@ -434,7 +434,35 @@ public class TotemActivity extends Activity {
     private void openCategory(TotemScreen screen) {
         currentScreen = screen;
         selectedCoffeeProduct = null;
+        if (screen == TotemScreen.MASSAGEM) {
+            SupabaseHelper.Machine singleChair = findSingleAvailableMassageChair();
+            if (singleChair != null) {
+                selectMachine(singleChair);
+                return;
+            }
+        }
         displayCurrentScreen();
+    }
+
+    /** Poltrona única disponível e online → vai direto ao pagamento. */
+    private SupabaseHelper.Machine findSingleAvailableMassageChair() {
+        if (machines == null) {
+            return null;
+        }
+        SupabaseHelper.Machine found = null;
+        for (SupabaseHelper.Machine machine : machines) {
+            if (!"MASSAGEM".equals(machine.getType())) {
+                continue;
+            }
+            if (!"LIVRE".equals(machine.getStatus()) || !isMachineOnline(machine)) {
+                continue;
+            }
+            if (found != null) {
+                return null;
+            }
+            found = machine;
+        }
+        return found;
     }
 
     private void goBackToHome() {
@@ -596,10 +624,10 @@ public class TotemActivity extends Activity {
             coffeeMachine.setPrice(product.getPrice());
         }
         selectedMachine = coffeeMachine;
-        showCoffeePaymentConfirmation(product, coffeeMachine);
+        showCoffeePaymentScreen(product, coffeeMachine);
     }
 
-    private void showCoffeePaymentConfirmation(SupabaseHelper.CoffeeProduct product, SupabaseHelper.Machine machine) {
+    private void showCoffeePaymentScreen(SupabaseHelper.CoffeeProduct product, SupabaseHelper.Machine machine) {
         ScrollView scrollView = new ScrollView(this);
         scrollView.setFillViewport(true);
         LinearLayout layout = new LinearLayout(this);
@@ -608,14 +636,14 @@ public class TotemActivity extends Activity {
         layout.setBackgroundColor(Color.parseColor("#9E6A03"));
 
         TextView title = new TextView(this);
-        title.setText("Confirmar pedido de café");
+        title.setText("Pagamento — " + product.getName());
         title.setTextSize(24);
         title.setTextColor(Color.WHITE);
         title.setGravity(android.view.Gravity.CENTER);
         layout.addView(title);
 
         TextView details = new TextView(this);
-        details.setText(product.getName() + "\n\nValor: R$ " + new DecimalFormat("0.00").format(product.getPrice()) + "\n\n"
+        details.setText("Valor: R$ " + new DecimalFormat("0.00").format(product.getPrice()) + "\n\n"
             + getPaymentInstructionTitle() + "\n" + getPaymentInstructionSubtitle());
         details.setTextSize(16);
         details.setTextColor(Color.WHITE);
@@ -630,22 +658,17 @@ public class TotemActivity extends Activity {
             () -> startCoffeePaymentFlow(product, machine, "debit"));
         layout.addView(debitBtn);
         if ("cielo".equalsIgnoreCase(activeProvider)) {
-            Button pixBtn = buildPaymentTypeButton("📱 PIX", Color.parseColor("#00897B"),
-                () -> startCoffeePaymentFlow(product, machine, "pix"));
-            layout.addView(pixBtn);
+            layout.addView(buildPaymentTypeButton("📱 PIX", Color.parseColor("#4A3900"),
+                () -> startCoffeePaymentFlow(product, machine, "pix")));
         }
 
-        Button cancelButton = new Button(this);
-        cancelButton.setText("❌ CANCELAR");
-        cancelButton.setBackgroundColor(Color.parseColor("#F44336"));
-        cancelButton.setTextColor(Color.WHITE);
-        cancelButton.setOnClickListener(v -> {
-            selectedCoffeeProduct = null;
-            selectedMachine = null;
-            currentPendingTransactionId = null;
-            openCategory(TotemScreen.CAFE);
-        });
-        layout.addView(cancelButton);
+        Button backBtn = new Button(this);
+        backBtn.setText("← Voltar ao cardápio");
+        backBtn.setBackgroundColor(Color.parseColor("#21262D"));
+        backBtn.setTextColor(Color.WHITE);
+        backBtn.setOnClickListener(v -> openCategory(TotemScreen.CAFE));
+        layout.addView(backBtn);
+
         scrollView.addView(layout);
         setTotemContentView(scrollView);
     }
@@ -1062,11 +1085,26 @@ public class TotemActivity extends Activity {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(dp(20), dp(20), dp(20), dp(20));
-        layout.setBackgroundColor(Color.parseColor("#2196F3"));
+
+        int bgColor = Color.parseColor("#2196F3");
+        int panelColor = Color.parseColor("#1976D2");
+        String header = "Confirmar pagamento";
+        if ("MASSAGEM".equals(machine.getType())) {
+            bgColor = Color.parseColor("#8957E5");
+            panelColor = Color.parseColor("#6F42C1");
+            header = "Pagamento — Poltrona de massagem";
+        } else if ("SECAR".equals(machine.getType())) {
+            bgColor = Color.parseColor("#238636");
+            panelColor = Color.parseColor("#1A7F37");
+        } else if ("LAVAR".equals(machine.getType())) {
+            bgColor = Color.parseColor("#1F6FEB");
+            panelColor = Color.parseColor("#1158C7");
+        }
+        layout.setBackgroundColor(bgColor);
         
         // Título
         TextView title = new TextView(this);
-        title.setText("Confirmar pagamento");
+        title.setText(header);
         title.setTextSize(24);
         title.setTextColor(Color.WHITE);
         title.setGravity(android.view.Gravity.CENTER);
@@ -1085,7 +1123,7 @@ public class TotemActivity extends Activity {
         details.setTextColor(Color.WHITE);
         details.setGravity(android.view.Gravity.CENTER);
         details.setPadding(20, 20, 20, 30);
-        details.setBackgroundColor(Color.parseColor("#1976D2"));
+        details.setBackgroundColor(panelColor);
         layout.addView(details);
         
         // Botões de forma de pagamento (Cielo LIO)
@@ -1100,9 +1138,11 @@ public class TotemActivity extends Activity {
         LinearLayout payRow = new LinearLayout(this);
         payRow.setOrientation(LinearLayout.VERTICAL);
 
-        Button creditBtn = buildPaymentTypeButton("💳 CRÉDITO À VISTA", Color.parseColor("#1976D2"),
+        int btnPrimary = panelColor;
+        int btnSecondary = bgColor;
+        Button creditBtn = buildPaymentTypeButton("💳 CRÉDITO À VISTA", btnPrimary,
             () -> startPaymentFlow(machine, "credit"));
-        Button debitBtn = buildPaymentTypeButton("💳 DÉBITO À VISTA", Color.parseColor("#1565C0"),
+        Button debitBtn = buildPaymentTypeButton("💳 DÉBITO À VISTA", btnSecondary,
             () -> startPaymentFlow(machine, "debit"));
         Button pixBtn = buildPaymentTypeButton("📱 PIX", Color.parseColor("#00897B"),
             () -> startPaymentFlow(machine, "pix"));

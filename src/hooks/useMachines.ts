@@ -3,7 +3,6 @@ import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Droplets, Wind, type LucideIcon } from 'lucide-react';
 import { useMachineAutoStatus } from './useMachineAutoStatus';
 import { nativeStorage, getItemWithTimeout } from '@/utils/nativeStorage';
 import {
@@ -11,11 +10,19 @@ import {
   type Esp32StatusRow,
   type MachineRow,
 } from '@/lib/machineEsp32Sync';
+import {
+  getMachineTypeMeta,
+  mapDbMachineType,
+  sortMachinesByDisplayType,
+  type MachineDisplayType,
+} from '@/lib/machineDisplayTypes';
+
+export type { MachineDisplayType };
 
 export interface Machine {
   id: string;
   name: string;
-  type: 'lavadora' | 'secadora';
+  type: MachineDisplayType;
   title: string;
   price: number;
   duration: number;
@@ -90,11 +97,8 @@ export const useMachines = (laundryId?: string | null, opts?: { staleMs?: number
   const transformMachine = useCallback((machine: MachineSourceRow, esp32Map: Map<string, Esp32StatusRow>): Machine => {
     const esp32: Esp32StatusRow | undefined = esp32Map.get(machine.esp32_id || '');
 
-    const typeMapping: Record<string, 'lavadora' | 'secadora'> = {
-      'washing': 'lavadora', 'drying': 'secadora',
-      'lavadora': 'lavadora', 'secadora': 'secadora'
-    };
-    const mappedType = typeMapping[machine.type] || 'lavadora';
+    const mappedType = mapDbMachineType(machine.type);
+    const typeMeta = getMachineTypeMeta(mappedType);
 
     // Use unified status computation — ESP32 relay is the authority
     const computed = computeMachineStatus(machine, esp32, staleMs ? { staleMs } : undefined);
@@ -142,7 +146,7 @@ export const useMachines = (laundryId?: string | null, opts?: { staleMs?: number
       price: Number(machine.price_per_cycle) || 18.00,
       duration: machine.cycle_time_minutes || 40,
       status: machineStatus,
-      icon: mappedType === 'lavadora' ? Droplets : Wind,
+      icon: typeMeta.icon,
       timeRemaining,
       runningSinceAt,
       esp32_id: machine.esp32_id,
@@ -213,7 +217,9 @@ export const useMachines = (laundryId?: string | null, opts?: { staleMs?: number
         }
 
         const esp32Map = new Map<string, Esp32StatusRow>(esp32Data?.map(e => [e.esp32_id, e]) || []);
-        const transformedMachines = machinesData?.map(m => transformMachine(m, esp32Map)) || [];
+        const transformedMachines = sortMachinesByDisplayType(
+          machinesData?.map(m => transformMachine(m, esp32Map)) || []
+        );
 
         setMachines(transformedMachines);
         setIsOffline(false);
@@ -243,10 +249,14 @@ export const useMachines = (laundryId?: string | null, opts?: { staleMs?: number
         const cached = await getItemWithTimeout(cacheKey, 6000);
         if (cached) {
           const parsed = JSON.parse(cached) as Omit<Machine, 'icon'>[];
-          const restored = parsed.map(m => ({
-            ...m,
-            icon: m.type === 'lavadora' ? Droplets : Wind
-          })) as Machine[];
+          const restored = parsed.map(m => {
+            const meta = getMachineTypeMeta(mapDbMachineType(m.type));
+            return {
+              ...m,
+              type: mapDbMachineType(m.type),
+              icon: meta.icon,
+            };
+          }) as Machine[];
           setMachines(restored);
           setIsOffline(true);
           if (!background) {

@@ -3,8 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { Droplets, Wind, Clock } from "lucide-react";
+import { Clock } from "lucide-react";
 import { type Machine } from "@/hooks/useMachines";
+import { getMachineTypeMeta } from "@/lib/machineDisplayTypes";
 
 interface MachineStatusCardProps {
   machine: Machine;
@@ -13,8 +14,9 @@ interface MachineStatusCardProps {
 
 export const MachineStatusCard = ({ machine, onClick }: MachineStatusCardProps) => {
   const isRunning = machine.status === "running";
+  const typeMeta = getMachineTypeMeta(machine.type);
+  const IconComponent = typeMeta.icon;
 
-  // Tick every second for live countdown
   const [tick, setTick] = useState(0);
   useEffect(() => {
     if (!isRunning) return;
@@ -35,9 +37,7 @@ export const MachineStatusCard = ({ machine, onClick }: MachineStatusCardProps) 
     }
     return machine.timeRemaining ?? 0;
   }, [isRunning, machine.runningSinceAt, machine.duration, machine.timeRemaining, tick]);
-  const IconComponent = machine.type === "lavadora" ? Droplets : Wind;
-  const colorScheme = machine.type === "lavadora" ? "blue" : "orange";
-  
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "available":
@@ -78,44 +78,46 @@ export const MachineStatusCard = ({ machine, onClick }: MachineStatusCardProps) 
   };
 
   const isAvailable = machine.status === "available";
-  const borderColor = machine.type === "lavadora" ? "border-blue-200" : "border-orange-200";
-  const hoverBorder = machine.type === "lavadora" ? "hover:border-blue-400" : "hover:border-orange-400";
+  const durationLabel =
+    machine.type === "coffee"
+      ? "Cardápio no totem"
+      : machine.duration > 0
+        ? `${machine.duration}min`
+        : "—";
+  const priceLabel =
+    machine.type === "coffee" && machine.price <= 0
+      ? "Preços no cardápio"
+      : `R$ ${machine.price?.toFixed(2).replace(".", ",")}`;
 
   return (
     <Card
-      className={`relative overflow-hidden transition-all duration-300 cursor-pointer bg-card hover:shadow-lg hover:scale-105 border ${borderColor} ${hoverBorder} ${
+      className={`relative overflow-hidden transition-all duration-300 cursor-pointer bg-card hover:shadow-lg hover:scale-105 border ${typeMeta.cardBorder} hover:border-primary/40 ${
         machine.status === 'offline' ? 'opacity-60' : ''
       } shadow-md rounded-lg h-full flex flex-col`}
       onClick={() => onClick?.()}
     >
-      {/* Status Badge */}
       <div className="absolute top-2 right-2 z-10">
         <div className={`w-3 h-3 rounded-full ${getStatusColor(machine.status)} shadow border-2 border-background`} />
       </div>
 
       <CardHeader className="text-center p-3 sm:p-4 pb-2 flex-shrink-0">
         <div
-          className={`w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br ${
-            colorScheme === "blue"
-              ? "from-blue-500 to-blue-600"
-              : "from-orange-500 to-orange-600"
-          } rounded-full flex items-center justify-center mx-auto mb-2 shadow`}
+          className={`w-10 h-10 sm:w-12 sm:h-12 ${typeMeta.iconBg} rounded-full flex items-center justify-center mx-auto mb-2 shadow`}
         >
           <IconComponent className="text-primary-foreground" size={20} />
         </div>
         <CardTitle className="text-sm font-bold leading-tight">{machine.name}</CardTitle>
+        <p className="text-[11px] text-muted-foreground mt-1">{typeMeta.label}</p>
       </CardHeader>
 
       <CardContent className="flex-1 p-3 sm:p-4 pt-0 flex flex-col justify-between">
         <div className="text-center mb-3">
           <div className="flex items-center justify-center space-x-1 mb-1">
-            <span className={`text-base font-bold ${colorScheme === "blue" ? "text-blue-600" : "text-orange-600"}`}>
-              R$ {machine.price?.toFixed(2).replace(".", ",")}
-            </span>
+            <span className={`text-base font-bold ${typeMeta.accentClass}`}>{priceLabel}</span>
           </div>
           <p className="text-xs text-muted-foreground flex items-center justify-center">
             <Clock className="mr-1" size={12} />
-            {machine.duration}min
+            {durationLabel}
           </p>
         </div>
 
@@ -125,7 +127,7 @@ export const MachineStatusCard = ({ machine, onClick }: MachineStatusCardProps) 
           </Badge>
         </div>
 
-        {isRunning && displayRemaining > 0 && (
+        {isRunning && displayRemaining > 0 && machine.duration > 0 && (
           <div className="space-y-2 mb-3">
             <Progress
               value={((machine.duration - displayRemaining) / machine.duration) * 100}
@@ -138,15 +140,7 @@ export const MachineStatusCard = ({ machine, onClick }: MachineStatusCardProps) 
         )}
 
         {isAvailable && (
-          <Button
-            variant="default"
-            size="sm"
-            className={`w-full text-xs ${
-              colorScheme === "blue"
-                ? "bg-blue-600 hover:bg-blue-700"
-                : "bg-orange-600 hover:bg-orange-700"
-            } text-primary-foreground`}
-          >
+          <Button variant="default" size="sm" className={`w-full text-xs ${typeMeta.iconBg} hover:opacity-90 text-primary-foreground`}>
             Ver Detalhes
           </Button>
         )}

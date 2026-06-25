@@ -10,10 +10,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { type Machine } from "@/hooks/useMachines";
-import { Droplets, Wind, Clock, DollarSign, MapPin, Cpu, Wifi, Play } from "lucide-react";
+import { Clock, DollarSign, MapPin, Cpu, Wifi, Play } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { forceMachineReleased } from "@/lib/machineEsp32Sync";
 import { supabase } from "@/integrations/supabase/client";
+import { getMachineTypeMeta } from "@/lib/machineDisplayTypes";
 
 interface MachineDetailsDialogProps {
   machine: Machine | null;
@@ -34,7 +35,16 @@ export const MachineDetailsDialog = ({
 
   if (!machine) return null;
 
-  const IconComponent = machine.type === "lavadora" ? Droplets : Wind;
+  const typeMeta = getMachineTypeMeta(machine.type);
+  const IconComponent = typeMeta.icon;
+  const durationLabel =
+    machine.type === "coffee"
+      ? "Cardápio configurado no totem"
+      : `${machine.duration} minutos`;
+  const priceLabel =
+    machine.type === "coffee" && machine.price <= 0
+      ? "Preços no cardápio"
+      : `R$ ${machine.price.toFixed(2)}`;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -114,7 +124,7 @@ export const MachineDetailsDialog = ({
             <div>
               <DialogTitle>{machine.name}</DialogTitle>
               <DialogDescription>
-                {machine.type === "lavadora" ? "Lavadora" : "Secadora"}
+                {typeMeta.label}
               </DialogDescription>
             </div>
           </div>
@@ -134,14 +144,14 @@ export const MachineDetailsDialog = ({
                 <DollarSign size={14} />
                 <span className="text-xs">Preço</span>
               </div>
-              <p className="text-lg font-bold">R$ {machine.price?.toFixed(2).replace(".", ",")}</p>
+              <p className="text-lg font-bold">{priceLabel}</p>
             </div>
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Clock size={14} />
                 <span className="text-xs">Duração</span>
               </div>
-              <p className="text-lg font-bold">{machine.duration} min</p>
+              <p className="text-lg font-bold">{durationLabel}</p>
             </div>
           </div>
 

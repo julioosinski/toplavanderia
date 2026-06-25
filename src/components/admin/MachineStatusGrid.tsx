@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Droplets, Wind } from "lucide-react";
 import { type Machine } from "@/hooks/useMachines";
-import { MachineStatusCard } from "./MachineStatusCard";
 import { MachineDetailsDialog } from "./MachineDetailsDialog";
 import { MachineFilterBar } from "./MachineFilterBar";
+import { MachineTypeSections } from "./MachineTypeSections";
+import { Card, CardContent } from "@/components/ui/card";
 
 interface MachineStatusGridProps {
   machines: Machine[];
@@ -32,17 +31,12 @@ export const MachineStatusGrid = ({ machines, loading, onAfterMachineAction }: M
     );
   }
 
-  // Filter machines
   const filteredMachines = machines.filter((machine) => {
     if (statusFilter !== "all" && machine.status !== statusFilter) return false;
     if (typeFilter !== "all" && machine.type !== typeFilter) return false;
     return true;
   });
 
-  const washers = filteredMachines.filter((m) => m.type === "lavadora");
-  const dryers = filteredMachines.filter((m) => m.type === "secadora");
-
-  // Stats
   const stats = {
     available: machines.filter((m) => m.status === "available").length,
     running: machines.filter((m) => m.status === "running").length,
@@ -66,61 +60,13 @@ export const MachineStatusGrid = ({ machines, loading, onAfterMachineAction }: M
         />
       </div>
 
-      {/* Lavadoras */}
-      {(typeFilter === "all" || typeFilter === "lavadora") && washers.length > 0 && (
-        <Card className="border-blue-200 bg-gradient-to-r from-blue-50/50 to-blue-100/50 dark:from-blue-950/20 dark:to-blue-900/20">
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center shadow">
-                <Droplets className="text-primary-foreground" size={20} />
-              </div>
-              <div>
-                <CardTitle className="text-blue-700 dark:text-blue-400">Lavadoras</CardTitle>
-                <CardDescription>{washers.length} máquinas</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
-              {washers.map((machine) => (
-                <MachineStatusCard
-                  key={machine.id}
-                  machine={machine}
-                  onClick={() => setSelectedMachine(machine)}
-                />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Secadoras */}
-      {(typeFilter === "all" || typeFilter === "secadora") && dryers.length > 0 && (
-        <Card className="border-orange-200 bg-gradient-to-r from-orange-50/50 to-orange-100/50 dark:from-orange-950/20 dark:to-orange-900/20">
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-orange-600 rounded-full flex items-center justify-center shadow">
-                <Wind className="text-primary-foreground" size={20} />
-              </div>
-              <div>
-                <CardTitle className="text-orange-700 dark:text-orange-400">Secadoras</CardTitle>
-                <CardDescription>{dryers.length} máquinas</CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4">
-              {dryers.map((machine) => (
-                <MachineStatusCard
-                  key={machine.id}
-                  machine={machine}
-                  onClick={() => setSelectedMachine(machine)}
-                />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      <div className="space-y-6">
+        <MachineTypeSections
+          machines={filteredMachines}
+          typeFilter={typeFilter}
+          onSelectMachine={setSelectedMachine}
+        />
+      </div>
 
       {filteredMachines.length === 0 && (
         <Card>
