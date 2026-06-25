@@ -3,7 +3,10 @@
  * Perfil: coin_dispense — action "credito" via pending_commands (esp32-monitor)
  *
  * Placeholders: __LAUNDRY_ID__, __MACHINE_NAME__
- * Pinos moedeiro (MOSFET 2N7000): GPIO 19=R$1, 2=R$0,50, 23=R$0,10
+ * Pinos moedeiro (MOSFET 2N7000 → GND no moedeiro):
+ *   GPIO 19 = R$ 1,00 (pino 10) | GPIO 2 = R$ 0,50 (pino 9)
+ *   GPIO 23 = R$ 0,10 (pino 7)  | GPIO 4 = R$ 0,25 (pino 8, inutilizado)
+ * Pulso: 100 ms | intervalo entre moedas: 300 ms
  *
  * Wi-Fi: portal CafeConfig (senha toplav123) na primeira boot ou sem credenciais salvas.
  */
@@ -16,7 +19,7 @@
 #include <cstring>
 #include <cstdio>
 
-#define FIRMWARE_VERSION "v1.0.2-toplav-cafe"
+#define FIRMWARE_VERSION "v1.0.3-toplav-cafe"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
@@ -43,14 +46,18 @@ const int MAX_WIFI_FAILS_BEFORE_PORTAL = 5;
 
 bool inserindoCredito = false;
 
-const int PINO_MOEDA_100 = 19;
-const int PINO_MOEDA_050 = 2;
-const int PINO_MOEDA_010 = 23;
+// Cada MOSFET conecta o pino do moedeiro ao GND (HIGH = moeda, LOW = repouso)
+const int PINO_MOEDA_010 = 23;  // R$ 0,10 (pino 7 do moedeiro)
+const int PINO_MOEDA_025 = 4;   // R$ 0,25 (pino 8 — inutilizado no algoritmo)
+const int PINO_MOEDA_050 = 2;   // R$ 0,50 (pino 9 do moedeiro)
+const int PINO_MOEDA_100 = 19;  // R$ 1,00 (pino 10 do moedeiro)
+
+// Moeda de R$ 0,25 inutilizada — combinação ótima só com 100, 50 e 10 centavos
 const int VALOR_MOEDAS[] = {100, 50, 10};
 const int PINOS_MOEDAS[] = {PINO_MOEDA_100, PINO_MOEDA_050, PINO_MOEDA_010};
 const int NUM_MOEDAS = 3;
-const int TEMPO_PULSO_MOEDA = 100;
-const int TEMPO_ENTRE_MOEDAS = 300;
+const int TEMPO_PULSO_MOEDA = 100;   // 100 ms por pulso (simula inserção)
+const int TEMPO_ENTRE_MOEDAS = 300;  // 300 ms entre moedas
 
 void buildEsp32Id() {
   // WiFi deve estar inicializado antes de ler o MAC (senão vira esp32_03000000).
@@ -66,7 +73,13 @@ void initMoedeiroPins() {
     pinMode(PINOS_MOEDAS[i], OUTPUT);
     digitalWrite(PINOS_MOEDAS[i], LOW);
   }
-  Serial.println("Pinos moedeiro OK (19/2/23)");
+  pinMode(PINO_MOEDA_025, OUTPUT);
+  digitalWrite(PINO_MOEDA_025, LOW);
+  Serial.println("Pinos moedeiro OK:");
+  Serial.println("   GPIO 19 -> R$ 1,00 (Moeda D)");
+  Serial.println("   GPIO 2  -> R$ 0,50 (Moeda C)");
+  Serial.println("   GPIO 23 -> R$ 0,10 (Moeda A)");
+  Serial.println("   GPIO 4  -> R$ 0,25 (Moeda B) — nao utilizada");
 }
 
 void saveWifiBackup() {
@@ -139,11 +152,17 @@ void ensureWiFiConnected() {
 }
 
 bool inserirCredito(int valor_centavos) {
-  if (valor_centavos <= 0) return false;
+  if (valor_centavos <= 0) {
+    Serial.println("Valor invalido para insercao de credito");
+    return false;
+  }
+
   inserindoCredito = true;
-  Serial.printf("Inserindo credito: %d centavos\n", valor_centavos);
+  Serial.printf("\nINSERINDO CREDITO: R$ %.2f (%d centavos)\n",
+                valor_centavos / 100.0, valor_centavos);
 
   int valor_restante = valor_centavos;
+  int total_inserido = 0;
   int contagem_moedas[NUM_MOEDAS] = {0, 0, 0};
 
   for (int i = 0; i < NUM_MOEDAS; i++) {
@@ -153,18 +172,29 @@ bool inserirCredito(int valor_centavos) {
     }
   }
   if (valor_restante > 0) {
+    Serial.printf("Restam %d centavos — arredondando com moedas de R$ 0,10\n", valor_restante);
     contagem_moedas[2] += (valor_restante + 9) / 10;
+    valor_restante = 0;
   }
+
+  Serial.println("Plano de insercao:");
+  if (contagem_moedas[0] > 0) Serial.printf("   %dx R$ 1,00 (GPIO %d)\n", contagem_moedas[0], PINO_MOEDA_100);
+  if (contagem_moedas[1] > 0) Serial.printf("   %dx R$ 0,50 (GPIO %d)\n", contagem_moedas[1], PINO_MOEDA_050);
+  if (contagem_moedas[2] > 0) Serial.printf("   %dx R$ 0,10 (GPIO %d)\n", contagem_moedas[2], PINO_MOEDA_010);
 
   for (int i = 0; i < NUM_MOEDAS; i++) {
     for (int j = 0; j < contagem_moedas[i]; j++) {
+      Serial.printf("Pulso R$ %.2f: GPIO %d HIGH %dms\n",
+                    VALOR_MOEDAS[i] / 100.0, PINOS_MOEDAS[i], TEMPO_PULSO_MOEDA);
       digitalWrite(PINOS_MOEDAS[i], HIGH);
       delay(TEMPO_PULSO_MOEDA);
       digitalWrite(PINOS_MOEDAS[i], LOW);
+      total_inserido += VALOR_MOEDAS[i];
       delay(TEMPO_ENTRE_MOEDAS);
     }
   }
 
+  Serial.printf("Credito inserido: R$ %.2f\n\n", total_inserido / 100.0);
   inserindoCredito = false;
   return true;
 }
@@ -254,7 +284,9 @@ void pollCommands() {
   for (JsonObject cmd : commands) {
     const char* action = cmd["action"] | "";
     const char* cmdId = cmd["id"] | "";
-    if (strcmp(action, "credito") != 0 || strlen(cmdId) == 0) continue;
+    if ((strcmp(action, "credito") != 0 && strcmp(action, "liberar") != 0) || strlen(cmdId) == 0) {
+      continue;
+    }
 
     int valor = cmd["valor_centavos"] | 0;
     if (valor <= 0 && cmd.containsKey("payload")) {

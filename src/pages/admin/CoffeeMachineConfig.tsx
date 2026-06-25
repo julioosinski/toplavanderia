@@ -199,7 +199,8 @@ export default function CoffeeMachineConfig() {
             </CardTitle>
             <CardDescription>
               Perfil coin_dispense: comando <code>credito</code> via esp32-monitor. Pulsos MOSFET —
-              GPIO 19 (R$1), GPIO 2 (R$0,50), GPIO 23 (R$0,10).
+              GPIO 19 (R$1), GPIO 2 (R$0,50), GPIO 23 (R$0,10). GPIO 4 (R$0,25) reservado, não usado.
+              Pulso 100 ms · intervalo 300 ms.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
