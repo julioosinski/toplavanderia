@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLaundry } from "@/hooks/useLaundry";
 import { supabase } from "@/integrations/supabase/client";
 import { LaundryGuard } from "@/components/admin/LaundryGuard";
@@ -7,7 +7,16 @@ import { DataTable } from "@/components/ui/data-table";
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "lucide-react";
+import {
+  getMachineTypeMeta,
+  mapDbMachineType,
+  MACHINE_TYPE_ORDER,
+  type MachineDisplayType,
+} from "@/lib/machineDisplayTypes";
+import {
+  displayTransactionAmount,
+  isManualRelease,
+} from "@/lib/transactionRevenue";
 
 type Transaction = {
   id: string;
@@ -22,6 +31,21 @@ type Transaction = {
   duration_minutes: number | null;
   user_id?: string | null;
   operator_name?: string;
+  service_type?: MachineDisplayType;
+};
+
+const SERVICE_TYPES: MachineDisplayType[] = ["lavadora", "secadora", "massage", "coffee"];
+
+const getPaymentLabel = (method: string | null | undefined) => {
+  if (!method) return "—";
+  if (method === "manual_release") return "Liberação Manual";
+  if (method === "pix") return "PIX";
+  if (method === "credit") return "Crédito";
+  if (method === "debit" || method === "card") return "Débito";
+  if (method === "cielo") return "Cielo";
+  if (method === "totem") return "Totem";
+  if (method.includes("*")) return `Cartão ${method}`;
+  return method;
 };
 
 const statusLabels: Record<string, string> = {
@@ -58,6 +82,21 @@ const columns: ColumnDef<Transaction>[] = [
     cell: ({ row }) => row.original.machine_name || row.original.machine_id.slice(0, 8),
   },
   {
+    accessorKey: "service_type",
+    header: "Serviço",
+    cell: ({ row }) => {
+      const type = row.original.service_type ?? mapDbMachineType(row.original.machine_type);
+      const meta = getMachineTypeMeta(type);
+      const Icon = meta.icon;
+      return (
+        <Badge variant="outline" className="gap-1 font-normal">
+          <Icon className="h-3 w-3" />
+          {meta.label}
+        </Badge>
+      );
+    },
+  },
+  {
     accessorKey: "status",
     header: "Status",
     cell: ({ row }) => {
@@ -72,20 +111,26 @@ const columns: ColumnDef<Transaction>[] = [
   {
     accessorKey: "duration_minutes",
     header: "Duração (min)",
+    cell: ({ row }) => {
+      const type = row.original.service_type ?? mapDbMachineType(row.original.machine_type);
+      if (type === "coffee") return "—";
+      const minutes = row.getValue("duration_minutes") as number | null;
+      return minutes ?? "—";
+    },
   },
   {
     accessorKey: "payment_method",
     header: "Pagamento",
     cell: ({ row }) => {
       const method = row.getValue("payment_method") as string | null;
-      if (method === "manual_release") {
+      if (isManualRelease(method)) {
         return (
           <Badge variant="outline" className="border-amber-500 text-amber-700">
             Liberação Manual
           </Badge>
         );
       }
-      return method || "—";
+      return getPaymentLabel(method);
     },
   },
   {
@@ -101,8 +146,16 @@ const columns: ColumnDef<Transaction>[] = [
     accessorKey: "total_amount",
     header: "Valor",
     cell: ({ row }) => {
-      const amount = row.getValue("total_amount") as number;
-      return `R$ ${amount.toFixed(2)}`;
+      const amount = displayTransactionAmount(row.getValue("total_amount") as number);
+      const manual = isManualRelease(row.original.payment_method);
+      return (
+        <div className="text-right">
+          <span className="font-medium">R$ {amount.toFixed(2)}</span>
+          {manual && (
+            <span className="block text-xs text-muted-foreground">liberação manual</span>
+          )}
+        </div>
+      );
     },
   },
 ];
@@ -151,7 +204,13 @@ export default function Transactions() {
     const machineMap = new Map(machinesData?.map(m => [m.id, m]) || []);
 
     // Fetch operator names for manual releases
-    const manualUserIds = [...new Set((txData || []).filter(t => t.payment_method === 'manual_release' && t.user_id).map(t => t.user_id!))];
+    const manualUserIds = [
+      ...new Set(
+        (txData || [])
+          .filter((t) => isManualRelease(t.payment_method) && t.user_id)
+          .map((t) => t.user_id!),
+      ),
+    ];
     let profileMap = new Map<string, string>();
     if (manualUserIds.length > 0) {
       const { data: profiles } = await supabase
@@ -163,17 +222,44 @@ export default function Transactions() {
 
     const enriched = (txData || []).map(tx => {
       const machine = machineMap.get(tx.machine_id);
+      const serviceType = mapDbMachineType(machine?.type);
       return {
         ...tx,
         machine_name: machine?.name || undefined,
         machine_type: machine?.type || undefined,
-        operator_name: tx.payment_method === 'manual_release' && tx.user_id ? profileMap.get(tx.user_id) || undefined : undefined,
+        service_type: serviceType,
+        operator_name:
+          isManualRelease(tx.payment_method) && tx.user_id
+            ? profileMap.get(tx.user_id) || undefined
+            : undefined,
       };
     });
 
     setTransactions(enriched);
     setLoading(false);
   }, [currentLaundryId, dateFilter]);
+
+  const serviceSummaries = useMemo(() => {
+    const totals: Record<MachineDisplayType, { count: number; total: number }> = {
+      lavadora: { count: 0, total: 0 },
+      secadora: { count: 0, total: 0 },
+      massage: { count: 0, total: 0 },
+      coffee: { count: 0, total: 0 },
+    };
+
+    for (const tx of transactions) {
+      const type = tx.service_type ?? mapDbMachineType(tx.machine_type);
+      totals[type].count += 1;
+      totals[type].total += displayTransactionAmount(tx.total_amount);
+    }
+
+    return totals;
+  }, [transactions]);
+
+  const grandTotal = useMemo(
+    () => transactions.reduce((sum, tx) => sum + displayTransactionAmount(tx.total_amount), 0),
+    [transactions],
+  );
 
   useEffect(() => {
     if (currentLaundryId) void loadTransactions();
@@ -211,6 +297,54 @@ export default function Transactions() {
             ))}
           </div>
         </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {[...SERVICE_TYPES]
+            .sort((a, b) => MACHINE_TYPE_ORDER[a] - MACHINE_TYPE_ORDER[b])
+            .map((type) => {
+              const meta = getMachineTypeMeta(type);
+              const Icon = meta.icon;
+              const summary = serviceSummaries[type];
+              return (
+                <Card key={type} className={`border ${meta.cardBorder}`}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className={`text-sm font-medium flex items-center gap-2 ${meta.titleClass}`}>
+                      <span className={`inline-flex h-8 w-8 items-center justify-center rounded-full ${meta.iconBg}`}>
+                        <Icon className="h-4 w-4 text-white" />
+                      </span>
+                      {meta.label}
+                    </CardTitle>
+                    <CardDescription>
+                      {summary.count} transaç{summary.count !== 1 ? "ões" : "ão"} no período
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold tracking-tight">
+                      R$ {summary.total.toFixed(2)}
+                    </p>
+                    {type === "coffee" && (
+                      <p className="text-xs text-muted-foreground mt-1">Créditos liberados / vendidos</p>
+                    )}
+                    {type === "massage" && (
+                      <p className="text-xs text-muted-foreground mt-1">Sessões liberadas / pagas</p>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+        </div>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-4">
+            <div>
+              <CardTitle>Resumo do período</CardTitle>
+              <CardDescription>
+                Soma de lavagem, secagem, café e massagem (inclui liberações manuais)
+              </CardDescription>
+            </div>
+            <p className="text-xl font-bold whitespace-nowrap">R$ {grandTotal.toFixed(2)}</p>
+          </CardHeader>
+        </Card>
 
         <Card>
           <CardHeader>
