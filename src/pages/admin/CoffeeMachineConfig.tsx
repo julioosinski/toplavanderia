@@ -132,7 +132,7 @@ export default function CoffeeMachineConfig() {
     toast({
       title: 'Firmware gerado!',
       description:
-        'Dois arquivos baixados (.ino + esp32_wifi_ota_common.h). Grave no ESP32 e configure Wi-Fi em TopLavanderia-{ESP32_ID} / toplav123. OTA remoto em Configurações.',
+        'Firmware baixado (.ino autocontido + .h de backup). Grave no ESP32 e configure Wi-Fi em TopLavanderia-{ESP32_ID} / toplav123. OTA remoto em Configurações.',
     });
     setDownloading(false);
   };
@@ -336,7 +336,8 @@ export default function CoffeeMachineConfig() {
               <p className="font-semibold text-sm">Após gravar o firmware:</p>
               <ul className="list-disc ml-4 space-y-1">
                 <li>
-                  Coloque <strong>esp32_wifi_ota_common.h</strong> na mesma pasta do .ino antes de compilar
+                  O .ino baixado já inclui Wi-Fi/OTA embutido; se usar sketch antigo, coloque{' '}
+                  <strong>esp32_wifi_ota_common.h</strong> na mesma pasta do .ino
                 </li>
                 <li>
                   Portal Wi-Fi: rede <strong>TopLavanderia-{'{ESP32_ID}'}</strong>, senha{' '}

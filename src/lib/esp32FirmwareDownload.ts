@@ -3,9 +3,22 @@ import esp32PoltronaTemplate from '@/firmware/poltrona_massagem_top_lavanderia.i
 import esp32CafeTemplate from '@/firmware/maquina_cafe_top_lavanderia.ino?raw';
 import esp32WifiOtaCommon from '@/firmware/esp32_wifi_ota_common.h?raw';
 
+const ESP32_WIFI_OTA_INCLUDE = '#include "esp32_wifi_ota_common.h"';
+
 /** Header compartilhado Wi-Fi + OTA — deve ficar na mesma pasta do .ino no Arduino IDE */
 export function getEsp32WifiOtaCommonHeader(): string {
   return esp32WifiOtaCommon;
+}
+
+/** Substitui #include pelo conteúdo do header — sketch único no Arduino IDE. */
+export function bundleEsp32WifiOtaHeader(inoContent: string): string {
+  if (!inoContent.includes(ESP32_WIFI_OTA_INCLUDE)) {
+    return inoContent;
+  }
+  return inoContent.replace(
+    ESP32_WIFI_OTA_INCLUDE,
+    `// --- esp32_wifi_ota_common.h (embutido no download) ---\n${esp32WifiOtaCommon}\n// --- fim esp32_wifi_ota_common.h ---`,
+  );
 }
 
 export function downloadTextFile(content: string, filename: string): void {
@@ -18,10 +31,12 @@ export function downloadTextFile(content: string, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-/** Baixa o .ino gerado e o esp32_wifi_ota_common.h (obrigatório para café e poltrona). */
+/** Baixa .ino autocontido (header Wi-Fi/OTA embutido). Também baixa o .h separado como backup. */
 export function downloadEsp32DeviceFirmware(inoContent: string, inoFilename: string): void {
-  downloadTextFile(inoContent, inoFilename);
-  downloadTextFile(getEsp32WifiOtaCommonHeader(), 'esp32_wifi_ota_common.h');
+  downloadTextFile(bundleEsp32WifiOtaHeader(inoContent), inoFilename);
+  window.setTimeout(() => {
+    downloadTextFile(getEsp32WifiOtaCommonHeader(), 'esp32_wifi_ota_common.h');
+  }, 400);
 }
 
 /** Escape conteúdo dentro de "..." em string C */
