@@ -16,6 +16,7 @@ import { Clock, DollarSign, MapPin, Cpu, Wifi, Play, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { forceMachineReleased } from "@/lib/machineEsp32Sync";
 import { adminRemoteRelease } from "@/lib/deviceRemoteRelease";
+import { reaisToCentavos } from "@/lib/money";
 import { supabase } from "@/integrations/supabase/client";
 import { getMachineTypeMeta } from "@/lib/machineDisplayTypes";
 
@@ -38,7 +39,7 @@ export const MachineDetailsDialog = ({
   const [coffeeCredits, setCoffeeCredits] = useState("");
   const [releasingCoffee, setReleasingCoffee] = useState(false);
 
-  const parsedCoffeeCredits = Math.round(Number(coffeeCredits));
+  const coffeeCentavos = reaisToCentavos(coffeeCredits);
 
   if (!machine) return null;
 
@@ -115,10 +116,10 @@ export const MachineDetailsDialog = ({
   };
 
   const handleReleaseCoffeeCredits = async () => {
-    if (!Number.isFinite(parsedCoffeeCredits) || parsedCoffeeCredits <= 0) {
+    if (coffeeCentavos <= 0) {
       toast({
-        title: "Créditos inválidos",
-        description: "Informe um número inteiro maior que zero.",
+        title: "Valor inválido",
+        description: "Informe um valor em reais maior que zero (ex.: 8,50).",
         variant: "destructive",
       });
       return;
@@ -128,13 +129,13 @@ export const MachineDetailsDialog = ({
     try {
       const { error } = await adminRemoteRelease({
         machineId: machine.id,
-        valorCentavos: parsedCoffeeCredits,
+        valorCentavos: coffeeCentavos,
       });
       if (error) throw error;
 
       toast({
         title: "Crédito enfileirado",
-        description: `${parsedCoffeeCredits} pulsos (R$ ${(parsedCoffeeCredits / 100).toFixed(2)}) — ESP32 executará em alguns segundos.`,
+        description: `R$ ${(coffeeCentavos / 100).toFixed(2)} — ESP32 executará em alguns segundos.`,
       });
       setCoffeeCredits("");
       onAfterAction?.();
@@ -247,29 +248,22 @@ export const MachineDetailsDialog = ({
 
           {machine.type === "coffee" && (
             <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
-              <Label htmlFor="coffee-credits-input">Créditos a liberar (pulsos ESP32)</Label>
+              <Label htmlFor="coffee-credits-input">Valor a liberar (R$)</Label>
               <Input
                 id="coffee-credits-input"
-                type="number"
-                min={1}
-                step={1}
-                placeholder="Ex.: 350"
+                type="text"
+                inputMode="decimal"
+                placeholder="Ex.: 8,50"
                 value={coffeeCredits}
                 onChange={(e) => setCoffeeCredits(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                1 pulso = R$ 0,01 · equivalente:{" "}
-                {Number.isFinite(parsedCoffeeCredits) && parsedCoffeeCredits > 0
-                  ? `R$ ${(parsedCoffeeCredits / 100).toFixed(2)}`
-                  : "—"}
+                Será registrado na transação e enviado ao moedeiro como{" "}
+                {coffeeCentavos > 0 ? `${coffeeCentavos} centavos` : "—"}
               </p>
               <Button
                 className="w-full bg-amber-600 hover:bg-amber-700 text-primary-foreground"
-                disabled={
-                  releasingCoffee ||
-                  !Number.isFinite(parsedCoffeeCredits) ||
-                  parsedCoffeeCredits <= 0
-                }
+                disabled={releasingCoffee || coffeeCentavos <= 0}
                 onClick={() => void handleReleaseCoffeeCredits()}
               >
                 <Zap size={16} className="mr-1" />

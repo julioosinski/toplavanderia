@@ -21,6 +21,7 @@ import {
   type MachineRow,
 } from "@/lib/machineEsp32Sync";
 import { adminRemoteRelease } from "@/lib/deviceRemoteRelease";
+import { reaisToCentavos } from "@/lib/money";
 import { ESP32ConfigurationDialog } from "@/components/admin/ESP32ConfigurationDialog";
 import { Link } from "react-router-dom";
 import { Armchair, Coffee } from "lucide-react";
@@ -354,21 +355,57 @@ export default function Machines() {
                   const isCoffee = machine.type === 'coffee';
                   const isMassage = machine.type === 'massage';
                   if (isCoffee || isMassage) {
+                    if (isCoffee) {
+                      const raw = window.prompt(
+                        `Valor do crédito de café em "${machine.name}" (R$):`,
+                        '',
+                      );
+                      if (!raw) return;
+                      const valorCentavos = reaisToCentavos(raw);
+                      if (valorCentavos <= 0) {
+                        toast({
+                          title: 'Valor inválido',
+                          description: 'Informe um valor em reais (ex.: 8,50).',
+                          variant: 'destructive',
+                        });
+                        return;
+                      }
+                      if (
+                        !confirm(
+                          `Liberar R$ ${(valorCentavos / 100).toFixed(2)} no moedeiro de "${machine.name}"?`,
+                        )
+                      ) {
+                        return;
+                      }
+                      const { error } = await adminRemoteRelease({
+                        machineId: machine.id,
+                        valorCentavos,
+                      });
+                      if (error) {
+                        toast({
+                          title: 'Erro',
+                          description: error.message,
+                          variant: 'destructive',
+                        });
+                      } else {
+                        toast({
+                          title: 'Liberação remota enfileirada',
+                          description: `R$ ${(valorCentavos / 100).toFixed(2)} — comando enviado ao ESP32.`,
+                        });
+                        loadMachines();
+                      }
+                      return;
+                    }
+
                     if (
                       !confirm(
-                        isCoffee
-                          ? 'Liberar crédito de café remotamente (valor do ciclo/preço cadastrado)?'
-                          : 'Liberar sessão de massagem remotamente (relé ON pelo tempo do ciclo)?'
+                        'Liberar sessão de massagem remotamente (relé ON pelo tempo do ciclo)?',
                       )
                     ) {
                       return;
                     }
-                    const valorCentavos = isCoffee
-                      ? Math.round(asNumber(machine.price_per_cycle) * 100)
-                      : null;
                     const { error } = await adminRemoteRelease({
                       machineId: machine.id,
-                      valorCentavos: valorCentavos && valorCentavos > 0 ? valorCentavos : null,
                     });
                     if (error) {
                       toast({

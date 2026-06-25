@@ -18,6 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Coffee, Copy, CheckCircle, Download, Zap, Cpu, ExternalLink } from 'lucide-react';
 import { buildEsp32CafeFirmware, downloadEsp32DeviceFirmware } from '@/lib/esp32FirmwareDownload';
 import { adminRemoteRelease } from '@/lib/deviceRemoteRelease';
+import { reaisToCentavos } from '@/lib/money';
 
 interface CoffeeMachine {
   id: string;
@@ -27,6 +28,13 @@ interface CoffeeMachine {
   status: string | null;
 }
 
+interface CoffeeProductOption {
+  id: string;
+  machine_id: string;
+  name: string;
+  price: number;
+}
+
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : 'Erro desconhecido';
 
@@ -34,12 +42,14 @@ export default function CoffeeMachineConfig() {
   const { currentLaundry } = useLaundry();
   const { toast } = useToast();
   const [machines, setMachines] = useState<CoffeeMachine[]>([]);
+  const [products, setProducts] = useState<CoffeeProductOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedMachineId, setSelectedMachineId] = useState('');
   const [machineName, setMachineName] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [copiedLaundryId, setCopiedLaundryId] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [customReleaseValues, setCustomReleaseValues] = useState<Record<string, string>>({});
 
   const laundryId = currentLaundry?.id ?? '';
 
@@ -61,6 +71,16 @@ export default function CoffeeMachineConfig() {
 
       if (error) throw error;
       setMachines((data as CoffeeMachine[]) ?? []);
+
+      const { data: productsData, error: productsError } = await supabase
+        .from('coffee_products')
+        .select('id, machine_id, name, price')
+        .eq('laundry_id', currentLaundry.id)
+        .eq('is_active', true)
+        .order('sort_order');
+
+      if (productsError) throw productsError;
+      setProducts((productsData as CoffeeProductOption[]) ?? []);
     } catch (error) {
       toast({
         title: 'Erro ao carregar máquinas de café',
@@ -125,11 +145,54 @@ export default function CoffeeMachineConfig() {
     toast({ title: 'LAUNDRY_ID copiado' });
   };
 
-  const handleRemoteRelease = async (machine: CoffeeMachine) => {
-    const valorCentavos = Math.round(Number(machine.price_per_cycle) * 100);
+  const handleRemoteRelease = async (
+    machine: CoffeeMachine,
+    options?: { product?: CoffeeProductOption; valorReais?: string },
+  ) => {
+    const product = options?.product;
+    const valorReais = options?.valorReais?.trim();
+
+    if (product) {
+      if (
+        !confirm(
+          `Liberar "${product.name}" em "${machine.name}" (R$ ${Number(product.price).toFixed(2)})?`,
+        )
+      ) {
+        return;
+      }
+
+      const { error } = await adminRemoteRelease({
+        machineId: machine.id,
+        productId: product.id,
+      });
+      if (error) {
+        toast({
+          title: 'Falha na liberação',
+          description: error.message,
+          variant: 'destructive',
+        });
+        return;
+      }
+      toast({
+        title: 'Crédito enfileirado',
+        description: `R$ ${Number(product.price).toFixed(2)} — ESP32 executará em alguns segundos.`,
+      });
+      return;
+    }
+
+    const valorCentavos = reaisToCentavos(valorReais);
+    if (valorCentavos <= 0) {
+      toast({
+        title: 'Valor inválido',
+        description: 'Informe um valor em reais (ex.: 8,50).',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     if (
       !confirm(
-        `Liberar crédito remotamente em "${machine.name}" (R$ ${Number(machine.price_per_cycle).toFixed(2)})?`
+        `Liberar crédito de R$ ${(valorCentavos / 100).toFixed(2)} em "${machine.name}"?`,
       )
     ) {
       return;
@@ -137,7 +200,7 @@ export default function CoffeeMachineConfig() {
 
     const { error } = await adminRemoteRelease({
       machineId: machine.id,
-      valorCentavos: valorCentavos > 0 ? valorCentavos : null,
+      valorCentavos,
     });
     if (error) {
       toast({
@@ -149,7 +212,7 @@ export default function CoffeeMachineConfig() {
     }
     toast({
       title: 'Crédito enfileirado',
-      description: 'O ESP32 executará pulsos no moedeiro em até alguns segundos.',
+      description: `R$ ${(valorCentavos / 100).toFixed(2)} — ESP32 executará pulsos no moedeiro.`,
     });
   };
 
@@ -305,15 +368,17 @@ export default function CoffeeMachineConfig() {
               <p className="text-muted-foreground">Nenhuma máquina cadastrada.</p>
             ) : (
               <div className="space-y-3">
-                {machines.map((machine) => (
+                {machines.map((machine) => {
+                  const machineProducts = products.filter((p) => p.machine_id === machine.id);
+
+                  return (
                   <div
                     key={machine.id}
-                    className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
+                    className="flex flex-col gap-3 rounded-lg border p-4"
                   >
                     <div>
                       <p className="font-medium">{machine.name}</p>
                       <p className="text-sm text-muted-foreground">
-                        Preço base R$ {Number(machine.price_per_cycle).toFixed(2)} ·{' '}
                         {machine.esp32_id ? (
                           <span className="font-mono">{machine.esp32_id}</span>
                         ) : (
@@ -321,17 +386,61 @@ export default function CoffeeMachineConfig() {
                         )}
                       </p>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={!machine.esp32_id}
-                      onClick={() => handleRemoteRelease(machine)}
-                    >
-                      <Zap className="mr-1 h-4 w-4" />
-                      Liberar crédito
-                    </Button>
+
+                    <div className="flex flex-col gap-2 sm:items-start">
+                      {machineProducts.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {machineProducts.map((product) => (
+                            <Button
+                              key={product.id}
+                              size="sm"
+                              variant="secondary"
+                              disabled={!machine.esp32_id}
+                              onClick={() => void handleRemoteRelease(machine, { product })}
+                            >
+                              <Zap className="mr-1 h-4 w-4" />
+                              {product.name} · R$ {Number(product.price).toFixed(2)}
+                            </Button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          Cadastre produtos em Cardápio Café para liberar pelo preço correto.
+                        </p>
+                      )}
+
+                      <div className="flex flex-wrap gap-2 items-center">
+                        <Input
+                          className="max-w-[140px]"
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="Outro valor R$"
+                          value={customReleaseValues[machine.id] ?? ''}
+                          onChange={(e) =>
+                            setCustomReleaseValues((prev) => ({
+                              ...prev,
+                              [machine.id]: e.target.value,
+                            }))
+                          }
+                          disabled={!machine.esp32_id}
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!machine.esp32_id || !customReleaseValues[machine.id]?.trim()}
+                          onClick={() =>
+                            void handleRemoteRelease(machine, {
+                              valorReais: customReleaseValues[machine.id],
+                            })
+                          }
+                        >
+                          Liberar valor
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>
