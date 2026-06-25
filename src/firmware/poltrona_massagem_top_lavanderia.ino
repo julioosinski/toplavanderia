@@ -42,7 +42,7 @@ const int TEMPO_RESFRIAMENTO_SEG = 30;
 
 // ===== Timers rede =====
 const unsigned long HEARTBEAT_INTERVAL_MS = 30000;
-const unsigned long POLL_INTERVAL_MS = 5000;
+const unsigned long POLL_INTERVAL_MS = 10000;
 const unsigned long HTTP_TIMEOUT_MS = 15000;
 
 // ===== DFPlayer / áudios =====

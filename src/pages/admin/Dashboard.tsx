@@ -266,7 +266,7 @@ export default function Dashboard() {
       if (document.visibilityState !== 'visible') return;
       void loadRevenueData();
       void loadConsolidatedMachines();
-    }, 15000);
+    }, 30000);
 
     // Realtime para visão consolidada (todas lavanderias) — atualiza sem esperar o ciclo de 15s
     let machinesCh: ReturnType<typeof supabase.channel> | null = null;

@@ -78,7 +78,7 @@ export const useMachineAutoStatus = () => {
       }
     };
 
-    const interval = setInterval(checkMachineTimeouts, 15_000);
+    const interval = setInterval(checkMachineTimeouts, 60_000);
     checkMachineTimeouts();
 
     return () => clearInterval(interval);

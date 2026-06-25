@@ -50,7 +50,7 @@ static unsigned long lastOtaPoll = 0;
 static const unsigned long WIFI_RETRY_INTERVAL = 15000;
 static const unsigned long STA_CONNECT_TIMEOUT_MS = 12000;
 static const unsigned long CONFIG_PORTAL_HINT_AFTER_MS = 120000;
-static const unsigned long OTA_POLL_INTERVAL_MS = 30000;
+static const unsigned long OTA_POLL_INTERVAL_MS = 300000; // 5 min (economia; OTA agendado no admin)
 
 static String esp32GetConfigApSsid() {
   String suffix = String(ESP32_ID);

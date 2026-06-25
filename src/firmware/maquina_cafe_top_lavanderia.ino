@@ -35,7 +35,7 @@ char ESP32_ID[16];
 unsigned long lastHeartbeat = 0;
 unsigned long lastPoll = 0;
 const unsigned long HEARTBEAT_INTERVAL_MS = 30000;
-const unsigned long POLL_INTERVAL_MS = 5000;
+const unsigned long POLL_INTERVAL_MS = 10000;
 
 bool inserindoCredito = false;
 

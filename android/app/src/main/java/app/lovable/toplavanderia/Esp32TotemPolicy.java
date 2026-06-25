@@ -17,8 +17,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class Esp32TotemPolicy {
     public static final long HEARTBEAT_STALE_MS = 42_000L;
-    /** Intervalo entre polls (Cielo: rede + dois RPCs — manter moderado). */
-    public static final int STATUS_POLL_INTERVAL_MS = 2_500;
+    /** Intervalo entre polls na HOME (Cielo: dois RPCs por ciclo). */
+    public static final int STATUS_POLL_INTERVAL_MS = 8_000;
 
     /**
      * Se o relógio da maquininha está atrasado, o heartbeat (UTC) parece “no futuro” (ageMs negativo).

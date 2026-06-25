@@ -59,9 +59,9 @@ interface Esp32SourceRow extends Esp32StatusRow {
 const CACHE_KEY_PREFIX = 'machines_cache_';
 const FETCH_MACHINES_TIMEOUT_MS = 20000;
 /** Fallback se Realtime não estiver habilitado na tabela no Supabase */
-const POLL_MACHINES_MS = 5000;
-/** Tablet: refetch mais frequente para alinhar status após fim de ciclo / Realtime. */
-const POLL_MACHINES_NATIVE_MS = 2500;
+const POLL_MACHINES_MS = 10000;
+/** Totem nativo: alinhado a Esp32TotemPolicy.STATUS_POLL_INTERVAL_MS (8s). */
+const POLL_MACHINES_NATIVE_MS = 8000;
 /** Minutos extra após o fim do ciclo antes de mostrar “disponível” (0 = assim que acaba o tempo do ciclo). */
 const CYCLE_END_GRACE_MINUTES = 0;
 

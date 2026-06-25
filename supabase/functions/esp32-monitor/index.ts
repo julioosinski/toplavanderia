@@ -346,13 +346,7 @@ serve(async (req) => {
         });
       }
 
-      // Auto-mark stale ESP32s as offline (heartbeat older than 3 minutes)
-      const staleThreshold = new Date(Date.now() - 3 * 60 * 1000).toISOString();
-      await supabaseClient
-        .from('esp32_status')
-        .update({ is_online: false, updated_at: new Date().toISOString() })
-        .eq('is_online', true)
-        .lt('last_heartbeat', staleThreshold);
+      // Stale offline: pg_cron mark_stale_esp32_offline() a cada 2 min (migration 20260626120000)
 
       // Fetch machine config (cycle_time_minutes) for this ESP32
       const { data: machineConfigs } = await supabaseClient
