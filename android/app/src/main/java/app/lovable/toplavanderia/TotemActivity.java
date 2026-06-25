@@ -12,6 +12,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -55,8 +56,9 @@ public class TotemActivity extends Activity {
     public static final String EXTRA_CIELO_PAYMENT_RETURN = "cielo_payment_return";
     /** Tela de sucesso após pagamento antes de voltar à seleção de máquinas. */
     private static final long POST_PAYMENT_SUCCESS_MS = 1000L;
-    /** Sem interação nesta tela → volta à HOME (inclui app Cielo em segundo plano). */
+    /** Sem interação → volta à HOME (todas as telas do totem, inclusive Cielo em segundo plano). */
     private static final long SCREEN_IDLE_TIMEOUT_MS = 60_000L;
+    private static final long IDLE_WATCHDOG_TICK_MS = 1_000L;
     private static final int ADMIN_SECRET_TAPS = 7;
     private static final long ADMIN_TAP_WINDOW_MS = 3000L;
 
@@ -87,7 +89,8 @@ public class TotemActivity extends Activity {
     private int adminTapCount = 0;
     private final Handler adminTapHandler = new Handler(Looper.getMainLooper());
     private final Handler idleHandler = new Handler(Looper.getMainLooper());
-    private Runnable idleTimeoutRunnable;
+    private Runnable idleWatchdogRunnable;
+    private long lastUserInteractionMs = System.currentTimeMillis();
     private Runnable adminTapResetRunnable;
     private Runnable pendingSuccessResetRunnable;
     /** Evita dois pedidos Cielo com a mesma referência (toque duplo / threads paralelas). */
@@ -113,7 +116,6 @@ public class TotemActivity extends Activity {
         CieloSslWorkaround.ensureInitialized();
         applyKeepScreenAwake();
         DeviceClockGuard.checkAsync(this);
-        idleTimeoutRunnable = () -> handleScreenIdleTimeout();
         // Imersivo só após setContentView (L400/Cielo: DecorView null em onCreate quebra getInsetsController).
         try {
             // Inicializar componentes
@@ -179,6 +181,7 @@ public class TotemActivity extends Activity {
             
             // Criar interface
             createTotemInterface();
+            ensureIdleWatchdogRunning();
             
             // Carregar máquinas
             loadMachines();
@@ -241,20 +244,27 @@ public class TotemActivity extends Activity {
             showFatalErrorScreen("Falha ao retomar aplicativo");
         }
     }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (ev != null && ev.getAction() == MotionEvent.ACTION_DOWN) {
+            bumpUserInteraction();
+        }
+        return super.dispatchTouchEvent(ev);
+    }
     
+    @Override
+    public void onUserInteraction() {
+        super.onUserInteraction();
+        bumpUserInteraction();
+    }
     @Override
     protected void onPause() {
         super.onPause();
         // Não parar o monitor: no fluxo Cielo o app de pagamento cobre a tela (onPause) e o polling
         // parava por minutos — o status offline só atualizava ao voltar. Kiosk: manter consultas.
         Log.d(TAG, "onPause: monitor de ESP segue ativo em segundo plano");
-        scheduleIdleTimeout();
-    }
-
-    @Override
-    public void onUserInteraction() {
-        super.onUserInteraction();
-        scheduleIdleTimeout();
+        ensureIdleWatchdogRunning();
     }
 
     @Override
@@ -293,7 +303,7 @@ public class TotemActivity extends Activity {
     private void setTotemContentView(View view) {
         setContentView(view);
         applyImmersiveMode();
-        scheduleIdleTimeout();
+        ensureIdleWatchdogRunning();
     }
 
     /** Garante que a grade de máquinas está na tela (não a confirmação de pagamento). */
@@ -318,7 +328,11 @@ public class TotemActivity extends Activity {
         cancelIdleTimeout();
     }
 
+    /** Tela inicial do totem (grade Lavar/Secar/Massagem/Café), sem fluxo de pagamento. */
     private boolean isAtHomeIdle() {
+        if (supabaseHelper == null || !supabaseHelper.isConfigured()) {
+            return true;
+        }
         return currentScreen == TotemScreen.HOME
             && selectedMachine == null
             && selectedCoffeeProduct == null
@@ -328,31 +342,57 @@ public class TotemActivity extends Activity {
             && isMachineGridVisible();
     }
 
+    private boolean shouldEnforceIdleTimeout() {
+        return supabaseHelper != null
+            && supabaseHelper.isConfigured()
+            && !isAtHomeIdle();
+    }
+
+    private void bumpUserInteraction() {
+        lastUserInteractionMs = System.currentTimeMillis();
+        ensureIdleWatchdogRunning();
+    }
+
+    private void ensureIdleWatchdogRunning() {
+        if (idleWatchdogRunnable == null) {
+            idleWatchdogRunnable = this::tickIdleWatchdog;
+        }
+        idleHandler.removeCallbacks(idleWatchdogRunnable);
+        idleHandler.postDelayed(idleWatchdogRunnable, IDLE_WATCHDOG_TICK_MS);
+    }
+
+    private void tickIdleWatchdog() {
+        if (shouldEnforceIdleTimeout()) {
+            long idleMs = System.currentTimeMillis() - lastUserInteractionMs;
+            if (idleMs >= SCREEN_IDLE_TIMEOUT_MS) {
+                handleScreenIdleTimeout();
+                return;
+            }
+        }
+        ensureIdleWatchdogRunning();
+    }
+
+    /** Compat: inicia/reinicia o watchdog (não zera o relógio de inatividade). */
     private void scheduleIdleTimeout() {
-        if (idleTimeoutRunnable == null) {
-            return;
-        }
-        idleHandler.removeCallbacks(idleTimeoutRunnable);
-        if (isAtHomeIdle()) {
-            return;
-        }
-        idleHandler.postDelayed(idleTimeoutRunnable, SCREEN_IDLE_TIMEOUT_MS);
+        ensureIdleWatchdogRunning();
     }
 
     private void cancelIdleTimeout() {
-        idleHandler.removeCallbacks(idleTimeoutRunnable);
+        if (idleWatchdogRunnable != null) {
+            idleHandler.removeCallbacks(idleWatchdogRunnable);
+        }
     }
 
     private void handleScreenIdleTimeout() {
-        if (lastSucceededOperationId > 0) {
-            scheduleIdleTimeout();
-            return;
-        }
         Log.i(TAG, "Inatividade de 60s — retornando à tela inicial");
         abortSessionForIdleTimeout();
     }
 
     private void abortSessionForIdleTimeout() {
+        if (supabaseHelper == null || !supabaseHelper.isConfigured()) {
+            cancelIdleTimeout();
+            return;
+        }
         final String pendingId = currentPendingTransactionId;
         awaitingPaymentCallback = false;
         paymentLaunchInProgress.set(false);
@@ -361,7 +401,7 @@ public class TotemActivity extends Activity {
         paymentContextMachine = null;
         selectedMachine = null;
         selectedCoffeeProduct = null;
-        if (pendingId != null && !pendingId.isEmpty() && supabaseHelper != null) {
+        if (pendingId != null && !pendingId.isEmpty()) {
             new Thread(() -> {
                 boolean cancelled = supabaseHelper.cancelTotemTransactionById(pendingId);
                 Log.d(TAG, "Transação cancelada por inatividade (" + pendingId + "): " + cancelled);
@@ -402,6 +442,7 @@ public class TotemActivity extends Activity {
                 displayCategoryMachines(currentScreen);
                 break;
         }
+        ensureIdleWatchdogRunning();
     }
 
     private int countMachinesByType(String type) {
@@ -543,6 +584,9 @@ public class TotemActivity extends Activity {
         selectedMachine = null;
         selectedCoffeeProduct = null;
         displayCurrentScreen();
+        if (isAtHomeIdle()) {
+            cancelIdleTimeout();
+        }
     }
 
     private void addBackToHomeButton() {
@@ -1850,6 +1894,9 @@ public class TotemActivity extends Activity {
         awaitingPaymentCallback = false;
         paymentLaunchInProgress.set(false);
         paymentContextMachine = null;
+        selectedMachine = null;
+        selectedCoffeeProduct = null;
+        currentOperationId = -1;
         Log.e(TAG, "=== ERRO NO PAGAMENTO ===");
         Log.e(TAG, "Erro: " + error);
 
