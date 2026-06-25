@@ -209,16 +209,36 @@ export const ESP32FirmwareOta = () => {
           Atualização OTA (Wi-Fi)
         </CardTitle>
         <CardDescription>
-          Envie o arquivo <code>.bin</code> compilado no Arduino IDE (Sketch → Export compiled Binary).
+          O admin gera o <strong>código-fonte</strong> (<code>.ino</code>); o OTA exige o{' '}
+          <strong>binário compilado</strong> (<code>.bin</code>) — veja o passo a passo abaixo.
           A primeira instalação com suporte OTA ainda exige upload USB (lavadoras v2.2.4+, café/poltrona v1.1.0+).
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <Alert>
           <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            O ESP32 precisa estar online na rede Wi-Fi. Após o agendamento, ele verifica atualizações
-            a cada ~30 segundos, baixa o firmware e reinicia automaticamente.
+          <AlertDescription className="space-y-2">
+            <p>
+              <strong>Do .ino ao .bin (Arduino IDE):</strong>
+            </p>
+            <ol className="list-decimal ml-4 space-y-1 text-sm">
+              <li>Baixe o firmware em Firmware Café / Poltrona / Máquinas (arquivo <code>.ino</code>).</li>
+              <li>
+                Abra no Arduino IDE (poltrona: placa ESP32 + partition <strong>Huge APP 3MB</strong>).
+              </li>
+              <li>
+                Menu <strong>Sketch → Export compiled Binary</strong> (ou Ctrl+Alt+S) — gera{' '}
+                <code>sketch.ino.bin</code> na pasta do sketch.
+              </li>
+              <li>
+                Anexe esse <code>.bin</code> aqui embaixo, informe a versão (ex.:{' '}
+                <code>v1.1.0-toplav-poltrona</code>) e agende o OTA.
+              </li>
+            </ol>
+            <p className="text-xs text-muted-foreground pt-1">
+              O Supabase não compila <code>.ino</code> no servidor — só distribui o <code>.bin</code> já
+              compilado. O ESP verifica atualizações a cada ~5 minutos quando online.
+            </p>
           </AlertDescription>
         </Alert>
 
