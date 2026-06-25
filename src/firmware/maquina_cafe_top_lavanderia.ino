@@ -16,7 +16,7 @@
 #include <cstring>
 #include <cstdio>
 
-#define FIRMWARE_VERSION "v1.0.1-toplav-cafe"
+#define FIRMWARE_VERSION "v1.0.2-toplav-cafe"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
@@ -53,6 +53,9 @@ const int TEMPO_PULSO_MOEDA = 100;
 const int TEMPO_ENTRE_MOEDAS = 300;
 
 void buildEsp32Id() {
+  // WiFi deve estar inicializado antes de ler o MAC (senão vira esp32_03000000).
+  WiFi.mode(WIFI_STA);
+  delay(100);
   uint8_t mac[6];
   WiFi.macAddress(mac);
   snprintf(ESP32_ID, sizeof(ESP32_ID), "esp32_%02x%02x%02x%02x", mac[2], mac[3], mac[4], mac[5]);

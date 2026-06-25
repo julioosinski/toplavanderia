@@ -88,6 +88,8 @@ unsigned long lastHeartbeat = 0;
 unsigned long lastPoll = 0;
 
 void buildEsp32Id() {
+  WiFi.mode(WIFI_STA);
+  delay(100);
   uint8_t mac[6];
   WiFi.macAddress(mac);
   snprintf(ESP32_ID, sizeof(ESP32_ID), "esp32_%02x%02x%02x%02x", mac[2], mac[3], mac[4], mac[5]);

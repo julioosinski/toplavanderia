@@ -29,27 +29,25 @@ export function inferEsp32DeviceType(params: {
   const fw = (params.firmware_version ?? '').toLowerCase();
   const name = (params.device_name ?? '').toLowerCase();
 
-  if (
-    fw.includes('poltrona') ||
-    fw.includes('toplav-poltrona') ||
-    name.includes('poltrona') ||
-    name.includes('massagem')
-  ) {
-    return 'massage';
+  // Firmware explícito tem prioridade (evita café aprovado como poltrona pelo nome da máquina).
+  if (fw.includes('toplav-cafe') || fw.includes('-cafe')) {
+    return 'coffee';
   }
 
-  if (
-    fw.includes('cafe') ||
-    fw.includes('toplav-cafe') ||
-    name.includes('café') ||
-    name.includes('cafe') ||
-    name.includes('coffee')
-  ) {
-    return 'coffee';
+  if (fw.includes('toplav-poltrona') || fw.includes('poltrona')) {
+    return 'massage';
   }
 
   if (fw.startsWith('v2.')) {
     return 'lavadora';
+  }
+
+  if (name.includes('poltrona') || name.includes('massagem')) {
+    return 'massage';
+  }
+
+  if (name.includes('café') || name.includes('cafe') || name.includes('coffee')) {
+    return 'coffee';
   }
 
   return 'lavadora';
@@ -72,4 +70,11 @@ export function suggestMachineName(
     default:
       return 'Lavadora 01';
   }
+}
+
+/** IDs inválidos gerados quando o MAC é lido antes de WiFi.mode(). */
+export function isSuspiciousEsp32Id(esp32Id?: string | null): boolean {
+  if (!esp32Id) return true;
+  const id = esp32Id.toLowerCase();
+  return id === 'main' || id === 'esp32_03000000' || id === 'esp32_00000000';
 }

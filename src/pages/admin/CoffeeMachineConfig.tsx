@@ -118,7 +118,7 @@ export default function CoffeeMachineConfig() {
     toast({
       title: 'Firmware gerado!',
       description:
-        'Configure o Wi-Fi pelo portal Top Lavanderia (AP toplav123) ou grave credenciais via template lavadora.',
+        'Grave no ESP32, abra o Serial (115200) e confira ESP32_ID único (não esp32_03000000). Portal Wi-Fi: CafeConfig / toplav123.',
     });
     setDownloading(false);
   };
@@ -279,6 +279,11 @@ export default function CoffeeMachineConfig() {
               <ul className="list-disc ml-4 space-y-1">
                 <li>
                   Portal Wi-Fi: rede <strong>CafeConfig</strong>, senha <strong>toplav123</strong> (192.168.4.1)
+                </li>
+                <li>
+                  No Serial Monitor (115200), confirme <strong>ESP32_ID</strong> único (ex.:{' '}
+                  <code>esp32_820c8834</code>) — se aparecer <code>esp32_03000000</code>, regrave o firmware
+                  v1.0.2+
                 </li>
                 <li>Anote o <strong>esp32_id</strong> no Serial Monitor (115200 baud) e cadastre na máquina em Máquinas</li>
                 <li>Aprove o ESP em Pendentes de Aprovação (auto-registro via heartbeat)</li>
