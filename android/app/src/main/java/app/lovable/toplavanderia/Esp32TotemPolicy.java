@@ -96,11 +96,6 @@ public final class Esp32TotemPolicy {
         if (esp32Status == null) {
             return false;
         }
-        if (esp32Status.has("is_online") && !esp32Status.isNull("is_online")) {
-            if (!readBooleanLoose(esp32Status, "is_online")) {
-                return false;
-            }
-        }
         String hb = esp32Status.optString("last_heartbeat", "");
         if (hb.isEmpty() || "null".equalsIgnoreCase(hb.trim())) {
             return false;
@@ -114,12 +109,6 @@ public final class Esp32TotemPolicy {
             return false;
         }
 
-        // Supabase is_online=true → confiar no servidor; relógio da Cielo pode estar horas/dias errado
-        // (logs: heartbeat age -96608s quando o terminal está ~27h atrás do UTC do banco).
-        boolean serverSaysOnline = esp32Status.has("is_online")
-            && !esp32Status.isNull("is_online")
-            && readBooleanLoose(esp32Status, "is_online");
-
         long rt = SystemClock.elapsedRealtime();
         HbAnchor anchor = HB_ANCHORS.compute(esp32Id, (k, old) -> {
             if (old == null || old.tMillis != t) {
@@ -128,10 +117,8 @@ public final class Esp32TotemPolicy {
             return old;
         });
         long frozenMs = rt - anchor.elapsedRealtimeAtT;
-        boolean frozenStale = frozenMs > HEARTBEAT_STALE_MS;
-
-        if (serverSaysOnline) {
-            return !frozenStale;
+        if (frozenMs <= HEARTBEAT_STALE_MS) {
+            return true;
         }
 
         long now = System.currentTimeMillis();
@@ -147,11 +134,7 @@ public final class Esp32TotemPolicy {
             return false;
         }
 
-        boolean wallStale = ageMs > HEARTBEAT_STALE_MS;
-        if (wallStale || frozenStale) {
-            return false;
-        }
-        return true;
+        return ageMs <= HEARTBEAT_STALE_MS;
     }
 
     private static boolean readBooleanLoose(JSONObject o, String key) {

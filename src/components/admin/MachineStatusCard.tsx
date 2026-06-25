@@ -78,6 +78,12 @@ export const MachineStatusCard = ({ machine, onClick }: MachineStatusCardProps) 
   };
 
   const isAvailable = machine.status === "available";
+  const displayStatus =
+    machine.type === "coffee"
+      ? machine.espReachable
+        ? "available"
+        : "offline"
+      : machine.status;
   const durationLabel =
     machine.type === "coffee"
       ? "Cardápio no totem"
@@ -92,12 +98,12 @@ export const MachineStatusCard = ({ machine, onClick }: MachineStatusCardProps) 
   return (
     <Card
       className={`relative overflow-hidden transition-all duration-300 cursor-pointer bg-card hover:shadow-lg hover:scale-105 border ${typeMeta.cardBorder} hover:border-primary/40 ${
-        machine.status === 'offline' ? 'opacity-60' : ''
+        displayStatus === 'offline' ? 'opacity-60' : ''
       } shadow-md rounded-lg h-full flex flex-col`}
       onClick={() => onClick?.()}
     >
       <div className="absolute top-2 right-2 z-10">
-        <div className={`w-3 h-3 rounded-full ${getStatusColor(machine.status)} shadow border-2 border-background`} />
+        <div className={`w-3 h-3 rounded-full ${getStatusColor(displayStatus)} shadow border-2 border-background`} />
       </div>
 
       <CardHeader className="text-center p-3 sm:p-4 pb-2 flex-shrink-0">
@@ -122,8 +128,12 @@ export const MachineStatusCard = ({ machine, onClick }: MachineStatusCardProps) 
         </div>
 
         <div className="flex items-center justify-center mb-3">
-          <Badge variant="secondary" className={`text-xs px-2 py-1 ${getStatusBadgeColor(machine.status)}`}>
-            {getStatusText(machine.status)}
+          <Badge variant="secondary" className={`text-xs px-2 py-1 ${getStatusBadgeColor(displayStatus)}`}>
+            {machine.type === "coffee"
+              ? machine.espReachable
+                ? "Online"
+                : "Offline"
+              : getStatusText(machine.status)}
           </Badge>
         </div>
 

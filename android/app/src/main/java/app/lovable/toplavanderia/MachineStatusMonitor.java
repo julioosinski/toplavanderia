@@ -12,6 +12,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -300,6 +301,14 @@ public class MachineStatusMonitor {
         return "running".equals(s) || "in_use".equals(s);
     }
 
+    private static boolean isPulseDispenseType(String machineType) {
+        if (machineType == null) {
+            return false;
+        }
+        String t = machineType.toLowerCase(Locale.ROOT);
+        return "coffee".equals(t) || "cafe".equals(t);
+    }
+
     private String computeMachineStatus(MachineStatus st) {
         if ("maintenance".equals(st.machineStatus)) {
             return "maintenance";
@@ -327,6 +336,10 @@ public class MachineStatusMonitor {
                 }
             }
             return "offline";
+        }
+
+        if (isPulseDispenseType(st.machineType) && reachable) {
+            return "available";
         }
 
         if (relayOn) {

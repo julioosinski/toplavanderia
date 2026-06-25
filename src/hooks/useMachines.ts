@@ -37,6 +37,8 @@ export interface Machine {
   ip_address?: string;
   /** Ciclo em andamento no banco mas sem heartbeat recente do ESP (ex.: queda de energia no hardware). */
   hardwareLinkLost?: boolean;
+  /** Heartbeat ESP32 recente (útil para café/moedeiro). */
+  espReachable?: boolean;
 }
 
 interface MachineSourceRow extends MachineRow {
@@ -153,6 +155,7 @@ export const useMachines = (laundryId?: string | null, opts?: { staleMs?: number
       relay_pin: machine.relay_pin,
       location: machine.location,
       ip_address: esp32?.ip_address,
+      espReachable: computed.espReachable,
       ...(hardwareLinkLost ? { hardwareLinkLost: true } : {}),
     };
   }, [staleMs]);
@@ -217,6 +220,20 @@ export const useMachines = (laundryId?: string | null, opts?: { staleMs?: number
         }
 
         const esp32Map = new Map<string, Esp32StatusRow>(esp32Data?.map(e => [e.esp32_id, e]) || []);
+
+        const missingEsp32Ids = (machinesData ?? [])
+          .map((m) => m.esp32_id)
+          .filter((id): id is string => !!id && !esp32Map.has(id));
+        if (missingEsp32Ids.length > 0) {
+          const { data: extraEsp32 } = await supabase
+            .from('esp32_status')
+            .select('esp32_id, ip_address, is_online, relay_status, last_heartbeat, laundry_id')
+            .in('esp32_id', [...new Set(missingEsp32Ids)]);
+          extraEsp32?.forEach((row) => {
+            esp32Map.set(row.esp32_id, row as Esp32StatusRow);
+          });
+        }
+
         const transformedMachines = sortMachinesByDisplayType(
           machinesData?.map(m => transformMachine(m, esp32Map)) || []
         );

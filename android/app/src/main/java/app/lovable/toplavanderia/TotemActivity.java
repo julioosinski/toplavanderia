@@ -55,6 +55,8 @@ public class TotemActivity extends Activity {
     public static final String EXTRA_CIELO_PAYMENT_RETURN = "cielo_payment_return";
     /** Tela de sucesso após pagamento antes de voltar à seleção de máquinas. */
     private static final long POST_PAYMENT_SUCCESS_MS = 1000L;
+    /** Sem interação nesta tela → volta à HOME (inclui app Cielo em segundo plano). */
+    private static final long SCREEN_IDLE_TIMEOUT_MS = 60_000L;
     private static final int ADMIN_SECRET_TAPS = 7;
     private static final long ADMIN_TAP_WINDOW_MS = 3000L;
 
@@ -84,6 +86,8 @@ public class TotemActivity extends Activity {
     private Button refreshButton;
     private int adminTapCount = 0;
     private final Handler adminTapHandler = new Handler(Looper.getMainLooper());
+    private final Handler idleHandler = new Handler(Looper.getMainLooper());
+    private Runnable idleTimeoutRunnable;
     private Runnable adminTapResetRunnable;
     private Runnable pendingSuccessResetRunnable;
     /** Evita dois pedidos Cielo com a mesma referência (toque duplo / threads paralelas). */
@@ -109,6 +113,7 @@ public class TotemActivity extends Activity {
         CieloSslWorkaround.ensureInitialized();
         applyKeepScreenAwake();
         DeviceClockGuard.checkAsync(this);
+        idleTimeoutRunnable = () -> handleScreenIdleTimeout();
         // Imersivo só após setContentView (L400/Cielo: DecorView null em onCreate quebra getInsetsController).
         try {
             // Inicializar componentes
@@ -230,6 +235,7 @@ public class TotemActivity extends Activity {
             } else {
                 Log.d(TAG, "onResume sem configuração do totem; mantendo tela de configuração");
             }
+            scheduleIdleTimeout();
         } catch (Throwable t) {
             Log.e(TAG, "Falha no onResume", t);
             showFatalErrorScreen("Falha ao retomar aplicativo");
@@ -242,10 +248,18 @@ public class TotemActivity extends Activity {
         // Não parar o monitor: no fluxo Cielo o app de pagamento cobre a tela (onPause) e o polling
         // parava por minutos — o status offline só atualizava ao voltar. Kiosk: manter consultas.
         Log.d(TAG, "onPause: monitor de ESP segue ativo em segundo plano");
+        scheduleIdleTimeout();
+    }
+
+    @Override
+    public void onUserInteraction() {
+        super.onUserInteraction();
+        scheduleIdleTimeout();
     }
 
     @Override
     protected void onDestroy() {
+        cancelIdleTimeout();
         if (adminTapResetRunnable != null) {
             adminTapHandler.removeCallbacks(adminTapResetRunnable);
         }
@@ -279,6 +293,7 @@ public class TotemActivity extends Activity {
     private void setTotemContentView(View view) {
         setContentView(view);
         applyImmersiveMode();
+        scheduleIdleTimeout();
     }
 
     /** Garante que a grade de máquinas está na tela (não a confirmação de pagamento). */
@@ -300,6 +315,64 @@ public class TotemActivity extends Activity {
         selectedMachine = null;
         selectedCoffeeProduct = null;
         restoreMachineGrid();
+        cancelIdleTimeout();
+    }
+
+    private boolean isAtHomeIdle() {
+        return currentScreen == TotemScreen.HOME
+            && selectedMachine == null
+            && selectedCoffeeProduct == null
+            && !awaitingPaymentCallback
+            && !paymentLaunchInProgress.get()
+            && currentOperationId <= 0
+            && isMachineGridVisible();
+    }
+
+    private void scheduleIdleTimeout() {
+        if (idleTimeoutRunnable == null) {
+            return;
+        }
+        idleHandler.removeCallbacks(idleTimeoutRunnable);
+        if (isAtHomeIdle()) {
+            return;
+        }
+        idleHandler.postDelayed(idleTimeoutRunnable, SCREEN_IDLE_TIMEOUT_MS);
+    }
+
+    private void cancelIdleTimeout() {
+        idleHandler.removeCallbacks(idleTimeoutRunnable);
+    }
+
+    private void handleScreenIdleTimeout() {
+        if (lastSucceededOperationId > 0) {
+            scheduleIdleTimeout();
+            return;
+        }
+        Log.i(TAG, "Inatividade de 60s — retornando à tela inicial");
+        abortSessionForIdleTimeout();
+    }
+
+    private void abortSessionForIdleTimeout() {
+        final String pendingId = currentPendingTransactionId;
+        awaitingPaymentCallback = false;
+        paymentLaunchInProgress.set(false);
+        currentOperationId = -1;
+        currentPendingTransactionId = null;
+        paymentContextMachine = null;
+        selectedMachine = null;
+        selectedCoffeeProduct = null;
+        if (pendingId != null && !pendingId.isEmpty() && supabaseHelper != null) {
+            new Thread(() -> {
+                boolean cancelled = supabaseHelper.cancelTotemTransactionById(pendingId);
+                Log.d(TAG, "Transação cancelada por inatividade (" + pendingId + "): " + cancelled);
+            }).start();
+        }
+        restoreHomeScreen();
+        if (!hasWindowFocus()) {
+            Intent intent = new Intent(this, TotemActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(intent);
+        }
     }
 
     private void refreshCoffeeProductsAsync() {

@@ -171,7 +171,15 @@ export const MachineDetailsDialog = ({
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Status:</span>
-            <Badge className={getStatusColor(machine.status)}>{getStatusText(machine.status)}</Badge>
+            <Badge className={getStatusColor(
+              machine.type === "coffee"
+                ? machine.espReachable ? "available" : "offline"
+                : machine.status
+            )}>
+              {machine.type === "coffee"
+                ? machine.espReachable ? "ESP Online" : "ESP Offline"
+                : getStatusText(machine.status)}
+            </Badge>
           </div>
 
           <Separator />

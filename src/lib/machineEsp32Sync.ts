@@ -46,6 +46,8 @@ export interface Esp32StatusRow {
 export interface MachineRow {
   id: string;
   status: string;
+  type?: string | null;
+  device_profile?: string | null;
   esp32_id?: string | null;
   relay_pin?: number | null;
   cycle_time_minutes?: number | null;
@@ -97,7 +99,6 @@ export function isEsp32Reachable(
   staleMs: number = ESP32_TOTEM_HEARTBEAT_STALE_MS
 ): boolean {
   if (!esp32) return false;
-  if (esp32.is_online === false) return false;
   const lastHb = esp32.last_heartbeat ? new Date(esp32.last_heartbeat) : null;
   if (!lastHb || Number.isNaN(lastHb.getTime())) return false;
 
@@ -105,13 +106,12 @@ export function isEsp32Reachable(
   const maxSkew = 900_000; // 15 min — tolerância de relógio local desajustado
   let ageMs = now - lastHb.getTime();
   if (ageMs < 0) {
-    // Heartbeat "no futuro" — só aceita se estiver dentro da janela de skew
     if (-ageMs > maxSkew) return false;
     ageMs = 0;
   }
   if (lastHb.getTime() > now + maxSkew) return false;
 
-  // Janela de staleness vale SEMPRE — não confiar em is_online sem heartbeat fresco.
+  // Heartbeat fresco é a fonte da verdade — is_online no banco pode estar defasado após cleanup.
   return ageMs <= staleMs;
 }
 
@@ -128,6 +128,12 @@ export function isEsp32Reachable(
  */
 function dbSaysRunning(status: string | undefined | null): boolean {
   return status === 'running' || status === 'in_use';
+}
+
+function isPulseDispenseMachine(machine: MachineRow): boolean {
+  const t = String(machine.type ?? '').toLowerCase();
+  const profile = String(machine.device_profile ?? '').toLowerCase();
+  return t === 'coffee' || t === 'cafe' || profile === 'coin_dispense';
 }
 
 export function computeMachineStatus(
@@ -151,6 +157,7 @@ export function computeMachineStatus(
 
   const reachable = isEsp32Reachable(esp32, staleMs);
   const relay = isRelayOn(esp32?.relay_status as Record<string, unknown> | string | null, pin);
+  const pulseDispense = isPulseDispenseMachine(machine);
 
   // 3. ESP32 offline
   if (!reachable) {
@@ -163,6 +170,11 @@ export function computeMachineStatus(
       }
     }
     return { status: 'offline', hardwareLinkLost: false, espReachable: false, relayOn: relay };
+  }
+
+  // Café / moedeiro: online = disponível (sem relé de ciclo)
+  if (pulseDispense) {
+    return { status: 'available', hardwareLinkLost: false, espReachable: true, relayOn: false };
   }
 
   // 4. ESP32 online + relay ON → running

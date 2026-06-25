@@ -47,7 +47,8 @@ type MachinesByLaundry = Record<string, { laundryName: string; machines: Machine
 const toDashboardMachine = (
   row: ConsolidatedMachineRow,
   status: Machine["status"],
-  esp32?: Esp32StatusRow
+  esp32?: Esp32StatusRow,
+  espReachable?: boolean
 ): Machine => {
   const type = mapDbMachineType(row.type);
   const typeMeta = getMachineTypeMeta(type);
@@ -65,6 +66,7 @@ const toDashboardMachine = (
     relay_pin: row.relay_pin || undefined,
     location: row.location || undefined,
     ip_address: esp32?.ip_address || undefined,
+    espReachable,
   };
 };
 
@@ -237,7 +239,7 @@ export default function Dashboard() {
           (laundryMachines as ConsolidatedMachineRow[]).map((m) => {
             const esp32 = esp32Map.get(m.esp32_id || '');
             const computed = computeMachineStatus(m, esp32, { staleMs: ESP32_ADMIN_HEARTBEAT_STALE_MS });
-            return toDashboardMachine(m, computed.status, esp32);
+            return toDashboardMachine(m, computed.status, esp32, computed.espReachable);
           })
         );
         return { laundryId: laundry.id, laundryName: laundry.name, machines: enriched };
