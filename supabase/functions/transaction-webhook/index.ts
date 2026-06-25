@@ -102,11 +102,13 @@ serve(async (req) => {
         .single();
 
       if (!machineError && machine) {
+        const revenueDelta =
+          payload.payment_method === 'manual_release' ? 0 : Number(payload.total_amount);
         await supabase
           .from('machines')
           .update({
             total_uses: (machine.total_uses || 0) + 1,
-            total_revenue: Number(machine.total_revenue || 0) + Number(payload.total_amount),
+            total_revenue: Number(machine.total_revenue || 0) + revenueDelta,
             updated_at: new Date().toISOString(),
           })
           .eq('id', payload.machine_id);

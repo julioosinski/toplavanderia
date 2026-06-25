@@ -6,6 +6,7 @@ import { useLaundry } from "@/hooks/useLaundry";
 import { supabase } from "@/integrations/supabase/client";
 import { computeMachineStatus, ESP32_ADMIN_HEARTBEAT_STALE_MS, type Esp32StatusRow, type MachineRow } from "@/lib/machineEsp32Sync";
 import { getMachineTypeMeta, mapDbMachineType, sortMachinesByDisplayType } from "@/lib/machineDisplayTypes";
+import { billableRevenueAmount } from "@/lib/transactionRevenue";
 import { LaundryDashboardSelector } from "@/components/admin/LaundryDashboardSelector";
 import { MachineStatusGrid } from "@/components/admin/MachineStatusGrid";
 import { ConsolidatedMachineStatus } from "@/components/admin/ConsolidatedMachineStatus";
@@ -22,6 +23,7 @@ import { ptBR } from "date-fns/locale";
 interface TransactionRow {
   created_at: string | null;
   total_amount: number | string | null;
+  payment_method?: string | null;
 }
 
 interface MachineRevenueRow {
@@ -178,18 +180,18 @@ export default function Dashboard() {
 
       const periodQuery = supabase
         .from('transactions')
-        .select('total_amount, created_at, status')
+        .select('total_amount, created_at, status, payment_method')
         .eq('status', 'completed')
         .gte('created_at', fromISO)
         .lte('created_at', toISO);
       if (!isViewingAll && currentLaundryId) periodQuery.eq('laundry_id', currentLaundryId);
 
-      // Monthly revenue (current calendar month, always) — somente concluídas
+      // Monthly revenue (current calendar month, always) — somente concluídas, exceto liberação manual
       const now = new Date();
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
       const monthlyQuery = supabase
         .from('transactions')
-        .select('total_amount')
+        .select('total_amount, payment_method')
         .eq('status', 'completed')
         .gte('created_at', monthStart);
       if (!isViewingAll && currentLaundryId) monthlyQuery.eq('laundry_id', currentLaundryId);
@@ -198,8 +200,14 @@ export default function Dashboard() {
       const periodTx = (periodData || []) as TransactionRow[];
       const monthlyTx = (monthlyData || []) as TransactionRow[];
 
-      const periodRevenue = periodTx.reduce((s, t) => s + (Number(t.total_amount) || 0), 0);
-      const monthlyRevenue = monthlyTx.reduce((s, t) => s + (Number(t.total_amount) || 0), 0);
+      const periodRevenue = periodTx.reduce(
+        (s, t) => s + billableRevenueAmount(t.total_amount, t.payment_method),
+        0,
+      );
+      const monthlyRevenue = monthlyTx.reduce(
+        (s, t) => s + billableRevenueAmount(t.total_amount, t.payment_method),
+        0,
+      );
 
       setPeriodStats({ periodRevenue, monthlyRevenue, periodTransactions: periodTx.length });
       initialLoadDone.current = true;
@@ -353,13 +361,14 @@ export default function Dashboard() {
           icon={<DollarSign className="text-primary" size={20} />}
           label="Receita do Período"
           value={fmtBRL(periodStats.periodRevenue)}
+          hint="Exclui liberações manuais"
           onClick={() => { setDraftPreset(preset); setDraftRange(customRange); setDialogOpen(true); }}
         />
         <StatCard
           icon={<Receipt className="text-primary" size={20} />}
           label="Receita Mensal"
           value={fmtBRL(periodStats.monthlyRevenue)}
-          hint="Mês corrente"
+          hint="Exclui liberações manuais"
           onClick={() => { setDraftPreset(preset); setDraftRange(customRange); setDialogOpen(true); }}
         />
         <StatCard

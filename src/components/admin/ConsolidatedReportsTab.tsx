@@ -8,6 +8,7 @@ import { RefreshCw, TrendingUp, DollarSign, Activity, Building2 } from "lucide-r
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useLaundry } from "@/hooks/useLaundry";
+import { billableRevenueAmount } from "@/lib/transactionRevenue";
 
 interface LaundryStats {
   laundry_id: string;
@@ -45,7 +46,7 @@ export const ConsolidatedReportsTab = () => {
 
         const txQuery = supabase
           .from('transactions')
-          .select('id, total_amount')
+          .select('id, total_amount, payment_method')
           .eq('laundry_id', laundry.id)
           .eq('status', 'completed')
           .gte('created_at', startDate + 'T00:00:00')
@@ -54,7 +55,10 @@ export const ConsolidatedReportsTab = () => {
         const { data: transactions, error: transactionsError } = await txQuery;
         if (transactionsError) throw transactionsError;
 
-        const totalRevenue = transactions?.reduce((sum, t) => sum + Number(t.total_amount || 0), 0) || 0;
+        const totalRevenue = transactions?.reduce(
+          (sum, t) => sum + billableRevenueAmount(t.total_amount, t.payment_method),
+          0,
+        ) || 0;
         const activeMachines = machines?.filter(m => m.status === 'available' || m.status === 'running').length || 0;
 
         return {

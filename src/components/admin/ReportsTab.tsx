@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { BarChart3, Calendar, TrendingUp, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { billableRevenueAmount, displayTransactionAmount, isManualRelease } from "@/lib/transactionRevenue";
 
 interface Transaction {
   id: string;
@@ -72,6 +73,7 @@ export const ReportsTab = () => {
         `)
         .gte('created_at', filters.startDate + 'T00:00:00')
         .lte('created_at', filters.endDate + 'T23:59:59')
+        .eq('status', 'completed')
         .order('created_at', { ascending: false });
 
       if (filters.machineId !== 'all') {
@@ -112,7 +114,10 @@ export const ReportsTab = () => {
         }
 
         groupedData[key].sales += 1;
-        groupedData[key].revenue += Number(transaction.total_amount);
+        groupedData[key].revenue += billableRevenueAmount(
+          transaction.total_amount,
+          transaction.payment_method,
+        );
       });
 
       const reportArray = Object.values(groupedData).sort((a, b) => {
@@ -170,7 +175,8 @@ export const ReportsTab = () => {
 
   const totalSales = reportData.reduce((sum, row) => sum + row.sales, 0);
   const totalRevenue = reportData.reduce((sum, row) => sum + row.revenue, 0);
-  const averageTicket = totalSales > 0 ? totalRevenue / totalSales : 0;
+  const billableSales = transactions.filter((t) => !isManualRelease(t.payment_method)).length;
+  const averageTicket = billableSales > 0 ? totalRevenue / billableSales : 0;
 
   return (
     <div className="space-y-6">
@@ -365,7 +371,12 @@ export const ReportsTab = () => {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-semibold">R$ {Number(transaction.total_amount).toFixed(2)}</p>
+                    <p className="font-semibold">
+                      R$ {displayTransactionAmount(transaction.total_amount).toFixed(2)}
+                      {isManualRelease(transaction.payment_method) && (
+                        <span className="block text-xs font-normal text-muted-foreground">sem receita</span>
+                      )}
+                    </p>
                     {transaction.payment_method && (
                       <p className="text-sm text-muted-foreground">
                         {transaction.payment_method.includes('*') 

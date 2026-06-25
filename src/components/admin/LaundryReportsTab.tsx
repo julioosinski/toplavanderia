@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { BarChart3, Calendar, TrendingUp, Download, Building2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLaundry } from "@/hooks/useLaundry";
+import { billableRevenueAmount, displayTransactionAmount, isManualRelease } from "@/lib/transactionRevenue";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface Transaction {
@@ -133,7 +134,10 @@ export const LaundryReportsTab = () => {
           groupedData[key] = { date: key, sales: 0, revenue: 0, machine_name: filters.machineId !== 'all' ? transaction.machines.name : undefined };
         }
         groupedData[key].sales += 1;
-        groupedData[key].revenue += Number(transaction.total_amount);
+        groupedData[key].revenue += billableRevenueAmount(
+          transaction.total_amount,
+          transaction.payment_method,
+        );
       });
 
       const reportArray = Object.values(groupedData).sort((a, b) => {
@@ -187,7 +191,12 @@ export const LaundryReportsTab = () => {
 
   const totalSales = reportData.reduce((sum, row) => sum + row.sales, 0);
   const totalRevenue = reportData.reduce((sum, row) => sum + row.revenue, 0);
-  const averageTicket = totalSales > 0 ? totalRevenue / totalSales : 0;
+  const billableSales = transactions.filter((t) => !isManualRelease(t.payment_method)).length;
+  const manualReleaseCount = transactions.filter((t) => isManualRelease(t.payment_method)).length;
+  const manualReleaseValue = transactions
+    .filter((t) => isManualRelease(t.payment_method))
+    .reduce((sum, t) => sum + displayTransactionAmount(t.total_amount), 0);
+  const averageTicket = billableSales > 0 ? totalRevenue / billableSales : 0;
 
   if (!currentLaundry) {
     return (
@@ -311,7 +320,13 @@ export const LaundryReportsTab = () => {
                 <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
                   <BarChart3 className="text-primary" size={24} />
                 </div>
-                <div><p className="text-sm text-muted-foreground">Receita Total</p><p className="text-2xl font-bold">R$ {totalRevenue.toFixed(2)}</p></div>
+                <div><p className="text-sm text-muted-foreground">Receita Total</p><p className="text-2xl font-bold">R$ {totalRevenue.toFixed(2)}</p>
+                  {manualReleaseCount > 0 && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {manualReleaseCount} lib. manual(is) · R$ {manualReleaseValue.toFixed(2)} (não entram na receita)
+                    </p>
+                  )}
+                </div>
               </div>
             )}
           </CardContent>
@@ -323,7 +338,9 @@ export const LaundryReportsTab = () => {
                 <div className="w-12 h-12 bg-purple-500/10 rounded-full flex items-center justify-center">
                   <Calendar className="text-purple-600" size={24} />
                 </div>
-                <div><p className="text-sm text-muted-foreground">Ticket Médio</p><p className="text-2xl font-bold">R$ {averageTicket.toFixed(2)}</p></div>
+                <div><p className="text-sm text-muted-foreground">Ticket Médio</p><p className="text-2xl font-bold">R$ {averageTicket.toFixed(2)}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Somente vendas pagas</p>
+                </div>
               </div>
             )}
           </CardContent>
@@ -404,7 +421,12 @@ export const LaundryReportsTab = () => {
                       )}
                       <p className="text-sm text-muted-foreground">{getPaymentLabel(transaction.payment_method)}</p>
                     </div>
-                    <p className="font-semibold">R$ {Number(transaction.total_amount).toFixed(2)}</p>
+                    <p className="font-semibold">
+                      R$ {displayTransactionAmount(transaction.total_amount).toFixed(2)}
+                      {isManualRelease(transaction.payment_method) && (
+                        <span className="block text-xs font-normal text-muted-foreground">sem receita</span>
+                      )}
+                    </p>
                   </div>
                 </div>
               )) : (
