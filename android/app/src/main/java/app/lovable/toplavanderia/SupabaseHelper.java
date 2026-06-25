@@ -530,7 +530,7 @@ public class SupabaseHelper {
         try {
             if (currentLaundryId == null) {
                 Log.e(TAG, "❌ Lavanderia não configurada - não é possível buscar máquinas");
-                return getDefaultMachines();
+                return new ArrayList<>();
             }
             
             String url = SUPABASE_URL + "/rest/v1/rpc/get_public_machines";
@@ -575,7 +575,7 @@ public class SupabaseHelper {
                     machine.setPrice(machineJson.optDouble("price_per_cycle", 15.00));
                     machine.setDuration(machineJson.optInt("cycle_time_minutes", 40));
                     machine.setLocation(machineJson.optString("location", "Conjunto A"));
-                    machine.setEsp32Id(machineJson.optString("esp32_id", "main"));
+                    machine.setEsp32Id(machineJson.optString("esp32_id", ""));
                     machine.setRelayPin(machineJson.optInt("relay_pin", 1));
                     machine.setEsp32Online(false); // Atualizado em loadEsp32Status
                     
@@ -1469,7 +1469,7 @@ public class SupabaseHelper {
 
     public List<CoffeeProduct> fetchCoffeeProducts() {
         List<CoffeeProduct> products = new ArrayList<>();
-        if (!isConfigured() || !isOnline()) {
+        if (!isConfigured()) {
             return products;
         }
         try {

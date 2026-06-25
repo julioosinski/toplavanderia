@@ -108,6 +108,7 @@ public class TotemActivity extends Activity {
 
     private TotemScreen currentScreen = TotemScreen.HOME;
     private List<SupabaseHelper.CoffeeProduct> coffeeProducts = new ArrayList<>();
+    private boolean coffeeProductsLoadAttempted = false;
     private SupabaseHelper.CoffeeProduct selectedCoffeeProduct;
 
     @Override
@@ -423,6 +424,7 @@ public class TotemActivity extends Activity {
             List<SupabaseHelper.CoffeeProduct> loaded = supabaseHelper.fetchCoffeeProducts();
             runOnUiThread(() -> {
                 coffeeProducts = loaded != null ? loaded : new ArrayList<>();
+                coffeeProductsLoadAttempted = true;
                 if (currentScreen == TotemScreen.HOME || currentScreen == TotemScreen.CAFE) {
                     displayCurrentScreen();
                 }
@@ -445,39 +447,48 @@ public class TotemActivity extends Activity {
         ensureIdleWatchdogRunning();
     }
 
-    private int countMachinesByType(String type) {
-        if (machines == null) return 0;
-        int count = 0;
-        for (SupabaseHelper.Machine m : machines) {
-            if (type.equals(m.getType())) count++;
+
+    private boolean hasValidEsp32Id(String esp32Id) {
+        if (esp32Id == null) {
+            return false;
         }
-        return count;
+        String trimmed = esp32Id.trim();
+        return !trimmed.isEmpty() && !"main".equalsIgnoreCase(trimmed);
     }
 
-    /** Exibe Massagem/Café na HOME só se houver equipamento cadastrado com esp32_id. */
+    /** Exibe categoria na HOME só se houver equipamento cadastrado com ESP32 vinculado. */
     private boolean hasRegisteredEsp32ForType(String type) {
         if (machines == null) return false;
         for (SupabaseHelper.Machine m : machines) {
             if (!type.equals(m.getType())) continue;
-            String esp32Id = m.getEsp32Id();
-            if (esp32Id != null && !esp32Id.trim().isEmpty()) {
+            if (hasValidEsp32Id(m.getEsp32Id())) {
                 return true;
             }
         }
         return false;
     }
 
+    private SupabaseHelper.Machine findRegisteredMachineByType(String type) {
+        if (machines == null) {
+            return null;
+        }
+        for (SupabaseHelper.Machine m : machines) {
+            if (type.equals(m.getType()) && hasValidEsp32Id(m.getEsp32Id())) {
+                return m;
+            }
+        }
+        return null;
+    }
+
     private boolean isCoffeeHomeAvailable() {
-        if (coffeeProducts == null || coffeeProducts.isEmpty()) return false;
         return hasRegisteredEsp32ForType("CAFE");
     }
 
     private boolean isCoffeeAvailable() {
-        if (coffeeProducts == null || coffeeProducts.isEmpty()) return false;
-        SupabaseHelper.CoffeeProduct first = coffeeProducts.get(0);
-        SupabaseHelper.Machine coffeeMachine = supabaseHelper != null
-            ? supabaseHelper.findMachineById(first.getMachineId()) : null;
-        if (coffeeMachine == null) return true;
+        SupabaseHelper.Machine coffeeMachine = findRegisteredMachineByType("CAFE");
+        if (coffeeMachine == null) {
+            return false;
+        }
         return coffeeMachine.isEsp32Online();
     }
 
@@ -501,10 +512,10 @@ public class TotemActivity extends Activity {
         grid.setUseDefaultMargins(false);
         grid.setPadding(dp(8), 0, dp(8), dp(24));
 
-        if (countMachinesByType("LAVAR") > 0) {
+        if (hasRegisteredEsp32ForType("LAVAR")) {
             grid.addView(buildHomeCategoryButton("🧺 LAVAR", Color.parseColor("#1F6FEB"), () -> openCategory(TotemScreen.LAVAR)));
         }
-        if (countMachinesByType("SECAR") > 0) {
+        if (hasRegisteredEsp32ForType("SECAR")) {
             grid.addView(buildHomeCategoryButton("🌪️ SECAR", Color.parseColor("#238636"), () -> openCategory(TotemScreen.SECAR)));
         }
         if (hasRegisteredEsp32ForType("MASSAGEM")) {
@@ -673,13 +684,20 @@ public class TotemActivity extends Activity {
         machinesContainer.addView(title);
 
         if (coffeeProducts == null || coffeeProducts.isEmpty()) {
-            TextView loading = new TextView(this);
-            loading.setText("⏳ Carregando cardápio…");
-            loading.setTextSize(16);
-            loading.setTextColor(Color.parseColor("#8B949E"));
-            loading.setGravity(android.view.Gravity.CENTER);
-            machinesContainer.addView(loading);
-            refreshCoffeeProductsAsync();
+            TextView empty = new TextView(this);
+            if (!coffeeProductsLoadAttempted) {
+                empty.setText("⏳ Carregando cardápio…");
+            } else {
+                empty.setText("Nenhum produto no cardápio.\nCadastre itens em Admin → Cardápio Café.");
+            }
+            empty.setTextSize(16);
+            empty.setTextColor(Color.parseColor("#8B949E"));
+            empty.setGravity(android.view.Gravity.CENTER);
+            empty.setPadding(dp(16), dp(32), dp(16), dp(16));
+            machinesContainer.addView(empty);
+            if (!coffeeProductsLoadAttempted) {
+                refreshCoffeeProductsAsync();
+            }
             return;
         }
 
