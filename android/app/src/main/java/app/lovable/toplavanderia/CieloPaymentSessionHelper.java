@@ -19,14 +19,15 @@ public final class CieloPaymentSessionHelper {
         }
         prefs(context).edit()
             .putString(KEY_PAYMENT_CODE, paymentCode == null ? "" : paymentCode.trim())
-            .apply();
+            .commit();
     }
 
     public static void endSession(Context context) {
+        CieloPaymentShieldOverlay.clear();
         if (context == null) {
             return;
         }
-        prefs(context).edit().clear().apply();
+        prefs(context).edit().clear().commit();
     }
 
     /** Bloqueia QR / digitar cartão quando o totem pediu crédito ou débito (não PIX). */

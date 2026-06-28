@@ -2,6 +2,7 @@ package app.lovable.toplavanderia;
 
 import android.accessibilityservice.AccessibilityService;
 import android.content.Intent;
+import android.graphics.Rect;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -15,17 +16,19 @@ import java.util.Locale;
 /**
  * Totem Cielo:
  * 1) Dispensa comprovante ("Não imprimir") quando detecta o diálogo da Cielo.
- * 2) Em pagamento crédito/débito, intercepta toques em "Gerar QR Code" / "Digitar Cartão"
- *    e exibe orientação para usar o leitor físico.
+ * 2) Em pagamento crédito/débito, cobre "Gerar QR Code" / "Digitar Cartão" com overlay
+ *    e orienta o cliente a usar o leitor físico.
  */
 public class CieloReceiptAccessibilityService extends AccessibilityService {
     private static final String TAG = "CieloReceiptA11y";
 
     private static final String[] CIELO_PACKAGES = {
         "br.com.cielosmart.payment",
+        "br.com.cielosmart.service",
+        "br.com.cielosmart.orderservice",
         "com.ads.lio.uriappclient",
         "cielo.smart.order.manager",
-        "br.com.cielosmart.orderservice"
+        "br.com.cielosmart.launcher"
     };
 
     private static final String[] PRINT_PROMPT_HINTS = {
@@ -44,17 +47,16 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
         "pular impressão"
     };
 
-    /** Botões da Cielo que confundem em pagamento cartão (crédito/débito). */
     private static final String[] FORBIDDEN_CAPTURE_BUTTONS = {
         "gerar qr code",
         "gerar qrcode",
+        "gerar qr",
         "digitar cartao",
         "digitar cartão",
         "digitar o cartao",
         "digitar o cartão"
     };
 
-    /** Telas alternativas (após toque) — voltar ao leitor de cartão. */
     private static final String[] ALTERNATE_CAPTURE_SCREEN_HINTS = {
         "digite o numero do cartao",
         "digite o número do cartão",
@@ -68,6 +70,21 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private long lastDismissAtMs = 0L;
     private long lastCardHintAtMs = 0L;
+    private long lastShieldUpdateAtMs = 0L;
+    private String lastShieldSignature = "";
+
+    @Override
+    public void onServiceConnected() {
+        super.onServiceConnected();
+        CieloPaymentShieldOverlay.bind(this);
+        Log.i(TAG, "Assistente Cielo conectado (overlay + comprovante)");
+    }
+
+    @Override
+    public void onDestroy() {
+        CieloPaymentShieldOverlay.unbind();
+        super.onDestroy();
+    }
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
@@ -76,21 +93,20 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
         }
         CharSequence pkgSeq = event.getPackageName();
         if (pkgSeq == null || !isCieloPackage(pkgSeq.toString())) {
+            if (CieloPaymentSessionHelper.shouldBlockAlternateCapture(this)) {
+                CieloPaymentShieldOverlay.clear();
+            }
             return;
         }
 
         int type = event.getEventType();
         if (type == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             handleForbiddenCaptureClick(event);
-            return;
         }
 
         if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-                && type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-            return;
-        }
-
-        if (System.currentTimeMillis() - lastDismissAtMs < 1500L) {
+                && type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                && type != AccessibilityEvent.TYPE_VIEW_CLICKED) {
             return;
         }
 
@@ -100,9 +116,15 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
         }
 
         try {
+            handlePaymentShield(root);
+
             if (CieloPaymentSessionHelper.shouldBlockAlternateCapture(this)
                     && treeContainsAlternateCaptureScreen(root)) {
                 showCardOnlyHintAndBack("alternate-screen");
+                return;
+            }
+
+            if (System.currentTimeMillis() - lastDismissAtMs < 1500L) {
                 return;
             }
             if (!treeContainsPrintPrompt(root)) {
@@ -120,7 +142,36 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
 
     @Override
     public void onInterrupt() {
-        // noop
+        CieloPaymentShieldOverlay.clear();
+    }
+
+    private void handlePaymentShield(AccessibilityNodeInfo root) {
+        if (!CieloPaymentSessionHelper.shouldBlockAlternateCapture(this)) {
+            CieloPaymentShieldOverlay.clear();
+            lastShieldSignature = "";
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        if (now - lastShieldUpdateAtMs < 250L) {
+            return;
+        }
+        lastShieldUpdateAtMs = now;
+
+        List<Rect> bounds = findForbiddenButtonBounds(root);
+        String signature = boundsSignature(bounds);
+        if (signature.equals(lastShieldSignature)) {
+            return;
+        }
+        lastShieldSignature = signature;
+
+        if (bounds.isEmpty()) {
+            CieloPaymentShieldOverlay.clear();
+            Log.d(TAG, "Escudo Cielo: nenhum botão alternativo detectado");
+        } else {
+            CieloPaymentShieldOverlay.updateBlockers(bounds);
+            Log.i(TAG, "Escudo Cielo ativo em " + bounds.size() + " botão(ões)");
+        }
     }
 
     private void handleForbiddenCaptureClick(AccessibilityEvent event) {
@@ -131,22 +182,48 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
             return;
         }
 
+        if (eventTextMatchesForbidden(event)) {
+            Log.i(TAG, "Clique em captura alternativa (texto do evento)");
+            showCardOnlyHintAndBack("forbidden-click-event");
+            return;
+        }
+
         AccessibilityNodeInfo source = event.getSource();
         if (source == null) {
             return;
         }
         try {
-            if (nodeMatchesForbiddenCapture(source)) {
-                Log.i(TAG, "Toque bloqueado em captura alternativa Cielo");
-                showCardOnlyHintAndBack("forbidden-click");
+            AccessibilityNodeInfo walk = AccessibilityNodeInfo.obtain(source);
+            while (walk != null) {
+                if (nodeMatchesForbiddenCapture(walk)) {
+                    Log.i(TAG, "Clique em captura alternativa (árvore)");
+                    showCardOnlyHintAndBack("forbidden-click-tree");
+                    return;
+                }
+                AccessibilityNodeInfo parent = walk.getParent();
+                walk.recycle();
+                walk = parent;
             }
         } finally {
             source.recycle();
         }
     }
 
+    private boolean eventTextMatchesForbidden(AccessibilityEvent event) {
+        if (event.getText() != null) {
+            for (CharSequence part : event.getText()) {
+                if (matchesForbiddenCaptureText(part)) {
+                    return true;
+                }
+            }
+        }
+        return matchesForbiddenCaptureText(event.getContentDescription());
+    }
+
     private void showCardOnlyHintAndBack(String reason) {
         lastCardHintAtMs = System.currentTimeMillis();
+        CieloPaymentShieldOverlay.clear();
+        lastShieldSignature = "";
         Intent hint = new Intent(this, CieloCardOnlyHintActivity.class);
         hint.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         startActivity(hint);
@@ -159,13 +236,104 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
         }, 150L);
     }
 
+    private List<Rect> findForbiddenButtonBounds(AccessibilityNodeInfo root) {
+        List<Rect> out = new ArrayList<>();
+        collectForbiddenButtonBounds(root, out);
+        return out;
+    }
+
+    private void collectForbiddenButtonBounds(AccessibilityNodeInfo node, List<Rect> out) {
+        if (node == null) {
+            return;
+        }
+        if (nodeMatchesForbiddenCapture(node)) {
+            Rect rect = boundsForBlocking(node);
+            if (rect != null && !rect.isEmpty() && !containsSimilarRect(out, rect)) {
+                out.add(rect);
+            }
+        }
+        int childCount = node.getChildCount();
+        for (int i = 0; i < childCount; i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                try {
+                    collectForbiddenButtonBounds(child, out);
+                } finally {
+                    child.recycle();
+                }
+            }
+        }
+    }
+
+    private Rect boundsForBlocking(AccessibilityNodeInfo node) {
+        AccessibilityNodeInfo target = findClickableTarget(node);
+        if (target == null) {
+            return null;
+        }
+        Rect rect = new Rect();
+        target.getBoundsInScreen(rect);
+        if (target != node) {
+            target.recycle();
+        }
+        rect.inset(-8, -8);
+        return rect;
+    }
+
+    private AccessibilityNodeInfo findClickableTarget(AccessibilityNodeInfo node) {
+        AccessibilityNodeInfo walk = AccessibilityNodeInfo.obtain(node);
+        AccessibilityNodeInfo best = null;
+        while (walk != null) {
+            if (walk.isClickable()) {
+                if (best != null) {
+                    best.recycle();
+                }
+                best = AccessibilityNodeInfo.obtain(walk);
+            }
+            AccessibilityNodeInfo parent = walk.getParent();
+            walk.recycle();
+            walk = parent;
+        }
+        if (best != null) {
+            return best;
+        }
+        return AccessibilityNodeInfo.obtain(node);
+    }
+
+    private boolean containsSimilarRect(List<Rect> rects, Rect candidate) {
+        for (Rect existing : rects) {
+            if (Rect.intersects(existing, candidate)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String boundsSignature(List<Rect> bounds) {
+        if (bounds.isEmpty()) {
+            return "empty";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (Rect rect : bounds) {
+            sb.append(rect.left).append(',')
+                .append(rect.top).append(',')
+                .append(rect.right).append(',')
+                .append(rect.bottom).append('|');
+        }
+        return sb.toString();
+    }
+
     private boolean nodeMatchesForbiddenCapture(AccessibilityNodeInfo node) {
-        String combined = normalize(joinText(node.getText(), node.getContentDescription()));
-        if (combined.isEmpty()) {
+        return matchesForbiddenCaptureText(node.getText())
+            || matchesForbiddenCaptureText(node.getContentDescription());
+    }
+
+    private boolean matchesForbiddenCaptureText(CharSequence value) {
+        if (value == null || value.length() == 0) {
             return false;
         }
+        String normalized = normalize(value.toString());
         for (String label : FORBIDDEN_CAPTURE_BUTTONS) {
-            if (combined.contains(label) || combined.equals(label)) {
+            if (normalized.contains(label) || normalized.equals(label)) {
                 return true;
             }
         }
