@@ -57,6 +57,35 @@ const statusVariant = (status: string): "default" | "secondary" | "destructive" 
   return "outline";
 };
 
+const MERGED_BIN_SIZE = 4 * 1024 * 1024;
+
+/** Retorna mensagem de erro se o .bin parece inválido para OTA; null se OK. */
+const validateOtaBinFile = (file: File): string | null => {
+  const name = file.name.toLowerCase();
+  if (name.includes("merged")) {
+    return "Arquivo merged.bin é flash completa — use apenas nome.ino.bin (aplicação).";
+  }
+  if (name.includes("bootloader") || name.includes("partitions")) {
+    return "bootloader/partitions não servem para OTA — use apenas nome.ino.bin.";
+  }
+  if (file.size <= 32 * 1024) {
+    return `Arquivo muito pequeno (${file.size} bytes) — provavelmente partitions ou bootloader.`;
+  }
+  if (file.size === MERGED_BIN_SIZE) {
+    return "Arquivo com 4 MB exatos — provavelmente merged.bin. Use nome.ino.bin (~0,8–2 MB).";
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    return `Arquivo grande demais (${(file.size / 1024 / 1024).toFixed(1)} MB) — confira se não é merged.bin.`;
+  }
+  return null;
+};
+
+const formatBinSize = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+};
+
 export const ESP32FirmwareOta = () => {
   const { currentLaundry } = useLaundry();
   const { toast } = useToast();
@@ -67,6 +96,7 @@ export const ESP32FirmwareOta = () => {
   const [selectedEsp32Id, setSelectedEsp32Id] = useState("");
   const [firmwareVersion, setFirmwareVersion] = useState("v2.2.4");
   const [binFile, setBinFile] = useState<File | null>(null);
+  const [binValidationError, setBinValidationError] = useState<string | null>(null);
   const [loadingDevices, setLoadingDevices] = useState(true);
   const [uploading, setUploading] = useState(false);
 
@@ -132,12 +162,18 @@ export const ESP32FirmwareOta = () => {
     }
 
     const version = firmwareVersion.trim();
-    if (!/^v?\d+\.\d+\.\d+$/i.test(version)) {
+    if (!/^v?\d+\.\d+\.\d+([\w.-]+)?$/i.test(version)) {
       toast({
         title: "Versão inválida",
-        description: "Use o formato v2.2.4",
+        description: "Use o formato v2.2.4 ou v1.1.0-toplav-poltrona",
         variant: "destructive",
       });
+      return;
+    }
+
+    const binError = validateOtaBinFile(binFile);
+    if (binError) {
+      toast({ title: "Arquivo .bin inválido", description: binError, variant: "destructive" });
       return;
     }
 
@@ -184,7 +220,7 @@ export const ESP32FirmwareOta = () => {
 
       toast({
         title: "OTA enfileirada",
-        description: payload.message ?? "O ESP32 aplicará em até ~30 s se estiver online.",
+        description: payload.message ?? "O ESP32 aplicará em até ~5 min se estiver online.",
       });
 
       setBinFile(null);
@@ -200,6 +236,15 @@ export const ESP32FirmwareOta = () => {
   if (!laundryId) return null;
 
   const selectedDevice = devices.find((d) => d.esp32_id === selectedEsp32Id);
+  const selectedDeviceJobs = selectedEsp32Id
+    ? jobs.filter((j) => j.esp32_id === selectedEsp32Id)
+    : jobs;
+  const needsUsbOtaPartitionReflash = selectedDeviceJobs.some(
+    (j) =>
+      j.status === "failed" &&
+      (j.error_message?.includes("Partition Could Not be Found") ||
+        j.error_message?.includes("particao OTA")),
+  );
 
   return (
     <Card>
@@ -222,17 +267,34 @@ export const ESP32FirmwareOta = () => {
               <strong>Do .ino ao .bin (Arduino IDE):</strong>
             </p>
             <ol className="list-decimal ml-4 space-y-1 text-sm">
-              <li>Baixe o firmware em Firmware Café / Poltrona / Máquinas (arquivo <code>.ino</code>).</li>
+              <li>Baixe o firmware correto para o equipamento (Poltrona / Café / Lavadora).</li>
               <li>
-                Abra no Arduino IDE (poltrona: placa ESP32 + partition <strong>Huge APP 3MB</strong>).
+                Arduino IDE — placa <strong>ESP32 Dev Module</strong>. Partition Scheme:
+                <ul className="list-disc ml-4 mt-1 space-y-0.5">
+                  <li>
+                    <strong>Poltrona:</strong> Minimal SPIFFS (1.9MB APP <strong>with OTA</strong>/190KB
+                    SPIFFS)
+                  </li>
+                  <li>
+                    <strong>Lavadora / café:</strong> Default 4MB with spiffs (ou outro esquema{' '}
+                    <strong>com OTA</strong>)
+                  </li>
+                </ul>
               </li>
               <li>
-                Menu <strong>Sketch → Export compiled Binary</strong> (ou Ctrl+Alt+S) — gera{' '}
-                <code>sketch.ino.bin</code> na pasta do sketch.
+                <strong>1ª gravação:</strong> Upload via USB com partition <strong>com OTA</strong>. Se o
+                ESP foi gravado antes com Huge APP (No OTA), regrave uma vez pelo cabo — senão OTA falha com
+                &quot;Partition Could Not be Found&quot;.
               </li>
               <li>
-                Anexe esse <code>.bin</code> aqui embaixo, informe a versão (ex.:{' '}
-                <code>v1.1.0-toplav-poltrona</code>) e agende o OTA.
+                Menu <strong>Sketch → Export compiled Binary</strong> — envie só{' '}
+                <code>nome_do_sketch.ino.bin</code> (~0,8–2 MB).{' '}
+                <strong>Não</strong> use <code>merged</code>, <code>bootloader</code> ou{' '}
+                <code>partitions</code>.
+              </li>
+              <li>
+                Anexe o <code>.bin</code>, informe a versão igual ao <code>#define FIRMWARE_VERSION</code> do
+                .ino (ex.: <code>v1.1.0-toplav-poltrona</code>) e agende o OTA.
               </li>
             </ol>
             <p className="text-xs text-muted-foreground pt-1">
@@ -241,6 +303,28 @@ export const ESP32FirmwareOta = () => {
             </p>
           </AlertDescription>
         </Alert>
+
+        {needsUsbOtaPartitionReflash && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="space-y-2 text-sm">
+              <p className="font-semibold">
+                Este ESP32 foi gravado sem partição OTA — atualização remota não funciona até regravar pelo cabo USB.
+              </p>
+              <ol className="list-decimal ml-4 space-y-1">
+                <li>Conecte o ESP32 ao PC via USB.</li>
+                <li>
+                  Arduino IDE → placa <strong>ESP32 Dev Module</strong> → Partition Scheme:{' '}
+                  <strong>Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)</strong>
+                </li>
+                <li>
+                  Abra o <code>.ino</code> da poltrona e clique em <strong>Upload</strong> (não Export Binary).
+                </li>
+                <li>Só depois disso agende OTA novamente com o <code>.ino.bin</code> exportado.</li>
+              </ol>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {loadingDevices ? (
           <p className="text-sm text-muted-foreground">Carregando ESP32 aprovados...</p>
@@ -291,14 +375,26 @@ export const ESP32FirmwareOta = () => {
                   id="ota-bin"
                   type="file"
                   accept=".bin,application/octet-stream"
-                  onChange={(e) => setBinFile(e.target.files?.[0] ?? null)}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    setBinFile(file);
+                    setBinValidationError(file ? validateOtaBinFile(file) : null);
+                  }}
                 />
+                {binFile && (
+                  <p
+                    className={`text-xs ${binValidationError ? "text-destructive" : "text-muted-foreground"}`}
+                  >
+                    {binFile.name} — {formatBinSize(binFile.size)}
+                    {binValidationError ? ` — ${binValidationError}` : " — tamanho OK para OTA"}
+                  </p>
+                )}
               </div>
             </div>
 
             <Button
               onClick={scheduleOta}
-              disabled={uploading || !binFile || !selectedEsp32Id}
+              disabled={uploading || !binFile || !selectedEsp32Id || !!binValidationError}
               className="w-full gap-2"
             >
               <Upload className="h-4 w-4" />

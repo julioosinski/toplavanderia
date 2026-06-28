@@ -276,8 +276,8 @@ public class AdminActivity extends Activity {
         if ("cielo".equalsIgnoreCase(supabaseHelper.getPaymentProvider())) {
             boolean a11yOn = CieloReceiptAccessibilityHelper.isServiceEnabled(this);
             String label = a11yOn
-                ? "✅ COMPROVANTE CIELO (ativo)"
-                : "⚡ ATIVAR PULAR COMPROVANTE CIELO";
+                ? "✅ ASSISTENTE CIELO (ativo)"
+                : "⚡ ATIVAR ASSISTENTE CIELO";
             createActionButton(buttonsContainer, label, Color.parseColor("#5C6BC0"), v -> openCieloReceiptAccessibilitySettings());
         }
         createActionButton(buttonsContainer, "⚡ TESTAR PULSO ESP32", Color.parseColor("#00897B"), v -> testEsp32CreditPulse());
@@ -512,7 +512,7 @@ public class AdminActivity extends Activity {
     private void openCieloReceiptAccessibilitySettings() {
         Toast.makeText(
             this,
-            "Ative: Top Lavanderia — pular comprovante Cielo",
+            "Ative: Top Lavanderia — assistente Cielo (comprovante + leitor de cartão)",
             Toast.LENGTH_LONG
         ).show();
         startActivity(CieloReceiptAccessibilityHelper.buildSettingsIntent());

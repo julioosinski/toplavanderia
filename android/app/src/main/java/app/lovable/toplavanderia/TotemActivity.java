@@ -1618,6 +1618,7 @@ public class TotemActivity extends Activity {
                              "Valor: R$ " + new DecimalFormat("0.00").format(machine.getPrice()) + "\n" +
                              "Operação: " + currentOperationId + "\n\n" +
                              "🔄 " + getPaymentProcessingText() + "\n" +
+                             getCieloPaymentHint(paymentType) +
                              "Aguarde o processamento do pagamento");
         processingText.setTextSize(16);
         processingText.setGravity(android.view.Gravity.CENTER);
@@ -2223,6 +2224,17 @@ public class TotemActivity extends Activity {
         return "cielo".equalsIgnoreCase(activeProvider)
                 ? "COMUNICAÇÃO COM CIELO DX8000..."
                 : "COMUNICAÇÃO COM PPC930...";
+    }
+
+    private String getCieloPaymentHint(String paymentType) {
+        if (!"cielo".equalsIgnoreCase(activeProvider)) {
+            return "";
+        }
+        if (paymentType != null && "pix".equalsIgnoreCase(paymentType.trim())) {
+            return "Na Cielo, siga as instruções do PIX.\n\n";
+        }
+        return "Na Cielo: aproxime, insira ou passe o cartão.\n"
+            + "Ignore \"Gerar QR Code\" e \"Digitar Cartão\".\n\n";
     }
     
     private void updateConnectivityStatus() {

@@ -1,6 +1,9 @@
 package app.lovable.toplavanderia;
 
 import android.accessibilityservice.AccessibilityService;
+import android.content.Intent;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -10,8 +13,10 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Totem Cielo: a tela "Deseja imprimir?" tem timeout ~25s no app nativo da Cielo.
- * Este serviço toca automaticamente em "Não imprimir" quando detecta o diálogo.
+ * Totem Cielo:
+ * 1) Dispensa comprovante ("Não imprimir") quando detecta o diálogo da Cielo.
+ * 2) Em pagamento crédito/débito, intercepta toques em "Gerar QR Code" / "Digitar Cartão"
+ *    e exibe orientação para usar o leitor físico.
  */
 public class CieloReceiptAccessibilityService extends AccessibilityService {
     private static final String TAG = "CieloReceiptA11y";
@@ -39,7 +44,30 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
         "pular impressão"
     };
 
+    /** Botões da Cielo que confundem em pagamento cartão (crédito/débito). */
+    private static final String[] FORBIDDEN_CAPTURE_BUTTONS = {
+        "gerar qr code",
+        "gerar qrcode",
+        "digitar cartao",
+        "digitar cartão",
+        "digitar o cartao",
+        "digitar o cartão"
+    };
+
+    /** Telas alternativas (após toque) — voltar ao leitor de cartão. */
+    private static final String[] ALTERNATE_CAPTURE_SCREEN_HINTS = {
+        "digite o numero do cartao",
+        "digite o número do cartão",
+        "numero do cartao",
+        "número do cartão",
+        "escaneie o qr",
+        "escaneie o qrcode",
+        "leia o qr code"
+    };
+
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private long lastDismissAtMs = 0L;
+    private long lastCardHintAtMs = 0L;
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
@@ -50,6 +78,18 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
         if (pkgSeq == null || !isCieloPackage(pkgSeq.toString())) {
             return;
         }
+
+        int type = event.getEventType();
+        if (type == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            handleForbiddenCaptureClick(event);
+            return;
+        }
+
+        if (type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                && type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            return;
+        }
+
         if (System.currentTimeMillis() - lastDismissAtMs < 1500L) {
             return;
         }
@@ -60,6 +100,11 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
         }
 
         try {
+            if (CieloPaymentSessionHelper.shouldBlockAlternateCapture(this)
+                    && treeContainsAlternateCaptureScreen(root)) {
+                showCardOnlyHintAndBack("alternate-screen");
+                return;
+            }
             if (!treeContainsPrintPrompt(root)) {
                 return;
             }
@@ -76,6 +121,84 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
     @Override
     public void onInterrupt() {
         // noop
+    }
+
+    private void handleForbiddenCaptureClick(AccessibilityEvent event) {
+        if (!CieloPaymentSessionHelper.shouldBlockAlternateCapture(this)) {
+            return;
+        }
+        if (System.currentTimeMillis() - lastCardHintAtMs < 1200L) {
+            return;
+        }
+
+        AccessibilityNodeInfo source = event.getSource();
+        if (source == null) {
+            return;
+        }
+        try {
+            if (nodeMatchesForbiddenCapture(source)) {
+                Log.i(TAG, "Toque bloqueado em captura alternativa Cielo");
+                showCardOnlyHintAndBack("forbidden-click");
+            }
+        } finally {
+            source.recycle();
+        }
+    }
+
+    private void showCardOnlyHintAndBack(String reason) {
+        lastCardHintAtMs = System.currentTimeMillis();
+        Intent hint = new Intent(this, CieloCardOnlyHintActivity.class);
+        hint.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        startActivity(hint);
+        mainHandler.postDelayed(() -> {
+            try {
+                performGlobalAction(GLOBAL_ACTION_BACK);
+            } catch (Exception e) {
+                Log.w(TAG, "BACK após " + reason + ": " + e.getMessage());
+            }
+        }, 150L);
+    }
+
+    private boolean nodeMatchesForbiddenCapture(AccessibilityNodeInfo node) {
+        String combined = normalize(joinText(node.getText(), node.getContentDescription()));
+        if (combined.isEmpty()) {
+            return false;
+        }
+        for (String label : FORBIDDEN_CAPTURE_BUTTONS) {
+            if (combined.contains(label) || combined.equals(label)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean treeContainsAlternateCaptureScreen(AccessibilityNodeInfo node) {
+        if (node == null) {
+            return false;
+        }
+        String combined = normalize(joinText(node.getText(), node.getContentDescription()));
+        if (!combined.isEmpty()) {
+            for (String hint : ALTERNATE_CAPTURE_SCREEN_HINTS) {
+                if (combined.contains(hint)) {
+                    return true;
+                }
+            }
+        }
+        int childCount = node.getChildCount();
+        for (int i = 0; i < childCount; i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child == null) {
+                continue;
+            }
+            try {
+                if (treeContainsAlternateCaptureScreen(child)) {
+                    return true;
+                }
+            } finally {
+                child.recycle();
+            }
+        }
+        return false;
     }
 
     private boolean isCieloPackage(String packageName) {

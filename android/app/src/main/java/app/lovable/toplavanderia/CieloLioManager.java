@@ -197,6 +197,7 @@ public class CieloLioManager implements PaymentManager {
             pendingReference = reference;
             pendingAmountCents = amountCents;
             pendingPaymentCode = paymentCode;
+            CieloPaymentSessionHelper.beginSession(context, paymentCode);
 
             mainHandler.post(() -> {
                 if (callback != null) {
@@ -221,6 +222,7 @@ public class CieloLioManager implements PaymentManager {
 
     private void handleLaunchFailure(String message) {
         CieloPaymentForegroundService.stop(context);
+        CieloPaymentSessionHelper.endSession(context);
         isProcessing = false;
         clearPendingTransaction();
         activeInstance = null;
@@ -241,6 +243,7 @@ public class CieloLioManager implements PaymentManager {
     public void cancelPayment() {
         if (isProcessing) {
             CieloPaymentForegroundService.stop(context);
+            CieloPaymentSessionHelper.endSession(context);
             isProcessing = false;
             clearPendingTransaction();
             activeInstance = null;
@@ -267,6 +270,7 @@ public class CieloLioManager implements PaymentManager {
 
         isProcessing = false;
         CieloPaymentForegroundService.stop(context);
+        CieloPaymentSessionHelper.endSession(context);
 
         if (uri == null) {
             notifyPaymentError("Resposta Cielo invalida");

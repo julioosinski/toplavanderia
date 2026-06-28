@@ -348,6 +348,10 @@ export default function CoffeeMachineConfig() {
                   <code>esp32_820c8834</code>) — se aparecer <code>esp32_03000000</code>, regrave o firmware
                   v1.1.0+
                 </li>
+                <li>
+                  Arduino IDE: placa ESP32 Dev Module, partition <strong>com OTA</strong> (ex.: Default 4MB
+                  with spiffs). Grave a 1ª vez via USB antes de usar OTA remoto.
+                </li>
                 <li>Atualizações futuras via OTA em Configurações → Atualização OTA (Wi-Fi)</li>
                 <li>Anote o <strong>esp32_id</strong> no Serial Monitor (115200 baud) e cadastre na máquina em Máquinas</li>
                 <li>Aprove o ESP em Pendentes de Aprovação (auto-registro via heartbeat)</li>

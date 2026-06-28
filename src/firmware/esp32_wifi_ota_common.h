@@ -18,6 +18,7 @@
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <cstdio>
+#include <esp_ota_ops.h>
 
 #ifndef FIRMWARE_VERSION
 #error "Defina FIRMWARE_VERSION antes de incluir esp32_wifi_ota_common.h"
@@ -51,6 +52,25 @@ static const unsigned long WIFI_RETRY_INTERVAL = 15000;
 static const unsigned long STA_CONNECT_TIMEOUT_MS = 12000;
 static const unsigned long CONFIG_PORTAL_HINT_AFTER_MS = 120000;
 static const unsigned long OTA_POLL_INTERVAL_MS = 300000; // 5 min (economia; OTA agendado no admin)
+
+static const char* ESP32_OTA_NO_PARTITION_MSG =
+    "Sem particao OTA na flash — regrave via USB (Minimal SPIFFS with OTA). OTA remoto nao altera a tabela de particoes.";
+
+static bool esp32HasOtaUpdatePartition() {
+  return esp_ota_get_next_update_partition(NULL) != NULL;
+}
+
+static void esp32LogOtaCapabilityOnce() {
+  static bool logged = false;
+  if (logged) return;
+  logged = true;
+  if (esp32HasOtaUpdatePartition()) {
+    Serial.println("OTA remoto: particoes OK (pode atualizar via Wi-Fi)");
+  } else {
+    Serial.println("OTA remoto: INDISPONIVEL — regrave via USB com partition WITH OTA");
+    Serial.println(ESP32_OTA_NO_PARTITION_MSG);
+  }
+}
 
 static String esp32GetConfigApSsid() {
   String suffix = String(ESP32_ID);
@@ -304,6 +324,12 @@ static void esp32PollOtaUpdate() {
 
   Serial.printf("OTA %s -> %s (job %s)\n", FIRMWARE_VERSION, targetVersion.c_str(), jobId.c_str());
 
+  if (!esp32HasOtaUpdatePartition()) {
+    Serial.println("OTA abortado: sem particao OTA na flash");
+    esp32ReportOtaResult(jobId, false, ESP32_OTA_NO_PARTITION_MSG);
+    return;
+  }
+
   WiFiClientSecure client;
   client.setInsecure();
   client.setTimeout(120000);
@@ -393,6 +419,8 @@ static void esp32WifiOtaBegin() {
   esp32ConnectWiFi(true);
   if (WiFi.status() != WL_CONNECTED) {
     disconnectStartedAt = millis();
+  } else {
+    esp32LogOtaCapabilityOnce();
   }
 }
 
@@ -449,6 +477,8 @@ static bool esp32WifiOtaMaintain() {
   if (configModeActive) {
     esp32StopConfigPortal();
   }
+
+  esp32LogOtaCapabilityOnce();
 
   if (now - lastOtaPoll >= OTA_POLL_INTERVAL_MS) {
     esp32PollOtaUpdate();

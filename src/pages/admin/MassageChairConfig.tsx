@@ -121,7 +121,7 @@ export default function MassageChairConfig() {
     toast({
       title: 'Firmware gerado!',
       description:
-        'Firmware baixado (.ino autocontido + .h de backup). Compile (Huge APP 3MB), grave e configure Wi-Fi em TopLavanderia-{ESP32_ID}.',
+        'Baixado (.ino + .h). Arduino IDE: partition Minimal SPIFFS (1.9MB APP with OTA), grave via USB e configure Wi-Fi em TopLavanderia-{ESP32_ID}.',
     });
     setDownloading(false);
   };
@@ -284,6 +284,27 @@ export default function MassageChairConfig() {
               </pre>
             )}
 
+            <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-4 text-xs text-blue-800 dark:text-blue-300 space-y-2">
+              <p className="font-semibold text-sm">Arduino IDE — 1ª gravação (USB, obrigatória para OTA)</p>
+              <ul className="list-disc ml-4 space-y-1">
+                <li>
+                  Placa: <strong>ESP32 Dev Module</strong>
+                </li>
+                <li>
+                  Partition Scheme:{' '}
+                  <strong>Minimal SPIFFS (1.9MB APP with OTA/190KB SPIFFS)</strong>
+                </li>
+                <li>
+                  <strong>Não use</strong> Huge APP (3MB <em>No OTA</em>) — compila, mas OTA remoto falha com
+                  &quot;Partition Could Not be Found&quot;
+                </li>
+                <li>
+                  Grave com <strong>Upload</strong> (não só Export Binary). Use a mesma partition em todas as
+                  compilações futuras (USB e OTA).
+                </li>
+              </ul>
+            </div>
+
             <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-4 text-xs text-amber-700 dark:text-amber-400 space-y-1">
               <p className="font-semibold text-sm">Após gravar o firmware:</p>
               <ul className="list-disc ml-4 space-y-1">
@@ -295,7 +316,10 @@ export default function MassageChairConfig() {
                   Portal Wi-Fi: rede <strong>TopLavanderia-{'{ESP32_ID}'}</strong>, senha{' '}
                   <strong>toplav123</strong> — acesse <code>/wifi</code>
                 </li>
-                <li>Atualizações futuras via OTA em Configurações → Atualização OTA (Wi-Fi)</li>
+                <li>
+                  OTA: exporte só <code>nome.ino.bin</code> (~1–1,2 MB) em Configurações → Atualização OTA — nunca{' '}
+                  <code>merged</code>, <code>bootloader</code> ou <code>partitions</code>
+                </li>
                 <li>Anote o <strong>esp32_id</strong> no Serial Monitor e cadastre na máquina em Máquinas</li>
                 <li>Aprove o ESP em Pendentes de Aprovação (se auto-registro estiver ativo)</li>
                 <li>SD FAT32 na raiz: 001.mp3 … 007.mp3</li>

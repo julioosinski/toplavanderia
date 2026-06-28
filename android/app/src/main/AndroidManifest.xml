@@ -68,6 +68,13 @@
             android:name="app.lovable.toplavanderia.SimpleMainActivity"
             android:theme="@style/AppTheme" />
 
+        <activity
+            android:exported="false"
+            android:name="app.lovable.toplavanderia.CieloCardOnlyHintActivity"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <!-- Receives Cielo callback: order://response -->
         <activity
             android:name="app.lovable.toplavanderia.CieloResponseActivity"
