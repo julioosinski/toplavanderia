@@ -24,6 +24,7 @@ public final class CieloPaymentSessionHelper {
 
     public static void endSession(Context context) {
         CieloPaymentShieldOverlay.clear();
+        CieloPaymentOverlayService.stop(context);
         if (context == null) {
             return;
         }

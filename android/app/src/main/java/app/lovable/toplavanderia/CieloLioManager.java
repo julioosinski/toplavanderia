@@ -198,6 +198,7 @@ public class CieloLioManager implements PaymentManager {
             pendingAmountCents = amountCents;
             pendingPaymentCode = paymentCode;
             CieloPaymentSessionHelper.beginSession(context, paymentCode);
+            final boolean blockAlternateCapture = !"PIX".equalsIgnoreCase(paymentCode);
 
             mainHandler.post(() -> {
                 if (callback != null) {
@@ -208,6 +209,18 @@ public class CieloLioManager implements PaymentManager {
                 try {
                     context.startActivity(intent);
                     Log.d(TAG, "Deep link Cielo enviado (ref=" + reference + ")");
+                    if (blockAlternateCapture) {
+                        Runnable startShield = () -> {
+                            if (CieloOverlayPermissionHelper.canDrawOverlays(context)) {
+                                CieloPaymentOverlayService.startCardShield(context);
+                                Log.i(TAG, "Overlay cartao ativo sobre tela Cielo");
+                            } else {
+                                Log.w(TAG, "Overlay cartao indisponivel: permissao 'exibir sobre apps' ausente");
+                            }
+                        };
+                        mainHandler.postDelayed(startShield, 500L);
+                        mainHandler.postDelayed(startShield, 1500L);
+                    }
                 } catch (android.content.ActivityNotFoundException e) {
                     handleLaunchFailure("App de pagamento Cielo não instalado neste terminal.");
                 } catch (Exception e) {

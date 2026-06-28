@@ -7,4 +7,7 @@
     <string name="cielo_payment_notification_text">Aguarde a confirmação na Cielo Smart…</string>
     <string name="cielo_receipt_accessibility_desc">No pagamento Cielo: pula impressão de comprovante e, em crédito/débito, orienta o cliente a usar o leitor (bloqueia QR Code e digitar cartão).</string>
     <string name="cielo_receipt_accessibility_label">Top Lavanderia — assistente Cielo</string>
+    <string name="cielo_overlay_channel_name">Overlay pagamento Cielo</string>
+    <string name="cielo_overlay_notification_title">Pagamento cartão</string>
+    <string name="cielo_overlay_notification_text">Bloqueio de QR/digitar cartão ativo</string>
 </resources>
