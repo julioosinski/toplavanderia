@@ -9,7 +9,9 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -18,27 +20,50 @@ import android.view.WindowManager;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-/**
- * Cobre a faixa inferior da tela Cielo (botões QR / digitar cartão) com overlay do Top Lavanderia.
- * Não depende de ler a árvore de acessibilidade do app Cielo.
- */
+import java.util.ArrayList;
+import java.util.List;
+
+/** Tarja inferior fixa por 10 segundos — não remove antes (exceto toque Não imprimir). */
 public class CieloPaymentOverlayService extends Service {
     private static final String TAG = "CieloPayOverlay";
     private static final String CHANNEL_ID = "cielo_payment_overlay";
     private static final int NOTIFICATION_ID = 4102;
+    public static final long TARJA_DURATION_MS = 10000L;
 
     public static final String ACTION_START = "app.lovable.toplavanderia.action.CIELO_OVERLAY_START";
     public static final String ACTION_STOP = "app.lovable.toplavanderia.action.CIELO_OVERLAY_STOP";
 
+    private static volatile CieloPaymentOverlayService runningInstance;
+
     private WindowManager windowManager;
-    private View overlayView;
+    private final List<View> overlayViews = new ArrayList<>();
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private int overlaySessionId = 0;
+    private long tarjaShownAtMs = 0L;
+
+    private final Runnable tarjaHideRunnable = new Runnable() {
+        @Override
+        public void run() {
+            Context app = getApplicationContext();
+            if (overlaySessionId != CieloPaymentSessionHelper.getSessionId(app)) {
+                return;
+            }
+            removeOverlayInternal("timer10s");
+            CieloPaymentSessionHelper.setShieldEnabled(app, false);
+            Log.i(TAG, "Tarja ocultada (10s)");
+        }
+    };
 
     public static void startCardShield(Context context) {
         if (context == null || !CieloOverlayPermissionHelper.canDrawOverlays(context)) {
             return;
         }
+        if (!CieloPaymentSessionHelper.isCardShieldEnabled(context)) {
+            return;
+        }
         Intent intent = new Intent(context, CieloPaymentOverlayService.class);
         intent.setAction(ACTION_START);
+        intent.putExtra("session_id", CieloPaymentSessionHelper.getSessionId(context));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(intent);
         } else {
@@ -46,8 +71,35 @@ public class CieloPaymentOverlayService extends Service {
         }
     }
 
+    /** Remove tarja imediatamente (ex.: antes do toque Não imprimir na tela aprovada). */
+    public static void hideForTap(Context context) {
+        if (context == null) {
+            return;
+        }
+        Context app = context.getApplicationContext();
+        long elapsed = CieloPaymentSessionHelper.getSessionElapsedMs(app);
+        if (elapsed < 8000L && !CieloPaymentSessionHelper.isApprovedScreenConfirmed(app)) {
+            Log.d(TAG, "hideForTap adiado — tarja 10s (" + elapsed + "ms)");
+            return;
+        }
+        mainHandlerPost(() -> {
+            CieloPaymentOverlayService svc = runningInstance;
+            if (svc != null) {
+                svc.mainHandler.removeCallbacks(svc.tarjaHideRunnable);
+                svc.removeOverlayInternal("hideForTap");
+            }
+        });
+    }
+
     public static void stop(Context context) {
         if (context == null) {
+            return;
+        }
+        Context app = context.getApplicationContext();
+        long elapsed = CieloPaymentSessionHelper.getSessionElapsedMs(app);
+        if (elapsed > 0L && elapsed < TARJA_DURATION_MS
+                && CieloPaymentSessionHelper.isCardShieldEnabled(app)) {
+            Log.d(TAG, "Stop ignorado — tarja 10s (" + elapsed + "ms)");
             return;
         }
         Intent intent = new Intent(context, CieloPaymentOverlayService.class);
@@ -55,9 +107,15 @@ public class CieloPaymentOverlayService extends Service {
         context.startService(intent);
     }
 
+    private static void mainHandlerPost(Runnable action) {
+        Handler main = new Handler(Looper.getMainLooper());
+        main.post(action);
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
+        runningInstance = this;
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
     }
 
@@ -65,16 +123,28 @@ public class CieloPaymentOverlayService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent != null ? intent.getAction() : null;
         if (ACTION_STOP.equals(action)) {
-            removeOverlay();
+            long elapsed = CieloPaymentSessionHelper.getSessionElapsedMs(this);
+            if (elapsed > 0L && elapsed < TARJA_DURATION_MS
+                    && CieloPaymentSessionHelper.isCardShieldEnabled(this)) {
+                Log.d(TAG, "ACTION_STOP ignorado — tarja 10s (" + elapsed + "ms)");
+                return START_NOT_STICKY;
+            }
+            mainHandler.removeCallbacks(tarjaHideRunnable);
+            removeOverlayInternal("ACTION_STOP");
             stopForeground(true);
             stopSelf();
             return START_NOT_STICKY;
         }
 
         if (!CieloOverlayPermissionHelper.canDrawOverlays(this)) {
-            Log.w(TAG, "Permissão 'exibir sobre outros apps' ausente");
+            Log.w(TAG, "Permissão overlay ausente");
             stopSelf();
             return START_NOT_STICKY;
+        }
+
+        overlaySessionId = intent != null ? intent.getIntExtra("session_id", 0) : 0;
+        if (overlaySessionId == 0) {
+            overlaySessionId = CieloPaymentSessionHelper.getSessionId(this);
         }
 
         startForeground(NOTIFICATION_ID, buildNotification());
@@ -84,7 +154,11 @@ public class CieloPaymentOverlayService extends Service {
 
     @Override
     public void onDestroy() {
-        removeOverlay();
+        mainHandler.removeCallbacks(tarjaHideRunnable);
+        removeOverlayInternal("onDestroy");
+        if (runningInstance == this) {
+            runningInstance = null;
+        }
         super.onDestroy();
     }
 
@@ -118,73 +192,79 @@ public class CieloPaymentOverlayService extends Service {
     }
 
     private void showOverlay() {
-        removeOverlay();
+        int currentSessionId = CieloPaymentSessionHelper.getSessionId(this);
+        if (!overlayViews.isEmpty() && overlaySessionId == currentSessionId && tarjaShownAtMs > 0L) {
+            long elapsed = System.currentTimeMillis() - tarjaShownAtMs;
+            if (elapsed > 0L && elapsed < TARJA_DURATION_MS) {
+                Log.d(TAG, "Tarja já visível (" + elapsed + "ms) — sem reiniciar");
+                return;
+            }
+        }
 
-        int screenHeight = getResources().getDisplayMetrics().heightPixels;
-        int overlayHeight = Math.max(dp(180), (int) (screenHeight * 0.22f));
+        removeOverlayInternal("showOverlay");
 
-        LinearLayout panel = new LinearLayout(this);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setGravity(Gravity.CENTER);
-        panel.setBackgroundColor(Color.parseColor("#E61E293B"));
-        panel.setClickable(true);
-        panel.setFocusable(true);
-        panel.setPadding(dp(16), dp(12), dp(16), dp(12));
+        int screenW = getResources().getDisplayMetrics().widthPixels;
+        int screenH = getResources().getDisplayMetrics().heightPixels;
+        int bandHeight = Math.max(dp(200), (int) (screenH * 0.24f));
+        int type = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+            ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            : WindowManager.LayoutParams.TYPE_PHONE;
 
-        TextView title = new TextView(this);
-        title.setText("Aproxime ou insira o cartão");
-        title.setTextColor(Color.WHITE);
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
-        title.setGravity(Gravity.CENTER);
-        panel.addView(title);
+        LinearLayout band = new LinearLayout(this);
+        band.setOrientation(LinearLayout.VERTICAL);
+        band.setGravity(Gravity.CENTER);
+        band.setBackgroundColor(Color.parseColor("#FF000000"));
 
-        TextView subtitle = new TextView(this);
-        subtitle.setText("Não use QR Code nem digitar cartão");
-        subtitle.setTextColor(Color.parseColor("#CBD5E1"));
-        subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        subtitle.setGravity(Gravity.CENTER);
-        subtitle.setPadding(0, dp(8), 0, 0);
-        panel.addView(subtitle);
+        TextView hint = new TextView(this);
+        hint.setText("Insira ou aproxime o cartão");
+        hint.setTextColor(Color.WHITE);
+        hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 28);
+        hint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        hint.setGravity(Gravity.CENTER);
+        hint.setPadding(dp(16), dp(12), dp(16), dp(12));
+        band.addView(hint);
 
-        panel.setOnClickListener(v -> {
-            Intent hint = new Intent(this, CieloCardOnlyHintActivity.class);
-            hint.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(hint);
-        });
-
-        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            overlayHeight,
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-                : WindowManager.LayoutParams.TYPE_PHONE,
+        WindowManager.LayoutParams bandParams = new WindowManager.LayoutParams(
+            screenW,
+            bandHeight,
+            type,
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
                 | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         );
-        params.gravity = Gravity.BOTTOM;
+        bandParams.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
 
-        overlayView = panel;
         try {
-            windowManager.addView(overlayView, params);
-            Log.i(TAG, "Overlay inferior ativo (" + overlayHeight + "px)");
+            windowManager.addView(band, bandParams);
+            overlayViews.add(band);
+            tarjaShownAtMs = System.currentTimeMillis();
+            CieloPaymentSessionHelper.markOverlayShown(getApplicationContext());
+            Log.i(TAG, "Tarja ativa 10s (sessão=" + overlaySessionId + ")");
+            mainHandler.removeCallbacks(tarjaHideRunnable);
+            mainHandler.postDelayed(tarjaHideRunnable, TARJA_DURATION_MS);
         } catch (Exception e) {
-            Log.e(TAG, "Falha ao exibir overlay", e);
-            overlayView = null;
+            Log.e(TAG, "Falha ao exibir tarja", e);
+            removeOverlayInternal("showOverlay-falha");
         }
     }
 
-    private void removeOverlay() {
-        if (windowManager == null || overlayView == null) {
-            overlayView = null;
+    private void removeOverlayInternal(String reason) {
+        if (windowManager == null) {
+            overlayViews.clear();
             return;
         }
-        try {
-            windowManager.removeView(overlayView);
-        } catch (Exception ignored) {
-            // noop
+        if (overlayViews.isEmpty()) {
+            return;
         }
-        overlayView = null;
+        for (View view : overlayViews) {
+            try {
+                windowManager.removeView(view);
+            } catch (Exception ignored) {
+                // noop
+            }
+        }
+        overlayViews.clear();
+        Log.d(TAG, "Overlay removido (" + reason + ")");
     }
 
     private int dp(int value) {

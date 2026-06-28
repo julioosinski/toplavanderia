@@ -8,5 +8,6 @@ public class TopLavanderiaApplication extends Application {
     public void onCreate() {
         super.onCreate();
         CieloSslWorkaround.ensureInitialized();
+        CieloPaymentBroadcastReceiver.register(this);
     }
 }

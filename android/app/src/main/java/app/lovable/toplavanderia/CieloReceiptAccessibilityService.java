@@ -1,8 +1,12 @@
 package app.lovable.toplavanderia;
 
 import android.accessibilityservice.AccessibilityService;
+import android.accessibilityservice.GestureDescription;
+import android.content.Context;
 import android.content.Intent;
+import android.graphics.Path;
 import android.graphics.Rect;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -12,6 +16,8 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Totem Cielo:
@@ -21,30 +27,78 @@ import java.util.Locale;
  */
 public class CieloReceiptAccessibilityService extends AccessibilityService {
     private static final String TAG = "CieloReceiptA11y";
+    private static volatile CieloReceiptAccessibilityService instance;
+    private static volatile String lastSnapshotNullReason = "sem tentativa";
+    private static final String OUR_PACKAGE = "com.toplavanderia.app";
+
+    /** DX8000 720×1280 — menu "02 NÃO IMPRIMIR" (esquerda) + botão azul central. */
+    private static final float[][] NO_PRINT_TAP_POINTS = {
+        {0.28f, 0.905f},
+        {0.28f, 0.935f},
+        {0.28f, 0.965f},
+        {0.50f, 0.930f},
+        {0.50f, 0.955f},
+        {0.72f, 0.935f},
+    };
+    private int noPrintTapIndex = 0;
+    private boolean noPrintBurstStarted = false;
+    private boolean approvedPollingActive = false;
+    private static final long APPROVED_POLL_MS = 300L;
+    private static final long TARJA_SAFETY_MS = 90000L;
+    private static final long NO_PRINT_AFTER_TARJA_REMOVED_MS = 900L;
+    private static final long INITIAL_GUARD_MS = 2500L;
+    private static final long A11Y_BLIND_INITIAL_MS = 4000L;
+    private static final long MIN_MS_FOR_TRANSITION_APPROVAL = 6000L;
+    private static final int MIN_WINDOW_CHANGES_FOR_APPROVAL = 2;
+    private static final long RECENT_WINDOW_MS = 3500L;
 
     private static final String[] CIELO_PACKAGES = {
+        "br.com.setis.pos_buziosandroid",
         "br.com.cielosmart.payment",
         "br.com.cielosmart.service",
         "br.com.cielosmart.orderservice",
+        "br.com.cielosmart.launcher",
+        "br.com.cielosmart.settings",
+        "br.com.cielosmart.calculator",
+        "br.com.cielo.transactional.services",
         "com.ads.lio.uriappclient",
         "cielo.smart.order.manager",
-        "br.com.cielosmart.launcher"
+        "cielo.netmanager",
+        "cielo.router",
+        "cielo.apps",
+        "cielo.lio.cashless",
+        "com.m4u.lio.qrinstaller",
+        "com.m4u.lio.store"
     };
 
     private static final String[] PRINT_PROMPT_HINTS = {
         "deseja imprimir",
         "imprimir comprovante",
         "imprimir o comprovante",
+        "imprimir o comprovante do cliente",
         "via do cliente",
-        "imprimir via"
+        "via do estabelecimento",
+        "via do lojista",
+        "imprimir via",
+        "comprovante do cliente",
+        "comprovante da transacao",
+        "comprovante da transação"
     };
 
     private static final String[] DISMISS_BUTTON_TEXTS = {
         "nao imprimir",
         "não imprimir",
+        "02 nao imprimir",
+        "02 não imprimir",
+        "nao imprimir comprovante",
+        "não imprimir comprovante",
         "continuar sem imprimir",
         "pular impressao",
-        "pular impressão"
+        "pular impressão",
+        "sem impressao",
+        "sem impressão",
+        "nao desejo imprimir",
+        "não desejo imprimir"
     };
 
     private static final String[] FORBIDDEN_CAPTURE_BUTTONS = {
@@ -67,23 +121,357 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
         "leia o qr code"
     };
 
+    private static final String[] PAYMENT_APPROVED_HINTS = {
+        "pagamento aprovado",
+        "transacao aprovada",
+        "transação aprovada",
+        "pagamento autorizado",
+        "transacao autorizada",
+        "transação autorizada",
+        "pagamento realizado",
+        "transacao concluida",
+        "transação concluída",
+        "transacao efetuada",
+        "transação efetuada",
+        "aprovado com sucesso",
+        "transacao aprovada com sucesso",
+        "transação aprovada com sucesso",
+        "compra aprovada",
+        "venda aprovada",
+        "aprovada ",
+        " aprovada ",
+        "aprovada 1",
+        "aprovada 2",
+        "aprovada 3",
+        "aprovada 4",
+        "aprovada 5",
+        "aprovada 6",
+        "aprovada 7",
+        "aprovada 8",
+        "aprovada 9"
+    };
+
+    private static final long APPROVED_DISMISS_BURST_MS = 18000L;
+    private static final int MAX_PRINT_DISMISS_RETRIES = 12;
+
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private long lastDismissAtMs = 0L;
     private long lastCardHintAtMs = 0L;
     private long lastShieldUpdateAtMs = 0L;
+    private long lastApprovedShieldDismissAtMs = 0L;
+    private long lastPrintDismissAttemptAtMs = 0L;
+    private long approvedDismissBurstUntilMs = 0L;
+    private int printDismissRetryCount = 0;
     private String lastShieldSignature = "";
+    private int cieloWindowChangeCount = 0;
+    private long lastCieloWindowChangeAtMs = 0L;
+    private int nonInitialStablePolls = 0;
+    private boolean seenForbiddenCaptureButtons = false;
+
+    private final Runnable windowTransitionRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (noPrintBurstStarted || !CieloPaymentSessionHelper.hasActiveSession(CieloReceiptAccessibilityService.this)) {
+                return;
+            }
+            long elapsed = CieloPaymentSessionHelper.getSessionElapsedMs(CieloReceiptAccessibilityService.this);
+            if (elapsed < MIN_MS_FOR_TRANSITION_APPROVAL) {
+                return;
+            }
+            if (cieloWindowChangeCount < MIN_WINDOW_CHANGES_FOR_APPROVAL) {
+                return;
+            }
+            if (!detectApprovedScreen("", "window-transition@" + elapsed + "ms")) {
+                return;
+            }
+        }
+    };
 
     @Override
     public void onServiceConnected() {
         super.onServiceConnected();
+        instance = this;
         CieloPaymentShieldOverlay.bind(this);
-        Log.i(TAG, "Assistente Cielo conectado (overlay + comprovante)");
+        if (CieloPaymentSessionHelper.hasActiveSession(this)) {
+            startApprovedPolling();
+        }
+        Log.i(TAG, "Assistente Cielo conectado (overlay + comprovante + toque coordenado)");
     }
 
     @Override
     public void onDestroy() {
+        if (instance == this) {
+            instance = null;
+        }
         CieloPaymentShieldOverlay.unbind();
         super.onDestroy();
+    }
+
+    public static boolean tapNoPrintButton() {
+        CieloReceiptAccessibilityService svc = instance;
+        if (svc == null) {
+            Log.w(TAG, "Assistente indisponível para toque");
+            return false;
+        }
+        svc.mainHandler.post(svc::tapNoPrintCoordinates);
+        return true;
+    }
+
+    /** Envia toques em vários pontos calibrados (menu + botão central). */
+    public static boolean tapNoPrintButtonBurst() {
+        CieloReceiptAccessibilityService svc = instance;
+        if (svc == null) {
+            Log.w(TAG, "Assistente indisponível para toque");
+            return false;
+        }
+        svc.mainHandler.post(svc::tapNoPrintBurstCoordinates);
+        return true;
+    }
+
+    public static void tryDismissPrintViaTree() {
+        CieloReceiptAccessibilityService svc = instance;
+        if (svc == null) {
+            return;
+        }
+        svc.mainHandler.post(svc::attemptPrintDismissViaTree);
+    }
+
+    public static boolean tryDismissPrintViaTreeSync() {
+        CieloReceiptAccessibilityService svc = instance;
+        if (svc == null) {
+            return false;
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            return svc.attemptPrintDismissViaTreeInternal();
+        }
+        final boolean[] result = {false};
+        CountDownLatch latch = new CountDownLatch(1);
+        svc.mainHandler.post(() -> {
+            result[0] = svc.attemptPrintDismissViaTreeInternal();
+            latch.countDown();
+        });
+        try {
+            latch.await(800L, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return result[0];
+    }
+
+    public static final class WindowSnapshot {
+        public final String signature;
+        public final String text;
+        public final boolean initialCaptureScreen;
+        public final boolean approvedText;
+
+        WindowSnapshot(String signature, String text, boolean initialCaptureScreen, boolean approvedText) {
+            this.signature = signature;
+            this.text = text;
+            this.initialCaptureScreen = initialCaptureScreen;
+            this.approvedText = approvedText;
+        }
+    }
+
+    public static CieloReceiptAccessibilityService getInstance() {
+        return instance;
+    }
+
+    public static String getSnapshotNullReason() {
+        return lastSnapshotNullReason;
+    }
+
+    void runOnServiceThread(Runnable action) {
+        if (action == null) {
+            return;
+        }
+        if (Looper.myLooper() == mainHandler.getLooper()) {
+            action.run();
+        } else {
+            mainHandler.post(action);
+        }
+    }
+
+    public static WindowSnapshot captureCieloWindowSnapshot() {
+        CieloReceiptAccessibilityService svc = instance;
+        if (svc == null) {
+            lastSnapshotNullReason = "assistente null";
+            return null;
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            lastSnapshotNullReason = "api < 21";
+            return null;
+        }
+        return svc.buildCieloWindowSnapshot();
+    }
+
+    public static void notifyApprovedScreen(Context context, String source) {
+        if (context == null) {
+            return;
+        }
+        Context app = context.getApplicationContext();
+        CieloReceiptAccessibilityService svc = instance;
+        if (svc != null) {
+            svc.mainHandler.post(() -> svc.onApprovedScreenDetected(source));
+            return;
+        }
+        CieloPrintDismissScheduler.onApprovedDetected(app, source);
+    }
+
+    private WindowSnapshot buildCieloWindowSnapshot() {
+        List<android.view.accessibility.AccessibilityWindowInfo> windows = getWindows();
+        if (windows == null || windows.isEmpty()) {
+            lastSnapshotNullReason = "getWindows vazio";
+            return null;
+        }
+
+        StringBuilder signature = new StringBuilder();
+        StringBuilder text = new StringBuilder();
+        StringBuilder seenPkgs = new StringBuilder();
+        boolean hasForbidden = false;
+        int matched = 0;
+
+        for (android.view.accessibility.AccessibilityWindowInfo window : windows) {
+            if (window == null) {
+                continue;
+            }
+            AccessibilityNodeInfo root = window.getRoot();
+            if (root == null) {
+                continue;
+            }
+            try {
+                CharSequence pkgSeq = root.getPackageName();
+                String pkg = pkgSeq != null ? pkgSeq.toString() : "";
+                if (!isPaymentWindowPackage(pkg)) {
+                    continue;
+                }
+                matched++;
+                if (seenPkgs.indexOf(pkg) < 0) {
+                    if (seenPkgs.length() > 0) {
+                        seenPkgs.append(',');
+                    }
+                    seenPkgs.append(pkg);
+                }
+                signature.append(window.getId()).append(':');
+                signature.append(pkg).append(':');
+                signature.append(root.getClassName()).append(':');
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    CharSequence title = window.getTitle();
+                    if (title != null && title.length() > 0) {
+                        signature.append(title).append(':');
+                    }
+                }
+                Rect bounds = new Rect();
+                root.getBoundsInScreen(bounds);
+                signature.append(bounds.width()).append('x').append(bounds.height()).append(':');
+                signature.append('c').append(root.getChildCount()).append(':');
+                String nodeText = nodeTextDeep(root);
+                if (!nodeText.isEmpty()) {
+                    appendTreeText(text, nodeText);
+                }
+                if (!findForbiddenButtonBounds(root).isEmpty()) {
+                    hasForbidden = true;
+                }
+                signature.append(nodeText.length()).append('|');
+            } finally {
+                root.recycle();
+            }
+        }
+
+        if (signature.length() == 0) {
+            lastSnapshotNullReason = "0 janelas pagamento (total=" + windows.size() + ")";
+            return null;
+        }
+
+        lastSnapshotNullReason = "ok(" + matched + "): " + seenPkgs;
+        String allText = text.toString();
+        boolean initial = hasForbidden || textContainsInitialCapture(allText);
+        boolean approved = looksLikeApprovedReceipt(allText);
+        return new WindowSnapshot(signature.toString(), allText, initial, approved);
+    }
+
+    private boolean isPaymentWindowPackage(String packageName) {
+        if (packageName == null || packageName.isEmpty()) {
+            return false;
+        }
+        if (OUR_PACKAGE.equals(packageName)) {
+            return false;
+        }
+        if (packageName.startsWith("com.android.systemui")
+                || packageName.equals("android")
+                || packageName.startsWith("com.android.launcher")) {
+            return false;
+        }
+        if (isCieloPackage(packageName)) {
+            return true;
+        }
+        String lower = packageName.toLowerCase(Locale.ROOT);
+        return lower.contains("cielo") || lower.contains(".lio.") || lower.contains("lio.")
+            || lower.contains("buzios") || lower.contains("setis.pos")
+            || lower.startsWith("com.ads.");
+    }
+
+    private boolean textContainsInitialCapture(String all) {
+        if (all == null || all.isEmpty()) {
+            return false;
+        }
+        return all.contains("digitar cartao") || all.contains("digitar cartão")
+            || all.contains("gerar qr") || all.contains("gerar qrcode")
+            || all.contains("gerar qr code");
+    }
+
+    private boolean tapNoPrintCoordinates() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            return false;
+        }
+        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+        float w = dm.widthPixels;
+        float h = dm.heightPixels;
+        float[] point = NO_PRINT_TAP_POINTS[noPrintTapIndex % NO_PRINT_TAP_POINTS.length];
+        noPrintTapIndex++;
+        float x = w * point[0];
+        float y = h * point[1];
+        dispatchTapAsync(x, y);
+        Log.i(TAG, "Toque coordenado (" + Math.round(x) + "," + Math.round(y) + ")");
+        return true;
+    }
+
+    private void tapNoPrintBurstCoordinates() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            return;
+        }
+        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+        float w = dm.widthPixels;
+        float h = dm.heightPixels;
+        int start = noPrintTapIndex % NO_PRINT_TAP_POINTS.length;
+        for (int i = 0; i < 3; i++) {
+            float[] point = NO_PRINT_TAP_POINTS[(start + i) % NO_PRINT_TAP_POINTS.length];
+            float x = w * point[0];
+            float y = h * point[1];
+            long delay = i * 120L;
+            mainHandler.postDelayed(() -> dispatchTapAsync(x, y), delay);
+            Log.i(TAG, "Burst toque (" + Math.round(x) + "," + Math.round(y) + ") +" + delay + "ms");
+        }
+        noPrintTapIndex += 3;
+    }
+
+    private void dispatchTapAsync(float x, float y) {
+        Path path = new Path();
+        path.moveTo(x, y);
+        path.lineTo(x + 2f, y + 2f);
+        GestureDescription.StrokeDescription stroke =
+            new GestureDescription.StrokeDescription(path, 0L, 80L);
+        GestureDescription gesture = new GestureDescription.Builder().addStroke(stroke).build();
+        dispatchGesture(gesture, new GestureResultCallback() {
+            @Override
+            public void onCompleted(GestureDescription gestureDescription) {
+                Log.i(TAG, "Gesto concluído em (" + Math.round(x) + "," + Math.round(y) + ")");
+            }
+
+            @Override
+            public void onCancelled(GestureDescription gestureDescription) {
+                Log.w(TAG, "Gesto cancelado em (" + Math.round(x) + "," + Math.round(y) + ")");
+            }
+        }, null);
     }
 
     @Override
@@ -97,6 +485,19 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
                 CieloPaymentShieldOverlay.clear();
             }
             return;
+        }
+
+        if (CieloPaymentSessionHelper.hasActiveSession(this)) {
+            if (!noPrintBurstStarted) {
+                String fromEvent = extractEventText(event);
+                if (!detectApprovedScreen(fromEvent, "event")) {
+                    int eventType = event.getEventType();
+                    if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                            || eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+                        scanForApprovedScreen("event-scan");
+                    }
+                }
+            }
         }
 
         int type = event.getEventType();
@@ -121,23 +522,420 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
             if (CieloPaymentSessionHelper.shouldBlockAlternateCapture(this)
                     && treeContainsAlternateCaptureScreen(root)) {
                 showCardOnlyHintAndBack("alternate-screen");
-                return;
-            }
-
-            if (System.currentTimeMillis() - lastDismissAtMs < 1500L) {
-                return;
-            }
-            if (!treeContainsPrintPrompt(root)) {
-                return;
-            }
-            AccessibilityNodeInfo target = findDismissButton(root);
-            if (target != null && target.isClickable() && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                lastDismissAtMs = System.currentTimeMillis();
-                Log.i(TAG, "Comprovante Cielo dispensado automaticamente");
             }
         } finally {
             root.recycle();
         }
+    }
+
+    private void onApprovedScreenDetected(String source) {
+        if (noPrintBurstStarted || !CieloPaymentSessionHelper.hasActiveSession(this)) {
+            return;
+        }
+        noPrintBurstStarted = true;
+        stopApprovedPolling();
+        CieloPrintDismissScheduler.onApprovedDetected(getApplicationContext(), source);
+    }
+
+    private boolean detectApprovedScreen(String eventText, String source) {
+        if (noPrintBurstStarted || !CieloPaymentSessionHelper.hasActiveSession(this)) {
+            return false;
+        }
+        if (!eventText.isEmpty() && looksLikeApprovedPaymentScreen(eventText)) {
+            onApprovedScreenDetected(source + "-event:" + truncateForLog(eventText));
+            return true;
+        }
+
+        String all = collectAllWindowsText();
+        if (!all.isEmpty() && looksLikeApprovedPaymentScreen(all)) {
+            onApprovedScreenDetected(source + "-tree:" + truncateForLog(all));
+            return true;
+        }
+
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root != null) {
+            try {
+                String nodeText = nodeTextDeep(root);
+                if (looksLikeApprovedPaymentScreen(nodeText)) {
+                    onApprovedScreenDetected(source + "-node");
+                    return true;
+                }
+            } finally {
+                root.recycle();
+            }
+        }
+        return false;
+    }
+
+    private void scanForApprovedScreen(String source) {
+        detectApprovedScreen("", source);
+    }
+
+    private void ensureTarjaDuringPayment() {
+        // Tarja controlada só pelo timer de 20s em CieloPaymentOverlayService.
+    }
+
+    private boolean isInitialCaptureScreen(AccessibilityNodeInfo root, String all) {
+        long elapsed = CieloPaymentSessionHelper.getSessionElapsedMs(this);
+        if (elapsed < INITIAL_GUARD_MS) {
+            return true;
+        }
+        if (all == null) {
+            all = collectAllWindowsText();
+        }
+        if (textContainsInitialCapture(all)) {
+            return true;
+        }
+        AccessibilityNodeInfo walk = root;
+        boolean owned = false;
+        if (walk == null) {
+            walk = getRootInActiveWindow();
+            owned = walk != null;
+        }
+        if (walk == null) {
+            return elapsed < A11Y_BLIND_INITIAL_MS;
+        }
+        try {
+            List<Rect> forbidden = findForbiddenButtonBounds(walk);
+            if (!forbidden.isEmpty()) {
+                seenForbiddenCaptureButtons = true;
+                return true;
+            }
+            if (seenForbiddenCaptureButtons) {
+                return false;
+            }
+            return elapsed < A11Y_BLIND_INITIAL_MS;
+        } finally {
+            if (owned) {
+                walk.recycle();
+            }
+        }
+    }
+
+    private String collectAllWindowsText() {
+        StringBuilder sb = new StringBuilder();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            List<android.view.accessibility.AccessibilityWindowInfo> windows = getWindows();
+            if (windows != null) {
+                for (android.view.accessibility.AccessibilityWindowInfo window : windows) {
+                    if (window == null) {
+                        continue;
+                    }
+                    AccessibilityNodeInfo root = window.getRoot();
+                    if (root == null) {
+                        continue;
+                    }
+                    try {
+                        appendTreeText(sb, nodeTextDeep(root));
+                    } finally {
+                        root.recycle();
+                    }
+                }
+            }
+        }
+        if (sb.length() == 0) {
+            AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                try {
+                    appendTreeText(sb, nodeTextDeep(root));
+                } finally {
+                    root.recycle();
+                }
+            }
+        }
+        return sb.toString();
+    }
+
+    private void appendTreeText(StringBuilder sb, String value) {
+        if (value == null || value.isEmpty()) {
+            return;
+        }
+        if (sb.length() > 0) {
+            sb.append(' ');
+        }
+        sb.append(value);
+    }
+
+    private boolean looksLikeCardCaptureScreen(String all) {
+        if (all.isEmpty()) {
+            return false;
+        }
+        if (all.contains("digitar cartao") || all.contains("digitar cartão")
+                || all.contains("gerar qr") || all.contains("gerar qrcode")) {
+            return false;
+        }
+        return all.contains("aproxime") || all.contains("insira")
+            || all.contains("passe o cartao") || all.contains("passe o cartão")
+            || all.contains("aguardando") || all.contains("leitor");
+    }
+
+    /** Saiu da tela QR/digitar (ex.: processando cartão), mas ainda não é comprovante. */
+    private boolean looksLikePastInitialScreen(String all) {
+        if (all.isEmpty()) {
+            return false;
+        }
+        if (all.contains("digitar cartao") || all.contains("digitar cartão")
+                || all.contains("gerar qr") || all.contains("gerar qrcode")) {
+            return false;
+        }
+        if (looksLikePrintOrApprovedScreen(all)) {
+            return false;
+        }
+        long elapsed = CieloPaymentSessionHelper.getSessionElapsedMs(this);
+        return elapsed > 6000L
+            && (all.contains("credito") || all.contains("crédito")
+            || all.contains("debito") || all.contains("débito")
+            || all.contains(" r$") || all.contains("cartao") || all.contains("cartão"));
+    }
+
+    private boolean looksLikePrintOrApprovedScreen(String all) {
+        return looksLikeApprovedPaymentScreen(all);
+    }
+
+    /** Tela aprovada ou menu de impressão — nunca captura/processando. */
+    private boolean looksLikeApprovedPaymentScreen(String all) {
+        if (all == null || all.isEmpty()) {
+            return false;
+        }
+        String lower = normalize(all);
+        if (lower.contains("aproxime") || lower.contains("insira") || lower.contains("passe o cart")
+                || lower.contains("processando") || lower.contains("gerar qr")
+                || lower.contains("digitar cart")) {
+            return false;
+        }
+        if (lower.contains("nao imprimir") || lower.contains("não imprimir")) {
+            return true;
+        }
+        return lower.contains("aprovada");
+    }
+
+    private void attemptPrintDismissViaTree() {
+        attemptPrintDismissViaTreeInternal();
+    }
+
+    private boolean attemptPrintDismissViaTreeInternal() {
+        if (!CieloPaymentSessionHelper.hasActiveSession(this)) {
+            return false;
+        }
+        CieloPaymentOverlayService.hideForTap(getApplicationContext());
+        AccessibilityNodeInfo btn = findDismissButtonInAllWindows();
+        if (btn == null) {
+            return false;
+        }
+        try {
+            if (clickNode(btn)) {
+                Log.i(TAG, "Clicou 'Não imprimir' via árvore de acessibilidade");
+                CieloPrintDismissScheduler.markDismissSucceeded();
+                return true;
+            }
+        } finally {
+            btn.recycle();
+        }
+        return false;
+    }
+    private final Runnable approvedPollRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (!approvedPollingActive
+                    || !CieloPaymentSessionHelper.hasActiveSession(CieloReceiptAccessibilityService.this)) {
+                stopApprovedPolling();
+                return;
+            }
+            scanForApprovedScreen("poll");
+            if (approvedPollingActive) {
+                mainHandler.postDelayed(this, APPROVED_POLL_MS);
+            }
+        }
+    };
+
+    private void startApprovedPolling() {
+        stopApprovedPolling();
+        approvedPollingActive = true;
+        mainHandler.post(approvedPollRunnable);
+        Log.d(TAG, "Monitor de tela aprovada iniciado");
+    }
+
+    private void stopApprovedPolling() {
+        approvedPollingActive = false;
+        mainHandler.removeCallbacks(approvedPollRunnable);
+    }
+
+    public static void onPaymentSessionStarted() {
+        CieloReceiptAccessibilityService svc = instance;
+        if (svc != null) {
+            svc.startApprovedPolling();
+        }
+    }
+
+    private String extractEventText(AccessibilityEvent event) {
+        StringBuilder sb = new StringBuilder();
+        if (event.getText() != null) {
+            for (CharSequence part : event.getText()) {
+                if (part != null && part.length() > 0) {
+                    sb.append(part).append(' ');
+                }
+            }
+        }
+        appendIfPresent(sb, event.getContentDescription());
+        return normalize(sb.toString());
+    }
+
+    private void appendIfPresent(StringBuilder sb, CharSequence value) {
+        if (value == null || value.length() == 0) {
+            return;
+        }
+        if (sb.length() > 0) {
+            sb.append(' ');
+        }
+        sb.append(value);
+    }
+
+    private String truncateForLog(String value) {
+        if (value.length() <= 80) {
+            return value;
+        }
+        return value.substring(0, 80) + "...";
+    }
+
+    private boolean isApprovedReceiptScreen(AccessibilityNodeInfo root) {
+        if (root == null) {
+            return false;
+        }
+        return looksLikeApprovedReceipt(nodeTextDeep(root));
+    }
+
+    /**
+     * Tela pós-pagamento: "Aprovada …" + botão "Não imprimir".
+     * Ignora telas anteriores (QR / digitar cartão / aproximar cartão).
+     */
+    private boolean looksLikeApprovedReceipt(String all) {
+        if (all.isEmpty()) {
+            return false;
+        }
+        if (all.contains("digitar cartao") || all.contains("digitar cartão")
+                || all.contains("gerar qr") || all.contains("gerar qrcode")
+                || all.contains("aproxime") || all.contains("insira")
+                || all.contains("passe o cartao") || all.contains("passe o cartão")
+                || all.contains("processando")) {
+            return false;
+        }
+        if (all.contains("nao imprimir") || all.contains("não imprimir")) {
+            return true;
+        }
+        for (String hint : PAYMENT_APPROVED_HINTS) {
+            if (all.contains(hint)) {
+                return true;
+            }
+        }
+        for (String hint : PRINT_PROMPT_HINTS) {
+            if (all.contains(hint)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Reinicia estado ao iniciar nova sessão de pagamento. */
+    public static void resetApprovedHandling() {
+        CieloPrintDismissScheduler.reset();
+        CieloReceiptAccessibilityService svc = instance;
+        if (svc != null) {
+            svc.noPrintBurstStarted = false;
+            svc.noPrintTapIndex = 0;
+            svc.cieloWindowChangeCount = 0;
+            svc.lastCieloWindowChangeAtMs = 0L;
+            svc.nonInitialStablePolls = 0;
+            svc.seenForbiddenCaptureButtons = false;
+            svc.mainHandler.removeCallbacks(svc.windowTransitionRunnable);
+            svc.stopApprovedPolling();
+        }
+    }
+
+    private void beginApprovedDismissBurst() {
+        approvedDismissBurstUntilMs = System.currentTimeMillis() + APPROVED_DISMISS_BURST_MS;
+    }
+
+    private boolean isApprovedDismissBurstActive() {
+        return System.currentTimeMillis() < approvedDismissBurstUntilMs;
+    }
+
+    private AccessibilityNodeInfo findDismissButtonInAllWindows() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            return null;
+        }
+        List<android.view.accessibility.AccessibilityWindowInfo> windows = getWindows();
+        if (windows == null || windows.isEmpty()) {
+            return null;
+        }
+        AccessibilityNodeInfo best = null;
+        int bestScore = -1;
+        for (android.view.accessibility.AccessibilityWindowInfo window : windows) {
+            if (window == null) {
+                continue;
+            }
+            AccessibilityNodeInfo root = window.getRoot();
+            if (root == null) {
+                continue;
+            }
+            try {
+                AccessibilityNodeInfo candidate = findDismissButton(root);
+                if (candidate == null) {
+                    continue;
+                }
+                int score = scoreDismissButtonText(nodeTextDeep(candidate));
+                if (score > bestScore) {
+                    if (best != null) {
+                        best.recycle();
+                    }
+                    best = candidate;
+                    bestScore = score;
+                } else {
+                    candidate.recycle();
+                }
+            } finally {
+                root.recycle();
+            }
+        }
+        return best;
+    }
+
+    private boolean clickNode(AccessibilityNodeInfo node) {
+        if (node == null) {
+            return false;
+        }
+        if (node.isClickable() && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            return true;
+        }
+        AccessibilityNodeInfo clickable = findClickableTarget(node);
+        if (clickable == null) {
+            return performGestureClick(node);
+        }
+        try {
+            if (clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                return true;
+            }
+        } finally {
+            clickable.recycle();
+        }
+        return performGestureClick(node);
+    }
+
+    private boolean performGestureClick(AccessibilityNodeInfo node) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N || node == null) {
+            return false;
+        }
+        Rect rect = new Rect();
+        node.getBoundsInScreen(rect);
+        if (rect.isEmpty()) {
+            return false;
+        }
+        float x = rect.exactCenterX();
+        float y = rect.exactCenterY();
+        Path path = new Path();
+        path.moveTo(x, y);
+        GestureDescription.StrokeDescription stroke = new GestureDescription.StrokeDescription(path, 0L, 50L);
+        GestureDescription gesture = new GestureDescription.Builder().addStroke(stroke).build();
+        return dispatchGesture(gesture, null, null);
     }
 
     @Override
@@ -146,7 +944,8 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
     }
 
     private void handlePaymentShield(AccessibilityNodeInfo root) {
-        if (!CieloPaymentSessionHelper.shouldBlockAlternateCapture(this)) {
+        if (!CieloPaymentSessionHelper.shouldBlockAlternateCapture(this)
+                || !CieloPaymentSessionHelper.isCardShieldEnabled(this)) {
             CieloPaymentShieldOverlay.clear();
             lastShieldSignature = "";
             return;
@@ -170,6 +969,7 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
             Log.d(TAG, "Escudo Cielo: nenhum botão alternativo detectado");
         } else {
             CieloPaymentShieldOverlay.updateBlockers(bounds);
+            seenForbiddenCaptureButtons = true;
             Log.i(TAG, "Escudo Cielo ativo em " + bounds.size() + " botão(ões)");
         }
     }
@@ -218,6 +1018,43 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
             }
         }
         return matchesForbiddenCaptureText(event.getContentDescription());
+    }
+
+    private void dismissCardShieldForApprovedPayment(String reason) {
+        // Tarja não é removida na detecção — só pelo timer de 20s ou toque Não imprimir.
+    }
+
+    private boolean shouldDismissCardShield(AccessibilityNodeInfo root) {
+        return isApprovedReceiptScreen(root);
+    }
+
+    private boolean treeContainsPaymentApproved(AccessibilityNodeInfo node) {
+        if (node == null) {
+            return false;
+        }
+        String combined = normalize(joinText(node.getText(), node.getContentDescription()));
+        if (!combined.isEmpty()) {
+            for (String hint : PAYMENT_APPROVED_HINTS) {
+                if (combined.contains(hint)) {
+                    return true;
+                }
+            }
+        }
+        int childCount = node.getChildCount();
+        for (int i = 0; i < childCount; i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child == null) {
+                continue;
+            }
+            try {
+                if (treeContainsPaymentApproved(child)) {
+                    return true;
+                }
+            } finally {
+                child.recycle();
+            }
+        }
+        return false;
     }
 
     private void showCardOnlyHintAndBack(String reason) {
@@ -418,13 +1255,17 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
     }
 
     private AccessibilityNodeInfo findDismissButton(AccessibilityNodeInfo root) {
-        List<AccessibilityNodeInfo> clickables = new ArrayList<>();
-        collectClickables(root, clickables);
+        if (root == null) {
+            return null;
+        }
+        List<AccessibilityNodeInfo> candidates = new ArrayList<>();
+        collectDismissButtonCandidates(root, candidates);
 
         AccessibilityNodeInfo best = null;
         int bestScore = -1;
-        for (AccessibilityNodeInfo node : clickables) {
-            int score = scoreDismissButton(node);
+        for (AccessibilityNodeInfo node : candidates) {
+            String combined = nodeTextDeep(node);
+            int score = scoreDismissButtonText(combined);
             if (score > bestScore) {
                 if (best != null) {
                     best.recycle();
@@ -434,44 +1275,101 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
             }
         }
 
-        for (AccessibilityNodeInfo node : clickables) {
+        for (AccessibilityNodeInfo node : candidates) {
             node.recycle();
         }
         return best;
     }
 
-    private void collectClickables(AccessibilityNodeInfo node, List<AccessibilityNodeInfo> out) {
+    private void collectDismissButtonCandidates(AccessibilityNodeInfo node, List<AccessibilityNodeInfo> out) {
         if (node == null) {
             return;
         }
-        if (node.isClickable()) {
+        String combined = nodeTextDeep(node);
+        if (scoreDismissButtonText(combined) > 0) {
+            AccessibilityNodeInfo clickable = findClickableTarget(node);
+            if (clickable != null) {
+                out.add(clickable);
+            }
+        } else if (node.isClickable() && isLikelyNoPrintButton(combined)) {
             out.add(AccessibilityNodeInfo.obtain(node));
         }
         int childCount = node.getChildCount();
         for (int i = 0; i < childCount; i++) {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child != null) {
-                collectClickables(child, out);
+                try {
+                    collectDismissButtonCandidates(child, out);
+                } finally {
+                    child.recycle();
+                }
+            }
+        }
+    }
+
+    private boolean isLikelyNoPrintButton(String combined) {
+        if (combined.isEmpty() || !isApprovedDismissBurstActive()) {
+            return false;
+        }
+        return combined.contains("nao imprimir") || combined.contains("não imprimir");
+    }
+
+    private String nodeTextDeep(AccessibilityNodeInfo node) {
+        if (node == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        appendNodeTextDeep(node, sb, 0);
+        return normalize(sb.toString());
+    }
+
+    private void appendNodeTextDeep(AccessibilityNodeInfo node, StringBuilder sb, int depth) {
+        if (node == null || depth > 8) {
+            return;
+        }
+        appendIfPresent(sb, node.getText());
+        appendIfPresent(sb, node.getContentDescription());
+        int childCount = node.getChildCount();
+        for (int i = 0; i < childCount; i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child == null) {
+                continue;
+            }
+            try {
+                appendNodeTextDeep(child, sb, depth + 1);
+            } finally {
                 child.recycle();
             }
         }
     }
 
-    private int scoreDismissButton(AccessibilityNodeInfo node) {
-        String combined = normalize(joinText(node.getText(), node.getContentDescription()));
+    private int scoreDismissButtonText(String combined) {
         if (combined.isEmpty()) {
             return -1;
         }
-        if (combined.contains("imprimir") && !combined.contains("nao imprimir") && !combined.contains("não imprimir")) {
+        if (combined.contains("imprimir")
+                && !combined.contains("nao imprimir")
+                && !combined.contains("não imprimir")
+                && !combined.contains("sem imprimir")
+                && !combined.contains("pular impressao")
+                && !combined.contains("pular impressão")) {
             return -1;
         }
         int score = -1;
         for (String label : DISMISS_BUTTON_TEXTS) {
-            if (combined.equals(label)) {
-                score = Math.max(score, 120);
+            if (combined.contains(label)) {
+                score = Math.max(score, 100 + label.length());
             }
         }
-        return score;
+        if (score > 0) {
+            return score;
+        }
+        if (isApprovedDismissBurstActive()
+                && combined.contains("nao")
+                && combined.contains("imprimir")) {
+            return 90;
+        }
+        return -1;
     }
 
     private static String joinText(CharSequence a, CharSequence b) {

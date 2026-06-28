@@ -1,18 +1,23 @@
 package app.lovable.toplavanderia;
 
 import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.os.Bundle;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 /**
- * Orientação exibida quando o cliente toca em QR Code ou digitar cartão no app Cielo
- * (pagamento crédito/débito — use aproximação ou inserção no leitor).
+ * Orientação quando o assistente de acessibilidade intercepta QR/digitar cartão na Cielo.
  */
 public class CieloCardOnlyHintActivity extends Activity {
+    private static final String CIELO_PAYMENT_PACKAGE = "br.com.cielosmart.payment";
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -21,41 +26,58 @@ public class CieloCardOnlyHintActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
         root.setPadding(48, 48, 48, 48);
-        root.setBackgroundColor(Color.parseColor("#E6000000"));
+        root.setBackgroundColor(Color.parseColor("#F0000000"));
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(40, 40, 40, 40);
-        card.setBackgroundColor(Color.parseColor("#1E293B"));
+        card.setBackgroundColor(Color.parseColor("#111827"));
 
         TextView title = new TextView(this);
-        title.setText("Use o leitor de cartão");
-        title.setTextSize(22f);
+        title.setText("Insira ou aproxime o cartão");
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 26);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setTextColor(Color.WHITE);
         title.setGravity(Gravity.CENTER);
-        title.setPadding(0, 0, 0, 24);
+        title.setPadding(0, 0, 0, 32);
         card.addView(title);
-
-        TextView body = new TextView(this);
-        body.setText(
-            "Para este pagamento, aproxime, insira ou passe o cartão no leitor da maquininha.\n\n"
-                + "Não é necessário gerar QR Code nem digitar o número do cartão."
-        );
-        body.setTextSize(17f);
-        body.setTextColor(Color.parseColor("#CBD5E1"));
-        body.setGravity(Gravity.CENTER);
-        body.setLineSpacing(6f, 1f);
-        body.setPadding(0, 0, 0, 32);
-        card.addView(body);
 
         Button ok = new Button(this);
         ok.setText("Entendi — voltar ao pagamento");
         ok.setTextColor(Color.WHITE);
         ok.setBackgroundColor(Color.parseColor("#2563EB"));
-        ok.setOnClickListener(v -> finish());
+        ok.setMinHeight(dp(52));
+        ok.setOnClickListener(v -> returnToCieloPayment());
         card.addView(ok);
 
         root.addView(card);
         setContentView(root);
+    }
+
+    private void returnToCieloPayment() {
+        Context app = getApplicationContext();
+        boolean resumeShield = CieloPaymentSessionHelper.shouldBlockAlternateCapture(this);
+        Intent cielo = getPackageManager().getLaunchIntentForPackage(CIELO_PAYMENT_PACKAGE);
+        if (cielo != null) {
+            cielo.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+        }
+        finish();
+        try {
+            if (cielo != null) {
+                app.startActivity(cielo);
+            }
+            if (resumeShield && CieloPaymentSessionHelper.isCardShieldEnabled(app)) {
+                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+                    () -> CieloPaymentOverlayService.startCardShield(app),
+                    600L
+                );
+            }
+        } catch (Exception ignored) {
+            // noop
+        }
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 }

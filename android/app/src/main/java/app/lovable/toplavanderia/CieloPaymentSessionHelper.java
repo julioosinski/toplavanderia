@@ -2,36 +2,149 @@ package app.lovable.toplavanderia;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Handler;
+import android.os.Looper;
 
-/**
- * Estado da sessão de pagamento Cielo (cartão vs PIX) para o serviço de acessibilidade.
- */
+/** Estado da sessão de pagamento Cielo (tarja 10s + toque Não imprimir). */
 public final class CieloPaymentSessionHelper {
     private static final String PREFS = "cielo_pay_session";
+    private static final String KEY_SESSION_ID = "session_id";
     private static final String KEY_PAYMENT_CODE = "payment_code";
+    private static final String KEY_SHIELD_ENABLED = "shield_enabled";
+    private static final String KEY_SESSION_STARTED_AT = "session_started_at";
+    private static final String KEY_OVERLAY_SHOWN_AT = "overlay_shown_at";
+    private static final String KEY_APPROVED_SCREEN_CONFIRMED = "approved_screen_confirmed";
+
+    private static int nextSessionId = 0;
 
     private CieloPaymentSessionHelper() {
     }
 
-    public static void beginSession(Context context, String paymentCode) {
+    public static int beginSession(Context context, String paymentCode) {
+        if (context == null) {
+            return 0;
+        }
+        int sessionId = ++nextSessionId;
+        prefs(context).edit()
+            .putInt(KEY_SESSION_ID, sessionId)
+            .putString(KEY_PAYMENT_CODE, paymentCode == null ? "" : paymentCode.trim())
+            .putBoolean(KEY_SHIELD_ENABLED, true)
+            .putLong(KEY_SESSION_STARTED_AT, System.currentTimeMillis())
+            .putLong(KEY_OVERLAY_SHOWN_AT, 0L)
+            .putBoolean(KEY_APPROVED_SCREEN_CONFIRMED, false)
+            .commit();
+        CieloLioManager.cancelScheduledEndSession();
+        CieloPrintDismissScheduler.cancel();
+        CieloReceiptAccessibilityService.resetApprovedHandling();
+        CieloReceiptAccessibilityService.onPaymentSessionStarted();
+        return sessionId;
+    }
+
+    public static int getSessionId(Context context) {
+        if (context == null) {
+            return 0;
+        }
+        return prefs(context).getInt(KEY_SESSION_ID, 0);
+    }
+
+    public static boolean isSessionActive(Context context, int sessionId) {
+        return sessionId > 0
+            && hasActiveSession(context)
+            && getSessionId(context) == sessionId;
+    }
+
+    /** Tarja ou pagamento recente — para broadcast Cielo. */
+    public static boolean isPaymentWindowOpen(Context context) {
+        if (context == null) {
+            return false;
+        }
+        if (hasActiveSession(context)) {
+            return true;
+        }
+        long started = prefs(context).getLong(KEY_SESSION_STARTED_AT, 0L);
+        return started > 0L && System.currentTimeMillis() - started < 120_000L;
+    }
+
+    public static void dismissCardShield(Context context) {
+        CieloPaymentShieldOverlay.clear();
         if (context == null) {
             return;
         }
-        prefs(context).edit()
-            .putString(KEY_PAYMENT_CODE, paymentCode == null ? "" : paymentCode.trim())
-            .commit();
+        setShieldEnabled(context, false);
+    }
+
+    public static void setShieldEnabled(Context context, boolean enabled) {
+        if (context == null) {
+            return;
+        }
+        prefs(context).edit().putBoolean(KEY_SHIELD_ENABLED, enabled).commit();
+    }
+
+    public static boolean isCardShieldEnabled(Context context) {
+        return prefs(context).getBoolean(KEY_SHIELD_ENABLED, false);
+    }
+
+    public static void markOverlayShown(Context context) {
+        if (context == null) {
+            return;
+        }
+        prefs(context).edit().putLong(KEY_OVERLAY_SHOWN_AT, System.currentTimeMillis()).commit();
+    }
+
+    public static long getOverlayShownAt(Context context) {
+        if (context == null) {
+            return 0L;
+        }
+        return prefs(context).getLong(KEY_OVERLAY_SHOWN_AT, 0L);
+    }
+
+    public static void markApprovedScreenConfirmed(Context context) {
+        if (context == null) {
+            return;
+        }
+        prefs(context).edit().putBoolean(KEY_APPROVED_SCREEN_CONFIRMED, true).commit();
+    }
+
+    public static boolean isApprovedScreenConfirmed(Context context) {
+        if (context == null) {
+            return false;
+        }
+        return prefs(context).getBoolean(KEY_APPROVED_SCREEN_CONFIRMED, false);
     }
 
     public static void endSession(Context context) {
-        CieloPaymentShieldOverlay.clear();
-        CieloPaymentOverlayService.stop(context);
         if (context == null) {
             return;
         }
-        prefs(context).edit().clear().commit();
+        Context app = context.getApplicationContext();
+        CieloPaymentShieldOverlay.clear();
+        CieloPrintDismissScheduler.cancel();
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            CieloReceiptAccessibilityService.resetApprovedHandling();
+            if (CieloPaymentSessionHelper.hasActiveSession(app)) {
+                prefs(app).edit().clear().commit();
+            }
+        }, 5000L);
     }
 
-    /** Bloqueia QR / digitar cartão quando o totem pediu crédito ou débito (não PIX). */
+    public static boolean hasActiveSession(Context context) {
+        if (context == null) {
+            return false;
+        }
+        return !prefs(context).getString(KEY_PAYMENT_CODE, "").isEmpty();
+    }
+
+    public static long getSessionElapsedMs(Context context) {
+        if (context == null) {
+            return 0L;
+        }
+        long startedAt = prefs(context).getLong(KEY_SESSION_STARTED_AT, 0L);
+        if (startedAt <= 0L) {
+            return 0L;
+        }
+        return Math.max(0L, System.currentTimeMillis() - startedAt);
+    }
+
     public static boolean shouldBlockAlternateCapture(Context context) {
         String code = prefs(context).getString(KEY_PAYMENT_CODE, "");
         if (code.isEmpty()) {
