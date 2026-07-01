@@ -279,12 +279,6 @@ public class AdminActivity extends Activity {
                 ? "✅ ASSISTENTE CIELO (ativo)"
                 : "⚡ ATIVAR ASSISTENTE CIELO";
             createActionButton(buttonsContainer, label, Color.parseColor("#5C6BC0"), v -> openCieloReceiptAccessibilitySettings());
-
-            boolean overlayOn = CieloOverlayPermissionHelper.canDrawOverlays(this);
-            String overlayLabel = overlayOn
-                ? "✅ EXIBIR SOBRE APPS (ativo)"
-                : "⚡ PERMITIR EXIBIR SOBRE APPS";
-            createActionButton(buttonsContainer, overlayLabel, Color.parseColor("#3949AB"), v -> openOverlayPermissionSettings());
         }
         createActionButton(buttonsContainer, "⚡ TESTAR PULSO ESP32", Color.parseColor("#00897B"), v -> testEsp32CreditPulse());
         createActionButton(buttonsContainer, "🗑️ LIMPAR DADOS", Color.parseColor("#F44336"), v -> clearData());
@@ -518,19 +512,10 @@ public class AdminActivity extends Activity {
     private void openCieloReceiptAccessibilitySettings() {
         Toast.makeText(
             this,
-            "Ative: Top Lavanderia — assistente Cielo (comprovante + leitor de cartão)",
+            "Ative: Top Lavanderia — assistente Cielo (tarja + Não imprimir + leitor)",
             Toast.LENGTH_LONG
         ).show();
         startActivity(CieloReceiptAccessibilityHelper.buildSettingsIntent());
-    }
-
-    private void openOverlayPermissionSettings() {
-        Toast.makeText(
-            this,
-            "Ative \"Permitir exibir sobre outros apps\" para Top Lavanderia",
-            Toast.LENGTH_LONG
-        ).show();
-        startActivity(CieloOverlayPermissionHelper.buildSettingsIntent(this));
     }
 
     /** Enfileira pulso de 100 ms no primeiro ESP32 online (validação pós-pagamento). */

@@ -68,7 +68,7 @@ public class CieloCardOnlyHintActivity extends Activity {
             }
             if (resumeShield && CieloPaymentSessionHelper.isCardShieldEnabled(app)) {
                 new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
-                    () -> CieloPaymentOverlayService.startCardShield(app),
+                    () -> CieloReceiptAccessibilityService.requestBottomTarja(app),
                     600L
                 );
             }

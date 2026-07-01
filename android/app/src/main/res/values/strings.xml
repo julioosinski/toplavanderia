@@ -5,7 +5,7 @@
     <string name="cielo_payment_channel_desc">Mantém o totem ativo durante o pagamento na maquininha.</string>
     <string name="cielo_payment_notification_title">Pagamento em andamento</string>
     <string name="cielo_payment_notification_text">Aguarde a confirmação na Cielo Smart…</string>
-    <string name="cielo_receipt_accessibility_desc">No pagamento Cielo: pula impressão de comprovante e, em crédito/débito, orienta o cliente a usar o leitor (bloqueia QR Code e digitar cartão).</string>
+    <string name="cielo_receipt_accessibility_desc">No pagamento Cielo: tarja \"Insira ou aproxime o cartão\", bloqueia QR/digitar cartão, e toca em Não imprimir após aprovação.</string>
     <string name="cielo_receipt_accessibility_label">Top Lavanderia — assistente Cielo</string>
     <string name="cielo_overlay_channel_name">Overlay pagamento Cielo</string>
     <string name="cielo_overlay_notification_title">Pagamento cartão</string>

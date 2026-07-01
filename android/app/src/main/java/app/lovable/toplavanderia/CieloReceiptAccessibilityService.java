@@ -481,13 +481,14 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
         }
         CharSequence pkgSeq = event.getPackageName();
         if (pkgSeq == null || !isCieloPackage(pkgSeq.toString())) {
-            if (CieloPaymentSessionHelper.shouldBlockAlternateCapture(this)) {
-                CieloPaymentShieldOverlay.clear();
-            }
             return;
         }
 
         if (CieloPaymentSessionHelper.hasActiveSession(this)) {
+            if (CieloPaymentSessionHelper.shouldBlockAlternateCapture(this)
+                    && !CieloPaymentShieldOverlay.isTarjaVisible()) {
+                CieloPaymentShieldOverlay.showBottomTarja(this);
+            }
             if (!noPrintBurstStarted) {
                 String fromEvent = extractEventText(event);
                 if (!detectApprovedScreen(fromEvent, "event")) {
@@ -572,7 +573,7 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
     }
 
     private void ensureTarjaDuringPayment() {
-        // Tarja controlada só pelo timer de 20s em CieloPaymentOverlayService.
+        // Tarja controlada pelo timer de 10s em CieloPaymentShieldOverlay (acessibilidade).
     }
 
     private boolean isInitialCaptureScreen(AccessibilityNodeInfo root, String all) {
@@ -717,7 +718,7 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
         if (!CieloPaymentSessionHelper.hasActiveSession(this)) {
             return false;
         }
-        CieloPaymentOverlayService.hideForTap(getApplicationContext());
+        CieloPaymentShieldOverlay.hideForTap(getApplicationContext());
         AccessibilityNodeInfo btn = findDismissButtonInAllWindows();
         if (btn == null) {
             return false;
@@ -758,6 +759,14 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
     private void stopApprovedPolling() {
         approvedPollingActive = false;
         mainHandler.removeCallbacks(approvedPollRunnable);
+    }
+
+    public static void requestBottomTarja(Context context) {
+        CieloReceiptAccessibilityService svc = instance;
+        if (svc == null || context == null) {
+            return;
+        }
+        svc.runOnServiceThread(() -> CieloPaymentShieldOverlay.showBottomTarja(context));
     }
 
     public static void onPaymentSessionStarted() {
@@ -940,13 +949,13 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
 
     @Override
     public void onInterrupt() {
-        CieloPaymentShieldOverlay.clear();
+        CieloPaymentShieldOverlay.clearAll();
     }
 
     private void handlePaymentShield(AccessibilityNodeInfo root) {
         if (!CieloPaymentSessionHelper.shouldBlockAlternateCapture(this)
                 || !CieloPaymentSessionHelper.isCardShieldEnabled(this)) {
-            CieloPaymentShieldOverlay.clear();
+            CieloPaymentShieldOverlay.clearBlockers();
             lastShieldSignature = "";
             return;
         }
@@ -965,7 +974,7 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
         lastShieldSignature = signature;
 
         if (bounds.isEmpty()) {
-            CieloPaymentShieldOverlay.clear();
+            CieloPaymentShieldOverlay.clearBlockers();
             Log.d(TAG, "Escudo Cielo: nenhum botão alternativo detectado");
         } else {
             CieloPaymentShieldOverlay.updateBlockers(bounds);
@@ -1059,7 +1068,7 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
 
     private void showCardOnlyHintAndBack(String reason) {
         lastCardHintAtMs = System.currentTimeMillis();
-        CieloPaymentShieldOverlay.clear();
+        CieloPaymentShieldOverlay.clearBlockers();
         lastShieldSignature = "";
         Intent hint = new Intent(this, CieloCardOnlyHintActivity.class);
         hint.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);

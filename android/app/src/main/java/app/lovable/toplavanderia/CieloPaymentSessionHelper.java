@@ -66,7 +66,7 @@ public final class CieloPaymentSessionHelper {
     }
 
     public static void dismissCardShield(Context context) {
-        CieloPaymentShieldOverlay.clear();
+        CieloPaymentShieldOverlay.clearAll();
         if (context == null) {
             return;
         }
@@ -117,7 +117,7 @@ public final class CieloPaymentSessionHelper {
             return;
         }
         Context app = context.getApplicationContext();
-        CieloPaymentShieldOverlay.clear();
+        CieloPaymentShieldOverlay.clearAll();
         CieloPrintDismissScheduler.cancel();
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             CieloReceiptAccessibilityService.resetApprovedHandling();

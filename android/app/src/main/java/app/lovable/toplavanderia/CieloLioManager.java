@@ -215,9 +215,12 @@ public class CieloLioManager implements PaymentManager {
                 clientId, accessToken, merchant, cieloEnv);
             Log.i(TAG, "Pré-checkout: cloud=" + purged + " pedido(s) merchant=" + merchant);
 
+            // Deep link direto — sem orderId na nuvem (evita fluxo parcial/troco na L400).
+            pendingCloudOrderId = null;
+
             JSONObject payload = buildPaymentPayload(amountCents, paymentCode, description, reference);
             Log.d(TAG, "Cielo checkout: type=" + paymentType + " code=" + paymentCode
-                + " cents=" + amountCents + " purged=" + purged);
+                + " cents=" + amountCents + " purged=" + purged + " cloudOrder=none");
 
             String base64 = Base64.encodeToString(payload.toString().getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
             String checkoutUri = "lio://payment?request=" + Uri.encode(base64) + "&urlCallback=order://response";
@@ -242,16 +245,7 @@ public class CieloLioManager implements PaymentManager {
                     context.startActivity(intent);
                     Log.d(TAG, "Deep link Cielo enviado (ref=" + reference + ")");
                     if (blockAlternateCapture) {
-                        Runnable startShield = () -> {
-                            if (CieloOverlayPermissionHelper.canDrawOverlays(context)
-                                    && CieloPaymentSessionHelper.isCardShieldEnabled(context)) {
-                                CieloPaymentOverlayService.startCardShield(context);
-                                Log.i(TAG, "Overlay cartao ativo sobre tela Cielo");
-                            } else {
-                                Log.w(TAG, "Overlay cartao indisponivel: permissao 'exibir sobre apps' ausente");
-                            }
-                        };
-                        mainHandler.postDelayed(startShield, 1000L);
+                        scheduleAccessibilityTarja(context);
                     }
                 } catch (android.content.ActivityNotFoundException e) {
                     handleLaunchFailure("App de pagamento Cielo não instalado neste terminal.");
@@ -435,8 +429,12 @@ public class CieloLioManager implements PaymentManager {
             }
 
             String cieloOrderId = json.optString("id", "");
+            if (cieloOrderId.isEmpty() && pendingCloudOrderId != null) {
+                cieloOrderId = pendingCloudOrderId;
+            }
+            final String orderToClose = cieloOrderId;
             new Thread(() -> {
-                finalizePaidOrder(cieloOrderId);
+                finalizePaidOrder(orderToClose);
                 try {
                     Thread.sleep(400L);
                 } catch (InterruptedException e) {
@@ -509,20 +507,36 @@ public class CieloLioManager implements PaymentManager {
         return s;
     }
 
-    private JSONObject buildPaymentPayload(long amountCents, String paymentCode, String description, String reference) throws Exception {
+    /** Tarja inferior via assistente Cielo (TYPE_ACCESSIBILITY_OVERLAY — sem "Exibir sobre apps"). */
+    private void scheduleAccessibilityTarja(Context context) {
+        if (!CieloReceiptAccessibilityHelper.isServiceEnabled(context)) {
+            Log.w(TAG, "Assistente Cielo inativo — tarja e Não imprimir não funcionarão");
+            return;
+        }
+        mainHandler.postDelayed(() -> {
+            if (!CieloPaymentSessionHelper.isCardShieldEnabled(context)) {
+                return;
+            }
+            CieloReceiptAccessibilityService.requestBottomTarja(context);
+        }, 1500L);
+    }
+
+    private JSONObject buildPaymentPayload(long amountCents, String paymentCode, String description,
+                                           String reference) throws Exception {
         JSONObject payload = new JSONObject();
         payload.put("accessToken", accessToken);
         payload.put("clientID", clientId);
         payload.put("reference", reference);
         payload.put("value", String.valueOf(amountCents));
 
-        // Com paymentCode: pagamento direto (crédito/débito/PIX fixos, sem tela de parcelas).
+        String ec = merchantCodeForJanitor();
+        if (CieloOrderJanitor.looksLikeCieloEc(ec)) {
+            payload.put("merchantCode", ec);
+        }
+
+        // paymentCode fixa o modo (crédito/débito/PIX) — sem tela de parcelas nem troco no débito.
         if (paymentCode != null && !paymentCode.isEmpty()) {
             payload.put("paymentCode", paymentCode);
-            int installments = resolveInstallments(paymentCode);
-            if (installments >= 0) {
-                payload.put("installments", installments);
-            }
         }
 
         JSONArray items = new JSONArray();
@@ -576,19 +590,6 @@ public class CieloLioManager implements PaymentManager {
             }
         }
         return "credit";
-    }
-
-    /**
-     * Parcelas: doc Cielo — 0 = à vista (crédito e débito). PIX omite o campo.
-     */
-    private int resolveInstallments(String paymentCode) {
-        if (paymentCode == null || paymentCode.isEmpty()) {
-            return 0;
-        }
-        if ("PIX".equalsIgnoreCase(paymentCode)) {
-            return -1;
-        }
-        return 0;
     }
 
     private String resolvePaymentCode(String paymentType) {

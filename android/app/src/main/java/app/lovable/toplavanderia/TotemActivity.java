@@ -1308,6 +1308,24 @@ public class TotemActivity extends Activity {
         setTotemContentView(scrollView);
     }
 
+    /** Tarja e "Não imprimir" exigem o assistente Cielo (não usa "Exibir sobre apps"). */
+    private void warnCieloPrerequisitesIfNeeded() {
+        if (CieloReceiptAccessibilityHelper.isServiceEnabled(this)) {
+            return;
+        }
+        new AlertDialog.Builder(this)
+            .setTitle("Assistente Cielo necessário")
+            .setMessage(
+                "Para cobrir QR Code/digitar cartão e tocar em \"Não imprimir\", "
+                    + "ative o serviço:\n\n"
+                    + "Top Lavanderia — assistente Cielo\n\n"
+                    + "(Configurações → Acessibilidade)")
+            .setNegativeButton("Depois", null)
+            .setPositiveButton("Abrir configurações", (d, w) ->
+                startActivity(CieloReceiptAccessibilityHelper.buildSettingsIntent()))
+            .show();
+    }
+
     /** Substitui a tela de forma de pagamento — feedback imediato e sem flash ao voltar da Cielo. */
     private void showCieloLaunchingScreen(SupabaseHelper.Machine machine, String paymentType) {
         cieloLaunchUiActive = true;
@@ -1371,6 +1389,7 @@ public class TotemActivity extends Activity {
             }
             paymentContextMachine = machine;
             currentOperationSupabasePaymentMethod = toSupabasePaymentMethod(paymentType);
+            warnCieloPrerequisitesIfNeeded();
             showCieloLaunchingScreen(machine, paymentType);
             processPayment(machine, paymentType);
             return;
