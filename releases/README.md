@@ -17,7 +17,7 @@ Saída: `android/app/build/outputs/apk/cieloRelease/app-cieloRelease.apk`
 - Assinatura **V1 + V2** (targetSdk 35 — V2 obrigatório)
 - Certificado **debug** = mesmo do APK homologado na maquininha
 
-Envie: `releases/TopLavanderia-Totem-2.2.89.apk` (homologação Cielo LIO Store — fluxo UI sem flash)
+Envie: `releases/TopLavanderia-Totem-2.2.92.apk` (homologação Cielo LIO Store — tarja fixa L400, débito sem troco)
 
 ### SHA-256 dos certificados (referência)
 
@@ -38,7 +38,8 @@ adb install -r app\build\outputs\apk\release\app-release.apk
 
 | Arquivo | versionName | Uso |
 |---------|-------------|-----|
-| `TopLavanderia-Totem-2.2.89.apk` | 2.2.89 | **Atual** — tela azul sem flash HOME, tarja 10s, toque "Não imprimir" só após aprovação, broadcast Cielo |
+| `TopLavanderia-Totem-2.2.92.apk` | 2.2.92 | **Atual** — tarja fixa 10s na L400 (sem piscar), débito direto sem tela de troco, deep link sem orderId |
+| `TopLavanderia-Totem-2.2.89.apk` | 2.2.89 | tela azul sem flash HOME, tarja 10s, toque "Não imprimir" só após aprovação, broadcast Cielo |
 | `TopLavanderia-Totem-2.2.33.apk` | 2.2.33 | Homologação Cielo — volta à grade pós-pagamento, máquina OCUPADA, credenciais via edge function |
 | `TopLavanderia-Totem-2.2.32-cieloStore.apk` | 2.2.32 | Fix corrida ESP32 / status OCUPADA após pagamento |
 | `TopLavanderia-Totem-2.2.31-cieloStore.apk` | 2.2.31 | Fluxo pagamento direto (crédito/débito/PIX), sem telas extras |
