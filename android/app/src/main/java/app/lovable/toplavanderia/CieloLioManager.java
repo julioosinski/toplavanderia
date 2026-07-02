@@ -39,6 +39,11 @@ public class CieloLioManager implements PaymentManager {
     private static Runnable pendingEndSessionRunnable;
     private static int pendingEndSessionId;
     private static final Handler END_SESSION_HANDLER = new Handler(Looper.getMainLooper());
+    private static final String PREFS_CHECKOUT = "cielo_checkout_binding";
+    private static final String KEY_BOUND_OPERATION = "operation_id";
+    private static final String KEY_BOUND_MACHINE = "machine_id";
+    private static final String KEY_BOUND_TX = "pending_tx_id";
+    private static final String KEY_BOUND_STARTED = "started_at";
 
     public static void cancelScheduledEndSession() {
         if (pendingEndSessionRunnable != null) {
@@ -65,6 +70,10 @@ public class CieloLioManager implements PaymentManager {
     private String lastConfiguredSignature;
     /** credit | pix | card — inferido do retorno Cielo para alinhar Supabase/recibo. */
     private volatile String lastDetectedSupabasePaymentMethod;
+    private long boundTotemOperationId;
+    private String boundMachineId;
+    private String boundPendingTxId;
+    private volatile boolean successDelivered;
 
     public CieloLioManager(Context context) {
         this.context = context;
@@ -263,6 +272,7 @@ public class CieloLioManager implements PaymentManager {
     private void handleLaunchFailure(String message) {
         finishProcessingAfterCallback();
         dropActiveInstance();
+        clearBoundCheckout();
         CieloPaymentForegroundService.stop(context);
         CieloPaymentSessionHelper.endSession(context);
         clearPendingTransaction();
@@ -298,17 +308,117 @@ public class CieloLioManager implements PaymentManager {
      */
     public static void handleDeepLinkResponse(Uri uri) {
         if (activeInstance == null) {
+            Log.w(TAG, "Resposta Cielo sem instancia ativa — tentando reidratar checkout");
+            activeInstance = tryRehydrateActiveInstance();
+        }
+        if (activeInstance == null) {
             Log.w(TAG, "Resposta Cielo recebida sem instancia ativa — ignorada");
             return;
         }
         new Thread(() -> activeInstance.consumeDeepLinkResponse(uri), "cielo-callback").start();
     }
 
+    /** Vincula operação do totem — sobrevive ao timeout de inatividade durante PIX na Cielo. */
+    public void bindTotemCheckout(long operationId, String machineId, String pendingTxId) {
+        boundTotemOperationId = operationId;
+        boundMachineId = machineId == null ? "" : machineId.trim();
+        boundPendingTxId = pendingTxId == null ? "" : pendingTxId.trim();
+        successDelivered = false;
+        persistBoundCheckout();
+    }
+
+    public long getBoundTotemOperationId() {
+        if (boundTotemOperationId > 0) {
+            return boundTotemOperationId;
+        }
+        return loadBoundOperationIdFromPrefs();
+    }
+
+    public String getBoundMachineId() {
+        if (boundMachineId != null && !boundMachineId.isEmpty()) {
+            return boundMachineId;
+        }
+        return context.getApplicationContext()
+            .getSharedPreferences(PREFS_CHECKOUT, Context.MODE_PRIVATE)
+            .getString(KEY_BOUND_MACHINE, "");
+    }
+
+    public String getBoundPendingTxId() {
+        if (boundPendingTxId != null && !boundPendingTxId.isEmpty()) {
+            return boundPendingTxId;
+        }
+        return context.getApplicationContext()
+            .getSharedPreferences(PREFS_CHECKOUT, Context.MODE_PRIVATE)
+            .getString(KEY_BOUND_TX, "");
+    }
+
+    public boolean matchesBoundOperation(long operationId) {
+        return operationId > 0 && operationId == getBoundTotemOperationId();
+    }
+
+    public void clearBoundCheckout() {
+        boundTotemOperationId = 0L;
+        boundMachineId = "";
+        boundPendingTxId = "";
+        successDelivered = false;
+        context.getApplicationContext()
+            .getSharedPreferences(PREFS_CHECKOUT, Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .apply();
+    }
+
+    /** Broadcast Buzios quando deep link atrasa (comum no PIX). */
+    public static void tryCompleteFromBroadcast(Context context, String source) {
+        CieloLioManager mgr = activeInstance;
+        if (mgr == null) {
+            mgr = tryRehydrateActiveInstance();
+        }
+        if (mgr == null) {
+            return;
+        }
+        if (mgr.successDelivered) {
+            return;
+        }
+        if (!mgr.isProcessing && mgr.getBoundTotemOperationId() <= 0) {
+            return;
+        }
+        Log.i(TAG, "Aprovação via broadcast — completando checkout (" + source + ")");
+        mgr.deliverPaymentSuccess("CIELO_BROADCAST", "broadcast-" + System.currentTimeMillis(), "broadcast:" + source);
+    }
+
+    private static CieloLioManager tryRehydrateActiveInstance() {
+        if (activeInstance != null) {
+            return activeInstance;
+        }
+        return null;
+    }
+
+    private void persistBoundCheckout() {
+        context.getApplicationContext()
+            .getSharedPreferences(PREFS_CHECKOUT, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(KEY_BOUND_OPERATION, boundTotemOperationId)
+            .putString(KEY_BOUND_MACHINE, boundMachineId)
+            .putString(KEY_BOUND_TX, boundPendingTxId)
+            .putLong(KEY_BOUND_STARTED, System.currentTimeMillis())
+            .apply();
+    }
+
+    private long loadBoundOperationIdFromPrefs() {
+        return context.getApplicationContext()
+            .getSharedPreferences(PREFS_CHECKOUT, Context.MODE_PRIVATE)
+            .getLong(KEY_BOUND_OPERATION, 0L);
+    }
+
     private void consumeDeepLinkResponse(Uri uri) {
         if (isDuplicateCallback(uri)) {
-            Log.w(TAG, "Callback Cielo duplicado ignorado");
-            finishProcessingAfterCallback();
-            return;
+            if (successDelivered) {
+                Log.w(TAG, "Callback Cielo duplicado ignorado (sucesso já entregue)");
+                finishProcessingAfterCallback();
+                return;
+            }
+            Log.w(TAG, "Callback Cielo duplicado — reprocessando (sucesso ainda não entregue)");
         }
 
         finishProcessingAfterCallback();
@@ -366,7 +476,7 @@ public class CieloLioManager implements PaymentManager {
             String responseReference = json.optString("reference", "");
 
             if (!isExpectedReference(responseReference)) {
-                rejectSuspiciousCallback("Referencia Cielo divergente");
+                rejectSuspiciousCallback("Referencia Cielo divergente (ref=" + responseReference + ")");
                 return;
             }
 
@@ -422,12 +532,7 @@ public class CieloLioManager implements PaymentManager {
             rememberMerchantFromPayment(payment);
 
             CieloPrintDismissScheduler.onApprovedDetected(context, "deeplink-success");
-
-            if (callback != null) {
-                final String auth = authCode;
-                final String txn = txnId;
-                mainHandler.post(() -> callback.onPaymentSuccess(auth, txn));
-            }
+            deliverPaymentSuccess(authCode, txnId, "deeplink-success");
 
             String cieloOrderId = json.optString("id", "");
             if (cieloOrderId.isEmpty() && pendingCloudOrderId != null) {
@@ -660,10 +765,37 @@ public class CieloLioManager implements PaymentManager {
         return false;
     }
 
+    private void deliverPaymentSuccess(String authCode, String txnId, String source) {
+        if (successDelivered) {
+            Log.d(TAG, "Sucesso já entregue — ignorando " + source);
+            return;
+        }
+        successDelivered = true;
+        Log.i(TAG, "Pagamento aprovado (" + source + ") auth=" + authCode + " txn=" + txnId);
+        if (callback != null) {
+            final String auth = authCode == null ? "" : authCode;
+            final String txn = txnId == null ? "" : txnId;
+            mainHandler.post(() -> {
+                if (callback != null) {
+                    callback.onPaymentSuccess(auth, txn);
+                }
+            });
+        }
+    }
+
     private boolean isExpectedReference(String responseReference) {
-        return pendingReference != null
-                && !pendingReference.isEmpty()
-                && pendingReference.equals(responseReference);
+        if (pendingReference == null || pendingReference.isEmpty()) {
+            return false;
+        }
+        if (pendingReference.equals(responseReference)) {
+            return true;
+        }
+        if ("PIX".equalsIgnoreCase(pendingPaymentCode)
+                && (responseReference == null || responseReference.isEmpty())) {
+            Log.w(TAG, "PIX: reference vazia no callback — aceitando pela sessão");
+            return true;
+        }
+        return false;
     }
 
     private boolean isExpectedAmount(long paidAmount) {
@@ -726,6 +858,11 @@ public class CieloLioManager implements PaymentManager {
         pendingAmountCents = 0;
         pendingPaymentCode = null;
         pendingCloudOrderId = null;
+    }
+
+    /** Limpa checkout após sucesso ou erro definitivo no totem. */
+    public void onTotemCheckoutFinished() {
+        clearBoundCheckout();
     }
 
     private void schedulePostCheckoutCleanup(String reason) {
