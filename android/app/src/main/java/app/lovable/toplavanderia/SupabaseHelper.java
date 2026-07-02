@@ -1102,82 +1102,168 @@ public class SupabaseHelper {
         }).start();
     }
     
+    private static final long ESP32_RELAY_POLL_INTERVAL_MS = 3000L;
+    private static final int DEFAULT_RELAY_LOGICAL_PIN = 1;
+
     /**
-     * Aciona relé do ESP32 via Edge Function
-     * Envia comando HTTP para a Edge Function que controla os ESP32s
+     * Enfileira comando ON no ESP32 sem marcar a máquina como OCUPADA.
+     * A confirmação do relé deve vir via {@link #waitForEsp32RelayOn}.
      */
-    public boolean activateEsp32Relay(String esp32Id, int relayPin, String machineId, String transactionId, int durationMinutes) {
+    public boolean queueEsp32RelayOn(String esp32Id, int relayPin, String machineId, String transactionId) {
+        Log.d(TAG, "Enfileirando ESP32 ON: esp32=" + esp32Id + " pin=" + relayPin + " machine=" + machineId);
+        return invokeEsp32Control(esp32Id, relayPin, machineId, transactionId, "on");
+    }
+
+    /**
+     * Poll do heartbeat até o relé reportar ON ou estourar o timeout.
+     */
+    public boolean waitForEsp32RelayOn(String esp32Id, int relayPin, long timeoutMs) {
+        if (esp32Id == null || esp32Id.isEmpty()) {
+            Log.w(TAG, "waitForEsp32RelayOn: esp32_id vazio");
+            return false;
+        }
+        int pin = relayPin > 0 ? relayPin : DEFAULT_RELAY_LOGICAL_PIN;
+        long deadline = System.currentTimeMillis() + Math.max(timeoutMs, 5000L);
+        Log.d(TAG, "Aguardando confirmação relé ON (esp32=" + esp32Id + ", pin=" + pin + ", timeout=" + timeoutMs + "ms)");
+        while (System.currentTimeMillis() < deadline) {
+            if (isEsp32RelayOn(esp32Id, pin)) {
+                Log.i(TAG, "Relé ESP32 confirmado ON (esp32=" + esp32Id + ", pin=" + pin + ")");
+                return true;
+            }
+            try {
+                Thread.sleep(ESP32_RELAY_POLL_INTERVAL_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        boolean finalCheck = isEsp32RelayOn(esp32Id, pin);
+        Log.w(TAG, "Timeout ESP32 relay ON (esp32=" + esp32Id + ", pin=" + pin + ", ok=" + finalCheck + ")");
+        return finalCheck;
+    }
+
+    /** Após confirmação do relé: marca OCUPADA e agenda desligamento. */
+    public void onEsp32RelayConfirmed(String esp32Id, int relayPin, String machineId, int durationMinutes) {
+        updateMachineStatus(machineId, "OCUPADA");
+        scheduleEsp32TurnOff(esp32Id, relayPin, machineId, durationMinutes);
+    }
+
+    private boolean isEsp32RelayOn(String esp32Id, int relayPin) {
         try {
-            Log.d(TAG, "=== ACIONANDO ESP32 ===");
-            Log.d(TAG, "ESP32: " + esp32Id);
-            Log.d(TAG, "Relay: " + relayPin);
-            Log.d(TAG, "Máquina: " + machineId);
-            
-            // URL da Edge Function
+            JSONArray esp32Array = fetchEsp32StatusJsonArray();
+            if (esp32Array == null) {
+                return false;
+            }
+            for (int i = 0; i < esp32Array.length(); i++) {
+                JSONObject esp32 = esp32Array.getJSONObject(i);
+                if (!esp32Id.equals(esp32.optString("esp32_id", ""))) {
+                    continue;
+                }
+                if (!Esp32TotemPolicy.isEsp32Reachable(esp32)) {
+                    return false;
+                }
+                Object rs = esp32.opt("relay_status");
+                JSONObject relayJson = rs instanceof JSONObject ? (JSONObject) rs : null;
+                String relayRaw = rs instanceof String ? (String) rs : null;
+                return isRelayPinOn(relayJson, relayRaw, relayPin);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "isEsp32RelayOn", e);
+        }
+        return false;
+    }
+
+    private static boolean isRelayPinOn(JSONObject relayJson, String relayRaw, int pin) {
+        if (relayRaw != null && !relayRaw.isEmpty()) {
+            return "on".equalsIgnoreCase(relayRaw.trim());
+        }
+        if (relayJson == null) {
+            return false;
+        }
+        String key = "relay_" + pin;
+        if (relayJson.has(key)) {
+            Object v = relayJson.opt(key);
+            if (v instanceof Boolean) {
+                return Boolean.TRUE.equals(v);
+            }
+            if (v instanceof Number) {
+                return ((Number) v).intValue() == 1;
+            }
+            String s = String.valueOf(v);
+            return "on".equalsIgnoreCase(s) || "true".equalsIgnoreCase(s);
+        }
+        JSONObject nested = relayJson.optJSONObject("status");
+        if (nested != null && nested.has(key)) {
+            return "on".equalsIgnoreCase(nested.optString(key, ""));
+        }
+        return false;
+    }
+
+    private boolean invokeEsp32Control(String esp32Id, int relayPin, String machineId, String transactionId, String action) {
+        try {
             String url = SUPABASE_URL + "/functions/v1/esp32-control";
-            
-            // Payload JSON
             JSONObject payload = new JSONObject();
             payload.put("esp32_id", esp32Id);
             payload.put("relay_pin", relayPin);
-            payload.put("action", "on");
+            payload.put("action", action);
             payload.put("machine_id", machineId);
-            if (transactionId != null && !transactionId.isEmpty() && transactionId.matches("(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
+            if (transactionId != null && !transactionId.isEmpty()
+                    && transactionId.matches("(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
                 payload.put("transaction_id", transactionId);
             }
-            
-            // Fazer requisição HTTP POST
+
             HttpURLConnection connection = SupabaseConfig.openConnection(url);
             connection.setRequestMethod("POST");
             SupabaseConfig.applyJsonHeaders(connection);
             connection.setDoOutput(true);
             connection.setConnectTimeout(15000);
             connection.setReadTimeout(15000);
-            
-            // Enviar dados
+
             OutputStream os = connection.getOutputStream();
-            os.write(payload.toString().getBytes());
+            os.write(payload.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
             os.flush();
             os.close();
-            
-            // Ler resposta
+
             int responseCode = connection.getResponseCode();
-            
-            if (responseCode == 200) {
-                BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-                StringBuilder response = new StringBuilder();
-                String line;
-                while ((line = br.readLine()) != null) {
-                    response.append(line);
-                }
-                br.close();
-                
-                JSONObject result = new JSONObject(response.toString());
-                boolean success = result.optBoolean("success", false);
-                
-                Log.d(TAG, "✅ ESP32 acionado: " + success);
-                
-                // Atualizar status local da máquina
-                if (success) {
-                    updateMachineStatus(machineId, "OCUPADA");
-                    
-                    // Agendar desligamento automático
-                    scheduleEsp32TurnOff(esp32Id, relayPin, machineId, durationMinutes);
-                }
-                
-                connection.disconnect();
-                return success;
-                
-            } else {
-                Log.e(TAG, "❌ Erro ao acionar ESP32: HTTP " + responseCode);
+            if (responseCode != 200) {
+                Log.e(TAG, "esp32-control HTTP " + responseCode + " action=" + action);
                 connection.disconnect();
                 return false;
             }
-            
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                response.append(line);
+            }
+            br.close();
+            connection.disconnect();
+
+            JSONObject result = new JSONObject(response.toString());
+            boolean success = result.optBoolean("success", false);
+            Log.d(TAG, "esp32-control " + action + " success=" + success);
+            return success;
         } catch (Exception e) {
-            Log.e(TAG, "Erro ao acionar ESP32", e);
+            Log.e(TAG, "invokeEsp32Control action=" + action, e);
             return false;
         }
+    }
+
+    /**
+     * Aciona relé do ESP32 via Edge Function
+     * Envia comando HTTP para a Edge Function que controla os ESP32s
+     */
+    public boolean activateEsp32Relay(String esp32Id, int relayPin, String machineId, String transactionId, int durationMinutes) {
+        Log.d(TAG, "=== ACIONANDO ESP32 ===");
+        Log.d(TAG, "ESP32: " + esp32Id);
+        Log.d(TAG, "Relay: " + relayPin);
+        Log.d(TAG, "Máquina: " + machineId);
+        boolean queued = queueEsp32RelayOn(esp32Id, relayPin, machineId, transactionId);
+        if (queued) {
+            onEsp32RelayConfirmed(esp32Id, relayPin, machineId, durationMinutes);
+        }
+        return queued;
     }
     
     /**

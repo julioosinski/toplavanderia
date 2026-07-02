@@ -13,6 +13,8 @@ import org.json.JSONObject;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -35,6 +37,7 @@ public class CieloLioManager implements PaymentManager {
     private static final long COOLDOWN_AFTER_4281_MS = 15000L;
     /** Sem callback Cielo — só avisa após 3 min (não libera antes: evita -4281). */
     private static final long PROCESSING_WATCHDOG_MS = 180000L;
+    private static final long REVERSAL_CALLBACK_TIMEOUT_MS = 120_000L;
     private static long lastSuccessfulPaymentAtMs;
     private static Runnable pendingEndSessionRunnable;
     private static int pendingEndSessionId;
@@ -74,6 +77,28 @@ public class CieloLioManager implements PaymentManager {
     private String boundMachineId;
     private String boundPendingTxId;
     private volatile boolean successDelivered;
+    private ApprovedPaymentSnapshot lastApprovedPayment;
+    private static volatile ReversalWaitState pendingReversal;
+
+    public static final class ApprovedPaymentSnapshot {
+        public final String paymentId;
+        public final String authCode;
+        public final String cieloCode;
+        public final long amountCents;
+
+        ApprovedPaymentSnapshot(String paymentId, String authCode, String cieloCode, long amountCents) {
+            this.paymentId = paymentId == null ? "" : paymentId;
+            this.authCode = authCode == null ? "" : authCode;
+            this.cieloCode = cieloCode == null ? "" : cieloCode;
+            this.amountCents = amountCents;
+        }
+    }
+
+    private static final class ReversalWaitState {
+        final CountDownLatch latch = new CountDownLatch(1);
+        volatile boolean success;
+        volatile String errorMessage = "";
+    }
 
     public CieloLioManager(Context context) {
         this.context = context;
@@ -307,6 +332,10 @@ public class CieloLioManager implements PaymentManager {
      * Called by CieloResponseActivity when callback order://response arrives.
      */
     public static void handleDeepLinkResponse(Uri uri) {
+        if (pendingReversal != null) {
+            new Thread(() -> consumeReversalDeepLinkResponse(uri), "cielo-reversal-callback").start();
+            return;
+        }
         if (activeInstance == null) {
             Log.w(TAG, "Resposta Cielo sem instancia ativa — tentando reidratar checkout");
             activeInstance = tryRehydrateActiveInstance();
@@ -527,6 +556,21 @@ public class CieloLioManager implements PaymentManager {
             if (authCode.isEmpty()) {
                 authCode = cieloCode.isEmpty() ? txnId : cieloCode;
             }
+
+            String paymentId = payment.optString("id", "");
+            if (paymentId.isEmpty()) {
+                paymentId = json.optString("id", "");
+            }
+            if (paymentId.isEmpty()) {
+                paymentId = txnId;
+            }
+            long snapshotAmount = paidAmount > 0 ? paidAmount : pendingAmountCents;
+            lastApprovedPayment = new ApprovedPaymentSnapshot(
+                paymentId,
+                authCode,
+                cieloCode,
+                snapshotAmount
+            );
 
             lastDetectedSupabasePaymentMethod = resolveSupabaseMethodFromCieloPayment(payment);
             rememberMerchantFromPayment(payment);
@@ -863,6 +907,141 @@ public class CieloLioManager implements PaymentManager {
     /** Limpa checkout após sucesso ou erro definitivo no totem. */
     public void onTotemCheckoutFinished() {
         clearBoundCheckout();
+        lastApprovedPayment = null;
+    }
+
+    public boolean hasApprovedPaymentSnapshot() {
+        return lastApprovedPayment != null
+            && lastApprovedPayment.paymentId != null
+            && !lastApprovedPayment.paymentId.isEmpty();
+    }
+
+    /**
+     * Estorno automático na Cielo quando o ESP32 não confirma liberação.
+     * Bloqueia até o callback order://response ou timeout.
+     */
+    public boolean requestAutomaticReversal() {
+        ApprovedPaymentSnapshot snap = lastApprovedPayment;
+        if (snap == null || snap.paymentId.isEmpty()) {
+            Log.e(TAG, "Estorno automático: snapshot de pagamento ausente");
+            return false;
+        }
+        if (!isInitialized) {
+            Log.e(TAG, "Estorno automático: credenciais Cielo ausentes");
+            return false;
+        }
+        if (pendingReversal != null) {
+            Log.w(TAG, "Estorno automático já em andamento");
+            return false;
+        }
+
+        ReversalWaitState wait = new ReversalWaitState();
+        pendingReversal = wait;
+        try {
+            JSONObject payload = new JSONObject();
+            payload.put("id", snap.paymentId);
+            payload.put("clientID", clientId);
+            payload.put("accessToken", accessToken);
+            payload.put("cieloCode", snap.cieloCode.isEmpty() ? snap.authCode : snap.cieloCode);
+            payload.put("authCode", snap.authCode);
+            payload.put("value", snap.amountCents);
+
+            String base64 = Base64.encodeToString(
+                payload.toString().getBytes(StandardCharsets.UTF_8),
+                Base64.NO_WRAP
+            );
+            String checkoutUri = "lio://payment-reversal?request="
+                + Uri.encode(base64) + "&urlCallback=order://response";
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(checkoutUri));
+
+            Log.i(TAG, "Iniciando estorno Cielo paymentId=" + snap.paymentId + " value=" + snap.amountCents);
+            final CountDownLatch launchLatch = new CountDownLatch(1);
+            mainHandler.post(() -> {
+                try {
+                    context.startActivity(intent);
+                } catch (Exception e) {
+                    wait.errorMessage = e.getMessage() == null ? "Falha ao abrir estorno Cielo" : e.getMessage();
+                    wait.latch.countDown();
+                } finally {
+                    launchLatch.countDown();
+                }
+            });
+            launchLatch.await(5000L, TimeUnit.MILLISECONDS);
+
+            boolean completed = wait.latch.await(REVERSAL_CALLBACK_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            if (!completed) {
+                Log.e(TAG, "Estorno Cielo: timeout aguardando callback");
+                return false;
+            }
+            if (wait.success) {
+                Log.i(TAG, "Estorno Cielo confirmado");
+                lastApprovedPayment = null;
+                return true;
+            }
+            Log.e(TAG, "Estorno Cielo falhou: " + wait.errorMessage);
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            Log.e(TAG, "Estorno Cielo interrompido", e);
+            return false;
+        } catch (Exception e) {
+            Log.e(TAG, "Erro ao solicitar estorno Cielo", e);
+            return false;
+        } finally {
+            pendingReversal = null;
+        }
+    }
+
+    private static void consumeReversalDeepLinkResponse(Uri uri) {
+        ReversalWaitState wait = pendingReversal;
+        if (wait == null) {
+            Log.w(TAG, "Callback de estorno sem espera ativa");
+            return;
+        }
+        try {
+            if (uri == null) {
+                wait.errorMessage = "Callback de estorno inválido";
+                return;
+            }
+            String responseBase64 = uri.getQueryParameter("response");
+            String responseCode = uri.getQueryParameter("responsecode");
+            if (responseBase64 == null || responseBase64.isEmpty()) {
+                wait.errorMessage = "Estorno sem payload";
+                return;
+            }
+            String decoded = new String(Base64.decode(responseBase64, Base64.DEFAULT), StandardCharsets.UTF_8);
+            JSONObject json = new JSONObject(decoded);
+            if (json.has("code") && json.has("reason")) {
+                wait.errorMessage = json.optString("reason", "Estorno recusado");
+                return;
+            }
+            if ("2".equals(responseCode)) {
+                wait.errorMessage = "Estorno cancelado (responsecode=2)";
+                return;
+            }
+            JSONArray payments = json.optJSONArray("payments");
+            if (payments != null && payments.length() > 0) {
+                JSONObject payment = payments.getJSONObject(payments.length() - 1);
+                JSONObject paymentFields = payment.optJSONObject("paymentFields");
+                if (paymentFields != null) {
+                    String statusCode = paymentFields.optString("statusCode", "");
+                    if ("2".equals(statusCode)) {
+                        wait.success = true;
+                        return;
+                    }
+                }
+            }
+            if ("0".equals(responseCode) || responseCode == null || responseCode.isEmpty()) {
+                wait.success = true;
+                return;
+            }
+            wait.errorMessage = "Estorno não confirmado (responsecode=" + responseCode + ")";
+        } catch (Exception e) {
+            wait.errorMessage = e.getMessage() == null ? "Erro ao processar estorno" : e.getMessage();
+            Log.e(TAG, "consumeReversalDeepLinkResponse", e);
+        } finally {
+            wait.latch.countDown();
+        }
     }
 
     private void schedulePostCheckoutCleanup(String reason) {
