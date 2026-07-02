@@ -219,6 +219,7 @@ public class CieloLioManager implements PaymentManager {
             pendingCloudOrderId = null;
 
             JSONObject payload = buildPaymentPayload(amountCents, paymentCode, description, reference);
+            Log.i(TAG, "Payload Cielo: " + payload.toString());
             Log.d(TAG, "Cielo checkout: type=" + paymentType + " code=" + paymentCode
                 + " cents=" + amountCents + " purged=" + purged + " cloudOrder=none");
 
@@ -528,15 +529,20 @@ public class CieloLioManager implements PaymentManager {
         payload.put("clientID", clientId);
         payload.put("reference", reference);
         payload.put("value", String.valueOf(amountCents));
+        payload.put("email", "totem@toplavanderia.local");
 
         String ec = merchantCodeForJanitor();
         if (CieloOrderJanitor.looksLikeCieloEc(ec)) {
             payload.put("merchantCode", ec);
         }
 
-        // paymentCode fixa o modo (crédito/débito/PIX) — sem tela de parcelas nem troco no débito.
         if (paymentCode != null && !paymentCode.isEmpty()) {
             payload.put("paymentCode", paymentCode);
+            applyDirectPaymentCodes(payload, paymentCode);
+            if (!"PIX".equalsIgnoreCase(paymentCode)) {
+                // Doc Cielo: installments 0 = à vista — omitir na L400 abre fluxo de troco indevido.
+                payload.put("installments", 0);
+            }
         }
 
         JSONArray items = new JSONArray();
@@ -550,6 +556,17 @@ public class CieloLioManager implements PaymentManager {
         payload.put("items", items);
 
         return payload;
+    }
+
+    /** primaryCode/secondaryCode reforçam paymentCode — firmware L400 produção exige para pular troco. */
+    private void applyDirectPaymentCodes(JSONObject payload, String paymentCode) throws Exception {
+        if ("DEBITO_AVISTA".equalsIgnoreCase(paymentCode)) {
+            payload.put("primaryCode", "2000");
+            payload.put("secondaryCode", "1");
+        } else if ("CREDITO_AVISTA".equalsIgnoreCase(paymentCode)) {
+            payload.put("primaryCode", "1000");
+            payload.put("secondaryCode", "1");
+        }
     }
 
     /**

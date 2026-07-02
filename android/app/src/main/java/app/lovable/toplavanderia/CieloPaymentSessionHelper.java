@@ -153,6 +153,13 @@ public final class CieloPaymentSessionHelper {
         return !"PIX".equalsIgnoreCase(code);
     }
 
+    public static String getPaymentCode(Context context) {
+        if (context == null) {
+            return "";
+        }
+        return prefs(context).getString(KEY_PAYMENT_CODE, "");
+    }
+
     private static SharedPreferences prefs(Context context) {
         return context.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }

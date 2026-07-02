@@ -167,6 +167,8 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
     private long lastCieloWindowChangeAtMs = 0L;
     private int nonInitialStablePolls = 0;
     private boolean seenForbiddenCaptureButtons = false;
+    private boolean trocoBypassDone = false;
+    private long lastTrocoBypassAtMs = 0L;
 
     private final Runnable windowTransitionRunnable = new Runnable() {
         @Override
@@ -519,6 +521,7 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
 
         try {
             handlePaymentShield(root);
+            handleTrocoScreenBypass(root);
 
             if (CieloPaymentSessionHelper.shouldBlockAlternateCapture(this)
                     && treeContainsAlternateCaptureScreen(root)) {
@@ -855,6 +858,8 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
             svc.lastCieloWindowChangeAtMs = 0L;
             svc.nonInitialStablePolls = 0;
             svc.seenForbiddenCaptureButtons = false;
+            svc.trocoBypassDone = false;
+            svc.lastTrocoBypassAtMs = 0L;
             svc.mainHandler.removeCallbacks(svc.windowTransitionRunnable);
             svc.stopApprovedPolling();
         }
@@ -980,6 +985,119 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
             CieloPaymentShieldOverlay.updateBlockers(bounds);
             seenForbiddenCaptureButtons = true;
             Log.i(TAG, "Escudo Cielo ativo em " + bounds.size() + " botão(ões)");
+        }
+    }
+
+    private void handleTrocoScreenBypass(AccessibilityNodeInfo root) {
+        if (trocoBypassDone || !CieloPaymentSessionHelper.hasActiveSession(this)) {
+            return;
+        }
+        String paymentCode = CieloPaymentSessionHelper.getPaymentCode(this);
+        if ("PIX".equalsIgnoreCase(paymentCode)) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - lastTrocoBypassAtMs < 350L) {
+            return;
+        }
+        lastTrocoBypassAtMs = now;
+
+        String all = collectAllWindowsText();
+        if (all.isEmpty() && root != null) {
+            all = nodeTextDeep(root);
+        }
+        String lower = normalize(all);
+        if (!lower.contains("troco")) {
+            return;
+        }
+
+        AccessibilityNodeInfo confirm = findConfirmButtonInAllWindows();
+        if (confirm == null) {
+            Log.d(TAG, "Tela troco indevida (cartão) — aguardando Confirmar");
+            return;
+        }
+        try {
+            if (clickNode(confirm)) {
+                trocoBypassDone = true;
+                Log.i(TAG, "Troco bypass: Confirmar em tela indevida (" + paymentCode + ")");
+            }
+        } finally {
+            confirm.recycle();
+        }
+    }
+
+    private AccessibilityNodeInfo findConfirmButtonInAllWindows() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            return null;
+        }
+        List<android.view.accessibility.AccessibilityWindowInfo> windows = getWindows();
+        if (windows == null || windows.isEmpty()) {
+            return null;
+        }
+        AccessibilityNodeInfo best = null;
+        for (android.view.accessibility.AccessibilityWindowInfo window : windows) {
+            if (window == null) {
+                continue;
+            }
+            AccessibilityNodeInfo windowRoot = window.getRoot();
+            if (windowRoot == null) {
+                continue;
+            }
+            try {
+                AccessibilityNodeInfo candidate = findConfirmButton(windowRoot);
+                if (candidate != null) {
+                    if (best != null) {
+                        best.recycle();
+                    }
+                    best = candidate;
+                }
+            } finally {
+                windowRoot.recycle();
+            }
+        }
+        return best;
+    }
+
+    private AccessibilityNodeInfo findConfirmButton(AccessibilityNodeInfo root) {
+        if (root == null) {
+            return null;
+        }
+        List<AccessibilityNodeInfo> candidates = new ArrayList<>();
+        collectConfirmButtonCandidates(root, candidates);
+        AccessibilityNodeInfo best = null;
+        for (AccessibilityNodeInfo node : candidates) {
+            if (best != null) {
+                best.recycle();
+            }
+            best = AccessibilityNodeInfo.obtain(node);
+        }
+        for (AccessibilityNodeInfo node : candidates) {
+            node.recycle();
+        }
+        return best;
+    }
+
+    private void collectConfirmButtonCandidates(AccessibilityNodeInfo node, List<AccessibilityNodeInfo> out) {
+        if (node == null) {
+            return;
+        }
+        String combined = nodeTextDeep(node);
+        if (combined.contains("confirmar") && !combined.contains("cancelar")) {
+            AccessibilityNodeInfo clickable = findClickableTarget(node);
+            if (clickable != null) {
+                out.add(clickable);
+            }
+        }
+        int childCount = node.getChildCount();
+        for (int i = 0; i < childCount; i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child != null) {
+                try {
+                    collectConfirmButtonCandidates(child, out);
+                } finally {
+                    child.recycle();
+                }
+            }
         }
     }
 
