@@ -66,3 +66,6 @@ supabase/.temp/
 # Backup files
 *.bak
 *.backup
+
+# Dumps de UI/acessibilidade da Cielo (artefatos de depuração)
+releases/*.xml
