@@ -1115,19 +1115,23 @@ public class SupabaseHelper {
     }
 
     /**
-     * Poll do heartbeat até o relé reportar ON ou estourar o timeout.
+     * Poll até o ESP32 confirmar a liberação (relé ON ou máquina "running"/"OCUPADA" no
+     * servidor) ou estourar o timeout. Aceita ambos os sinais porque o esp32-monitor grava
+     * relay_status e machines.status juntos ao confirmar o comando — evita falso timeout
+     * quando o firmware não replica o relay_status no heartbeat.
      */
-    public boolean waitForEsp32RelayOn(String esp32Id, int relayPin, long timeoutMs) {
+    public boolean waitForEsp32RelayOn(String esp32Id, int relayPin, String machineId, long timeoutMs) {
         if (esp32Id == null || esp32Id.isEmpty()) {
             Log.w(TAG, "waitForEsp32RelayOn: esp32_id vazio");
             return false;
         }
         int pin = relayPin > 0 ? relayPin : DEFAULT_RELAY_LOGICAL_PIN;
         long deadline = System.currentTimeMillis() + Math.max(timeoutMs, 5000L);
-        Log.d(TAG, "Aguardando confirmação relé ON (esp32=" + esp32Id + ", pin=" + pin + ", timeout=" + timeoutMs + "ms)");
+        Log.d(TAG, "Aguardando confirmação ESP32 (esp32=" + esp32Id + ", pin=" + pin
+            + ", machine=" + machineId + ", timeout=" + timeoutMs + "ms)");
         while (System.currentTimeMillis() < deadline) {
-            if (isEsp32RelayOn(esp32Id, pin)) {
-                Log.i(TAG, "Relé ESP32 confirmado ON (esp32=" + esp32Id + ", pin=" + pin + ")");
+            if (isEsp32Confirmed(esp32Id, pin, machineId)) {
+                Log.i(TAG, "ESP32 confirmado (esp32=" + esp32Id + ", pin=" + pin + ")");
                 return true;
             }
             try {
@@ -1137,9 +1141,38 @@ public class SupabaseHelper {
                 return false;
             }
         }
-        boolean finalCheck = isEsp32RelayOn(esp32Id, pin);
-        Log.w(TAG, "Timeout ESP32 relay ON (esp32=" + esp32Id + ", pin=" + pin + ", ok=" + finalCheck + ")");
+        boolean finalCheck = isEsp32Confirmed(esp32Id, pin, machineId);
+        Log.w(TAG, "Timeout confirmação ESP32 (esp32=" + esp32Id + ", pin=" + pin + ", ok=" + finalCheck + ")");
         return finalCheck;
+    }
+
+    /** Relé ON no heartbeat OU máquina marcada running/OCUPADA no servidor. */
+    private boolean isEsp32Confirmed(String esp32Id, int relayPin, String machineId) {
+        if (isEsp32RelayOn(esp32Id, relayPin)) {
+            return true;
+        }
+        return isMachineRunningOnServer(machineId);
+    }
+
+    private boolean isMachineRunningOnServer(String machineId) {
+        if (machineId == null || machineId.isEmpty()) {
+            return false;
+        }
+        try {
+            Machine refreshed = refreshMachineById(machineId);
+            if (refreshed == null) {
+                return false;
+            }
+            String status = refreshed.getStatus();
+            if (status == null) {
+                return false;
+            }
+            String s = status.trim().toLowerCase(Locale.ROOT);
+            return s.equals("running") || s.equals("in_use") || s.equals("ocupada");
+        } catch (Exception e) {
+            Log.e(TAG, "isMachineRunningOnServer", e);
+            return false;
+        }
     }
 
     /** Após confirmação do relé: marca OCUPADA e agenda desligamento. */

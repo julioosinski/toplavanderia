@@ -38,7 +38,8 @@ adb install -r app\build\outputs\apk\release\app-release.apk
 
 | Arquivo | versionName | Uso |
 |---------|-------------|-----|
-| `TopLavanderia-Totem-2.2.95.apk` | 2.2.95 | **Atual** — confirma relé ESP32 antes de OCUPADA; estorno Cielo automático se falhar |
+| `TopLavanderia-Totem-2.2.96.apk` | 2.2.96 | **Atual** — confirmação ESP32 robusta (relé OU status running, sem falso estorno); troco L400 com toque por coordenada; "Não imprimir" cobre PIX (aprovado) |
+| `TopLavanderia-Totem-2.2.95.apk` | 2.2.95 | confirma relé ESP32 antes de OCUPADA; estorno Cielo automático se falhar |
 | `TopLavanderia-Totem-2.2.94.apk` | 2.2.94 | PIX: sem cancelar por idle 60s, OCUPADA otimista pós-pagamento |
 | `TopLavanderia-Totem-2.2.93.apk` | 2.2.93 | débito/crédito sem tela de troco na L400 |
 | `TopLavanderia-Totem-2.2.92.apk` | 2.2.92 | tarja fixa 10s na L400 (sem piscar), deep link sem orderId |

@@ -2002,7 +2002,7 @@ public class TotemActivity extends Activity {
                     return;
                 }
                 boolean relayConfirmed = supabaseHelper.waitForEsp32RelayOn(
-                    esp32Id, relayPin, ESP32_CONFIRM_TIMEOUT_MS
+                    esp32Id, relayPin, machineId, ESP32_CONFIRM_TIMEOUT_MS
                 );
                 if (!relayConfirmed) {
                     handleEsp32FailureWithRefund(

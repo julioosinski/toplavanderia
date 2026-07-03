@@ -123,6 +123,9 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
 
     private static final String[] PAYMENT_APPROVED_HINTS = {
         "pagamento aprovado",
+        "pix aprovado",
+        "pix recebido",
+        "aprovado",
         "transacao aprovada",
         "transação aprovada",
         "pagamento autorizado",
@@ -710,7 +713,8 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
         if (lower.contains("nao imprimir") || lower.contains("não imprimir")) {
             return true;
         }
-        return lower.contains("aprovada");
+        // "aprovad" cobre aprovada/aprovado (PIX costuma usar "Pagamento aprovado").
+        return lower.contains("aprovad");
     }
 
     private void attemptPrintDismissViaTree() {
@@ -1012,18 +1016,36 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
         }
 
         AccessibilityNodeInfo confirm = findConfirmButtonInAllWindows();
-        if (confirm == null) {
-            Log.d(TAG, "Tela troco indevida (cartão) — aguardando Confirmar");
+        if (confirm != null) {
+            try {
+                if (clickNode(confirm)) {
+                    trocoBypassDone = true;
+                    Log.i(TAG, "Troco bypass: Confirmar via árvore (" + paymentCode + ")");
+                    return;
+                }
+            } finally {
+                confirm.recycle();
+            }
+        }
+
+        // Fallback L400: firmware de produção às vezes não expõe o botão "Confirmar" na
+        // árvore de acessibilidade. Toca nas coordenadas do botão (canto inferior direito
+        // do teclado numérico da tela de troco). Não marca bypass como concluído — reavalia
+        // na próxima varredura até a tela sair.
+        tapTrocoConfirmCoordinates();
+        Log.i(TAG, "Troco bypass: toque por coordenada (Confirmar) — árvore sem botão (" + paymentCode + ")");
+    }
+
+    private void tapTrocoConfirmCoordinates() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             return;
         }
-        try {
-            if (clickNode(confirm)) {
-                trocoBypassDone = true;
-                Log.i(TAG, "Troco bypass: Confirmar em tela indevida (" + paymentCode + ")");
-            }
-        } finally {
-            confirm.recycle();
-        }
+        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+        float w = dm.widthPixels;
+        float h = dm.heightPixels;
+        // "Confirmar" ocupa a coluna azul à direita, na parte inferior do teclado.
+        dispatchTapAsync(w * 0.86f, h * 0.88f);
+        mainHandler.postDelayed(() -> dispatchTapAsync(w * 0.86f, h * 0.82f), 140L);
     }
 
     private AccessibilityNodeInfo findConfirmButtonInAllWindows() {
