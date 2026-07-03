@@ -77,6 +77,8 @@ public class CieloLioManager implements PaymentManager {
     private String boundMachineId;
     private String boundPendingTxId;
     private volatile boolean successDelivered;
+    /** Garante que o fechamento do pedido pago roda uma única vez por checkout (deep link ou broadcast). */
+    private volatile boolean paidOrderCleanupDone;
     private ApprovedPaymentSnapshot lastApprovedPayment;
     private static volatile ReversalWaitState pendingReversal;
 
@@ -263,6 +265,7 @@ public class CieloLioManager implements PaymentManager {
 
             activeInstance = this;
             isProcessing = true;
+            paidOrderCleanupDone = false;
             scheduleProcessingWatchdog();
             pendingReference = reference;
             pendingAmountCents = amountCents;
@@ -414,6 +417,9 @@ public class CieloLioManager implements PaymentManager {
         }
         Log.i(TAG, "Aprovação via broadcast — completando checkout (" + source + ")");
         mgr.deliverPaymentSuccess("CIELO_BROADCAST", "broadcast-" + System.currentTimeMillis(), "broadcast:" + source);
+        // Broadcast não traz o id do pedido; fecha todos os pedidos abertos do EC para
+        // evitar que o próximo checkout falhe com "pedido anterior aberto" (-4281).
+        mgr.schedulePaidOrderCleanup(null);
     }
 
     private static CieloLioManager tryRehydrateActiveInstance() {
@@ -582,16 +588,7 @@ public class CieloLioManager implements PaymentManager {
             if (cieloOrderId.isEmpty() && pendingCloudOrderId != null) {
                 cieloOrderId = pendingCloudOrderId;
             }
-            final String orderToClose = cieloOrderId;
-            new Thread(() -> {
-                finalizePaidOrder(orderToClose);
-                try {
-                    Thread.sleep(400L);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-                CieloLocalOrderPurge.clearStuckLocalOrders(context, 0L);
-            }, "cielo-post-success").start();
+            schedulePaidOrderCleanup(cieloOrderId);
 
             Log.d(TAG, "Cielo APPROVED: ref=" + pendingReference + " solicitado=" + pendingPaymentCode
                 + " detectadoSupabase=" + lastDetectedSupabasePaymentMethod + " brand=" + brand + " maskSuffix=" + lastFour(mask));
@@ -1067,6 +1064,28 @@ public class CieloLioManager implements PaymentManager {
             }
         }
         CieloOrderJanitor.learnMerchantId(context, mc);
+    }
+
+    /**
+     * Fecha o pedido pago exatamente uma vez por checkout, independentemente do caminho
+     * (deep link {@code order://response} ou broadcast Cielo). Antes, sucesso via broadcast
+     * (comum no PIX) não fechava o pedido, e o checkout seguinte falhava com "pedido anterior
+     * aberto" (-4281).
+     */
+    private synchronized void schedulePaidOrderCleanup(final String cieloOrderId) {
+        if (paidOrderCleanupDone) {
+            return;
+        }
+        paidOrderCleanupDone = true;
+        new Thread(() -> {
+            finalizePaidOrder(cieloOrderId);
+            try {
+                Thread.sleep(400L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            CieloLocalOrderPurge.clearStuckLocalOrders(context, 0L);
+        }, "cielo-post-success").start();
     }
 
     private void finalizePaidOrder(String cieloOrderId) {
