@@ -1015,6 +1015,10 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
             return;
         }
 
+        // A tarja inferior cobre e intercepta os toques do botão "Confirmar". Remove antes de
+        // clicar (o clique por ACTION_CLICK já funcionaria, mas o fallback por coordenada não).
+        CieloPaymentShieldOverlay.releaseForTrocoBypass(this);
+
         AccessibilityNodeInfo confirm = findConfirmButtonInAllWindows();
         if (confirm != null) {
             try {

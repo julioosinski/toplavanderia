@@ -82,6 +82,28 @@ final class CieloPaymentShieldOverlay {
         mainHandler.post(() -> applyBottomTarja(app));
     }
 
+    /**
+     * Libera a tela para a tela de troco: a tarja inferior cobre e intercepta os toques do
+     * botão "Confirmar". Remove a tarja e os bloqueadores imediatamente e desativa o escudo
+     * para que não reapareçam sobre o teclado do troco. Roda síncrono na thread do serviço
+     * (eventos de acessibilidade) para que o clique/gesto seguinte já encontre a tela livre.
+     */
+    static void releaseForTrocoBypass(Context context) {
+        if (context != null) {
+            CieloPaymentSessionHelper.setShieldEnabled(context.getApplicationContext(), false);
+        }
+        Runnable removal = () -> {
+            cancelBottomTarjaTimer();
+            removeBottomTarjaInternal();
+            clearBlockersOnMainThread();
+        };
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            removal.run();
+        } else {
+            mainHandler.post(removal);
+        }
+    }
+
     static void hideForTap(Context context) {
         if (context == null) {
             return;
@@ -157,6 +179,12 @@ final class CieloPaymentShieldOverlay {
     private static void applyBottomTarja(Context app) {
         int sessionId = CieloPaymentSessionHelper.getSessionId(app);
         if (sessionId <= 0 || boundService == null || windowManager == null) {
+            return;
+        }
+        // Revalida na thread principal: se o escudo foi desativado entre o post e a execução
+        // (ex.: tela de troco liberou a tarja), não reexibe sobre os botões.
+        if (!CieloPaymentSessionHelper.isCardShieldEnabled(app)
+                || !CieloPaymentSessionHelper.shouldBlockAlternateCapture(app)) {
             return;
         }
         if (bottomTarjaView != null && bottomTarjaSessionId == sessionId) {
