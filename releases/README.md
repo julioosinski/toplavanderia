@@ -38,7 +38,8 @@ adb install -r app\build\outputs\apk\release\app-release.apk
 
 | Arquivo | versionName | Uso |
 |---------|-------------|-----|
-| `TopLavanderia-Totem-2.2.98.apk` | 2.2.98 | **Atual** — remove a tarja antes de clicar em Confirmar na tela de troco (a tarja cobria/bloqueava o botão na L400) |
+| `TopLavanderia-Totem-2.2.99.apk` | 2.2.99 | **Atual** — débito sem tarja + Confirmar na tela troco; PIX toca "Não imprimir" (coordenadas L400) |
+| `TopLavanderia-Totem-2.2.98.apk` | 2.2.98 | remove tarja antes de Confirmar na tela de troco |
 | `TopLavanderia-Totem-2.2.97.apk` | 2.2.97 | fecha pedido Cielo também no sucesso via broadcast (PIX), evitando "pedido anterior aberto" (-4281) |
 | `TopLavanderia-Totem-2.2.96.apk` | 2.2.96 | confirmação ESP32 robusta (relé OU status running); troco L400 com toque por coordenada; "Não imprimir" cobre PIX |
 | `TopLavanderia-Totem-2.2.95.apk` | 2.2.95 | confirma relé ESP32 antes de OCUPADA; estorno Cielo automático se falhar |

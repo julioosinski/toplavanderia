@@ -271,7 +271,7 @@ public class CieloLioManager implements PaymentManager {
             pendingAmountCents = amountCents;
             pendingPaymentCode = paymentCode;
             CieloPaymentSessionHelper.beginSession(context, paymentCode);
-            final boolean blockAlternateCapture = !"PIX".equalsIgnoreCase(paymentCode);
+            final boolean scheduleTarja = "CREDITO_AVISTA".equalsIgnoreCase(paymentCode);
 
             mainHandler.post(() -> {
                 if (callback != null) {
@@ -282,7 +282,7 @@ public class CieloLioManager implements PaymentManager {
                 try {
                     context.startActivity(intent);
                     Log.d(TAG, "Deep link Cielo enviado (ref=" + reference + ")");
-                    if (blockAlternateCapture) {
+                    if (scheduleTarja) {
                         scheduleAccessibilityTarja(context);
                     }
                 } catch (android.content.ActivityNotFoundException e) {

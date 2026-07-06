@@ -25,10 +25,13 @@ public final class CieloPaymentSessionHelper {
             return 0;
         }
         int sessionId = ++nextSessionId;
+        String code = paymentCode == null ? "" : paymentCode.trim();
+        // Tarja/escudo só no crédito — débito precisa da tela de troco livre; PIX usa "Não imprimir".
+        boolean shieldEnabled = "CREDITO_AVISTA".equalsIgnoreCase(code);
         prefs(context).edit()
             .putInt(KEY_SESSION_ID, sessionId)
-            .putString(KEY_PAYMENT_CODE, paymentCode == null ? "" : paymentCode.trim())
-            .putBoolean(KEY_SHIELD_ENABLED, true)
+            .putString(KEY_PAYMENT_CODE, code)
+            .putBoolean(KEY_SHIELD_ENABLED, shieldEnabled)
             .putLong(KEY_SESSION_STARTED_AT, System.currentTimeMillis())
             .putLong(KEY_OVERLAY_SHOWN_AT, 0L)
             .putBoolean(KEY_APPROVED_SCREEN_CONFIRMED, false)
@@ -146,11 +149,33 @@ public final class CieloPaymentSessionHelper {
     }
 
     public static boolean shouldBlockAlternateCapture(Context context) {
-        String code = prefs(context).getString(KEY_PAYMENT_CODE, "");
-        if (code.isEmpty()) {
+        return isCreditPayment(context);
+    }
+
+    /** Tarja inferior "Insira ou aproxime o cartão" — somente crédito. */
+    public static boolean shouldShowBottomTarja(Context context) {
+        return isCreditPayment(context);
+    }
+
+    public static boolean isDebitPayment(Context context) {
+        if (context == null) {
             return false;
         }
-        return !"PIX".equalsIgnoreCase(code);
+        return "DEBITO_AVISTA".equalsIgnoreCase(getPaymentCode(context));
+    }
+
+    public static boolean isPixPayment(Context context) {
+        if (context == null) {
+            return false;
+        }
+        return "PIX".equalsIgnoreCase(getPaymentCode(context));
+    }
+
+    public static boolean isCreditPayment(Context context) {
+        if (context == null) {
+            return false;
+        }
+        return "CREDITO_AVISTA".equalsIgnoreCase(getPaymentCode(context));
     }
 
     public static String getPaymentCode(Context context) {

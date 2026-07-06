@@ -71,6 +71,9 @@ final class CieloPaymentShieldOverlay {
         if (!CieloPaymentSessionHelper.isCardShieldEnabled(context)) {
             return;
         }
+        if (!CieloPaymentSessionHelper.shouldShowBottomTarja(context)) {
+            return;
+        }
         if (!CieloPaymentSessionHelper.shouldBlockAlternateCapture(context)) {
             return;
         }

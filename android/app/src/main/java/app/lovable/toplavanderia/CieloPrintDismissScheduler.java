@@ -87,14 +87,19 @@ public final class CieloPrintDismissScheduler {
     }
 
     private static void fireTapOnce(Context app) {
-        CieloPaymentShieldOverlay.hideForTap(app);
+        boolean pix = CieloPaymentSessionHelper.isPixPayment(app);
+        if (!pix) {
+            CieloPaymentShieldOverlay.hideForTap(app);
+        }
         boolean treeClicked = CieloReceiptAccessibilityService.tryDismissPrintViaTreeSync();
         if (treeClicked) {
             markDismissSucceeded();
             return;
         }
-        boolean sent = CieloReceiptAccessibilityService.tapNoPrintButtonBurst();
-        Log.i(TAG, "Toque coordenado: " + (sent ? "enviado" : "off"));
+        boolean sent = pix
+            ? CieloReceiptAccessibilityService.tapPixNoPrintButtonBurst()
+            : CieloReceiptAccessibilityService.tapNoPrintButtonBurst();
+        Log.i(TAG, "Toque coordenado (" + (pix ? "PIX" : "cartão") + "): " + (sent ? "enviado" : "off"));
     }
 }
 

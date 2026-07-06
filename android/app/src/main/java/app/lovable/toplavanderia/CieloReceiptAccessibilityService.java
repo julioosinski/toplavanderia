@@ -31,14 +31,27 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
     private static volatile String lastSnapshotNullReason = "sem tentativa";
     private static final String OUR_PACKAGE = "com.toplavanderia.app";
 
-    /** DX8000 720×1280 — menu "02 NÃO IMPRIMIR" (esquerda) + botão azul central. */
-    private static final float[][] NO_PRINT_TAP_POINTS = {
+    /** L400 tela PIX pós-aprovacao: botão azul "Não imprimir" centralizado abaixo de "Imprimir". */
+    private static final float[][] PIX_NO_PRINT_TAP_POINTS = {
+        {0.50f, 0.80f},
+        {0.50f, 0.76f},
+        {0.50f, 0.84f},
+        {0.50f, 0.72f},
+    };
+    /** DX8000 / menu cartão legado — "02 NÃO IMPRIMIR" + botão central. */
+    private static final float[][] CARD_NO_PRINT_TAP_POINTS = {
         {0.28f, 0.905f},
         {0.28f, 0.935f},
         {0.28f, 0.965f},
         {0.50f, 0.930f},
         {0.50f, 0.955f},
         {0.72f, 0.935f},
+    };
+    /** L400 tela troco débito: coluna azul "Confirmar" canto inferior direito. */
+    private static final float[][] TROCO_CONFIRM_TAP_POINTS = {
+        {0.86f, 0.88f},
+        {0.86f, 0.82f},
+        {0.83f, 0.85f},
     };
     private int noPrintTapIndex = 0;
     private boolean noPrintBurstStarted = false;
@@ -172,6 +185,9 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
     private boolean seenForbiddenCaptureButtons = false;
     private boolean trocoBypassDone = false;
     private long lastTrocoBypassAtMs = 0L;
+    private boolean pixNoPrintBypassDone = false;
+    private long lastPixNoPrintBypassAtMs = 0L;
+    private int pixNoPrintTapIndex = 0;
 
     private final Runnable windowTransitionRunnable = new Runnable() {
         @Override
@@ -222,7 +238,17 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
         return true;
     }
 
-    /** Envia toques em vários pontos calibrados (menu + botão central). */
+    /** Envia toques no botão "Não imprimir" (layout PIX L400 — botões empilhados ao centro). */
+    public static boolean tapPixNoPrintButtonBurst() {
+        CieloReceiptAccessibilityService svc = instance;
+        if (svc == null) {
+            return false;
+        }
+        svc.mainHandler.post(svc::tapPixNoPrintBurstCoordinates);
+        return true;
+    }
+
+    /** Envia toques em vários pontos calibrados (menu cartão legado + PIX). */
     public static boolean tapNoPrintButtonBurst() {
         CieloReceiptAccessibilityService svc = instance;
         if (svc == null) {
@@ -428,10 +454,13 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             return false;
         }
+        float[][] points = CieloPaymentSessionHelper.isPixPayment(this)
+            ? PIX_NO_PRINT_TAP_POINTS
+            : CARD_NO_PRINT_TAP_POINTS;
         android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
         float w = dm.widthPixels;
         float h = dm.heightPixels;
-        float[] point = NO_PRINT_TAP_POINTS[noPrintTapIndex % NO_PRINT_TAP_POINTS.length];
+        float[] point = points[noPrintTapIndex % points.length];
         noPrintTapIndex++;
         float x = w * point[0];
         float y = h * point[1];
@@ -444,12 +473,15 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             return;
         }
+        float[][] points = CieloPaymentSessionHelper.isPixPayment(this)
+            ? PIX_NO_PRINT_TAP_POINTS
+            : CARD_NO_PRINT_TAP_POINTS;
         android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
         float w = dm.widthPixels;
         float h = dm.heightPixels;
-        int start = noPrintTapIndex % NO_PRINT_TAP_POINTS.length;
+        int start = noPrintTapIndex % points.length;
         for (int i = 0; i < 3; i++) {
-            float[] point = NO_PRINT_TAP_POINTS[(start + i) % NO_PRINT_TAP_POINTS.length];
+            float[] point = points[(start + i) % points.length];
             float x = w * point[0];
             float y = h * point[1];
             long delay = i * 120L;
@@ -490,7 +522,7 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
         }
 
         if (CieloPaymentSessionHelper.hasActiveSession(this)) {
-            if (CieloPaymentSessionHelper.shouldBlockAlternateCapture(this)
+            if (CieloPaymentSessionHelper.shouldShowBottomTarja(this)
                     && !CieloPaymentShieldOverlay.isTarjaVisible()) {
                 CieloPaymentShieldOverlay.showBottomTarja(this);
             }
@@ -523,8 +555,9 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
         }
 
         try {
-            handlePaymentShield(root);
             handleTrocoScreenBypass(root);
+            handlePixNoPrintBypass(root);
+            handlePaymentShield(root);
 
             if (CieloPaymentSessionHelper.shouldBlockAlternateCapture(this)
                     && treeContainsAlternateCaptureScreen(root)) {
@@ -705,6 +738,9 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
             return false;
         }
         String lower = normalize(all);
+        if (lower.contains("troco") && !lower.contains("nao imprimir")) {
+            return false;
+        }
         if (lower.contains("aproxime") || lower.contains("insira") || lower.contains("passe o cart")
                 || lower.contains("processando") || lower.contains("gerar qr")
                 || lower.contains("digitar cart")) {
@@ -864,6 +900,9 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
             svc.seenForbiddenCaptureButtons = false;
             svc.trocoBypassDone = false;
             svc.lastTrocoBypassAtMs = 0L;
+            svc.pixNoPrintBypassDone = false;
+            svc.lastPixNoPrintBypassAtMs = 0L;
+            svc.pixNoPrintTapIndex = 0;
             svc.mainHandler.removeCallbacks(svc.windowTransitionRunnable);
             svc.stopApprovedPolling();
         }
@@ -1011,7 +1050,9 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
             all = nodeTextDeep(root);
         }
         String lower = normalize(all);
-        if (!lower.contains("troco")) {
+        boolean isTrocoScreen = lower.contains("troco")
+            || (lower.contains("debito") && lower.contains("confirmar") && lower.contains("limpar"));
+        if (!isTrocoScreen) {
             return;
         }
 
@@ -1047,9 +1088,90 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
         android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
         float w = dm.widthPixels;
         float h = dm.heightPixels;
-        // "Confirmar" ocupa a coluna azul à direita, na parte inferior do teclado.
-        dispatchTapAsync(w * 0.86f, h * 0.88f);
-        mainHandler.postDelayed(() -> dispatchTapAsync(w * 0.86f, h * 0.82f), 140L);
+        for (int i = 0; i < TROCO_CONFIRM_TAP_POINTS.length; i++) {
+            float[] point = TROCO_CONFIRM_TAP_POINTS[i];
+            long delay = i * 120L;
+            mainHandler.postDelayed(() -> dispatchTapAsync(w * point[0], h * point[1]), delay);
+        }
+    }
+
+    /**
+     * PIX pós-aprovacao (L400): toca no botão azul "Não imprimir" abaixo de "Imprimir".
+     */
+    private void handlePixNoPrintBypass(AccessibilityNodeInfo root) {
+        if (pixNoPrintBypassDone || !CieloPaymentSessionHelper.isPixPayment(this)) {
+            return;
+        }
+        if (!CieloPaymentSessionHelper.hasActiveSession(this)) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - lastPixNoPrintBypassAtMs < 350L) {
+            return;
+        }
+        lastPixNoPrintBypassAtMs = now;
+
+        String all = collectAllWindowsText();
+        if (all.isEmpty() && root != null) {
+            all = nodeTextDeep(root);
+        }
+        if (!looksLikePixPrintPrompt(all)) {
+            return;
+        }
+
+        CieloPaymentSessionHelper.markApprovedScreenConfirmed(this);
+        AccessibilityNodeInfo dismiss = findDismissButtonInAllWindows();
+        if (dismiss != null) {
+            try {
+                if (clickNode(dismiss)) {
+                    pixNoPrintBypassDone = true;
+                    CieloPrintDismissScheduler.markDismissSucceeded();
+                    Log.i(TAG, "PIX: Não imprimir via árvore");
+                    return;
+                }
+            } finally {
+                dismiss.recycle();
+            }
+        }
+
+        tapPixNoPrintBurstCoordinates();
+        Log.i(TAG, "PIX: toque coordenado em Não imprimir");
+    }
+
+    private boolean looksLikePixPrintPrompt(String all) {
+        if (all == null || all.isEmpty()) {
+            return false;
+        }
+        String lower = normalize(all);
+        if (lower.contains("troco")) {
+            return false;
+        }
+        if (lower.contains("nao imprimir") || lower.contains("não imprimir")) {
+            return true;
+        }
+        boolean pixContext = lower.contains("pix")
+            || lower.contains("transacao concluida")
+            || lower.contains("transação concluída")
+            || lower.contains("concluida com sucesso")
+            || lower.contains("concluída com sucesso");
+        boolean printChoice = lower.contains("imprimir");
+        return pixContext && (printChoice || lower.contains("aprovad"));
+    }
+
+    private void tapPixNoPrintBurstCoordinates() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+            return;
+        }
+        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+        float w = dm.widthPixels;
+        float h = dm.heightPixels;
+        int start = pixNoPrintTapIndex % PIX_NO_PRINT_TAP_POINTS.length;
+        for (int i = 0; i < PIX_NO_PRINT_TAP_POINTS.length; i++) {
+            float[] point = PIX_NO_PRINT_TAP_POINTS[(start + i) % PIX_NO_PRINT_TAP_POINTS.length];
+            long delay = i * 100L;
+            mainHandler.postDelayed(() -> dispatchTapAsync(w * point[0], h * point[1]), delay);
+        }
+        pixNoPrintTapIndex += PIX_NO_PRINT_TAP_POINTS.length;
     }
 
     private AccessibilityNodeInfo findConfirmButtonInAllWindows() {
