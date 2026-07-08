@@ -115,6 +115,9 @@ public class TotemActivity extends Activity {
     private TotemScreen currentScreen = TotemScreen.HOME;
     private List<SupabaseHelper.CoffeeProduct> coffeeProducts = new ArrayList<>();
     private boolean coffeeProductsLoadAttempted = false;
+    private static final long COFFEE_MENU_REFRESH_MIN_INTERVAL_MS = 15_000L;
+    private final AtomicBoolean coffeeRefreshInFlight = new AtomicBoolean(false);
+    private long lastCoffeeProductsRefreshAtMs = 0L;
     private SupabaseHelper.CoffeeProduct selectedCoffeeProduct;
 
     @Override
@@ -456,7 +459,20 @@ public class TotemActivity extends Activity {
     }
 
     private void refreshCoffeeProductsAsync() {
+        refreshCoffeeProductsAsync(false);
+    }
+
+    private void refreshCoffeeProductsAsync(boolean force) {
         if (supabaseHelper == null || !supabaseHelper.isConfigured()) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (!force
+                && lastCoffeeProductsRefreshAtMs > 0
+                && now - lastCoffeeProductsRefreshAtMs < COFFEE_MENU_REFRESH_MIN_INTERVAL_MS) {
+            return;
+        }
+        if (!coffeeRefreshInFlight.compareAndSet(false, true)) {
             return;
         }
         new Thread(() -> {
@@ -464,6 +480,8 @@ public class TotemActivity extends Activity {
             runOnUiThread(() -> {
                 coffeeProducts = loaded != null ? loaded : new ArrayList<>();
                 coffeeProductsLoadAttempted = true;
+                lastCoffeeProductsRefreshAtMs = System.currentTimeMillis();
+                coffeeRefreshInFlight.set(false);
                 if (!shouldBlockTotemUiRefresh()
                         && (currentScreen == TotemScreen.HOME || currentScreen == TotemScreen.CAFE)) {
                     displayCurrentScreen();
@@ -684,6 +702,8 @@ public class TotemActivity extends Activity {
     }
 
     private void displayCoffeeMenu() {
+        // Revalida preços/itens ao entrar no cardápio; evita ficar com valores antigos em sessão longa.
+        refreshCoffeeProductsAsync(false);
         if (machinesContainer == null) {
             createTotemInterface();
         }

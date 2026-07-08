@@ -110,19 +110,49 @@ export interface Esp32PoltronaFirmwareParams {
   machineName: string;
   /** Duração padrão da sessão (min) quando o comando não informar cycle_time_minutes */
   defaultCycleMinutes?: number;
+  /** Volumes DFPlayer por faixa (0-30). */
+  audioVolumes?: Partial<Record<
+    | 'volume_audio_001'
+    | 'volume_audio_002'
+    | 'volume_audio_003'
+    | 'volume_audio_004'
+    | 'volume_audio_005'
+    | 'volume_audio_006'
+    | 'volume_audio_007',
+    number
+  >>;
 }
 
 /**
  * Gera o .ino da poltrona a partir de `src/firmware/poltrona_massagem_top_lavanderia.ino`.
  */
 export function buildEsp32PoltronaFirmware(params: Esp32PoltronaFirmwareParams): string {
-  const { laundryId, machineName, defaultCycleMinutes } = params;
+  const { laundryId, machineName, defaultCycleMinutes, audioVolumes } = params;
   const cycleMin = Math.max(1, Math.min(24 * 60, defaultCycleMinutes ?? 15));
+  const normalizedVolumes = {
+    volume_audio_001: 27,
+    volume_audio_002: 27,
+    volume_audio_003: 27,
+    volume_audio_004: 27,
+    volume_audio_005: 27,
+    volume_audio_006: 27,
+    volume_audio_007: 18,
+  } as const;
+  const resolved = { ...normalizedVolumes, ...(audioVolumes ?? {}) };
 
-  return esp32PoltronaTemplate
+  let output = esp32PoltronaTemplate
     .replace(/__LAUNDRY_ID__/g, escapeCStr(laundryId))
     .replace(/__MACHINE_NAME__/g, escapeCStr(machineName))
     .replace(/__DEFAULT_CYCLE_MINUTES__/g, String(cycleMin));
+
+  (
+    Object.keys(normalizedVolumes) as Array<keyof typeof normalizedVolumes>
+  ).forEach((key) => {
+    const value = Math.max(0, Math.min(30, Math.round(Number(resolved[key]) || normalizedVolumes[key])));
+    output = output.replace(new RegExp(`int\\s+${key}\\s*=\\s*\\d+;`), `int ${key} = ${value};`);
+  });
+
+  return output;
 }
 
 export interface Esp32CafeFirmwareParams {

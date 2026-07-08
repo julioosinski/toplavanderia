@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Slider } from '@/components/ui/slider';
 import {
   Select,
   SelectContent,
@@ -25,10 +26,24 @@ interface MassageMachine {
   cycle_time_minutes: number | null;
   price_per_cycle: number;
   status: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : 'Erro desconhecido';
+
+const DEFAULT_AUDIO_VOLUMES = {
+  volume_audio_001: 27,
+  volume_audio_002: 27,
+  volume_audio_003: 27,
+  volume_audio_004: 27,
+  volume_audio_005: 27,
+  volume_audio_006: 27,
+  volume_audio_007: 18,
+} as const;
+
+type AudioVolumeKey = keyof typeof DEFAULT_AUDIO_VOLUMES;
+type AudioVolumeState = Record<AudioVolumeKey, number>;
 
 export default function MassageChairConfig() {
   const { currentLaundry } = useLaundry();
@@ -38,9 +53,12 @@ export default function MassageChairConfig() {
   const [selectedMachineId, setSelectedMachineId] = useState('');
   const [machineName, setMachineName] = useState('');
   const [cycleMinutes, setCycleMinutes] = useState(15);
+  const [pricePerCycle, setPricePerCycle] = useState('15.00');
+  const [audioVolumes, setAudioVolumes] = useState<AudioVolumeState>(DEFAULT_AUDIO_VOLUMES);
   const [showPreview, setShowPreview] = useState(false);
   const [copiedLaundryId, setCopiedLaundryId] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [savingMachineConfig, setSavingMachineConfig] = useState(false);
 
   const laundryId = currentLaundry?.id ?? '';
 
@@ -55,7 +73,7 @@ export default function MassageChairConfig() {
     try {
       const { data, error } = await supabase
         .from('machines')
-        .select('id, name, esp32_id, cycle_time_minutes, price_per_cycle, status')
+        .select('id, name, esp32_id, cycle_time_minutes, price_per_cycle, status, metadata')
         .eq('laundry_id', currentLaundry.id)
         .eq('type', 'massage')
         .order('name');
@@ -81,6 +99,18 @@ export default function MassageChairConfig() {
     if (!selectedMachine) return;
     setMachineName(selectedMachine.name);
     setCycleMinutes(selectedMachine.cycle_time_minutes ?? 15);
+    setPricePerCycle(Number(selectedMachine.price_per_cycle || 0).toFixed(2));
+
+    const metadata = selectedMachine.metadata ?? {};
+    const nextVolumes: AudioVolumeState = { ...DEFAULT_AUDIO_VOLUMES };
+    (Object.keys(DEFAULT_AUDIO_VOLUMES) as AudioVolumeKey[]).forEach((key) => {
+      const raw = metadata[key];
+      const parsed = typeof raw === 'number' ? raw : Number(raw);
+      if (Number.isFinite(parsed)) {
+        nextVolumes[key] = Math.max(0, Math.min(30, Math.round(parsed)));
+      }
+    });
+    setAudioVolumes(nextVolumes);
   }, [selectedMachine]);
 
   useEffect(() => {
@@ -107,6 +137,7 @@ export default function MassageChairConfig() {
       laundryId,
       machineName: name,
       defaultCycleMinutes: cycleMinutes,
+      audioVolumes,
     });
   };
 
@@ -155,6 +186,76 @@ export default function MassageChairConfig() {
     toast({
       title: 'Sessão enfileirada',
       description: 'O ESP32 executará em até alguns segundos.',
+    });
+  };
+
+  const handleSaveMachineConfig = async () => {
+    if (!selectedMachine) {
+      toast({
+        title: 'Selecione uma poltrona',
+        description: 'Escolha uma poltrona para salvar os parâmetros.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const parsedPrice = Number(pricePerCycle.replace(',', '.'));
+    if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
+      toast({
+        title: 'Valor inválido',
+        description: 'Informe um valor válido maior que zero.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (!Number.isFinite(cycleMinutes) || cycleMinutes <= 0) {
+      toast({
+        title: 'Tempo inválido',
+        description: 'Informe um tempo de uso maior que zero.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setSavingMachineConfig(true);
+    try {
+      const mergedMetadata: Record<string, unknown> = {
+        ...(selectedMachine.metadata ?? {}),
+        ...audioVolumes,
+      };
+      const { error } = await supabase
+        .from('machines')
+        .update({
+          name: machineName.trim() || selectedMachine.name,
+          cycle_time_minutes: cycleMinutes,
+          price_per_cycle: Number(parsedPrice.toFixed(2)),
+          metadata: mergedMetadata as never,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', selectedMachine.id);
+
+      if (error) throw error;
+      toast({
+        title: 'Configurações salvas',
+        description: 'Valor, tempo e volumes foram atualizados para esta poltrona.',
+      });
+      await loadMachines();
+    } catch (error) {
+      toast({
+        title: 'Erro ao salvar configurações',
+        description: getErrorMessage(error),
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingMachineConfig(false);
+    }
+  };
+
+  const handleResetAudioVolumes = () => {
+    setAudioVolumes(DEFAULT_AUDIO_VOLUMES);
+    toast({
+      title: 'Volumes restaurados',
+      description: 'Os volumes voltaram para o padrão recomendado.',
     });
   };
 
@@ -261,6 +362,70 @@ export default function MassageChairConfig() {
                 <p className="text-xs text-muted-foreground">
                   Igual ao cycle_time_minutes da máquina no cadastro.
                 </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="poltrona-price">Valor da sessão (R$)</Label>
+              <Input
+                id="poltrona-price"
+                type="number"
+                min={0.01}
+                step={0.01}
+                value={pricePerCycle}
+                onChange={(e) => setPricePerCycle(e.target.value)}
+                placeholder="15.00"
+              />
+              <p className="text-xs text-muted-foreground">
+                Esse valor aparece na maquininha no momento da confirmação do pagamento.
+              </p>
+            </div>
+
+            <div className="space-y-4 rounded-lg border p-4">
+              <div>
+                <h3 className="font-medium">Controle de volume dos áudios</h3>
+                <p className="text-xs text-muted-foreground">
+                  Ajuste de 0 a 30 (DFPlayer). Salve para manter os valores da poltrona.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                {(Object.keys(DEFAULT_AUDIO_VOLUMES) as AudioVolumeKey[]).map((key) => {
+                  const label = key.replace('volume_audio_', 'Áudio ');
+                  const value = audioVolumes[key];
+                  return (
+                    <div key={key} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label>{label}</Label>
+                        <span className="text-xs font-mono">
+                          {value} ({Math.round((value / 30) * 100)}%)
+                        </span>
+                      </div>
+                      <Slider
+                        min={0}
+                        max={30}
+                        step={1}
+                        value={[value]}
+                        onValueChange={(next) =>
+                          setAudioVolumes((prev) => ({ ...prev, [key]: next[0] ?? prev[key] }))
+                        }
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" onClick={handleResetAudioVolumes}>
+                  Restaurar volumes padrão
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void handleSaveMachineConfig()}
+                  disabled={!selectedMachineId || savingMachineConfig}
+                >
+                  {savingMachineConfig ? 'Salvando...' : 'Salvar configuração da poltrona'}
+                </Button>
               </div>
             </div>
 
