@@ -26,8 +26,8 @@ public final class CieloPaymentSessionHelper {
         }
         int sessionId = ++nextSessionId;
         String code = paymentCode == null ? "" : paymentCode.trim();
-        // Tarja/escudo só no crédito — débito precisa da tela de troco livre; PIX usa "Não imprimir".
-        boolean shieldEnabled = "CREDITO_AVISTA".equalsIgnoreCase(code);
+        // Tarja/escudo para cartão (crédito + débito). PIX usa fluxo de "Não imprimir".
+        boolean shieldEnabled = !"PIX".equalsIgnoreCase(code);
         prefs(context).edit()
             .putInt(KEY_SESSION_ID, sessionId)
             .putString(KEY_PAYMENT_CODE, code)
@@ -149,12 +149,19 @@ public final class CieloPaymentSessionHelper {
     }
 
     public static boolean shouldBlockAlternateCapture(Context context) {
-        return isCreditPayment(context);
+        if (context == null) {
+            return false;
+        }
+        String code = getPaymentCode(context);
+        if (code.isEmpty()) {
+            return false;
+        }
+        return !"PIX".equalsIgnoreCase(code);
     }
 
-    /** Tarja inferior "Insira ou aproxime o cartão" — somente crédito. */
+    /** Tarja inferior "Insira ou aproxime o cartão" — pagamentos com cartão. */
     public static boolean shouldShowBottomTarja(Context context) {
-        return isCreditPayment(context);
+        return shouldBlockAlternateCapture(context);
     }
 
     public static boolean isDebitPayment(Context context) {

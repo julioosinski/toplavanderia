@@ -271,7 +271,7 @@ public class CieloLioManager implements PaymentManager {
             pendingAmountCents = amountCents;
             pendingPaymentCode = paymentCode;
             CieloPaymentSessionHelper.beginSession(context, paymentCode);
-            final boolean scheduleTarja = "CREDITO_AVISTA".equalsIgnoreCase(paymentCode);
+            final boolean scheduleTarja = !"PIX".equalsIgnoreCase(paymentCode);
 
             mainHandler.post(() -> {
                 if (callback != null) {
