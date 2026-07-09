@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useRef, useMemo } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useLaundry } from "@/hooks/useLaundry";
 import { useOperatorReleasePermission } from "@/hooks/useOperatorReleasePermission";
 import { supabase } from "@/integrations/supabase/client";
