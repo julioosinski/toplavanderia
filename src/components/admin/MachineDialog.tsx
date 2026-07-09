@@ -161,9 +161,10 @@ export const MachineDialog = ({
 
     if (machine) {
       const formType: Machine['type'] =
-        machine.type === 'drying' || machine.type === 'secadora' ? 'secadora'
+        (machine.type as string) === 'drying' || machine.type === 'secadora' ? 'secadora'
         : machine.type === 'massage' ? 'massage'
         : machine.type === 'coffee' ? 'coffee'
+        : 'lavadora';
         : 'lavadora';
       setFormData({
         ...machine,
