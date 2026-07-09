@@ -17,7 +17,6 @@ import { useToast } from "@/hooks/use-toast";
 import { forceMachineReleased } from "@/lib/machineEsp32Sync";
 import { adminRemoteRelease } from "@/lib/deviceRemoteRelease";
 import { reaisToCentavos } from "@/lib/money";
-import { supabase } from "@/integrations/supabase/client";
 import { getMachineTypeMeta } from "@/lib/machineDisplayTypes";
 import { useOperatorReleasePermission } from "@/hooks/useOperatorReleasePermission";
 import { brlFromCents as brl, classifyReleaseError, getManualReleaseBlock } from "@/lib/manualReleaseFeedback";
