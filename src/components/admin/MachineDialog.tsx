@@ -165,7 +165,6 @@ export const MachineDialog = ({
         : machine.type === 'massage' ? 'massage'
         : machine.type === 'coffee' ? 'coffee'
         : 'lavadora';
-        : 'lavadora';
       setFormData({
         ...machine,
         type: formType,
