@@ -128,14 +128,13 @@ export const MachineDetailsDialog = ({
 
       // Small delay to let the DB update propagate before refreshing
       await new Promise(r => setTimeout(r, 800));
+      await permission.refetch();
       onAfterAction?.();
       onOpenChange(false);
     } catch (e) {
-      toast({
-        title: "Erro ao iniciar ciclo",
-        description: e instanceof Error ? e.message : "Tente novamente.",
-        variant: "destructive",
-      });
+      const msg = e instanceof Error ? e.message : "Falha desconhecida ao liberar máquina.";
+      const { title, description } = classifyReleaseError(msg);
+      toast({ title, description, variant: "destructive" });
     } finally {
       setStartingCycle(false);
     }
