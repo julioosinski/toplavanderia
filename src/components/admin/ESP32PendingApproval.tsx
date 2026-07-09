@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CheckCircle2, XCircle, Cpu, Clock, Wifi, AlertTriangle, Armchair, Coffee, WashingMachine } from "lucide-react";
+import { CheckCircle2, XCircle, Cpu, Clock, Wifi, AlertTriangle, Sofa, Coffee, WashingMachine } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useLaundry } from "@/hooks/useLaundry";
 import { useSystemSettings, type SystemSettings } from "@/hooks/useSystemSettings";
@@ -83,7 +83,7 @@ const defaultForm = (
 const TypeIcon = ({ type }: { type: Esp32ApprovalMachineType }) => {
   switch (type) {
     case "massage":
-      return <Armchair className="h-3.5 w-3.5" />;
+      return <Sofa className="h-3.5 w-3.5" />;
     case "coffee":
       return <Coffee className="h-3.5 w-3.5" />;
     case "secadora":

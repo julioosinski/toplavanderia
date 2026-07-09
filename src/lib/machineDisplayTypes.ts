@@ -1,4 +1,4 @@
-import { Armchair, Coffee, Droplets, Wind, type LucideIcon } from 'lucide-react';
+import { Sofa, Coffee, Droplets, Wind, type LucideIcon } from 'lucide-react';
 
 export type MachineDisplayType = 'lavadora' | 'secadora' | 'massage' | 'coffee';
 
@@ -46,7 +46,7 @@ export const MACHINE_TYPE_META: Record<MachineDisplayType, MachineTypeMeta> = {
   massage: {
     label: 'Poltrona de massagem',
     pluralLabel: 'Poltronas de massagem',
-    icon: Armchair,
+    icon: Sofa,
     cardBorder: 'border-violet-200',
     cardGradient:
       'from-violet-50/50 to-violet-100/50 dark:from-violet-950/20 dark:to-violet-900/20',
