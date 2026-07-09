@@ -121,6 +121,71 @@ export type Database = {
           },
         ]
       }
+      coffee_products: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          laundry_id: string
+          machine_id: string
+          name: string
+          price: number
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          laundry_id: string
+          machine_id: string
+          name: string
+          price: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          laundry_id?: string
+          machine_id?: string
+          name?: string
+          price?: number
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "coffee_products_laundry_id_fkey"
+            columns: ["laundry_id"]
+            isOneToOne: false
+            referencedRelation: "laundries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coffee_products_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machine_status_view"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coffee_products_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "coffee_products_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "public_machines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       esp32_ota_jobs: {
         Row: {
           checksum_sha256: string | null
@@ -301,11 +366,13 @@ export type Database = {
           capacity_kg: number
           created_at: string
           cycle_time_minutes: number | null
+          device_profile: string
           esp32_id: string | null
           id: string
           last_maintenance: string | null
           laundry_id: string | null
           location: string | null
+          metadata: Json
           name: string
           price_per_cycle: number
           relay_pin: number | null
@@ -320,11 +387,13 @@ export type Database = {
           capacity_kg?: number
           created_at?: string
           cycle_time_minutes?: number | null
+          device_profile?: string
           esp32_id?: string | null
           id?: string
           last_maintenance?: string | null
           laundry_id?: string | null
           location?: string | null
+          metadata?: Json
           name: string
           price_per_cycle?: number
           relay_pin?: number | null
@@ -339,11 +408,13 @@ export type Database = {
           capacity_kg?: number
           created_at?: string
           cycle_time_minutes?: number | null
+          device_profile?: string
           esp32_id?: string | null
           id?: string
           last_maintenance?: string | null
           laundry_id?: string | null
           location?: string | null
+          metadata?: Json
           name?: string
           price_per_cycle?: number
           relay_pin?: number | null
@@ -374,7 +445,8 @@ export type Database = {
           id: string
           last_retry_at: string | null
           machine_id: string
-          relay_pin: number
+          payload: Json
+          relay_pin: number | null
           retry_count: number | null
           status: string
           transaction_id: string | null
@@ -389,7 +461,8 @@ export type Database = {
           id?: string
           last_retry_at?: string | null
           machine_id: string
-          relay_pin: number
+          payload?: Json
+          relay_pin?: number | null
           retry_count?: number | null
           status?: string
           transaction_id?: string | null
@@ -404,7 +477,8 @@ export type Database = {
           id?: string
           last_retry_at?: string | null
           machine_id?: string
-          relay_pin?: number
+          payload?: Json
+          relay_pin?: number | null
           retry_count?: number | null
           status?: string
           transaction_id?: string | null
@@ -646,12 +720,14 @@ export type Database = {
       }
       transactions: {
         Row: {
+          coffee_product_id: string | null
           completed_at: string | null
           created_at: string
           duration_minutes: number | null
           id: string
           laundry_id: string | null
           machine_id: string
+          metadata: Json
           payment_method: string | null
           started_at: string | null
           status: string
@@ -661,12 +737,14 @@ export type Database = {
           weight_kg: number | null
         }
         Insert: {
+          coffee_product_id?: string | null
           completed_at?: string | null
           created_at?: string
           duration_minutes?: number | null
           id?: string
           laundry_id?: string | null
           machine_id: string
+          metadata?: Json
           payment_method?: string | null
           started_at?: string | null
           status?: string
@@ -676,12 +754,14 @@ export type Database = {
           weight_kg?: number | null
         }
         Update: {
+          coffee_product_id?: string | null
           completed_at?: string | null
           created_at?: string
           duration_minutes?: number | null
           id?: string
           laundry_id?: string | null
           machine_id?: string
+          metadata?: Json
           payment_method?: string | null
           started_at?: string | null
           status?: string
@@ -691,6 +771,13 @@ export type Database = {
           weight_kg?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "transactions_coffee_product_id_fkey"
+            columns: ["coffee_product_id"]
+            isOneToOne: false
+            referencedRelation: "coffee_products"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "transactions_laundry_id_fkey"
             columns: ["laundry_id"]
@@ -893,10 +980,19 @@ export type Database = {
       }
     }
     Functions: {
+      admin_remote_release: {
+        Args: {
+          _machine_id: string
+          _product_id?: string
+          _valor_centavos?: number
+        }
+        Returns: string
+      }
       cancel_totem_transaction_by_id: {
         Args: { _transaction_id: string }
         Returns: boolean
       }
+      cleanup_esp32_ota_jobs: { Args: never; Returns: undefined }
       cleanup_old_logs: { Args: never; Returns: undefined }
       cleanup_orphan_esp32_status: { Args: never; Returns: undefined }
       cleanup_pending_commands: { Args: never; Returns: undefined }
@@ -909,6 +1005,14 @@ export type Database = {
         Args: { _laundry_id: string }
         Returns: string
       }
+      create_totem_coffee_transaction: {
+        Args: {
+          _laundry_id: string
+          _payment_method: string
+          _product_id: string
+        }
+        Returns: string
+      }
       create_totem_transaction: {
         Args: {
           _duration_minutes: number
@@ -918,6 +1022,21 @@ export type Database = {
           _total_amount: number
         }
         Returns: string
+      }
+      enqueue_coffee_credit_command: {
+        Args: { _laundry_id: string; _transaction_id: string }
+        Returns: boolean
+      }
+      get_coffee_products: {
+        Args: { _laundry_id: string }
+        Returns: {
+          id: string
+          machine_id: string
+          name: string
+          price: number
+          price_cents: number
+          sort_order: number
+        }[]
       }
       get_esp32_heartbeats: {
         Args: { _laundry_id: string }
@@ -987,6 +1106,7 @@ export type Database = {
         }
         Returns: string
       }
+      mark_stale_esp32_offline: { Args: never; Returns: undefined }
       user_belongs_to_laundry: {
         Args: { _laundry_id: string; _user_id: string }
         Returns: boolean
