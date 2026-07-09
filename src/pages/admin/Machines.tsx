@@ -25,7 +25,7 @@ import { adminRemoteRelease } from "@/lib/deviceRemoteRelease";
 import { reaisToCentavos } from "@/lib/money";
 import { ESP32ConfigurationDialog } from "@/components/admin/ESP32ConfigurationDialog";
 import { Link } from "react-router-dom";
-import { Armchair, Coffee } from "lucide-react";
+import { Sofa, Coffee } from "lucide-react";
 import { ESP32PendingApproval } from "@/components/admin/ESP32PendingApproval";
 import { SectionErrorBoundary } from "@/components/system/SectionErrorBoundary";
 import {
@@ -509,7 +509,7 @@ export default function Machines() {
               </Button>
               <Button variant="outline" size="sm" className="sm:size-default" asChild>
                 <Link to="/admin/massage-chair">
-                  <Armchair className="mr-1 sm:mr-2 h-4 w-4" />
+                  <Sofa className="mr-1 sm:mr-2 h-4 w-4" />
                   <span className="hidden sm:inline">Firmware Poltrona</span>
                   <span className="sm:hidden">Poltrona</span>
                 </Link>

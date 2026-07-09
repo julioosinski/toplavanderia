@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Armchair, Copy, CheckCircle, Download, Zap, Cpu } from 'lucide-react';
+import { Sofa, Copy, CheckCircle, Download, Zap, Cpu } from 'lucide-react';
 import { buildEsp32PoltronaFirmware, downloadEsp32DeviceFirmware } from '@/lib/esp32FirmwareDownload';
 import { adminRemoteRelease } from '@/lib/deviceRemoteRelease';
 
@@ -264,7 +264,7 @@ export default function MassageChairConfig() {
       <div className="space-y-6 p-4 md:p-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Armchair className="h-6 w-6" />
+            <Sofa className="h-6 w-6" />
             Poltrona de Massagem
           </h1>
           <p className="text-muted-foreground">

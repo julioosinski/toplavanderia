@@ -20,7 +20,7 @@ import {
   Bluetooth,
   Coffee,
   Cpu,
-  Armchair,
+  Sofa,
   Home,
   Key,
 } from "lucide-react";
@@ -59,7 +59,7 @@ const menuItems = [
   { title: "Máquinas", url: "/admin/machines", icon: WashingMachine, operatorAllowed: true },
   { title: "Cardápio Café", url: "/admin/coffee-menu", icon: Coffee },
   { title: "Firmware Café", url: "/admin/coffee-firmware", icon: Cpu },
-  { title: "Poltrona Massagem", url: "/admin/massage-chair", icon: Armchair },
+  { title: "Poltrona Massagem", url: "/admin/massage-chair", icon: Sofa },
   { title: "Transações", url: "/admin/transactions", icon: Receipt },
   { title: "Usuários", url: "/admin/users", icon: Users, adminOnly: true },
   { title: "Lavanderias", url: "/admin/laundries", icon: Store, superAdminOnly: true },
