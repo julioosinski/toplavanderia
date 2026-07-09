@@ -1,50 +1,45 @@
-## Diagnóstico
+## Contexto
 
-O motivo real do bloqueio hoje é matemático, não um bug:
+- Você aumentou o limite diário para **R$ 10,00** (banco confirma: `daily_limit_cents = 1000`, `monthly_limit_cents = 1000`).
+- Uso do operador hoje: **R$ 6,00** (6 liberações de R$ 1,00). Próxima liberação (R$ 1,00) daria R$ 7,00 — **abaixo do limite**.
+- Mesmo assim a chamada `POST /rest/v1/rpc/admin_remote_release` volta **400**.
+- O toast atual só mostra "Falha desconhecida" porque o `error.message` do PostgREST está sendo perdido no caminho.
 
-- Permissão salva no banco para o operador: **limite diário R$ 6,00** e **mensal R$ 10,00**.
-- Uso hoje: **R$ 6,00** já liberados (6 máquinas de R$ 1,00).
-- A RPC `admin_remote_release` bloqueia quando `usado + próximo > limite` → `6,00 + 1,00 > 6,00` → dispara "Limite diário atingido".
+Ou seja: o 400 **não** é mais o "Limite diário atingido". É outra coisa (provavelmente `Máquina sem ESP32 configurado`, `Sem permissão`, ou algum erro Postgres) — mas a UI está engolindo a mensagem real.
 
-Ou seja, o "aumentei o limite" salvou 6,00 (provavelmente o valor digitado foi entendido como reais e o operador queria centavos, ou não foi salvo o novo valor). O sistema está funcionando — só que a mensagem chega genérica ("Erro ao iniciar ciclo") e o operador não vê quanto já usou nem qual é o teto.
+## O que fazer
 
-## O que corrigir
+### 1. Capturar e exibir o motivo real do 400
+Em `src/lib/deviceRemoteRelease.ts`, o RPC retorna um `PostgrestError` com `message`, `details`, `hint`, `code`. Hoje o wrapper faz `return { error: error as Error }`, mas o consumidor às vezes só lê `error.message`. Vamos:
 
-Duas frentes, ambas front-end, sem mexer no backend.
+- Construir uma `Error` normalizada com `message` = `error.message || error.details || error.hint || 'Erro ao liberar'` e anexar `code`/`details` em `console.error` para diagnóstico.
+- Fazer `console.error('[adminRemoteRelease]', error)` sempre que retornar erro, para o próximo turno ter o motivo real nos logs.
 
-### 1. Deixar a mensagem de erro clara na tela do operador
+### 2. Melhorar `classifyReleaseError`
+Em `src/lib/manualReleaseFeedback.ts` (arquivo já criado), adicionar mapeamento para os erros que ainda caem no genérico:
 
-Arquivo: `src/components/admin/MachineDetailsDialog.tsx` (`handleStartManualCycle`).
+- `"máquina não encontrada"` → "Máquina não encontrada"
+- `"máquina sem esp32"` → "Máquina sem ESP32 configurado — cadastre o ESP32 no painel de máquinas"
+- `"produto de café inválido"` → "Produto de café inválido"
+- `"informe product_id ou valor_centavos"` → "Valor de café não informado"
+- fallback: manter a mensagem crua do banco (nunca "Falha desconhecida")
 
-- Se a RPC retornar erro cuja mensagem contenha "Limite diário", "Limite mensal", "sem autorização" ou "Sem permissão", exibir o toast com **título específico** ("Limite diário atingido", "Sem autorização", etc.) e a mensagem completa da RPC no `description`, que já inclui os valores usados/permitidos.
-- Nos demais casos, exibir o texto real do erro (sem cair no "Tente novamente" genérico).
-- Aplicar o mesmo tratamento em `handleReleaseCoffeeCredits` (mesmo arquivo).
+### 3. Toasts que sempre mostram o texto do banco
+Nos 4 pontos de chamada de `adminRemoteRelease`:
+- `src/components/admin/MachineDetailsDialog.tsx` (2 lugares)
+- `src/pages/admin/Machines.tsx` (3 lugares: café, poltrona, operador)
 
-### 2. Mostrar o status de autorização/consumo antes do operador clicar
+Trocar `toast({ title: 'Erro', description: error.message })` por `toast(classifyReleaseError(error.message))` para que o operador veja **exatamente** o motivo devolvido pela RPC (por ex.: "Máquina sem ESP32 configurado" ou "Limite diário atingido (R$ 6,00/10,00 usado hoje)").
 
-Ainda em `MachineDetailsDialog.tsx`, quando `useOperatorReleasePermission().isOperator === true`:
-
-- Adicionar um bloco compacto acima do botão "Iniciar Ciclo Manual" com:
-  - Se `!canRelease` → aviso vermelho "Você não tem autorização para liberar máquinas. Peça ao gerente." e desabilitar o botão.
-  - Se `dayLimitCents` definido → "Uso hoje: R$ X,YY de R$ A,BB" (barra ou texto colorido: verde se sobra, âmbar se >80%, vermelho se ao atingir).
-  - Se `monthLimitCents` definido → mesma linha para o mês.
-  - Quando o próximo release já ultrapassaria o teto (`day_cents + machine.price*100 > day_limit_cents`, idem mensal), desabilitar o botão e mostrar exatamente qual limite bloqueia.
-- Depois de qualquer liberação bem-sucedida, chamar `refetch()` para atualizar os números na hora.
-
-### 3. Ajuste pequeno no diálogo de autorização (para o gestor)
-
-Arquivo: `src/components/admin/OperatorAuthorizationDialog.tsx`.
-
-- Adicionar sob cada campo (diário/mensal) uma linha de preview em tempo real: "Equivale a R$ X,YY" com o resultado de `reaisToCentavos(...)`/100. Assim o gestor vê imediatamente se digitou "60" (=R$ 60,00) ou "6,00" (=R$ 6,00) antes de salvar.
-- Placeholder atual "Sem limite" mantido; deixar claro no helper text que o valor é em reais (ex.: "Digite em reais — ex.: 60,00 para R$ 60,00").
+### 4. Confirmar pré-checagem sincronizada
+No `MachineDetailsDialog`, antes de chamar a RPC, já estamos fazendo `permission.refetch()` e usando `getManualReleaseBlock`. Vou reaproveitar a mesma pré-checagem em `src/pages/admin/Machines.tsx` (fluxo operador), para que operadores vejam o bloqueio **antes** do 400 quando for realmente limite/autorização.
 
 ## Fora do escopo
 
-- Não altero `admin_remote_release`, `get_operator_release_usage` nem `esp32-credit-release`. As regras continuam iguais; só o operador passa a entender o motivo do bloqueio.
-- Não mexo em Dashboard/Máquinas/CoffeeMenu — o botão que o operador usa está no `MachineDetailsDialog`.
+- Não alterar a RPC `admin_remote_release` nem a `get_operator_release_usage`.
+- Não mexer no firmware/edge functions.
+- Não tocar em Dashboard/Faturamento.
 
-## Detalhes técnicos
+## Como validar
 
-- O `useOperatorReleasePermission` já expõe `dayCents`, `monthCents`, `dayLimitCents`, `monthLimitCents`, `canRelease`, `isOperator`, `refetch()`. Basta consumir no dialog.
-- Toast: usar `useToast` já importado; variant `destructive` para bloqueios de limite/autorização.
-- Formatação: reaproveitar `centavosToReais` de `src/lib/money.ts` e `Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })`.
+Depois de aplicado, você tenta liberar a máquina de novo. Se ainda der 400, o toast agora vai dizer o texto exato do banco (ex.: "Máquina sem ESP32 configurado", "Sem permissão para liberar esta máquina") — e me manda o texto para eu corrigir a causa raiz no próximo passo.
