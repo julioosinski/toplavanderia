@@ -70,7 +70,7 @@ const asNumber = (value: unknown, fallback = 0) => {
 };
 
 export default function Machines() {
-  const { currentLaundry } = useLaundry();
+  const { currentLaundry, isSuperAdmin, isViewingAllLaundries } = useLaundry();
   const permission = useOperatorReleasePermission();
   const { isOperator, canRelease, dayCents, monthCents, dayLimitCents, monthLimitCents, refetch: refetchPermission } = permission;
   const { toast } = useToast();
@@ -81,19 +81,29 @@ export default function Machines() {
   const loadMachinesRef = useRef<() => Promise<void>>(async () => {});
   const initialLoadDone = useRef(false);
   const currentLaundryId = currentLaundry?.id;
+  const isAllLaundryView = isSuperAdmin && isViewingAllLaundries;
 
   const loadMachines = useCallback(async () => {
-    if (!currentLaundryId) return;
+    if (!currentLaundryId && !isAllLaundryView) {
+      setMachines([]);
+      setLoading(false);
+      return;
+    }
 
     try {
       if (!initialLoadDone.current) setLoading(true);
       
       // Fetch machines with ESP32 status
-      const { data: machinesData, error: machinesError } = await supabase
+      let machinesQuery = supabase
         .from("machines")
         .select("*")
-        .eq("laundry_id", currentLaundryId)
         .order("name");
+
+      if (!isAllLaundryView && currentLaundryId) {
+        machinesQuery = machinesQuery.eq("laundry_id", currentLaundryId);
+      }
+
+      const { data: machinesData, error: machinesError } = await machinesQuery;
 
       if (machinesError) throw machinesError;
 
@@ -102,11 +112,22 @@ export default function Machines() {
         .from("esp32_status")
         .select("esp32_id, ip_address, is_online, signal_strength, last_heartbeat, network_status, relay_status, laundry_id");
 
-      if (esp32Error) throw esp32Error;
-
-      const esp32Rows = (esp32Data || []) as Esp32StatusWithLaundry[];
-      const esp32ForLaundry =
-        esp32Rows.filter((esp) => esp.laundry_id === currentLaundryId);
+      let esp32ForLaundry: Esp32StatusWithLaundry[] = [];
+      if (esp32Error) {
+        console.warn("Error loading ESP32 status; showing machines without signal data:", esp32Error);
+        const { data: rpcEsp32Data } = await supabase.rpc("get_esp32_heartbeats", {
+          _laundry_id: currentLaundryId,
+        });
+        esp32ForLaundry = ((rpcEsp32Data || []) as Esp32StatusWithLaundry[]).map((esp) => ({
+          ...esp,
+          laundry_id: currentLaundryId,
+        }));
+      } else {
+        const esp32Rows = (esp32Data || []) as Esp32StatusWithLaundry[];
+        esp32ForLaundry = isAllLaundryView
+          ? esp32Rows
+          : esp32Rows.filter((esp) => esp.laundry_id === currentLaundryId);
+      }
 
       const enrichedMachines = ((machinesData || []) as Machine[]).map((machine) => {
         const esp32: Esp32StatusRow | undefined = machine.esp32_id
@@ -139,21 +160,24 @@ export default function Machines() {
       setLoading(false);
       initialLoadDone.current = true;
     }
-  }, [currentLaundryId, toast]);
+  }, [currentLaundryId, isAllLaundryView, toast]);
 
   loadMachinesRef.current = loadMachines;
 
   useEffect(() => {
-    if (currentLaundryId) {
+    if (currentLaundryId || isAllLaundryView) {
       void loadMachines();
+    } else {
+      setMachines([]);
+      setLoading(false);
     }
-  }, [currentLaundryId, loadMachines]);
+  }, [currentLaundryId, isAllLaundryView, loadMachines]);
 
   const dialogOpenRef = useRef(false);
   dialogOpenRef.current = dialogOpen;
 
   useEffect(() => {
-    if (!currentLaundry?.id) return;
+    if (!currentLaundry?.id || isAllLaundryView) return;
     const lid = currentLaundry.id;
     const reloadIfIdle = () => {
       if (!dialogOpenRef.current) void loadMachinesRef.current();
@@ -174,7 +198,7 @@ export default function Machines() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [currentLaundry?.id]);
+  }, [currentLaundry?.id, isAllLaundryView]);
 
   const handleEdit = (machine: Machine) => {
     setEditingMachine(machine);
@@ -489,7 +513,7 @@ export default function Machines() {
   }
 
   return (
-    <LaundryGuard>
+    <LaundryGuard allowSuperAdminAllView={isAllLaundryView}>
       <div className="space-y-6 animate-in fade-in duration-500">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>

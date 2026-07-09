@@ -32,6 +32,7 @@ export interface Machine {
   timeRemaining?: number;
   /** updated_at do ciclo atual — usado para contagem regressiva entre polls */
   runningSinceAt?: string;
+  laundry_id?: string;
   esp32_id?: string;
   relay_pin?: number;
   location?: string;
@@ -49,6 +50,7 @@ interface MachineSourceRow extends MachineRow {
   cycle_time_minutes?: number | null;
   updated_at?: string;
   relay_pin?: number | null;
+  laundry_id?: string | null;
   esp32_id?: string | null;
   location?: string | null;
 }
@@ -152,6 +154,7 @@ export const useMachines = (laundryId?: string | null, opts?: { staleMs?: number
       icon: typeMeta.icon,
       timeRemaining,
       runningSinceAt,
+      laundry_id: typeof machine.laundry_id === 'string' ? machine.laundry_id : undefined,
       esp32_id: machine.esp32_id,
       relay_pin: machine.relay_pin,
       location: machine.location,

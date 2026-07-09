@@ -33,6 +33,7 @@ interface MachineRevenueRow {
 interface ConsolidatedMachineRow extends MachineRow {
   name: string;
   type?: string | null;
+  laundry_id?: string | null;
   price_per_cycle?: number | string | null;
   cycle_time_minutes?: number | null;
   relay_pin?: number | null;
@@ -64,6 +65,7 @@ const toDashboardMachine = (
     duration: row.cycle_time_minutes || (type === "coffee" ? 0 : 40),
     status,
     icon: typeMeta.icon,
+    laundry_id: row.laundry_id || undefined,
     esp32_id: row.esp32_id || undefined,
     relay_pin: row.relay_pin || undefined,
     location: row.location || undefined,
@@ -162,6 +164,23 @@ export default function Dashboard() {
   const initialLoadDone = useRef(false);
 
   const [machinesByLaundry, setMachinesByLaundry] = useState<MachinesByLaundry>({});
+
+  const fallbackMachinesByLaundry = useMemo(() => {
+    if (!isViewingAll) return {};
+    return machines.reduce<MachinesByLaundry>((acc, machine) => {
+      if (!machine.laundry_id) return acc;
+      const laundryName = laundries.find((laundry) => laundry.id === machine.laundry_id)?.name;
+      if (!laundryName) return acc;
+      if (!acc[machine.laundry_id]) acc[machine.laundry_id] = { laundryName, machines: [] };
+      acc[machine.laundry_id].machines.push(machine);
+      return acc;
+    }, {});
+  }, [isViewingAll, laundries, machines]);
+
+  const displayedMachinesByLaundry = useMemo(
+    () => Object.keys(machinesByLaundry).length > 0 ? machinesByLaundry : fallbackMachinesByLaundry,
+    [fallbackMachinesByLaundry, machinesByLaundry]
+  );
 
   const machineStats = useMemo(() => ({
     totalMachines: machines.length,
@@ -462,8 +481,8 @@ export default function Dashboard() {
       {/* Machine Status Section */}
       {isViewingAll ? (
         <ConsolidatedMachineStatus
-          machinesByLaundry={machinesByLaundry}
-          loading={machinesLoading}
+          machinesByLaundry={displayedMachinesByLaundry}
+          loading={machinesLoading && Object.keys(displayedMachinesByLaundry).length === 0}
           onAfterMachineAction={() => { void loadConsolidatedMachines(); }}
         />
       ) : (
