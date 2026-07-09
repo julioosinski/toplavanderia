@@ -26,7 +26,22 @@ export async function adminRemoteRelease(params: {
   });
 
   if (error) {
-    return { commandId: null, error: error as Error };
+    // Loga tudo que o PostgREST devolveu para diagnóstico (message/details/hint/code)
+    console.error('[adminRemoteRelease] RPC error', {
+      message: error.message,
+      details: (error as { details?: string }).details,
+      hint: (error as { hint?: string }).hint,
+      code: (error as { code?: string }).code,
+    });
+
+    const err = error as { message?: string; details?: string; hint?: string; code?: string };
+    const finalMessage =
+      err.message?.trim() ||
+      err.details?.trim() ||
+      err.hint?.trim() ||
+      'Erro ao liberar máquina (sem detalhes).';
+
+    return { commandId: null, error: new Error(finalMessage) };
   }
 
   return { commandId: typeof data === 'string' ? data : null, error: null };
