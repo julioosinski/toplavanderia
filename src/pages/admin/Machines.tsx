@@ -23,6 +23,7 @@ import {
 } from "@/lib/machineEsp32Sync";
 import { adminRemoteRelease } from "@/lib/deviceRemoteRelease";
 import { reaisToCentavos } from "@/lib/money";
+import { classifyReleaseError } from "@/lib/manualReleaseFeedback";
 import { ESP32ConfigurationDialog } from "@/components/admin/ESP32ConfigurationDialog";
 import { Link } from "react-router-dom";
 import { Sofa, Coffee } from "lucide-react";
