@@ -1,5 +1,6 @@
 import { useCallback, useState, useEffect } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, ShieldCheck } from "lucide-react";
+import { OperatorAuthorizationDialog } from "@/components/admin/OperatorAuthorizationDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
