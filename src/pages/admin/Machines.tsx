@@ -213,6 +213,21 @@ export default function Machines() {
     loadMachines();
   };
 
+  const formatBRL = (cents: number) => `R$ ${(cents / 100).toFixed(2)}`;
+
+  const limitBadge = isOperator && canRelease ? (
+    <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
+      <span>
+        <strong className="text-foreground">Hoje:</strong> {formatBRL(dayCents)}
+        {dayLimitCents != null ? ` / ${formatBRL(dayLimitCents)}` : ' (sem limite)'}
+      </span>
+      <span>
+        <strong className="text-foreground">Mês:</strong> {formatBRL(monthCents)}
+        {monthLimitCents != null ? ` / ${formatBRL(monthLimitCents)}` : ' (sem limite)'}
+      </span>
+    </div>
+  ) : null;
+
   const columns: ColumnDef<Machine>[] = [
     {
       accessorKey: "name",
