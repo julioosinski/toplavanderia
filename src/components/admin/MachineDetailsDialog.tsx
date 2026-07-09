@@ -12,13 +12,34 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { type Machine } from "@/hooks/useMachines";
-import { Clock, DollarSign, MapPin, Cpu, Wifi, Play, Zap } from "lucide-react";
+import { Clock, DollarSign, MapPin, Cpu, Wifi, Play, Zap, AlertTriangle, ShieldOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { forceMachineReleased } from "@/lib/machineEsp32Sync";
 import { adminRemoteRelease } from "@/lib/deviceRemoteRelease";
 import { reaisToCentavos } from "@/lib/money";
 import { supabase } from "@/integrations/supabase/client";
 import { getMachineTypeMeta } from "@/lib/machineDisplayTypes";
+import { useOperatorReleasePermission } from "@/hooks/useOperatorReleasePermission";
+
+const brl = (cents: number) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
+
+const classifyReleaseError = (message: string): { title: string; description: string } => {
+  const m = message.toLowerCase();
+  if (m.includes("limite diário") || m.includes("limite diario")) {
+    return { title: "Limite diário atingido", description: message };
+  }
+  if (m.includes("limite mensal")) {
+    return { title: "Limite mensal atingido", description: message };
+  }
+  if (m.includes("sem autorização") || m.includes("sem autorizacao") || m.includes("sem permissão") || m.includes("sem permissao")) {
+    return { title: "Sem autorização para liberar", description: message };
+  }
+  if (m.includes("esp32")) {
+    return { title: "ESP32 não configurado", description: message };
+  }
+  return { title: "Não foi possível liberar", description: message };
+};
 
 interface MachineDetailsDialogProps {
   machine: Machine | null;
