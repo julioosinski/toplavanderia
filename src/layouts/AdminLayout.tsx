@@ -56,7 +56,7 @@ type RoleBadgeVariant = "default" | "secondary" | "outline";
 
 const menuItems = [
   { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
-  { title: "Máquinas", url: "/admin/machines", icon: WashingMachine },
+  { title: "Máquinas", url: "/admin/machines", icon: WashingMachine, operatorAllowed: true },
   { title: "Cardápio Café", url: "/admin/coffee-menu", icon: Coffee },
   { title: "Firmware Café", url: "/admin/coffee-firmware", icon: Cpu },
   { title: "Poltrona Massagem", url: "/admin/massage-chair", icon: Armchair },
@@ -71,9 +71,11 @@ const menuItems = [
 
 function AdminSidebar() {
   const location = useLocation();
-  const { isSuperAdmin, isAdmin, currentLaundry } = useLaundry();
+  const { isSuperAdmin, isAdmin, userRole } = useLaundry();
+  const isOperatorOnly = userRole === 'operator' && !isAdmin && !isSuperAdmin;
 
   const filteredItems = menuItems.filter((item) => {
+    if (isOperatorOnly) return item.operatorAllowed === true;
     if (item.superAdminOnly && !isSuperAdmin) return false;
     if (item.adminOnly && !isAdmin) return false;
     return true;
