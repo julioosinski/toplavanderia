@@ -47,6 +47,14 @@ export const ConsolidatedMachineStatus = ({
         </p>
       </div>
 
+      {Object.keys(machinesByLaundry).length === 0 && (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            Nenhuma máquina cadastrada nas lavanderias disponíveis.
+          </CardContent>
+        </Card>
+      )}
+
       {Object.entries(machinesByLaundry).map(([laundryId, { laundryName, machines }]) => {
         const stats = {
           available: machines.filter((m) => m.status === "available").length,

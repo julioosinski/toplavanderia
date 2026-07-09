@@ -83,7 +83,11 @@ export default function Machines() {
   const currentLaundryId = currentLaundry?.id;
 
   const loadMachines = useCallback(async () => {
-    if (!currentLaundryId) return;
+    if (!currentLaundryId) {
+      setMachines([]);
+      setLoading(false);
+      return;
+    }
 
     try {
       if (!initialLoadDone.current) setLoading(true);
@@ -102,11 +106,20 @@ export default function Machines() {
         .from("esp32_status")
         .select("esp32_id, ip_address, is_online, signal_strength, last_heartbeat, network_status, relay_status, laundry_id");
 
-      if (esp32Error) throw esp32Error;
-
-      const esp32Rows = (esp32Data || []) as Esp32StatusWithLaundry[];
-      const esp32ForLaundry =
-        esp32Rows.filter((esp) => esp.laundry_id === currentLaundryId);
+      let esp32ForLaundry: Esp32StatusWithLaundry[] = [];
+      if (esp32Error) {
+        console.warn("Error loading ESP32 status; showing machines without signal data:", esp32Error);
+        const { data: rpcEsp32Data } = await supabase.rpc("get_esp32_heartbeats", {
+          _laundry_id: currentLaundryId,
+        });
+        esp32ForLaundry = ((rpcEsp32Data || []) as Esp32StatusWithLaundry[]).map((esp) => ({
+          ...esp,
+          laundry_id: currentLaundryId,
+        }));
+      } else {
+        const esp32Rows = (esp32Data || []) as Esp32StatusWithLaundry[];
+        esp32ForLaundry = esp32Rows.filter((esp) => esp.laundry_id === currentLaundryId);
+      }
 
       const enrichedMachines = ((machinesData || []) as Machine[]).map((machine) => {
         const esp32: Esp32StatusRow | undefined = machine.esp32_id
@@ -146,6 +159,9 @@ export default function Machines() {
   useEffect(() => {
     if (currentLaundryId) {
       void loadMachines();
+    } else {
+      setMachines([]);
+      setLoading(false);
     }
   }, [currentLaundryId, loadMachines]);
 
