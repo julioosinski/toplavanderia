@@ -71,6 +71,8 @@ const asNumber = (value: unknown, fallback = 0) => {
 
 export default function Machines() {
   const { currentLaundry } = useLaundry();
+  const permission = useOperatorReleasePermission();
+  const { isOperator, canRelease, dayCents, monthCents, dayLimitCents, monthLimitCents, refetch: refetchPermission } = permission;
   const { toast } = useToast();
   const [machines, setMachines] = useState<Machine[]>([]);
   const [loading, setLoading] = useState(true);
