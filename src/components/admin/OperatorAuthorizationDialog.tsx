@@ -15,6 +15,9 @@ import {
 } from '@/components/ui/dialog';
 import { reaisToCentavos } from '@/lib/money';
 
+const brl = (cents: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100);
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
