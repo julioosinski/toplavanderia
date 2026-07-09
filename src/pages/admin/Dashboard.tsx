@@ -1,24 +1,15 @@
-import { useCallback, useEffect, useState, useMemo, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { DollarSign, Receipt, Activity, CheckCircle, AlertTriangle, CalendarRange } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { useLaundry } from "@/hooks/useLaundry";
 import { supabase } from "@/integrations/supabase/client";
 import { computeMachineStatus, ESP32_ADMIN_HEARTBEAT_STALE_MS, type Esp32StatusRow, type MachineRow } from "@/lib/machineEsp32Sync";
 import { getMachineTypeMeta, mapDbMachineType, sortMachinesByDisplayType } from "@/lib/machineDisplayTypes";
-import { billableRevenueAmount } from "@/lib/transactionRevenue";
 import { LaundryDashboardSelector } from "@/components/admin/LaundryDashboardSelector";
 import { MachineStatusGrid } from "@/components/admin/MachineStatusGrid";
 import { ConsolidatedMachineStatus } from "@/components/admin/ConsolidatedMachineStatus";
 import { type Machine, useMachines } from "@/hooks/useMachines";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 
 interface TransactionRow {
   created_at: string | null;
