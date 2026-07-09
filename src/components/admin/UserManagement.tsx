@@ -1,5 +1,6 @@
 import { useCallback, useState, useEffect } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, ShieldCheck } from "lucide-react";
+import { OperatorAuthorizationDialog } from "@/components/admin/OperatorAuthorizationDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
@@ -48,6 +49,7 @@ export const UserManagement = () => {
   const [open, setOpen] = useState(false);
   const [users, setUsers] = useState<UserRole[]>([]);
   const [loading, setLoading] = useState(true);
+  const [authDialog, setAuthDialog] = useState<{ userId: string; userName: string; laundryId: string } | null>(null);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -362,19 +364,46 @@ export const UserManagement = () => {
                     </p>
                   )}
                 </div>
-                {(isSuperAdmin || (currentLaundry && user.role !== 'admin' && user.role !== 'super_admin')) && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleDelete(user.user_id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                )}
+                <div className="flex gap-2">
+                  {user.role === 'operator' && user.laundry_id && (isSuperAdmin || currentLaundry) && (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      title="Autorização de liberação"
+                      onClick={() =>
+                        setAuthDialog({
+                          userId: user.user_id,
+                          userName: user.profiles?.full_name || 'Operador',
+                          laundryId: user.laundry_id!,
+                        })
+                      }
+                    >
+                      <ShieldCheck className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {(isSuperAdmin || (currentLaundry && user.role !== 'admin' && user.role !== 'super_admin')) && (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => handleDelete(user.user_id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
               </div>
             ))
           )}
         </div>
+        {authDialog && (
+          <OperatorAuthorizationDialog
+            open={!!authDialog}
+            onOpenChange={(o) => !o && setAuthDialog(null)}
+            userId={authDialog.userId}
+            userName={authDialog.userName}
+            laundryId={authDialog.laundryId}
+          />
+        )}
       </CardContent>
     </Card>
   );

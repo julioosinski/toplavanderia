@@ -216,7 +216,7 @@ export const ESP32PendingApproval = () => {
       capacity_kg: isRelayMachine ? form.capacity_kg : 0,
     };
 
-    const { error: machineError } = await supabase.from("machines").insert(machinePayload);
+    const { error: machineError } = await supabase.from("machines").insert(machinePayload as never);
 
     if (machineError) {
       toast({ title: "Erro", description: `Falha ao criar máquina: ${machineError.message}`, variant: "destructive" });

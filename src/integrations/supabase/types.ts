@@ -435,6 +435,50 @@ export type Database = {
           },
         ]
       }
+      operator_release_permissions: {
+        Row: {
+          can_release: boolean
+          created_at: string
+          daily_limit_cents: number | null
+          granted_by: string | null
+          id: string
+          laundry_id: string
+          monthly_limit_cents: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          can_release?: boolean
+          created_at?: string
+          daily_limit_cents?: number | null
+          granted_by?: string | null
+          id?: string
+          laundry_id: string
+          monthly_limit_cents?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          can_release?: boolean
+          created_at?: string
+          daily_limit_cents?: number | null
+          granted_by?: string | null
+          id?: string
+          laundry_id?: string
+          monthly_limit_cents?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operator_release_permissions_laundry_id_fkey"
+            columns: ["laundry_id"]
+            isOneToOne: false
+            referencedRelation: "laundries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pending_commands: {
         Row: {
           action: string
@@ -1065,6 +1109,10 @@ export type Database = {
           logo_url: string
           name: string
         }[]
+      }
+      get_operator_release_usage: {
+        Args: { _laundry_id: string; _user_id: string }
+        Returns: Json
       }
       get_public_machines: {
         Args: { _laundry_id?: string }

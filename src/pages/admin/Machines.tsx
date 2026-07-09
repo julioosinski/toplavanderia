@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from "react";
 import { useLaundry } from "@/hooks/useLaundry";
+import { useOperatorReleasePermission } from "@/hooks/useOperatorReleasePermission";
 import { supabase } from "@/integrations/supabase/client";
 import { LaundryGuard } from "@/components/admin/LaundryGuard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -70,6 +71,8 @@ const asNumber = (value: unknown, fallback = 0) => {
 
 export default function Machines() {
   const { currentLaundry } = useLaundry();
+  const permission = useOperatorReleasePermission();
+  const { isOperator, canRelease, dayCents, monthCents, dayLimitCents, monthLimitCents, refetch: refetchPermission } = permission;
   const { toast } = useToast();
   const [machines, setMachines] = useState<Machine[]>([]);
   const [loading, setLoading] = useState(true);
@@ -210,6 +213,21 @@ export default function Machines() {
     loadMachines();
   };
 
+  const formatBRL = (cents: number) => `R$ ${(cents / 100).toFixed(2)}`;
+
+  const limitBadge = isOperator && canRelease ? (
+    <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
+      <span>
+        <strong className="text-foreground">Hoje:</strong> {formatBRL(dayCents)}
+        {dayLimitCents != null ? ` / ${formatBRL(dayLimitCents)}` : ' (sem limite)'}
+      </span>
+      <span>
+        <strong className="text-foreground">Mês:</strong> {formatBRL(monthCents)}
+        {monthLimitCents != null ? ` / ${formatBRL(monthLimitCents)}` : ' (sem limite)'}
+      </span>
+    </div>
+  ) : null;
+
   const columns: ColumnDef<Machine>[] = [
     {
       accessorKey: "name",
@@ -338,6 +356,84 @@ export default function Machines() {
       header: "Ações",
       cell: ({ row }) => {
         const machine = row.original;
+
+        if (isOperator && !canRelease) {
+          return (
+            <span className="text-xs text-muted-foreground">
+              Sem autorização
+            </span>
+          );
+        }
+
+        const handleRelease = async () => {
+          const isCoffee = machine.type === 'coffee';
+          const isMassage = machine.type === 'massage';
+          if (isCoffee) {
+            const raw = window.prompt(
+              `Valor do crédito de café em "${machine.name}" (R$):`,
+              '',
+            );
+            if (!raw) return;
+            const valorCentavos = reaisToCentavos(raw);
+            if (valorCentavos <= 0) {
+              toast({ title: 'Valor inválido', description: 'Informe um valor em reais (ex.: 8,50).', variant: 'destructive' });
+              return;
+            }
+            if (!confirm(`Liberar R$ ${(valorCentavos / 100).toFixed(2)} no moedeiro de "${machine.name}"?`)) return;
+            const { error } = await adminRemoteRelease({ machineId: machine.id, valorCentavos });
+            if (error) {
+              toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+            } else {
+              toast({ title: 'Liberação remota enfileirada', description: `R$ ${(valorCentavos / 100).toFixed(2)} — comando enviado ao ESP32.` });
+              loadMachines();
+              void refetchPermission();
+            }
+            return;
+          }
+          if (isMassage) {
+            if (!confirm('Liberar sessão de massagem remotamente (relé ON pelo tempo do ciclo)?')) return;
+            const { error } = await adminRemoteRelease({ machineId: machine.id });
+            if (error) {
+              toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+            } else {
+              toast({ title: 'Liberação remota enfileirada', description: 'Comando enviado ao ESP32.' });
+              loadMachines();
+              void refetchPermission();
+            }
+            return;
+          }
+          if (isOperator) {
+            // Operador: usa admin_remote_release (com validação de limite no backend)
+            if (!confirm(`Liberar máquina "${machine.name}" remotamente?`)) return;
+            const { error } = await adminRemoteRelease({ machineId: machine.id });
+            if (error) {
+              toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+            } else {
+              toast({ title: 'Máquina liberada', description: 'Comando enviado ao ESP32.' });
+              loadMachines();
+              void refetchPermission();
+            }
+            return;
+          }
+          if (!confirm('Liberar no totem (disponível), atualizar relé no painel e enviar comando OFF ao ESP32?')) return;
+          const { error } = await forceMachineReleased({ machineId: machine.id });
+          if (error) {
+            toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+          } else {
+            toast({ title: 'Máquina liberada', description: 'Totem e esp32_status alinhados; comando de desligar relé enfileirado.' });
+            loadMachines();
+          }
+        };
+
+        if (isOperator) {
+          return (
+            <Button variant="outline" size="sm" onClick={handleRelease}>
+              <Unlock className="mr-2 h-4 w-4" />
+              {machine.type === 'coffee' || machine.type === 'massage' ? 'Liberar remoto' : 'Liberar'}
+            </Button>
+          );
+        }
+
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -350,127 +446,18 @@ export default function Machines() {
                 <Pencil className="mr-2 h-4 w-4" />
                 Editar
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={async () => {
-                  const isCoffee = machine.type === 'coffee';
-                  const isMassage = machine.type === 'massage';
-                  if (isCoffee || isMassage) {
-                    if (isCoffee) {
-                      const raw = window.prompt(
-                        `Valor do crédito de café em "${machine.name}" (R$):`,
-                        '',
-                      );
-                      if (!raw) return;
-                      const valorCentavos = reaisToCentavos(raw);
-                      if (valorCentavos <= 0) {
-                        toast({
-                          title: 'Valor inválido',
-                          description: 'Informe um valor em reais (ex.: 8,50).',
-                          variant: 'destructive',
-                        });
-                        return;
-                      }
-                      if (
-                        !confirm(
-                          `Liberar R$ ${(valorCentavos / 100).toFixed(2)} no moedeiro de "${machine.name}"?`,
-                        )
-                      ) {
-                        return;
-                      }
-                      const { error } = await adminRemoteRelease({
-                        machineId: machine.id,
-                        valorCentavos,
-                      });
-                      if (error) {
-                        toast({
-                          title: 'Erro',
-                          description: error.message,
-                          variant: 'destructive',
-                        });
-                      } else {
-                        toast({
-                          title: 'Liberação remota enfileirada',
-                          description: `R$ ${(valorCentavos / 100).toFixed(2)} — comando enviado ao ESP32.`,
-                        });
-                        loadMachines();
-                      }
-                      return;
-                    }
-
-                    if (
-                      !confirm(
-                        'Liberar sessão de massagem remotamente (relé ON pelo tempo do ciclo)?',
-                      )
-                    ) {
-                      return;
-                    }
-                    const { error } = await adminRemoteRelease({
-                      machineId: machine.id,
-                    });
-                    if (error) {
-                      toast({
-                        title: 'Erro',
-                        description: error.message,
-                        variant: 'destructive',
-                      });
-                    } else {
-                      toast({
-                        title: 'Liberação remota enfileirada',
-                        description: 'Comando enviado ao ESP32.',
-                      });
-                      loadMachines();
-                    }
-                    return;
-                  }
-                  if (
-                    !confirm(
-                      "Liberar no totem (disponível), atualizar relé no painel e enviar comando OFF ao ESP32?"
-                    )
-                  ) {
-                    return;
-                  }
-                  const { error } = await forceMachineReleased({ machineId: machine.id });
-                  if (error) {
-                    toast({
-                      title: "Erro",
-                      description: error.message,
-                      variant: "destructive",
-                    });
-                  } else {
-                    toast({
-                      title: "Máquina liberada",
-                      description: "Totem e esp32_status alinhados; comando de desligar relé enfileirado.",
-                    });
-                    loadMachines();
-                  }
-                }}
-              >
+              <DropdownMenuItem onClick={handleRelease}>
                 <Unlock className="mr-2 h-4 w-4" />
-                {machine.type === 'coffee' || machine.type === 'massage'
-                  ? 'Liberar remoto'
-                  : 'Liberar máquina'}
+                {machine.type === 'coffee' || machine.type === 'massage' ? 'Liberar remoto' : 'Liberar máquina'}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
-                  if (
-                    !confirm(
-                      "Colocar em manutenção, espelhar relé OFF e enviar comando OFF ao ESP32?"
-                    )
-                  ) {
-                    return;
-                  }
+                  if (!confirm('Colocar em manutenção, espelhar relé OFF e enviar comando OFF ao ESP32?')) return;
                   const { error } = await forceMachineMaintenance(machine.id);
                   if (error) {
-                    toast({
-                      title: "Erro",
-                      description: error.message,
-                      variant: "destructive",
-                    });
+                    toast({ title: 'Erro', description: error.message, variant: 'destructive' });
                   } else {
-                    toast({
-                      title: "Manutenção",
-                      description: "Status atualizado e relé desligado no painel e no ESP32.",
-                    });
+                    toast({ title: 'Manutenção', description: 'Status atualizado e relé desligado no painel e no ESP32.' });
                     loadMachines();
                   }
                 }}
@@ -478,10 +465,7 @@ export default function Machines() {
                 <Wrench className="mr-2 h-4 w-4" />
                 Colocar em manutenção
               </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => handleDelete(machine)}
-                className="text-destructive"
-              >
+              <DropdownMenuItem onClick={() => handleDelete(machine)} className="text-destructive">
                 <Trash2 className="mr-2 h-4 w-4" />
                 Excluir
               </DropdownMenuItem>
@@ -514,36 +498,42 @@ export default function Machines() {
               Gerencie lavadoras, secadoras, poltronas e café
             </p>
           </div>
-          <div className="flex gap-2 flex-wrap">
-            <Button variant="outline" size="sm" className="sm:size-default" asChild>
-              <Link to="/admin/coffee-firmware">
-                <Coffee className="mr-1 sm:mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">Firmware Café</span>
-                <span className="sm:hidden">Café</span>
-              </Link>
-            </Button>
-            <Button variant="outline" size="sm" className="sm:size-default" asChild>
-              <Link to="/admin/massage-chair">
-                <Armchair className="mr-1 sm:mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">Firmware Poltrona</span>
-                <span className="sm:hidden">Poltrona</span>
-              </Link>
-            </Button>
-            <ESP32ConfigurationDialog />
-            <Button size="sm" className="sm:size-default" onClick={() => {
-              setEditingMachine(null);
-              setDialogOpen(true);
-            }}>
-              <Plus className="mr-1 sm:mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">Nova Máquina</span>
-              <span className="sm:hidden">Nova</span>
-            </Button>
-          </div>
+          {!isOperator && (
+            <div className="flex gap-2 flex-wrap">
+              <Button variant="outline" size="sm" className="sm:size-default" asChild>
+                <Link to="/admin/coffee-firmware">
+                  <Coffee className="mr-1 sm:mr-2 h-4 w-4" />
+                  <span className="hidden sm:inline">Firmware Café</span>
+                  <span className="sm:hidden">Café</span>
+                </Link>
+              </Button>
+              <Button variant="outline" size="sm" className="sm:size-default" asChild>
+                <Link to="/admin/massage-chair">
+                  <Armchair className="mr-1 sm:mr-2 h-4 w-4" />
+                  <span className="hidden sm:inline">Firmware Poltrona</span>
+                  <span className="sm:hidden">Poltrona</span>
+                </Link>
+              </Button>
+              <ESP32ConfigurationDialog />
+              <Button size="sm" className="sm:size-default" onClick={() => {
+                setEditingMachine(null);
+                setDialogOpen(true);
+              }}>
+                <Plus className="mr-1 sm:mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">Nova Máquina</span>
+                <span className="sm:hidden">Nova</span>
+              </Button>
+            </div>
+          )}
         </div>
 
-        <SectionErrorBoundary title="Falha ao carregar pendências de ESP32.">
-          <ESP32PendingApproval />
-        </SectionErrorBoundary>
+        {limitBadge}
+
+        {!isOperator && (
+          <SectionErrorBoundary title="Falha ao carregar pendências de ESP32.">
+            <ESP32PendingApproval />
+          </SectionErrorBoundary>
+        )}
 
         <MachineDialog 
           machine={editingMachine ? { ...editingMachine, type: (editingMachine.type === 'washing' ? 'lavadora' : editingMachine.type === 'drying' ? 'secadora' : editingMachine.type) as 'lavadora' | 'secadora' } : null}
