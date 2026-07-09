@@ -1,4 +1,4 @@
-import { Armchair, Coffee, Droplets, Wind, type LucideIcon } from 'lucide-react';
+import { Sofa, Coffee, Droplets, Wind, type LucideIcon } from 'lucide-react';
 
 export type MachineDisplayType = 'lavadora' | 'secadora' | 'massage' | 'coffee';
 
