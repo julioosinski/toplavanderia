@@ -163,13 +163,12 @@ export const MachineDetailsDialog = ({
         description: `R$ ${(coffeeCentavos / 100).toFixed(2)} — ESP32 executará em alguns segundos.`,
       });
       setCoffeeCredits("");
+      await permission.refetch();
       onAfterAction?.();
     } catch (e) {
-      toast({
-        title: "Falha na liberação",
-        description: e instanceof Error ? e.message : "Tente novamente.",
-        variant: "destructive",
-      });
+      const msg = e instanceof Error ? e.message : "Falha desconhecida ao liberar crédito.";
+      const { title, description } = classifyReleaseError(msg);
+      toast({ title, description, variant: "destructive" });
     } finally {
       setReleasingCoffee(false);
     }
