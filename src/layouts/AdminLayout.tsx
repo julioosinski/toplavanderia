@@ -115,7 +115,8 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
-  const { currentLaundry, loading, error, retry, userRole, isSuperAdmin, panelAccessDenied } = useLaundry();
+  const { currentLaundry, loading, error, retry, userRole, isSuperAdmin, isAdmin, panelAccessDenied } = useLaundry();
+  const isOperatorOnly = userRole === 'operator' && !isAdmin && !isSuperAdmin;
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
