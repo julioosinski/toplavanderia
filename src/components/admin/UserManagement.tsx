@@ -49,6 +49,7 @@ export const UserManagement = () => {
   const [open, setOpen] = useState(false);
   const [users, setUsers] = useState<UserRole[]>([]);
   const [loading, setLoading] = useState(true);
+  const [authDialog, setAuthDialog] = useState<{ userId: string; userName: string; laundryId: string } | null>(null);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
