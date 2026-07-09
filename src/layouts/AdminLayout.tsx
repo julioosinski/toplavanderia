@@ -55,8 +55,8 @@ import type { User } from "@supabase/supabase-js";
 type RoleBadgeVariant = "default" | "secondary" | "outline";
 
 const menuItems = [
-  { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
-  { title: "Máquinas", url: "/admin/machines", icon: WashingMachine, operatorAllowed: true },
+  { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard, operatorAllowed: true },
+  { title: "Máquinas", url: "/admin/machines", icon: WashingMachine },
   { title: "Cardápio Café", url: "/admin/coffee-menu", icon: Coffee },
   { title: "Firmware Café", url: "/admin/coffee-firmware", icon: Cpu },
   { title: "Poltrona Massagem", url: "/admin/massage-chair", icon: Sofa },
@@ -230,8 +230,8 @@ export default function AdminLayout() {
     return <Navigate to="/no-access" replace />;
   }
 
-  if (isOperatorOnly && location.pathname !== '/admin/machines') {
-    return <Navigate to="/admin/machines" replace />;
+  if (isOperatorOnly && location.pathname !== '/admin/dashboard') {
+    return <Navigate to="/admin/dashboard" replace />;
   }
 
 

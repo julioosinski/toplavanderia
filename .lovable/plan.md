@@ -1,26 +1,17 @@
-## Problema identificado
+Plano de ajuste:
 
-A tela está carregando corretamente e a chamada para `machines` está sendo feita, mas o Supabase retorna `[]` para o usuário atual na lavanderia `TOP LAVANDERIA SINUELO`.
+1. Alterar o roteamento do operador
+   - Hoje o operador é forçado para `/admin/machines`, por isso ele continua vendo a tela antiga de Máquinas.
+   - Vou trocar esse redirecionamento para `/admin/dashboard`.
+   - Se o operador tentar abrir `/admin/machines`, será enviado para o Dashboard operacional.
 
-O usuário tem dois papéis:
+2. Ajustar o menu lateral do operador
+   - Para operador, deixar apenas o item “Dashboard” acessível.
+   - Remover “Máquinas” do menu do operador para evitar voltar para a tela errada.
 
-- `operator` na lavanderia que possui as máquinas (`TOP LAVANDERIA SINUELO`)
-- `admin` em outra lavanderia
+3. Garantir o conteúdo correto do Dashboard
+   - Manter o Dashboard sem faturamento, sem receita e sem cards financeiros.
+   - Exibir somente as máquinas da lavanderia do operador, status e botões de liberação manual.
 
-A política atual de RLS usa `get_user_laundry_id(auth.uid())`, que pega apenas uma lavanderia do usuário. Quando o usuário possui mais de um papel/lavanderia, essa função pode retornar a lavanderia errada e bloquear as máquinas da lavanderia correta.
-
-## Plano de correção
-
-1. Ajustar as políticas RLS de `machines` para validar acesso por qualquer papel do usuário na lavanderia da máquina, não apenas pela primeira lavanderia retornada por `get_user_laundry_id`.
-
-2. Ajustar as políticas RLS de `esp32_status` com a mesma regra, para os sinais/heartbeat das máquinas também aparecerem corretamente.
-
-3. Manter a segurança:
-   - `super_admin` continua vendo tudo.
-   - `admin` continua podendo gerenciar máquinas apenas nas lavanderias onde tem papel de admin.
-   - `operator` passa a poder visualizar máquinas/status da lavanderia onde tem papel de operador.
-   - operador não ganha permissão de criar, editar ou excluir máquinas.
-
-4. Revisar a seleção de papel no frontend para não tratar usuário com `admin` em uma lavanderia e `operator` em outra como admin global da lavanderia errada.
-
-5. Depois da migração, validar que a consulta para `/admin/machines` retorna as máquinas da lavanderia `TOP LAVANDERIA SINUELO` para o operador atual.
+4. Validar no preview
+   - Confirmar que um operador ao entrar em `/admin`, `/admin/dashboard` ou `/admin/machines` vê a tela operacional com máquinas e botões, não a tela de cadastro/gestão e não os faturamentos.
