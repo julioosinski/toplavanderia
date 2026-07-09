@@ -313,6 +313,46 @@ int parseCycleMinutes(JsonObject cmd) {
   return minutes;
 }
 
+void aplicarVolumeSeValido(JsonObject src, const char* key, int* target) {
+  if (!src.containsKey(key) || target == nullptr) {
+    return;
+  }
+  int value = src[key] | *target;
+  if (value < 0) value = 0;
+  if (value > 30) value = 30;
+  *target = value;
+}
+
+void applyRuntimeAudioConfig(JsonObject cmd) {
+  // Aceita duas formas:
+  // 1) payload.volume_audio_001 ... payload.volume_audio_007
+  // 2) payload.audio_volumes.{volume_audio_001 ... volume_audio_007}
+  if (!cmd.containsKey("payload")) {
+    return;
+  }
+
+  JsonObject payload = cmd["payload"];
+  if (payload.isNull()) {
+    return;
+  }
+
+  JsonObject nested = payload["audio_volumes"];
+  JsonObject source = nested.isNull() ? payload : nested;
+
+  aplicarVolumeSeValido(source, "volume_audio_001", &volume_audio_001);
+  aplicarVolumeSeValido(source, "volume_audio_002", &volume_audio_002);
+  aplicarVolumeSeValido(source, "volume_audio_003", &volume_audio_003);
+  aplicarVolumeSeValido(source, "volume_audio_004", &volume_audio_004);
+  aplicarVolumeSeValido(source, "volume_audio_005", &volume_audio_005);
+  aplicarVolumeSeValido(source, "volume_audio_006", &volume_audio_006);
+  aplicarVolumeSeValido(source, "volume_audio_007", &volume_audio_007);
+
+  Serial.printf(
+      "Volumes runtime aplicados: [%d,%d,%d,%d,%d,%d,%d]\n",
+      volume_audio_001, volume_audio_002, volume_audio_003, volume_audio_004,
+      volume_audio_005, volume_audio_006, volume_audio_007);
+}
+
 void processCommand(JsonObject cmd) {
   const char* action = cmd["action"] | "";
   const char* cmdId = cmd["id"] | "";
@@ -321,6 +361,7 @@ void processCommand(JsonObject cmd) {
   }
 
   if (strcmp(action, "on") == 0 || strcmp(action, "activate") == 0 || strcmp(action, "turn_on") == 0) {
+    applyRuntimeAudioConfig(cmd);
     int minutes = parseCycleMinutes(cmd);
     iniciarPoltrona(minutes);
     if (confirmCommand(cmdId)) {

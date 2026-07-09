@@ -14,6 +14,11 @@ interface ESP32ControlRequest {
   payload?: Record<string, unknown>;
 }
 
+interface MachineControlConfig {
+  cycle_time_minutes?: number | null;
+  metadata?: Record<string, unknown> | null;
+}
+
 const getErrorMessage = (error: unknown) => {
   return error instanceof Error ? error.message : 'Erro inesperado';
 };
@@ -62,7 +67,49 @@ Deno.serve(async (req) => {
     }
 
     const resolvedRelayPin = action === 'credito' ? (relay_pin ?? 0) : (relay_pin ?? 1);
-    const resolvedPayload = payload ?? {};
+    const resolvedPayload: Record<string, unknown> = { ...(payload ?? {}) };
+
+    // Enriquecer payload com config dinâmica da máquina (tempo + volumes) para firmwares timed_session.
+    if (action === 'on') {
+      const { data: machineData, error: machineError } = await supabase
+        .from('machines')
+        .select('cycle_time_minutes, metadata')
+        .eq('id', machine_id)
+        .maybeSingle<MachineControlConfig>();
+
+      if (machineError) {
+        console.warn('⚠️ Falha ao carregar config da máquina para payload dinâmico:', machineError.message);
+      } else if (machineData) {
+        const cycleMinutes = typeof machineData.cycle_time_minutes === 'number'
+          ? machineData.cycle_time_minutes
+          : null;
+        if (cycleMinutes && cycleMinutes > 0 && !('cycle_time_minutes' in resolvedPayload)) {
+          resolvedPayload.cycle_time_minutes = cycleMinutes;
+        }
+
+        const metadata = machineData.metadata ?? {};
+        const audioKeys = [
+          'volume_audio_001',
+          'volume_audio_002',
+          'volume_audio_003',
+          'volume_audio_004',
+          'volume_audio_005',
+          'volume_audio_006',
+          'volume_audio_007',
+        ] as const;
+        const audioVolumes: Record<string, number> = {};
+        for (const key of audioKeys) {
+          const raw = metadata[key];
+          const value = typeof raw === 'number' ? raw : Number(raw);
+          if (Number.isFinite(value)) {
+            audioVolumes[key] = Math.max(0, Math.min(30, Math.round(value)));
+          }
+        }
+        if (Object.keys(audioVolumes).length > 0 && !('audio_volumes' in resolvedPayload)) {
+          resolvedPayload.audio_volumes = audioVolumes;
+        }
+      }
+    }
 
     console.log(`🎮 Controle ESP32: ${esp32_id} relay ${resolvedRelayPin} → ${action}`);
 
