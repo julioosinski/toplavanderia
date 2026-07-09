@@ -12,13 +12,34 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { type Machine } from "@/hooks/useMachines";
-import { Clock, DollarSign, MapPin, Cpu, Wifi, Play, Zap } from "lucide-react";
+import { Clock, DollarSign, MapPin, Cpu, Wifi, Play, Zap, AlertTriangle, ShieldOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { forceMachineReleased } from "@/lib/machineEsp32Sync";
 import { adminRemoteRelease } from "@/lib/deviceRemoteRelease";
 import { reaisToCentavos } from "@/lib/money";
 import { supabase } from "@/integrations/supabase/client";
 import { getMachineTypeMeta } from "@/lib/machineDisplayTypes";
+import { useOperatorReleasePermission } from "@/hooks/useOperatorReleasePermission";
+
+const brl = (cents: number) =>
+  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
+
+const classifyReleaseError = (message: string): { title: string; description: string } => {
+  const m = message.toLowerCase();
+  if (m.includes("limite diário") || m.includes("limite diario")) {
+    return { title: "Limite diário atingido", description: message };
+  }
+  if (m.includes("limite mensal")) {
+    return { title: "Limite mensal atingido", description: message };
+  }
+  if (m.includes("sem autorização") || m.includes("sem autorizacao") || m.includes("sem permissão") || m.includes("sem permissao")) {
+    return { title: "Sem autorização para liberar", description: message };
+  }
+  if (m.includes("esp32")) {
+    return { title: "ESP32 não configurado", description: message };
+  }
+  return { title: "Não foi possível liberar", description: message };
+};
 
 interface MachineDetailsDialogProps {
   machine: Machine | null;
@@ -38,10 +59,28 @@ export const MachineDetailsDialog = ({
   const [startingCycle, setStartingCycle] = useState(false);
   const [coffeeCredits, setCoffeeCredits] = useState("");
   const [releasingCoffee, setReleasingCoffee] = useState(false);
+  const permission = useOperatorReleasePermission();
 
   const coffeeCentavos = reaisToCentavos(coffeeCredits);
 
   if (!machine) return null;
+
+  // Preflight (operator only) — bloqueios de autorização/limite antes de enviar à RPC
+  const nextReleaseCents = machine.type === "coffee"
+    ? (coffeeCentavos > 0 ? coffeeCentavos : 0)
+    : Math.round((machine.price || 0) * 100);
+  const wouldExceedDaily =
+    permission.isOperator &&
+    permission.dayLimitCents != null &&
+    nextReleaseCents > 0 &&
+    permission.dayCents + nextReleaseCents > permission.dayLimitCents;
+  const wouldExceedMonthly =
+    permission.isOperator &&
+    permission.monthLimitCents != null &&
+    nextReleaseCents > 0 &&
+    permission.monthCents + nextReleaseCents > permission.monthLimitCents;
+  const operatorBlocked = permission.isOperator && !permission.canRelease;
+  const releaseBlocked = operatorBlocked || wouldExceedDaily || wouldExceedMonthly;
 
   const typeMeta = getMachineTypeMeta(machine.type);
   const IconComponent = typeMeta.icon;
@@ -89,14 +128,13 @@ export const MachineDetailsDialog = ({
 
       // Small delay to let the DB update propagate before refreshing
       await new Promise(r => setTimeout(r, 800));
+      await permission.refetch();
       onAfterAction?.();
       onOpenChange(false);
     } catch (e) {
-      toast({
-        title: "Erro ao iniciar ciclo",
-        description: e instanceof Error ? e.message : "Tente novamente.",
-        variant: "destructive",
-      });
+      const msg = e instanceof Error ? e.message : "Falha desconhecida ao liberar máquina.";
+      const { title, description } = classifyReleaseError(msg);
+      toast({ title, description, variant: "destructive" });
     } finally {
       setStartingCycle(false);
     }
@@ -125,13 +163,12 @@ export const MachineDetailsDialog = ({
         description: `R$ ${(coffeeCentavos / 100).toFixed(2)} — ESP32 executará em alguns segundos.`,
       });
       setCoffeeCredits("");
+      await permission.refetch();
       onAfterAction?.();
     } catch (e) {
-      toast({
-        title: "Falha na liberação",
-        description: e instanceof Error ? e.message : "Tente novamente.",
-        variant: "destructive",
-      });
+      const msg = e instanceof Error ? e.message : "Falha desconhecida ao liberar crédito.";
+      const { title, description } = classifyReleaseError(msg);
+      toast({ title, description, variant: "destructive" });
     } finally {
       setReleasingCoffee(false);
     }
@@ -250,12 +287,60 @@ export const MachineDetailsDialog = ({
               </p>
               <Button
                 className="w-full bg-amber-600 hover:bg-amber-700 text-primary-foreground"
-                disabled={releasingCoffee || coffeeCentavos <= 0}
+                disabled={releasingCoffee || coffeeCentavos <= 0 || releaseBlocked}
                 onClick={() => void handleReleaseCoffeeCredits()}
               >
                 <Zap size={16} className="mr-1" />
                 {releasingCoffee ? "Enfileirando…" : "Liberar créditos"}
               </Button>
+            </div>
+          )}
+
+          {permission.isOperator && (
+            <div className="rounded-lg border p-3 text-sm space-y-2">
+              {operatorBlocked ? (
+                <div className="flex items-start gap-2 text-red-700 dark:text-red-400">
+                  <ShieldOff size={16} className="mt-0.5" />
+                  <div>
+                    <p className="font-medium">Você não tem autorização para liberar máquinas.</p>
+                    <p className="text-xs">Peça ao gerente para habilitar em Usuários → Autorização.</p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Seu consumo de liberação manual
+                  </p>
+                  {permission.dayLimitCents != null && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Hoje</span>
+                      <span className={wouldExceedDaily ? "font-semibold text-red-600" : "font-medium"}>
+                        {brl(permission.dayCents)} de {brl(permission.dayLimitCents)}
+                      </span>
+                    </div>
+                  )}
+                  {permission.monthLimitCents != null && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Este mês</span>
+                      <span className={wouldExceedMonthly ? "font-semibold text-red-600" : "font-medium"}>
+                        {brl(permission.monthCents)} de {brl(permission.monthLimitCents)}
+                      </span>
+                    </div>
+                  )}
+                  {permission.dayLimitCents == null && permission.monthLimitCents == null && (
+                    <p className="text-xs text-muted-foreground">Sem limites configurados.</p>
+                  )}
+                  {(wouldExceedDaily || wouldExceedMonthly) && (
+                    <div className="flex items-start gap-2 text-red-700 dark:text-red-400 pt-1">
+                      <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                      <p className="text-xs">
+                        Esta liberação de {brl(nextReleaseCents)} ultrapassaria o limite
+                        {wouldExceedDaily ? " diário" : " mensal"}. Peça ao gerente para aumentar em Usuários → Autorização.
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
 
@@ -267,8 +352,9 @@ export const MachineDetailsDialog = ({
             {machine.status === "available" && machine.type !== "coffee" && (
               <Button
                 className="flex-1 bg-green-600 hover:bg-green-700 text-primary-foreground"
-                disabled={startingCycle}
+                disabled={startingCycle || releaseBlocked}
                 onClick={handleStartManualCycle}
+                title={releaseBlocked ? "Bloqueado por autorização/limite" : undefined}
               >
                 <Play size={16} className="mr-1" />
                 {startingCycle ? "Iniciando…" : "Iniciar Ciclo Manual"}

@@ -15,6 +15,9 @@ import {
 } from '@/components/ui/dialog';
 import { reaisToCentavos } from '@/lib/money';
 
+const brl = (cents: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100);
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -131,7 +134,13 @@ export function OperatorAuthorizationDialog({
               onChange={(e) => setDailyLimit(e.target.value)}
               disabled={loading || !canRelease}
             />
-            <p className="text-xs text-muted-foreground">Deixe vazio para não aplicar limite diário.</p>
+            <p className="text-xs text-muted-foreground">
+              Digite em reais — ex.: <strong>60,00</strong> para R$ 60,00.{' '}
+              {dailyLimit.trim() && reaisToCentavos(dailyLimit) > 0 && (
+                <span className="text-foreground">Equivale a {brl(reaisToCentavos(dailyLimit))}.</span>
+              )}
+              {!dailyLimit.trim() && <span>Vazio = sem limite diário.</span>}
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -144,7 +153,13 @@ export function OperatorAuthorizationDialog({
               onChange={(e) => setMonthlyLimit(e.target.value)}
               disabled={loading || !canRelease}
             />
-            <p className="text-xs text-muted-foreground">Deixe vazio para não aplicar limite mensal.</p>
+            <p className="text-xs text-muted-foreground">
+              Digite em reais — ex.: <strong>500,00</strong> para R$ 500,00.{' '}
+              {monthlyLimit.trim() && reaisToCentavos(monthlyLimit) > 0 && (
+                <span className="text-foreground">Equivale a {brl(reaisToCentavos(monthlyLimit))}.</span>
+              )}
+              {!monthlyLimit.trim() && <span>Vazio = sem limite mensal.</span>}
+            </p>
           </div>
         </div>
 
