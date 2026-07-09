@@ -287,7 +287,7 @@ export const MachineDetailsDialog = ({
               </p>
               <Button
                 className="w-full bg-amber-600 hover:bg-amber-700 text-primary-foreground"
-                disabled={releasingCoffee || coffeeCentavos <= 0}
+                disabled={releasingCoffee || coffeeCentavos <= 0 || releaseBlocked}
                 onClick={() => void handleReleaseCoffeeCredits()}
               >
                 <Zap size={16} className="mr-1" />
