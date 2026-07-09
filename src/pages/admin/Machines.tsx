@@ -356,6 +356,84 @@ export default function Machines() {
       header: "Ações",
       cell: ({ row }) => {
         const machine = row.original;
+
+        if (isOperator && !canRelease) {
+          return (
+            <span className="text-xs text-muted-foreground">
+              Sem autorização
+            </span>
+          );
+        }
+
+        const handleRelease = async () => {
+          const isCoffee = machine.type === 'coffee';
+          const isMassage = machine.type === 'massage';
+          if (isCoffee) {
+            const raw = window.prompt(
+              `Valor do crédito de café em "${machine.name}" (R$):`,
+              '',
+            );
+            if (!raw) return;
+            const valorCentavos = reaisToCentavos(raw);
+            if (valorCentavos <= 0) {
+              toast({ title: 'Valor inválido', description: 'Informe um valor em reais (ex.: 8,50).', variant: 'destructive' });
+              return;
+            }
+            if (!confirm(`Liberar R$ ${(valorCentavos / 100).toFixed(2)} no moedeiro de "${machine.name}"?`)) return;
+            const { error } = await adminRemoteRelease({ machineId: machine.id, valorCentavos });
+            if (error) {
+              toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+            } else {
+              toast({ title: 'Liberação remota enfileirada', description: `R$ ${(valorCentavos / 100).toFixed(2)} — comando enviado ao ESP32.` });
+              loadMachines();
+              void refetchPermission();
+            }
+            return;
+          }
+          if (isMassage) {
+            if (!confirm('Liberar sessão de massagem remotamente (relé ON pelo tempo do ciclo)?')) return;
+            const { error } = await adminRemoteRelease({ machineId: machine.id });
+            if (error) {
+              toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+            } else {
+              toast({ title: 'Liberação remota enfileirada', description: 'Comando enviado ao ESP32.' });
+              loadMachines();
+              void refetchPermission();
+            }
+            return;
+          }
+          if (isOperator) {
+            // Operador: usa admin_remote_release (com validação de limite no backend)
+            if (!confirm(`Liberar máquina "${machine.name}" remotamente?`)) return;
+            const { error } = await adminRemoteRelease({ machineId: machine.id });
+            if (error) {
+              toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+            } else {
+              toast({ title: 'Máquina liberada', description: 'Comando enviado ao ESP32.' });
+              loadMachines();
+              void refetchPermission();
+            }
+            return;
+          }
+          if (!confirm('Liberar no totem (disponível), atualizar relé no painel e enviar comando OFF ao ESP32?')) return;
+          const { error } = await forceMachineReleased({ machineId: machine.id });
+          if (error) {
+            toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+          } else {
+            toast({ title: 'Máquina liberada', description: 'Totem e esp32_status alinhados; comando de desligar relé enfileirado.' });
+            loadMachines();
+          }
+        };
+
+        if (isOperator) {
+          return (
+            <Button variant="outline" size="sm" onClick={handleRelease}>
+              <Unlock className="mr-2 h-4 w-4" />
+              {machine.type === 'coffee' || machine.type === 'massage' ? 'Liberar remoto' : 'Liberar'}
+            </Button>
+          );
+        }
+
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -368,127 +446,18 @@ export default function Machines() {
                 <Pencil className="mr-2 h-4 w-4" />
                 Editar
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={async () => {
-                  const isCoffee = machine.type === 'coffee';
-                  const isMassage = machine.type === 'massage';
-                  if (isCoffee || isMassage) {
-                    if (isCoffee) {
-                      const raw = window.prompt(
-                        `Valor do crédito de café em "${machine.name}" (R$):`,
-                        '',
-                      );
-                      if (!raw) return;
-                      const valorCentavos = reaisToCentavos(raw);
-                      if (valorCentavos <= 0) {
-                        toast({
-                          title: 'Valor inválido',
-                          description: 'Informe um valor em reais (ex.: 8,50).',
-                          variant: 'destructive',
-                        });
-                        return;
-                      }
-                      if (
-                        !confirm(
-                          `Liberar R$ ${(valorCentavos / 100).toFixed(2)} no moedeiro de "${machine.name}"?`,
-                        )
-                      ) {
-                        return;
-                      }
-                      const { error } = await adminRemoteRelease({
-                        machineId: machine.id,
-                        valorCentavos,
-                      });
-                      if (error) {
-                        toast({
-                          title: 'Erro',
-                          description: error.message,
-                          variant: 'destructive',
-                        });
-                      } else {
-                        toast({
-                          title: 'Liberação remota enfileirada',
-                          description: `R$ ${(valorCentavos / 100).toFixed(2)} — comando enviado ao ESP32.`,
-                        });
-                        loadMachines();
-                      }
-                      return;
-                    }
-
-                    if (
-                      !confirm(
-                        'Liberar sessão de massagem remotamente (relé ON pelo tempo do ciclo)?',
-                      )
-                    ) {
-                      return;
-                    }
-                    const { error } = await adminRemoteRelease({
-                      machineId: machine.id,
-                    });
-                    if (error) {
-                      toast({
-                        title: 'Erro',
-                        description: error.message,
-                        variant: 'destructive',
-                      });
-                    } else {
-                      toast({
-                        title: 'Liberação remota enfileirada',
-                        description: 'Comando enviado ao ESP32.',
-                      });
-                      loadMachines();
-                    }
-                    return;
-                  }
-                  if (
-                    !confirm(
-                      "Liberar no totem (disponível), atualizar relé no painel e enviar comando OFF ao ESP32?"
-                    )
-                  ) {
-                    return;
-                  }
-                  const { error } = await forceMachineReleased({ machineId: machine.id });
-                  if (error) {
-                    toast({
-                      title: "Erro",
-                      description: error.message,
-                      variant: "destructive",
-                    });
-                  } else {
-                    toast({
-                      title: "Máquina liberada",
-                      description: "Totem e esp32_status alinhados; comando de desligar relé enfileirado.",
-                    });
-                    loadMachines();
-                  }
-                }}
-              >
+              <DropdownMenuItem onClick={handleRelease}>
                 <Unlock className="mr-2 h-4 w-4" />
-                {machine.type === 'coffee' || machine.type === 'massage'
-                  ? 'Liberar remoto'
-                  : 'Liberar máquina'}
+                {machine.type === 'coffee' || machine.type === 'massage' ? 'Liberar remoto' : 'Liberar máquina'}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
-                  if (
-                    !confirm(
-                      "Colocar em manutenção, espelhar relé OFF e enviar comando OFF ao ESP32?"
-                    )
-                  ) {
-                    return;
-                  }
+                  if (!confirm('Colocar em manutenção, espelhar relé OFF e enviar comando OFF ao ESP32?')) return;
                   const { error } = await forceMachineMaintenance(machine.id);
                   if (error) {
-                    toast({
-                      title: "Erro",
-                      description: error.message,
-                      variant: "destructive",
-                    });
+                    toast({ title: 'Erro', description: error.message, variant: 'destructive' });
                   } else {
-                    toast({
-                      title: "Manutenção",
-                      description: "Status atualizado e relé desligado no painel e no ESP32.",
-                    });
+                    toast({ title: 'Manutenção', description: 'Status atualizado e relé desligado no painel e no ESP32.' });
                     loadMachines();
                   }
                 }}
@@ -496,10 +465,7 @@ export default function Machines() {
                 <Wrench className="mr-2 h-4 w-4" />
                 Colocar em manutenção
               </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => handleDelete(machine)}
-                className="text-destructive"
-              >
+              <DropdownMenuItem onClick={() => handleDelete(machine)} className="text-destructive">
                 <Trash2 className="mr-2 h-4 w-4" />
                 Excluir
               </DropdownMenuItem>
