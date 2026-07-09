@@ -407,7 +407,7 @@ export default function Machines() {
             if (!confirm(`Liberar R$ ${(valorCentavos / 100).toFixed(2)} no moedeiro de "${machine.name}"?`)) return;
             const { error } = await adminRemoteRelease({ machineId: machine.id, valorCentavos });
             if (error) {
-              toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+              toast({ ...classifyReleaseError(error.message), variant: 'destructive' });
             } else {
               toast({ title: 'Liberação remota enfileirada', description: `R$ ${(valorCentavos / 100).toFixed(2)} — comando enviado ao ESP32.` });
               loadMachines();
@@ -419,7 +419,7 @@ export default function Machines() {
             if (!confirm('Liberar sessão de massagem remotamente (relé ON pelo tempo do ciclo)?')) return;
             const { error } = await adminRemoteRelease({ machineId: machine.id });
             if (error) {
-              toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+              toast({ ...classifyReleaseError(error.message), variant: 'destructive' });
             } else {
               toast({ title: 'Liberação remota enfileirada', description: 'Comando enviado ao ESP32.' });
               loadMachines();
@@ -432,7 +432,7 @@ export default function Machines() {
             if (!confirm(`Liberar máquina "${machine.name}" remotamente?`)) return;
             const { error } = await adminRemoteRelease({ machineId: machine.id });
             if (error) {
-              toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+              toast({ ...classifyReleaseError(error.message), variant: 'destructive' });
             } else {
               toast({ title: 'Máquina liberada', description: 'Comando enviado ao ESP32.' });
               loadMachines();
