@@ -230,6 +230,11 @@ export default function AdminLayout() {
     return <Navigate to="/no-access" replace />;
   }
 
+  if (isOperatorOnly && location.pathname !== '/admin/machines') {
+    return <Navigate to="/admin/machines" replace />;
+  }
+
+
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen gap-4 p-8 text-center">
