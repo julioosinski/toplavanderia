@@ -17,29 +17,9 @@ import { useToast } from "@/hooks/use-toast";
 import { forceMachineReleased } from "@/lib/machineEsp32Sync";
 import { adminRemoteRelease } from "@/lib/deviceRemoteRelease";
 import { reaisToCentavos } from "@/lib/money";
-import { supabase } from "@/integrations/supabase/client";
 import { getMachineTypeMeta } from "@/lib/machineDisplayTypes";
 import { useOperatorReleasePermission } from "@/hooks/useOperatorReleasePermission";
-
-const brl = (cents: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
-
-const classifyReleaseError = (message: string): { title: string; description: string } => {
-  const m = message.toLowerCase();
-  if (m.includes("limite diário") || m.includes("limite diario")) {
-    return { title: "Limite diário atingido", description: message };
-  }
-  if (m.includes("limite mensal")) {
-    return { title: "Limite mensal atingido", description: message };
-  }
-  if (m.includes("sem autorização") || m.includes("sem autorizacao") || m.includes("sem permissão") || m.includes("sem permissao")) {
-    return { title: "Sem autorização para liberar", description: message };
-  }
-  if (m.includes("esp32")) {
-    return { title: "ESP32 não configurado", description: message };
-  }
-  return { title: "Não foi possível liberar", description: message };
-};
+import { brlFromCents as brl, classifyReleaseError, getManualReleaseBlock } from "@/lib/manualReleaseFeedback";
 
 interface MachineDetailsDialogProps {
   machine: Machine | null;
@@ -81,6 +61,19 @@ export const MachineDetailsDialog = ({
     permission.monthCents + nextReleaseCents > permission.monthLimitCents;
   const operatorBlocked = permission.isOperator && !permission.canRelease;
   const releaseBlocked = operatorBlocked || wouldExceedDaily || wouldExceedMonthly;
+  const currentReleaseUsage = {
+    canRelease: permission.canRelease,
+    dayCents: permission.dayCents,
+    monthCents: permission.monthCents,
+    dayLimitCents: permission.dayLimitCents,
+    monthLimitCents: permission.monthLimitCents,
+  };
+
+  const getFreshOperatorBlock = async (nextCents: number) => {
+    if (!permission.isOperator) return null;
+    const latest = await permission.refetch();
+    return getManualReleaseBlock(latest ?? currentReleaseUsage, nextCents);
+  };
 
   const typeMeta = getMachineTypeMeta(machine.type);
   const IconComponent = typeMeta.icon;
@@ -114,6 +107,12 @@ export const MachineDetailsDialog = ({
   };
 
   const handleStartManualCycle = async () => {
+    const block = await getFreshOperatorBlock(Math.round((machine.price || 0) * 100));
+    if (block) {
+      toast({ ...block, variant: "destructive" });
+      return;
+    }
+
     if (!confirm("Iniciar ciclo manual nesta máquina? Isso será registrado como liberação manual.")) return;
 
     setStartingCycle(true);
@@ -147,6 +146,12 @@ export const MachineDetailsDialog = ({
         description: "Informe um valor em reais maior que zero (ex.: 8,50).",
         variant: "destructive",
       });
+      return;
+    }
+
+    const block = await getFreshOperatorBlock(coffeeCentavos);
+    if (block) {
+      toast({ ...block, variant: "destructive" });
       return;
     }
 

@@ -10,8 +10,13 @@ export interface OperatorReleaseUsage {
   monthLimitCents: number | null;
   isOperator: boolean;
   loading: boolean;
-  refetch: () => Promise<void>;
+  refetch: () => Promise<OperatorReleaseUsageSnapshot | null>;
 }
+
+export type OperatorReleaseUsageSnapshot = Pick<
+  OperatorReleaseUsage,
+  'canRelease' | 'dayCents' | 'monthCents' | 'dayLimitCents' | 'monthLimitCents'
+>;
 
 /**
  * Retorna o estado de autorização e uso do usuário logado para libração manual.
@@ -31,28 +36,38 @@ export function useOperatorReleasePermission(): OperatorReleaseUsage {
 
   const isOperator = userRole === 'operator' && !isAdmin && !isSuperAdmin;
 
-  const fetchUsage = useCallback(async () => {
+  const fetchUsage = useCallback(async (): Promise<OperatorReleaseUsageSnapshot | null> => {
     if (isSuperAdmin || isAdmin) {
-      setState({
+      const next = {
         canRelease: true,
         dayCents: 0,
         monthCents: 0,
         dayLimitCents: null,
         monthLimitCents: null,
+      };
+      setState({
+        ...next,
         loading: false,
       });
-      return;
+      return next;
     }
     if (!isOperator || !currentLaundry?.id) {
-      setState((s) => ({ ...s, loading: false, canRelease: false }));
-      return;
+      const next = {
+        canRelease: false,
+        dayCents: 0,
+        monthCents: 0,
+        dayLimitCents: null,
+        monthLimitCents: null,
+      };
+      setState({ ...next, loading: false });
+      return next;
     }
     try {
       const { data: userData } = await supabase.auth.getUser();
       const uid = userData?.user?.id;
       if (!uid) {
         setState((s) => ({ ...s, loading: false, canRelease: false }));
-        return;
+        return null;
       }
       const { data, error } = await supabase.rpc('get_operator_release_usage', {
         _user_id: uid,
@@ -60,17 +75,22 @@ export function useOperatorReleasePermission(): OperatorReleaseUsage {
       });
       if (error) throw error;
       const d = (data ?? {}) as Record<string, unknown>;
-      setState({
+      const next = {
         canRelease: Boolean(d.can_release),
         dayCents: Number(d.day_cents ?? 0),
         monthCents: Number(d.month_cents ?? 0),
         dayLimitCents: d.day_limit_cents == null ? null : Number(d.day_limit_cents),
         monthLimitCents: d.month_limit_cents == null ? null : Number(d.month_limit_cents),
+      };
+      setState({
+        ...next,
         loading: false,
       });
+      return next;
     } catch (err) {
       console.warn('[useOperatorReleasePermission]', err);
       setState((s) => ({ ...s, loading: false, canRelease: false }));
+      return null;
     }
   }, [isSuperAdmin, isAdmin, isOperator, currentLaundry?.id]);
 
