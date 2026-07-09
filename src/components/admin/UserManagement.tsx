@@ -364,19 +364,46 @@ export const UserManagement = () => {
                     </p>
                   )}
                 </div>
-                {(isSuperAdmin || (currentLaundry && user.role !== 'admin' && user.role !== 'super_admin')) && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleDelete(user.user_id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                )}
+                <div className="flex gap-2">
+                  {user.role === 'operator' && user.laundry_id && (isSuperAdmin || currentLaundry) && (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      title="Autorização de liberação"
+                      onClick={() =>
+                        setAuthDialog({
+                          userId: user.user_id,
+                          userName: user.profiles?.full_name || 'Operador',
+                          laundryId: user.laundry_id!,
+                        })
+                      }
+                    >
+                      <ShieldCheck className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {(isSuperAdmin || (currentLaundry && user.role !== 'admin' && user.role !== 'super_admin')) && (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => handleDelete(user.user_id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
               </div>
             ))
           )}
         </div>
+        {authDialog && (
+          <OperatorAuthorizationDialog
+            open={!!authDialog}
+            onOpenChange={(o) => !o && setAuthDialog(null)}
+            userId={authDialog.userId}
+            userName={authDialog.userName}
+            laundryId={authDialog.laundryId}
+          />
+        )}
       </CardContent>
     </Card>
   );
