@@ -498,36 +498,42 @@ export default function Machines() {
               Gerencie lavadoras, secadoras, poltronas e café
             </p>
           </div>
-          <div className="flex gap-2 flex-wrap">
-            <Button variant="outline" size="sm" className="sm:size-default" asChild>
-              <Link to="/admin/coffee-firmware">
-                <Coffee className="mr-1 sm:mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">Firmware Café</span>
-                <span className="sm:hidden">Café</span>
-              </Link>
-            </Button>
-            <Button variant="outline" size="sm" className="sm:size-default" asChild>
-              <Link to="/admin/massage-chair">
-                <Armchair className="mr-1 sm:mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">Firmware Poltrona</span>
-                <span className="sm:hidden">Poltrona</span>
-              </Link>
-            </Button>
-            <ESP32ConfigurationDialog />
-            <Button size="sm" className="sm:size-default" onClick={() => {
-              setEditingMachine(null);
-              setDialogOpen(true);
-            }}>
-              <Plus className="mr-1 sm:mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">Nova Máquina</span>
-              <span className="sm:hidden">Nova</span>
-            </Button>
-          </div>
+          {!isOperator && (
+            <div className="flex gap-2 flex-wrap">
+              <Button variant="outline" size="sm" className="sm:size-default" asChild>
+                <Link to="/admin/coffee-firmware">
+                  <Coffee className="mr-1 sm:mr-2 h-4 w-4" />
+                  <span className="hidden sm:inline">Firmware Café</span>
+                  <span className="sm:hidden">Café</span>
+                </Link>
+              </Button>
+              <Button variant="outline" size="sm" className="sm:size-default" asChild>
+                <Link to="/admin/massage-chair">
+                  <Armchair className="mr-1 sm:mr-2 h-4 w-4" />
+                  <span className="hidden sm:inline">Firmware Poltrona</span>
+                  <span className="sm:hidden">Poltrona</span>
+                </Link>
+              </Button>
+              <ESP32ConfigurationDialog />
+              <Button size="sm" className="sm:size-default" onClick={() => {
+                setEditingMachine(null);
+                setDialogOpen(true);
+              }}>
+                <Plus className="mr-1 sm:mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">Nova Máquina</span>
+                <span className="sm:hidden">Nova</span>
+              </Button>
+            </div>
+          )}
         </div>
 
-        <SectionErrorBoundary title="Falha ao carregar pendências de ESP32.">
-          <ESP32PendingApproval />
-        </SectionErrorBoundary>
+        {limitBadge}
+
+        {!isOperator && (
+          <SectionErrorBoundary title="Falha ao carregar pendências de ESP32.">
+            <ESP32PendingApproval />
+          </SectionErrorBoundary>
+        )}
 
         <MachineDialog 
           machine={editingMachine ? { ...editingMachine, type: (editingMachine.type === 'washing' ? 'lavadora' : editingMachine.type === 'drying' ? 'secadora' : editingMachine.type) as 'lavadora' | 'secadora' } : null}
