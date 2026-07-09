@@ -296,6 +296,54 @@ export const MachineDetailsDialog = ({
             </div>
           )}
 
+          {permission.isOperator && (
+            <div className="rounded-lg border p-3 text-sm space-y-2">
+              {operatorBlocked ? (
+                <div className="flex items-start gap-2 text-red-700 dark:text-red-400">
+                  <ShieldOff size={16} className="mt-0.5" />
+                  <div>
+                    <p className="font-medium">Você não tem autorização para liberar máquinas.</p>
+                    <p className="text-xs">Peça ao gerente para habilitar em Usuários → Autorização.</p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Seu consumo de liberação manual
+                  </p>
+                  {permission.dayLimitCents != null && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Hoje</span>
+                      <span className={wouldExceedDaily ? "font-semibold text-red-600" : "font-medium"}>
+                        {brl(permission.dayCents)} de {brl(permission.dayLimitCents)}
+                      </span>
+                    </div>
+                  )}
+                  {permission.monthLimitCents != null && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Este mês</span>
+                      <span className={wouldExceedMonthly ? "font-semibold text-red-600" : "font-medium"}>
+                        {brl(permission.monthCents)} de {brl(permission.monthLimitCents)}
+                      </span>
+                    </div>
+                  )}
+                  {permission.dayLimitCents == null && permission.monthLimitCents == null && (
+                    <p className="text-xs text-muted-foreground">Sem limites configurados.</p>
+                  )}
+                  {(wouldExceedDaily || wouldExceedMonthly) && (
+                    <div className="flex items-start gap-2 text-red-700 dark:text-red-400 pt-1">
+                      <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                      <p className="text-xs">
+                        Esta liberação de {brl(nextReleaseCents)} ultrapassaria o limite
+                        {wouldExceedDaily ? " diário" : " mensal"}. Peça ao gerente para aumentar em Usuários → Autorização.
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
               Fechar
@@ -304,8 +352,9 @@ export const MachineDetailsDialog = ({
             {machine.status === "available" && machine.type !== "coffee" && (
               <Button
                 className="flex-1 bg-green-600 hover:bg-green-700 text-primary-foreground"
-                disabled={startingCycle}
+                disabled={startingCycle || releaseBlocked}
                 onClick={handleStartManualCycle}
+                title={releaseBlocked ? "Bloqueado por autorização/limite" : undefined}
               >
                 <Play size={16} className="mr-1" />
                 {startingCycle ? "Iniciando…" : "Iniciar Ciclo Manual"}
