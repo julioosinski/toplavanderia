@@ -59,10 +59,28 @@ export const MachineDetailsDialog = ({
   const [startingCycle, setStartingCycle] = useState(false);
   const [coffeeCredits, setCoffeeCredits] = useState("");
   const [releasingCoffee, setReleasingCoffee] = useState(false);
+  const permission = useOperatorReleasePermission();
 
   const coffeeCentavos = reaisToCentavos(coffeeCredits);
 
   if (!machine) return null;
+
+  // Preflight (operator only) — bloqueios de autorização/limite antes de enviar à RPC
+  const nextReleaseCents = machine.type === "coffee"
+    ? (coffeeCentavos > 0 ? coffeeCentavos : 0)
+    : Math.round((machine.price || 0) * 100);
+  const wouldExceedDaily =
+    permission.isOperator &&
+    permission.dayLimitCents != null &&
+    nextReleaseCents > 0 &&
+    permission.dayCents + nextReleaseCents > permission.dayLimitCents;
+  const wouldExceedMonthly =
+    permission.isOperator &&
+    permission.monthLimitCents != null &&
+    nextReleaseCents > 0 &&
+    permission.monthCents + nextReleaseCents > permission.monthLimitCents;
+  const operatorBlocked = permission.isOperator && !permission.canRelease;
+  const releaseBlocked = operatorBlocked || wouldExceedDaily || wouldExceedMonthly;
 
   const typeMeta = getMachineTypeMeta(machine.type);
   const IconComponent = typeMeta.icon;
