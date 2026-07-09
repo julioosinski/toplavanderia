@@ -25,7 +25,7 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
   const isAdmin = userRole === 'admin' || isSuperAdmin;
   const isOperator = userRole === 'operator' || isAdmin;
 
-  const fetchUserRole = useCallback(async (userId: string) => {
+  const fetchUserRoles = useCallback(async (userId: string) => {
     const { data, error } = await supabase
       .from('user_roles')
       .select('role, laundry_id')
@@ -37,22 +37,33 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       return null;
     }
 
-    if (!data || data.length === 0) return null;
+    return data || [];
+  }, []);
+
+  const selectUserRole = useCallback((roles: { role: AppRole; laundry_id: string | null }[], preferredLaundryId?: string | null) => {
+    if (roles.length === 0) return null;
 
     // Se usuário tem role super_admin, sempre priorizar
-    const superAdminRole = data.find(r => r.role === 'super_admin');
+    const superAdminRole = roles.find(r => r.role === 'super_admin');
     if (superAdminRole) {
       return superAdminRole;
     }
 
+    // Se existe lavanderia já selecionada, usar o papel daquela lavanderia.
+    // Isso evita que um admin de uma unidade seja tratado como admin em outra onde é operador.
+    if (preferredLaundryId && preferredLaundryId !== 'all') {
+      const preferredRole = roles.find(r => r.laundry_id === preferredLaundryId);
+      if (preferredRole) return preferredRole;
+    }
+
     // Se tem outras roles além de super_admin, priorizar role com laundry_id
-    const roleWithLaundry = data.find(r => r.laundry_id !== null);
+    const roleWithLaundry = roles.find(r => r.laundry_id !== null);
     if (roleWithLaundry) {
       return roleWithLaundry;
     }
 
     // Fallback para primeira role
-    return data[0];
+    return roles[0];
   }, []);
 
   const fetchLaundries = useCallback(async () => {
@@ -188,8 +199,10 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
+      const savedLaundryId = await getItemWithTimeout('selectedLaundryId', 3000);
       debugLaundry('[LaundryContext] Buscando role do usuário...');
-      const roleData = await fetchUserRole(user.id);
+      const userRoles = await fetchUserRoles(user.id);
+      const roleData = selectUserRole(userRoles as { role: AppRole; laundry_id: string | null }[], savedLaundryId);
       debugLaundry('[LaundryContext] Role encontrada:', roleData);
 
       if (!roleData) {
@@ -222,7 +235,6 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         
         setLaundries(laundriesList);
 
-        const savedLaundryId = await getItemWithTimeout('selectedLaundryId', 3000);
         if (savedLaundryId === 'all') {
           setIsViewingAllLaundries(true);
           if (laundriesList[0]) {
@@ -270,7 +282,7 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       initializingRef.current = false;
     }
-  }, [fetchCurrentLaundry, fetchLaundries, fetchUserRole, toast]);
+  }, [fetchCurrentLaundry, fetchLaundries, fetchUserRoles, selectUserRole, toast]);
 
   useEffect(() => {
     void initializeLaundryContext();
