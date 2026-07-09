@@ -79,21 +79,8 @@ export const MachineDetailsDialog = ({
 
     setStartingCycle(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Usuário não autenticado");
-
-      // Call esp32-credit-release which now creates the transaction
-      const { data, error } = await supabase.functions.invoke("esp32-credit-release", {
-        body: {
-          transactionId: crypto.randomUUID(),
-          amount: machine.price,
-          machineId: machine.id,
-          esp32Id: machine.esp32_id || "main",
-        },
-      });
-
+      const { error } = await adminRemoteRelease({ machineId: machine.id });
       if (error) throw error;
-      if (data && !data.success) throw new Error(data.error || "Falha na liberação");
 
       toast({
         title: "Ciclo manual iniciado",
