@@ -133,7 +133,7 @@ export const MachineDialog = ({
 
       const { data, error } = await supabase
         .from("machines")
-        .select("relay_pin, name")
+        .select("id, relay_pin, name")
         .eq("laundry_id", currentLaundry.id)
         .eq("esp32_id", formData.esp32_id);
 
@@ -143,8 +143,12 @@ export const MachineDialog = ({
       }
 
       const usedPins = data
-        ?.filter(m => m.relay_pin && (!machine?.id || m.name !== machine.name))
-        .map(m => m.relay_pin) || [];
+        ?.filter((m) =>
+          m.relay_pin != null
+          && Number(m.relay_pin) > 0
+          && (!machine?.id || m.id !== machine.id)
+        )
+        .map((m) => Number(m.relay_pin)) || [];
 
       const available = [1, 2, 3, 4, 5, 6, 7, 8].filter(pin => !usedPins.includes(pin));
       setAvailableRelayPins(available);
@@ -152,6 +156,15 @@ export const MachineDialog = ({
 
     fetchAvailableRelayPins();
   }, [formData.esp32_id, currentLaundry, machine]);
+
+  // Se o ESP32 da máquina não está na lista filtrada, permite edição manual com o ID atual.
+  useEffect(() => {
+    if (!open || !formData.esp32_id) return;
+    const found = esp32Options.some((o) => o.esp32_id === formData.esp32_id);
+    if (!found && formData.esp32_id.trim()) {
+      setUseManualEsp32(true);
+    }
+  }, [open, esp32Options, formData.esp32_id]);
 
   const prevOpenRef = useRef(false);
   useEffect(() => {
@@ -164,11 +177,21 @@ export const MachineDialog = ({
         (machine.type as string) === 'drying' || machine.type === 'secadora' ? 'secadora'
         : machine.type === 'massage' ? 'massage'
         : machine.type === 'coffee' ? 'coffee'
+        : (machine.type as string) === 'washing' || machine.type === 'lavadora' ? 'lavadora'
         : 'lavadora';
+      const existingRelay = Number(machine.relay_pin);
+      // Select exibia "1" com ||, mas o state ficava null → submit falhava com "ESP32/Relé obrigatórios".
+      const relayDefault = formType === 'coffee'
+        ? (Number.isFinite(existingRelay) ? existingRelay : 0)
+        : (Number.isFinite(existingRelay) && existingRelay >= 1 ? existingRelay : 1);
       setFormData({
         ...machine,
         type: formType,
-        cycle_time_minutes: machine.cycle_time_minutes || 40
+        esp32_id: (machine.esp32_id || '').trim(),
+        relay_pin: relayDefault,
+        cycle_time_minutes: machine.cycle_time_minutes || (formType === 'massage' ? 15 : 40),
+        capacity_kg: machine.capacity_kg || 0,
+        price_per_cycle: Number(machine.price_per_cycle) || 0,
       });
       setUseManualEsp32(false);
     } else {
@@ -219,10 +242,19 @@ export const MachineDialog = ({
     }
 
     const normalizedEsp32Id = (formData.esp32_id || machine?.esp32_id || "").trim();
-    const normalizedRelayPin = Number(formData.relay_pin ?? machine?.relay_pin ?? 0);
+    const isCoffee = formData.type === 'coffee';
+    const rawRelay = Number(formData.relay_pin ?? machine?.relay_pin);
+    const normalizedRelayPin = Number.isFinite(rawRelay)
+      ? rawRelay
+      : (isCoffee ? 0 : 1);
 
-    if (!normalizedEsp32Id || !normalizedRelayPin) {
-      toast({ title: "Erro", description: "ESP32 ID e Pino do Relé são obrigatórios", variant: "destructive" });
+    if (!normalizedEsp32Id) {
+      toast({ title: "Erro", description: "ESP32 ID é obrigatório", variant: "destructive" });
+      return;
+    }
+    // Café usa relay_pin 0 (crédito moedeiro). Demais tipos precisam de relé lógico >= 1.
+    if (!isCoffee && (!Number.isFinite(normalizedRelayPin) || normalizedRelayPin < 1)) {
+      toast({ title: "Erro", description: "Pino do Relé é obrigatório (1–8)", variant: "destructive" });
       return;
     }
 
@@ -327,6 +359,22 @@ export const MachineDialog = ({
 
   const isEditingWithExistingEsp32 = !!machine?.esp32_id;
 
+  // When editing, keep current ESP32 visible even if filtered out of live options.
+  const selectEsp32Options = (() => {
+    if (!formData.esp32_id) return esp32Options;
+    if (esp32Options.some((o) => o.esp32_id === formData.esp32_id)) return esp32Options;
+    return [
+      {
+        esp32_id: formData.esp32_id,
+        is_online: false,
+        registration_status: 'approved',
+        device_name: formData.esp32_id,
+        has_machine: true,
+      } satisfies ESP32Option,
+      ...esp32Options,
+    ];
+  })();
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       {trigger !== undefined && (
@@ -410,7 +458,7 @@ export const MachineDialog = ({
                     <SelectValue placeholder="Selecione um ESP32" />
                   </SelectTrigger>
                   <SelectContent>
-                    {esp32Options.map(opt => (
+                    {selectEsp32Options.map(opt => (
                       <SelectItem key={opt.esp32_id} value={opt.esp32_id}>
                         <div className="flex items-center gap-2 w-full">
                           {opt.is_online ? (
@@ -423,12 +471,12 @@ export const MachineDialog = ({
                         </div>
                       </SelectItem>
                     ))}
-                    {esp32Options.length === 0 && (
+                    {selectEsp32Options.length === 0 && (
                       <SelectItem value={MANUAL_ENTRY_VALUE} className="text-muted-foreground">
                         Nenhum ESP32 detectado — digitar manualmente
                       </SelectItem>
                     )}
-                    {esp32Options.length > 0 && (
+                    {selectEsp32Options.length > 0 && (
                       <SelectItem value={MANUAL_ENTRY_VALUE} className="text-muted-foreground">
                         Outro (digitar manualmente)
                       </SelectItem>
@@ -437,28 +485,41 @@ export const MachineDialog = ({
                 </Select>
               )}
               <p className="text-xs text-muted-foreground">
-                {esp32Options.length > 0 
-                  ? `${esp32Options.filter(o => o.registration_status === 'pending').length} pendente(s) detectado(s)`
-                  : 'Nenhum ESP32 detectado na rede'}
+                {isEditingWithExistingEsp32
+                  ? `ESP32 vinculado: ${machine?.esp32_id}`
+                  : esp32Options.length > 0
+                    ? `${esp32Options.filter(o => o.registration_status === 'pending').length} pendente(s) detectado(s)`
+                    : 'Nenhum ESP32 detectado na rede'}
               </p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="relay_pin">Pino Relé *</Label>
+              <Label htmlFor="relay_pin">
+                {formData.type === 'coffee' ? 'Pino Relé (café = 0)' : 'Pino Relé *'}
+              </Label>
               <Select
-                value={String(formData.relay_pin || 1)}
-                onValueChange={(value) => setFormData({ ...formData, relay_pin: parseInt(value) })}
+                value={String(
+                  Number.isFinite(Number(formData.relay_pin))
+                    ? formData.relay_pin
+                    : formData.type === 'coffee' ? 0 : 1
+                )}
+                onValueChange={(value) => setFormData({ ...formData, relay_pin: parseInt(value, 10) })}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  {formData.type === 'coffee' && (
+                    <SelectItem value="0">0 — crédito / moedeiro</SelectItem>
+                  )}
                   {availableRelayPins.map(pin => (
                     <SelectItem key={pin} value={String(pin)}>
                       Relay {pin}
                     </SelectItem>
                   ))}
-                  {formData.relay_pin && !availableRelayPins.includes(formData.relay_pin) && (
+                  {formData.relay_pin != null
+                    && formData.relay_pin > 0
+                    && !availableRelayPins.includes(formData.relay_pin) && (
                     <SelectItem value={String(formData.relay_pin)}>
                       Relay {formData.relay_pin} (atual)
                     </SelectItem>
@@ -466,9 +527,11 @@ export const MachineDialog = ({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                {availableRelayPins.length > 0 
-                  ? `Disponíveis: ${availableRelayPins.join(', ')}`
-                  : '⚠️ Todos os relés deste ESP32 estão em uso'}
+                {formData.type === 'coffee'
+                  ? 'Máquina de café não usa relé físico de ciclo; use 0.'
+                  : availableRelayPins.length > 0
+                    ? `Disponíveis: ${availableRelayPins.join(', ')}`
+                    : '⚠️ Todos os relés deste ESP32 estão em uso'}
               </p>
             </div>
           </div>

@@ -568,7 +568,20 @@ export default function Machines() {
         )}
 
         <MachineDialog 
-          machine={editingMachine ? { ...editingMachine, type: (editingMachine.type === 'washing' ? 'lavadora' : editingMachine.type === 'drying' ? 'secadora' : editingMachine.type) as 'lavadora' | 'secadora' } : null}
+          machine={editingMachine ? {
+            ...editingMachine,
+            type: (
+              editingMachine.type === 'washing' ? 'lavadora'
+              : editingMachine.type === 'drying' ? 'secadora'
+              : editingMachine.type === 'massage' ? 'massage'
+              : editingMachine.type === 'coffee' ? 'coffee'
+              : editingMachine.type === 'lavadora' || editingMachine.type === 'secadora'
+                ? editingMachine.type
+                : 'lavadora'
+            ) as 'lavadora' | 'secadora' | 'massage' | 'coffee',
+            esp32_id: editingMachine.esp32_id ?? undefined,
+            relay_pin: editingMachine.relay_pin ?? undefined,
+          } : null}
           onSuccess={handleSuccess}
           open={dialogOpen}
           onOpenChange={setDialogOpen}
