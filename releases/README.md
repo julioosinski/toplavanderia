@@ -17,7 +17,7 @@ Saída: `android/app/build/outputs/apk/cieloRelease/app-cieloRelease.apk`
 - Assinatura **V1 + V2** (targetSdk 35 — V2 obrigatório)
 - Certificado **debug** = mesmo do APK homologado na maquininha
 
-Envie: `releases/TopLavanderia-Totem-2.2.95.apk` (confirma ESP32 pós-pagamento + estorno automático Cielo)
+Envie: `releases/TopLavanderia-Totem-2.2.101.apk` (crédito café enfileirado antes de concluir TX)
 
 ### SHA-256 dos certificados (referência)
 
@@ -38,7 +38,8 @@ adb install -r app\build\outputs\apk\release\app-release.apk
 
 | Arquivo | versionName | Uso |
 |---------|-------------|-----|
-| `TopLavanderia-Totem-2.2.100.apk` | 2.2.100 | **Atual** — tarja também no débito; bypass de troco (Confirmar); PIX toca "Não imprimir" na tela de confirmação |
+| `TopLavanderia-Totem-2.2.101.apk` | 2.2.101 | **Atual** — fix crédito café: enqueue antes de concluir TX; estorno se falhar |
+| `TopLavanderia-Totem-2.2.100.apk` | 2.2.100 | tarja também no débito; bypass de troco (Confirmar); PIX toca "Não imprimir" na tela de confirmação |
 | `TopLavanderia-Totem-2.2.99.apk` | 2.2.99 | débito sem tarja + Confirmar na tela troco; PIX toca "Não imprimir" (coordenadas L400) |
 | `TopLavanderia-Totem-2.2.98.apk` | 2.2.98 | remove tarja antes de Confirmar na tela de troco |
 | `TopLavanderia-Totem-2.2.97.apk` | 2.2.97 | fecha pedido Cielo também no sucesso via broadcast (PIX), evitando "pedido anterior aberto" (-4281) |
