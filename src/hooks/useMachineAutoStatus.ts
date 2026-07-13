@@ -20,7 +20,7 @@ export const useMachineAutoStatus = () => {
       try {
         const { data: runningMachines, error } = await supabase
           .from('machines')
-          .select('id, updated_at, cycle_time_minutes, esp32_id, relay_pin, laundry_id')
+          .select('id, updated_at, cycle_time_minutes, esp32_id, relay_pin, laundry_id, type, device_profile')
           .eq('status', 'running');
 
         if (error) {
@@ -36,7 +36,12 @@ export const useMachineAutoStatus = () => {
           const lastUpdate = new Date(machine.updated_at);
           const minutesSinceUpdate = (now.getTime() - lastUpdate.getTime()) / (1000 * 60);
           const cycleTime = machine.cycle_time_minutes || 40;
-          if (minutesSinceUpdate >= cycleTime + CYCLE_END_GRACE_MINUTES) {
+          // Poltrona: firmware controla o ciclo. OFF remoto aqui + timer do Android cortavam cedo.
+          // Só libera status no banco com folga (fim + resfriamento ~1 min).
+          const isTimedSession =
+            machine.type === 'massage' || machine.device_profile === 'timed_session';
+          const grace = isTimedSession ? 2 : CYCLE_END_GRACE_MINUTES;
+          if (minutesSinceUpdate >= cycleTime + grace) {
             machinesToRelease.push(machine);
           }
         });
@@ -55,7 +60,11 @@ export const useMachineAutoStatus = () => {
             continue;
           }
 
-          if (machine.esp32_id && machine.laundry_id) {
+          const isTimedSession =
+            machine.type === 'massage' || machine.device_profile === 'timed_session';
+          // timed_session: não enfileira OFF — o ESP32 já encerra sozinho e um OFF externo
+          // pode interromper o ciclo/resfriamento se o relógio do server divergir.
+          if (!isTimedSession && machine.esp32_id && machine.laundry_id) {
             const pin = resolvedRelayPin(machine.relay_pin);
             const { error: relayErr } = await mergeRelayIntoEsp32Status(
               machine.esp32_id,

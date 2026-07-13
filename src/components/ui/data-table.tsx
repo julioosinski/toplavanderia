@@ -47,6 +47,12 @@ export function DataTable<TData, TValue>({
     getFilteredRowModel: getFilteredRowModel(),
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
+    // Heartbeats/realtime recriam `data` com frequência; sem isso a página volta ao 1 sozinha.
+    autoResetPageIndex: false,
+    getRowId: (row, index) => {
+      const withId = row as { id?: string };
+      return withId.id ?? String(index);
+    },
     state: {
       sorting,
       columnFilters,

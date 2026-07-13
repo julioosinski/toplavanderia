@@ -180,23 +180,30 @@ export default function Machines() {
   useEffect(() => {
     if (!currentLaundry?.id || isAllLaundryView) return;
     const lid = currentLaundry.id;
-    const reloadIfIdle = () => {
-      if (!dialogOpenRef.current) void loadMachinesRef.current();
+    let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleReload = () => {
+      if (dialogOpenRef.current) return;
+      // Debounce: heartbeats de ESP32 chegam ~30s e resetavam a tabela/paginação.
+      if (reloadTimer) clearTimeout(reloadTimer);
+      reloadTimer = setTimeout(() => {
+        if (!dialogOpenRef.current) void loadMachinesRef.current();
+      }, 2500);
     };
     const channel = supabase
       .channel(`admin-machines-rt-${lid}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'machines', filter: `laundry_id=eq.${lid}` },
-        reloadIfIdle
+        scheduleReload
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'esp32_status', filter: `laundry_id=eq.${lid}` },
-        reloadIfIdle
+        scheduleReload
       )
       .subscribe();
     return () => {
+      if (reloadTimer) clearTimeout(reloadTimer);
       void supabase.removeChannel(channel);
     };
   }, [currentLaundry?.id, isAllLaundryView]);

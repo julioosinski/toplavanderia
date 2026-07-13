@@ -1110,8 +1110,19 @@ public class SupabaseHelper {
      * A confirmação do relé deve vir via {@link #waitForEsp32RelayOn}.
      */
     public boolean queueEsp32RelayOn(String esp32Id, int relayPin, String machineId, String transactionId) {
-        Log.d(TAG, "Enfileirando ESP32 ON: esp32=" + esp32Id + " pin=" + relayPin + " machine=" + machineId);
-        return invokeEsp32Control(esp32Id, relayPin, machineId, transactionId, "on");
+        return queueEsp32RelayOn(esp32Id, relayPin, machineId, transactionId, findMachineDuration(machineId));
+    }
+
+    public boolean queueEsp32RelayOn(
+            String esp32Id,
+            int relayPin,
+            String machineId,
+            String transactionId,
+            int cycleTimeMinutes
+    ) {
+        Log.d(TAG, "Enfileirando ESP32 ON: esp32=" + esp32Id + " pin=" + relayPin
+            + " machine=" + machineId + " cycle=" + cycleTimeMinutes + "min");
+        return invokeEsp32Control(esp32Id, relayPin, machineId, transactionId, "on", cycleTimeMinutes);
     }
 
     /**
@@ -1175,10 +1186,29 @@ public class SupabaseHelper {
         }
     }
 
-    /** Após confirmação do relé: marca OCUPADA e agenda desligamento. */
+    /** Após confirmação do relé: marca OCUPADA; agenda OFF só se o firmware NÃO for timed_session. */
     public void onEsp32RelayConfirmed(String esp32Id, int relayPin, String machineId, int durationMinutes) {
         updateMachineStatus(machineId, "OCUPADA");
+        // Poltrona: o ESP32 conta o ciclo sozinho (parseCycleMinutes). Um OFF do Android
+        // com tempo em cache errado/curto corta a sessão antes do valor cadastrado.
+        if (isTimedSessionMachine(machineId)) {
+            Log.d(TAG, "timed_session/MASSAGEM: sem OFF agendado no Android — firmware controla o tempo");
+            return;
+        }
         scheduleEsp32TurnOff(esp32Id, relayPin, machineId, durationMinutes);
+    }
+
+    private boolean isTimedSessionMachine(String machineId) {
+        Machine machine = findMachineById(machineId);
+        if (machine == null && realMachines != null) {
+            for (Machine m : realMachines) {
+                if (machineId != null && machineId.equals(m.getId())) {
+                    machine = m;
+                    break;
+                }
+            }
+        }
+        return machine != null && "MASSAGEM".equals(machine.getType());
     }
 
     private boolean isEsp32RelayOn(String esp32Id, int relayPin) {
@@ -1232,7 +1262,24 @@ public class SupabaseHelper {
         return false;
     }
 
-    private boolean invokeEsp32Control(String esp32Id, int relayPin, String machineId, String transactionId, String action) {
+    private boolean invokeEsp32Control(
+            String esp32Id,
+            int relayPin,
+            String machineId,
+            String transactionId,
+            String action
+    ) {
+        return invokeEsp32Control(esp32Id, relayPin, machineId, transactionId, action, -1);
+    }
+
+    private boolean invokeEsp32Control(
+            String esp32Id,
+            int relayPin,
+            String machineId,
+            String transactionId,
+            String action,
+            int cycleTimeMinutes
+    ) {
         try {
             String url = SUPABASE_URL + "/functions/v1/esp32-control";
             JSONObject payload = new JSONObject();
@@ -1243,6 +1290,15 @@ public class SupabaseHelper {
             if (transactionId != null && !transactionId.isEmpty()
                     && transactionId.matches("(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
                 payload.put("transaction_id", transactionId);
+            }
+            // Poltrona/lavadora: garante cycle_time_minutes no comando (não depende só do enrich).
+            if ("on".equals(action)) {
+                int minutes = cycleTimeMinutes > 0 ? cycleTimeMinutes : findMachineDuration(machineId);
+                if (minutes > 0) {
+                    JSONObject cmdPayload = new JSONObject();
+                    cmdPayload.put("cycle_time_minutes", minutes);
+                    payload.put("payload", cmdPayload);
+                }
             }
 
             HttpURLConnection connection = SupabaseConfig.openConnection(url);
@@ -1292,7 +1348,7 @@ public class SupabaseHelper {
         Log.d(TAG, "ESP32: " + esp32Id);
         Log.d(TAG, "Relay: " + relayPin);
         Log.d(TAG, "Máquina: " + machineId);
-        boolean queued = queueEsp32RelayOn(esp32Id, relayPin, machineId, transactionId);
+        boolean queued = queueEsp32RelayOn(esp32Id, relayPin, machineId, transactionId, durationMinutes);
         if (queued) {
             onEsp32RelayConfirmed(esp32Id, relayPin, machineId, durationMinutes);
         }

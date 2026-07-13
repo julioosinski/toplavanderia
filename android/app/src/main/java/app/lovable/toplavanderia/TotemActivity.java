@@ -1931,8 +1931,8 @@ public class TotemActivity extends Activity {
             machineForRefresh = findMachineById(cieloManager.getBoundMachineId());
         }
         SupabaseHelper.Machine resolvedMachine = machineForRefresh;
-        if (machineForRefresh != null && supabaseHelper != null
-                && !"cielo".equalsIgnoreCase(activeProvider)) {
+        // Sempre revalida preço/tempo do servidor (também no Cielo) para não usar cache curto.
+        if (machineForRefresh != null && supabaseHelper != null) {
             SupabaseHelper.Machine refreshedMachine = supabaseHelper.refreshMachineById(machineForRefresh.getId());
             if (refreshedMachine != null) {
                 resolvedMachine = refreshedMachine;
@@ -2044,7 +2044,7 @@ public class TotemActivity extends Activity {
                     ? pendingTxIdFinal : transactionId;
                 Log.d(TAG, "=== CIELO: enfileirando ESP32 + aguardando confirmação ===");
                 boolean queued = supabaseHelper.queueEsp32RelayOn(
-                    esp32Id, relayPin, machineId, esp32TxId
+                    esp32Id, relayPin, machineId, esp32TxId, durationMinutes
                 );
                 if (!queued) {
                     handleEsp32FailureWithRefund(
