@@ -120,14 +120,36 @@ public final class CieloPaymentSessionHelper {
             return;
         }
         Context app = context.getApplicationContext();
+        // Limpa overlay + prefs imediatamente. O delay de 5s deixava payment_code ativo
+        // e a acessibilidade podia recriar a tarja; o timer de 10s depois falhava em
+        // removê-la (sessionId != atual) e a home do totem ficava travada.
         CieloPaymentShieldOverlay.clearAll();
         CieloPrintDismissScheduler.cancel();
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+        try {
+            prefs(app).edit().clear().commit();
+        } catch (Throwable ignored) {
+            // noop
+        }
+        new Handler(Looper.getMainLooper()).post(() -> {
+            CieloPaymentShieldOverlay.clearAll();
             CieloReceiptAccessibilityService.resetApprovedHandling();
-            if (CieloPaymentSessionHelper.hasActiveSession(app)) {
-                prefs(app).edit().clear().commit();
-            }
-        }, 5000L);
+        });
+    }
+
+    /** Escape hatch: limpa sessão + tarja quando a home do totem está bloqueada. */
+    public static void forceClearStuckUi(Context context) {
+        if (context == null) {
+            return;
+        }
+        Context app = context.getApplicationContext();
+        try {
+            prefs(app).edit().clear().commit();
+        } catch (Throwable ignored) {
+            // noop
+        }
+        CieloPrintDismissScheduler.cancel();
+        CieloPaymentShieldOverlay.clearAll();
+        new Handler(Looper.getMainLooper()).post(CieloPaymentShieldOverlay::clearAll);
     }
 
     public static boolean hasActiveSession(Context context) {

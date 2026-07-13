@@ -1208,7 +1208,13 @@ public class SupabaseHelper {
                 }
             }
         }
-        return machine != null && "MASSAGEM".equals(machine.getType());
+        if (machine == null) {
+            return false;
+        }
+        String type = machine.getType();
+        return "MASSAGEM".equals(type)
+            || "massage".equalsIgnoreCase(type)
+            || "timed_session".equalsIgnoreCase(type);
     }
 
     private boolean isEsp32RelayOn(String esp32Id, int relayPin) {
@@ -1359,42 +1365,54 @@ public class SupabaseHelper {
      * Agenda desligamento automático do relé após tempo de uso
      */
     private void scheduleEsp32TurnOff(String esp32Id, int relayPin, String machineId, int durationMinutes) {
+        if (durationMinutes <= 0) {
+            Log.w(TAG, "Ignorando OFF agendado: duration=" + durationMinutes);
+            return;
+        }
+        if (isTimedSessionMachine(machineId)) {
+            Log.d(TAG, "Ignorando OFF agendado: timed_session/MASSAGEM");
+            return;
+        }
+        final int waitMinutes = durationMinutes;
         new Thread(() -> {
             try {
-                Log.d(TAG, "⏰ Agendando desligamento em " + durationMinutes + " minutos");
-                
-                // Aguardar tempo de uso
-                Thread.sleep(durationMinutes * 60 * 1000);
-                
-                // Desligar ESP32
+                Log.d(TAG, "⏰ Agendando desligamento em " + waitMinutes + " minutos");
+                Thread.sleep(waitMinutes * 60L * 1000L);
+
+                // Revalida: máquina pode ter virado poltrona / sessão timed no meio do wait.
+                if (isTimedSessionMachine(machineId)) {
+                    Log.i(TAG, "OFF agendado cancelado: máquina timed_session após wait");
+                    return;
+                }
+
                 Log.d(TAG, "🔌 Desligando ESP32 após uso");
-                
+
                 String url = SUPABASE_URL + "/functions/v1/esp32-control";
-                
+
                 JSONObject payload = new JSONObject();
                 payload.put("esp32_id", esp32Id);
                 payload.put("relay_pin", relayPin);
                 payload.put("action", "off");
                 payload.put("machine_id", machineId);
-                
+
                 HttpURLConnection connection = SupabaseConfig.openConnection(url);
                 connection.setRequestMethod("POST");
                 SupabaseConfig.applyJsonHeaders(connection);
                 connection.setDoOutput(true);
-                
+
                 OutputStream os = connection.getOutputStream();
                 os.write(payload.toString().getBytes());
                 os.flush();
                 os.close();
-                
+
                 int responseCode = connection.getResponseCode();
                 connection.disconnect();
-                
+
                 if (responseCode == 200) {
                     Log.d(TAG, "✅ ESP32 desligado automaticamente");
                     updateMachineStatus(machineId, "LIVRE");
                 }
-                
+
             } catch (Exception e) {
                 Log.e(TAG, "Erro ao desligar ESP32", e);
             }

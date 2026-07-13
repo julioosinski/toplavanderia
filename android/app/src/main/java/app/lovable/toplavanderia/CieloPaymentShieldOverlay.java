@@ -11,6 +11,7 @@ import android.os.Looper;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
@@ -28,6 +29,7 @@ final class CieloPaymentShieldOverlay {
     private static final String TAG = "CieloShieldOverlay";
     static final long TARJA_DURATION_MS = 10000L;
     private static final long MIN_MS_BEFORE_HIDE_FOR_TAP = 8000L;
+    private static final long TAP_TO_DISMISS_AFTER_MS = 2500L;
     private static AccessibilityService boundService;
     private static WindowManager windowManager;
     private static final List<View> blockerViews = new ArrayList<>();
@@ -194,6 +196,9 @@ final class CieloPaymentShieldOverlay {
             return;
         }
 
+        // Garante que não sobra overlay órfão de sessão anterior.
+        removeBottomTarjaInternal();
+
         int screenW = boundService.getResources().getDisplayMetrics().widthPixels;
         int screenH = boundService.getResources().getDisplayMetrics().heightPixels;
         int bandHeight = Math.max(dp(200), (int) (screenH * 0.24f));
@@ -202,6 +207,7 @@ final class CieloPaymentShieldOverlay {
         band.setOrientation(LinearLayout.VERTICAL);
         band.setGravity(Gravity.CENTER);
         band.setBackgroundColor(Color.parseColor("#FF000000"));
+        band.setClickable(true);
 
         TextView hint = new TextView(boundService);
         hint.setText("Insira ou aproxime o cartão");
@@ -211,6 +217,19 @@ final class CieloPaymentShieldOverlay {
         hint.setGravity(Gravity.CENTER);
         hint.setPadding(dp(16), dp(12), dp(16), dp(12));
         band.addView(hint);
+
+        // Escape: toque após 2.5s remove só a tarja (não cancela o pagamento).
+        band.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_UP
+                    && bottomTarjaShownAtMs > 0L
+                    && System.currentTimeMillis() - bottomTarjaShownAtMs >= TAP_TO_DISMISS_AFTER_MS) {
+                Log.w(TAG, "Tarja dismiss por toque (escape hatch)");
+                CieloPaymentSessionHelper.setShieldEnabled(app, false);
+                removeBottomTarjaInternal();
+                return true;
+            }
+            return true;
+        });
 
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
             screenW,
@@ -237,17 +256,16 @@ final class CieloPaymentShieldOverlay {
     }
 
     private static void scheduleBottomTarjaHide(Context app, int sessionId) {
-        if (bottomTarjaHideRunnable != null) {
-            return;
-        }
+        cancelBottomTarjaTimer();
         bottomTarjaHideRunnable = () -> {
             bottomTarjaHideRunnable = null;
-            if (CieloPaymentSessionHelper.getSessionId(app) != sessionId) {
-                return;
-            }
+            // Sempre remove a view: se a sessão já encerrou, sessionId muda e o early-return
+            // antigo deixava a tarja presa cobrindo a home do totem.
             removeBottomTarjaInternal();
-            CieloPaymentSessionHelper.setShieldEnabled(app, false);
-            Log.i(TAG, "Tarja a11y ocultada (10s)");
+            if (CieloPaymentSessionHelper.getSessionId(app) == sessionId) {
+                CieloPaymentSessionHelper.setShieldEnabled(app, false);
+            }
+            Log.i(TAG, "Tarja a11y ocultada (10s) sessão=" + sessionId);
         };
         mainHandler.postDelayed(bottomTarjaHideRunnable, TARJA_DURATION_MS);
     }
@@ -267,14 +285,19 @@ final class CieloPaymentShieldOverlay {
             bottomTarjaShownAtMs = 0L;
             return;
         }
-        try {
-            windowManager.removeView(bottomTarjaView);
-        } catch (Exception ignored) {
-            // noop
-        }
+        View view = bottomTarjaView;
         bottomTarjaView = null;
         bottomTarjaSessionId = 0;
         bottomTarjaShownAtMs = 0L;
+        try {
+            windowManager.removeViewImmediate(view);
+        } catch (Exception first) {
+            try {
+                windowManager.removeView(view);
+            } catch (Exception ignored) {
+                // noop
+            }
+        }
     }
 
     private static View buildBlockerView(Rect bounds) {

@@ -232,6 +232,15 @@ public class TotemActivity extends Activity {
         applyKeepScreenAwake();
         applyImmersiveMode();
         try {
+            // Tarja TYPE_ACCESSIBILITY_OVERLAY bloqueia toques na home se ficar presa.
+            // Fora de pagamento Cielo ativo: limpa sessão + overlay imediatamente.
+            if ("cielo".equalsIgnoreCase(activeProvider) && !isCieloPaymentInProgress()) {
+                try {
+                    CieloPaymentSessionHelper.forceClearStuckUi(this);
+                } catch (Throwable t) {
+                    Log.w(TAG, "Falha ao limpar tarja presa no onResume", t);
+                }
+            }
             if ("cielo".equalsIgnoreCase(activeProvider)) {
                 Intent resumeIntent = getIntent();
                 if (resumeIntent != null && resumeIntent.getBooleanExtra(EXTRA_CIELO_PAYMENT_RETURN, false)) {

@@ -20,7 +20,7 @@
 #include <esp_task_wdt.h>
 #include <cstdio>
 
-#define FIRMWARE_VERSION "v1.1.0-toplav-poltrona"
+#define FIRMWARE_VERSION "v1.1.1-toplav-poltrona"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
@@ -353,7 +353,7 @@ void applyRuntimeAudioConfig(JsonObject cmd) {
       volume_audio_005, volume_audio_006, volume_audio_007);
 }
 
-void processCommand(JsonObject cmd) {
+void processCommand(JsonObject cmd, bool* startedThisPoll) {
   const char* action = cmd["action"] | "";
   const char* cmdId = cmd["id"] | "";
   if (strlen(cmdId) == 0) {
@@ -364,10 +364,19 @@ void processCommand(JsonObject cmd) {
     applyRuntimeAudioConfig(cmd);
     int minutes = parseCycleMinutes(cmd);
     iniciarPoltrona(minutes);
+    if (startedThisPoll != nullptr) {
+      *startedThisPoll = true;
+    }
     if (confirmCommand(cmdId)) {
       sendHeartbeat();
     }
   } else if (strcmp(action, "off") == 0 || strcmp(action, "deactivate") == 0 || strcmp(action, "turn_off") == 0) {
+    // Mesma poll: ON seguido de OFF velho na fila — confirma OFF sem matar a sessão nova.
+    if (startedThisPoll != nullptr && *startedThisPoll) {
+      Serial.println("Ignorando OFF na mesma poll após ON (fila stale)");
+      confirmCommand(cmdId);
+      return;
+    }
     if (statusAtual == "em_uso") {
       pararPoltrona(true);
     } else {
@@ -409,8 +418,9 @@ void pollCommands() {
     return;
   }
 
+  bool startedThisPoll = false;
   for (JsonObject cmd : commands) {
-    processCommand(cmd);
+    processCommand(cmd, &startedThisPoll);
   }
 }
 

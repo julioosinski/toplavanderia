@@ -109,6 +109,20 @@ Deno.serve(async (req) => {
           resolvedPayload.audio_volumes = audioVolumes;
         }
       }
+
+      // Cancela OFF pendente do mesmo relé — evita ON+OFF na mesma poll (poltrona liga e apaga).
+      const { error: cancelErr, count } = await supabase
+        .from('pending_commands')
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() }, { count: 'exact' })
+        .eq('esp32_id', esp32_id)
+        .eq('status', 'pending')
+        .eq('relay_pin', resolvedRelayPin)
+        .in('action', ['off', 'deactivate', 'turn_off']);
+      if (cancelErr) {
+        console.warn('⚠️ Falha ao cancelar OFF pendente:', cancelErr.message);
+      } else if (count && count > 0) {
+        console.log(`🧹 Cancelados ${count} comando(s) OFF pendente(s) antes do ON`);
+      }
     }
 
     console.log(`🎮 Controle ESP32: ${esp32_id} relay ${resolvedRelayPin} → ${action}`);
