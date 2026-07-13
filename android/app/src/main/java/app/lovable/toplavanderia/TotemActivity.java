@@ -1971,7 +1971,9 @@ public class TotemActivity extends Activity {
             ? currentOperationSupabasePaymentMethod
             : "credit";
         final SupabaseHelper.CoffeeProduct coffeeSnapshot = selectedCoffeeProduct;
-        final boolean isCoffeePayment = coffeeSnapshot != null;
+        // Machine type cobre retorno Cielo quando selectedCoffeeProduct já foi limpo.
+        final boolean isCoffeePayment = coffeeSnapshot != null
+            || "CAFE".equals(machineSnapshot.getType());
         final boolean cieloFastPath = "cielo".equalsIgnoreCase(activeProvider);
         if (cieloFastPath && !isCoffeePayment) {
             postPaymentHardwarePending = true;
@@ -1991,9 +1993,8 @@ public class TotemActivity extends Activity {
                 if (!isCoffeePayment) {
                     showPostPaymentVerifyingScreen(machineSnapshot);
                 } else {
-                    selectedMachine = null;
-                    selectedCoffeeProduct = null;
-                    restoreHomeScreen();
+                    // Mantém tela de liberação enquanto o crédito é enfileirado.
+                    showPostPaymentVerifyingScreen(machineSnapshot);
                 }
             } else {
                 if (!isCoffeePayment) {
@@ -2007,6 +2008,36 @@ public class TotemActivity extends Activity {
             Log.d(TAG, "=== PAGAMENTO APROVADO ===");
             Log.d(TAG, "Código: " + authorizationCode);
             Log.d(TAG, "Transação: " + transactionId);
+
+            if (cieloFastPath && isCoffeePayment) {
+                Log.d(TAG, "=== CIELO: enfileirando crédito café (antes de concluir TX) ===");
+                boolean creditQueued = false;
+                if (pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
+                    creditQueued = supabaseHelper.enqueueCoffeeCredit(pendingTxIdFinal);
+                }
+                if (!creditQueued) {
+                    Log.e(TAG, "❌ Crédito café não enfileirado — estorno automático se possível");
+                    handleEsp32FailureWithRefund(
+                        machineSnapshot, pendingTxIdFinal, operationId, true
+                    );
+                    return;
+                }
+
+                boolean txCompleted = supabaseHelper.completeTotemTransactionById(
+                    pendingTxIdFinal, methodForComplete
+                );
+                if (!txCompleted) {
+                    Log.w(TAG, "Crédito enfileirado, mas falhou ao marcar TX café como concluída");
+                }
+
+                runOnUiThread(() -> {
+                    selectedMachine = null;
+                    selectedCoffeeProduct = null;
+                    finishCieloPaymentSession(operationId, true);
+                });
+                cieloManager.onTotemCheckoutFinished();
+                return;
+            }
 
             if (cieloFastPath && !isCoffeePayment) {
                 String esp32TxId = pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()
@@ -2062,6 +2093,19 @@ public class TotemActivity extends Activity {
 
             boolean hardwareOk = false;
 
+            // Café: enfileirar crédito ENQUANTO a TX ainda está pending (RPC exige status pending).
+            if (isCoffeePayment) {
+                Log.d(TAG, "=== ENFILEIRANDO CRÉDITO CAFÉ ===");
+                hardwareOk = pendingTxIdFinal != null
+                    && !pendingTxIdFinal.isEmpty()
+                    && supabaseHelper.enqueueCoffeeCredit(pendingTxIdFinal);
+                if (hardwareOk) {
+                    Log.d(TAG, "✅ Crédito café enfileirado para ESP32");
+                } else {
+                    Log.e(TAG, "❌ Falha ao enfileirar crédito café (pagamento já aprovado)");
+                }
+            }
+
             boolean txCompleted = false;
             if (pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
                 txCompleted = supabaseHelper.completeTotemTransactionById(
@@ -2079,17 +2123,10 @@ public class TotemActivity extends Activity {
                 Log.w(TAG, "Não foi possível marcar a transação do totem como concluída");
             }
 
-            if (isCoffeePayment) {
-                Log.d(TAG, "=== ENFILEIRANDO CRÉDITO CAFÉ ===");
-                hardwareOk = pendingTxId != null && supabaseHelper.enqueueCoffeeCredit(pendingTxId);
-                if (hardwareOk) {
-                    Log.d(TAG, "✅ Crédito café enfileirado para ESP32");
-                } else {
-                    Log.e(TAG, "❌ Falha ao enfileirar crédito café (pagamento já aprovado na Cielo)");
-                }
-            } else {
+            if (!isCoffeePayment) {
                 Log.d(TAG, "=== ACIONANDO ESP32 ===");
-                String esp32TxId = pendingTxId != null && !pendingTxId.isEmpty() ? pendingTxId : transactionId;
+                String esp32TxId = pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()
+                    ? pendingTxIdFinal : transactionId;
                 hardwareOk = supabaseHelper.activateEsp32Relay(
                     esp32Id,
                     relayPin,
@@ -2113,7 +2150,7 @@ public class TotemActivity extends Activity {
             }
         } catch (Exception e) {
             Log.e(TAG, "Erro ao finalizar pós-pagamento (ESP32/Supabase)", e);
-            if (cieloFastPath && !isCoffeePayment) {
+            if (cieloFastPath) {
                 handleEsp32FailureWithRefund(
                     machineSnapshot, pendingTxIdFinal, operationId, true
                 );
