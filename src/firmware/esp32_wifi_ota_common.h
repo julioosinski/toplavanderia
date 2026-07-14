@@ -288,9 +288,17 @@ static void esp32ReportOtaResult(const String& jobId, bool success, const String
   http.end();
 }
 
-static bool esp32DeviceIsBusyForOta();
-__attribute__((weak)) bool esp32DeviceIsBusyForOta() {
-  return false;
+// Hook opcional: o .ino do equipamento pode apontar para uma função própria
+// (ex.: poltrona não baixa OTA durante a sessão). Default = livre para OTA.
+using Esp32OtaBusyFn = bool (*)();
+static Esp32OtaBusyFn esp32OtaBusyHook = nullptr;
+
+static void esp32SetOtaBusyHook(Esp32OtaBusyFn fn) {
+  esp32OtaBusyHook = fn;
+}
+
+static bool esp32DeviceIsBusyForOta() {
+  return esp32OtaBusyHook != nullptr && esp32OtaBusyHook();
 }
 
 static void esp32PollOtaUpdate() {

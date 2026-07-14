@@ -541,8 +541,7 @@ void setupWatchdog() {
   esp_task_wdt_deinit();
 }
 
-/** Usado por esp32_wifi_ota_common.h — não baixa OTA no meio da massagem. */
-bool esp32DeviceIsBusyForOta() {
+static bool poltronaOtaBusyHook() {
   return statusAtual == "em_uso" || executandoResfriamento;
 }
 
@@ -564,6 +563,7 @@ void setup() {
   acionarRele(false);
 
   setupWatchdog();
+  esp32SetOtaBusyHook(poltronaOtaBusyHook);
   esp32WifiOtaRegisterPortalRoutes();
   setupDeviceHttpRoutes();
   esp32WifiOtaBegin();
