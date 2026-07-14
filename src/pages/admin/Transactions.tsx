@@ -17,6 +17,7 @@ import {
   displayTransactionAmount,
   isManualRelease,
 } from "@/lib/transactionRevenue";
+import { Navigate } from "react-router-dom";
 
 type Transaction = {
   id: string;
@@ -163,14 +164,15 @@ const columns: ColumnDef<Transaction>[] = [
 type DateFilter = "all" | "today" | "week" | "month";
 
 export default function Transactions() {
-  const { currentLaundry } = useLaundry();
+  const { currentLaundry, isAdmin, isSuperAdmin, userRole } = useLaundry();
+  const isOperatorOnly = userRole === "operator" && !isAdmin && !isSuperAdmin;
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const currentLaundryId = currentLaundry?.id;
 
   const loadTransactions = useCallback(async () => {
-    if (!currentLaundryId) return;
+    if (!currentLaundryId || isOperatorOnly) return;
     setLoading(true);
 
     let query = supabase
@@ -237,7 +239,7 @@ export default function Transactions() {
 
     setTransactions(enriched);
     setLoading(false);
-  }, [currentLaundryId, dateFilter]);
+  }, [currentLaundryId, dateFilter, isOperatorOnly]);
 
   const serviceSummaries = useMemo(() => {
     const totals: Record<MachineDisplayType, { count: number; total: number }> = {
@@ -262,8 +264,8 @@ export default function Transactions() {
   );
 
   useEffect(() => {
-    if (currentLaundryId) void loadTransactions();
-  }, [currentLaundryId, loadTransactions]);
+    if (currentLaundryId && !isOperatorOnly) void loadTransactions();
+  }, [currentLaundryId, loadTransactions, isOperatorOnly]);
 
   const filterLabels: Record<DateFilter, string> = {
     all: "Todas",
@@ -271,6 +273,10 @@ export default function Transactions() {
     week: "Semana",
     month: "Mês",
   };
+
+  if (isOperatorOnly) {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
 
   if (loading) {
     return <div className="animate-pulse">Carregando...</div>;

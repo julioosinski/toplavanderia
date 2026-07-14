@@ -3,9 +3,15 @@ import { ConsolidatedReportsTab } from "@/components/admin/ConsolidatedReportsTa
 import { LaundryReportsTab } from "@/components/admin/LaundryReportsTab";
 import { LaundryGuard } from "@/components/admin/LaundryGuard";
 import { useLaundry } from "@/hooks/useLaundry";
+import { Navigate } from "react-router-dom";
 
 export default function Reports() {
-  const { isSuperAdmin, isViewingAllLaundries } = useLaundry();
+  const { isSuperAdmin, isAdmin, isViewingAllLaundries, userRole } = useLaundry();
+  const isOperatorOnly = userRole === "operator" && !isAdmin && !isSuperAdmin;
+
+  if (isOperatorOnly) {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
 
   if (isSuperAdmin && isViewingAllLaundries) {
     return (

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Clock } from "lucide-react";
 import { type Machine } from "@/hooks/useMachines";
 import { getMachineTypeMeta } from "@/lib/machineDisplayTypes";
+import { useOperatorReleasePermission } from "@/hooks/useOperatorReleasePermission";
 
 interface MachineStatusCardProps {
   machine: Machine;
@@ -13,6 +14,7 @@ interface MachineStatusCardProps {
 }
 
 export const MachineStatusCard = ({ machine, onClick }: MachineStatusCardProps) => {
+  const { isOperator: isOperatorOnly } = useOperatorReleasePermission();
   const isRunning = machine.status === "running";
   const typeMeta = getMachineTypeMeta(machine.type);
   const IconComponent = typeMeta.icon;
@@ -118,9 +120,11 @@ export const MachineStatusCard = ({ machine, onClick }: MachineStatusCardProps) 
 
       <CardContent className="flex-1 p-3 sm:p-4 pt-0 flex flex-col justify-between">
         <div className="text-center mb-3">
-          <div className="flex items-center justify-center space-x-1 mb-1">
-            <span className={`text-base font-bold ${typeMeta.accentClass}`}>{priceLabel}</span>
-          </div>
+          {!isOperatorOnly && (
+            <div className="flex items-center justify-center space-x-1 mb-1">
+              <span className={`text-base font-bold ${typeMeta.accentClass}`}>{priceLabel}</span>
+            </div>
+          )}
           <p className="text-xs text-muted-foreground flex items-center justify-center">
             <Clock className="mr-1" size={12} />
             {durationLabel}

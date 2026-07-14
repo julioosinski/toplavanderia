@@ -214,14 +214,16 @@ export const MachineDetailsDialog = ({
 
           <Separator />
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <DollarSign size={14} />
-                <span className="text-xs">Preço</span>
+          <div className={`grid gap-4 ${permission.isOperator ? "grid-cols-1" : "grid-cols-2"}`}>
+            {!permission.isOperator && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <DollarSign size={14} />
+                  <span className="text-xs">Preço</span>
+                </div>
+                <p className="text-lg font-bold">{priceLabel}</p>
               </div>
-              <p className="text-lg font-bold">{priceLabel}</p>
-            </div>
+            )}
             <div className="space-y-1">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Clock size={14} />

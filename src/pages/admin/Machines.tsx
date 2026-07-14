@@ -508,6 +508,13 @@ export default function Machines() {
     },
   ];
 
+  const visibleColumns = isOperator
+    ? columns.filter((col) => {
+        const key = "accessorKey" in col ? col.accessorKey : undefined;
+        return key !== "price_per_cycle" && key !== "total_revenue" && key !== "total_uses";
+      })
+    : columns;
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -597,7 +604,7 @@ export default function Machines() {
             </CardHeader>
             <CardContent>
               <DataTable
-                columns={columns}
+                columns={visibleColumns}
                 data={machines}
                 searchKey="name"
                 searchPlaceholder="Buscar por nome..."
