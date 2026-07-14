@@ -148,11 +148,15 @@ serve(async (req) => {
 
       // Café (credito): não altera status da máquina nem relay_status
       if (command.action !== 'credito') {
-        const newStatus = command.action === 'on' ? 'running' : 'available';
-        await supabaseClient
+        // CHECK machines.status: available | in_use | maintenance | offline (não "running")
+        const newStatus = command.action === 'on' ? 'in_use' : 'available';
+        const { error: machineStatusErr } = await supabaseClient
           .from('machines')
           .update({ status: newStatus, updated_at: new Date().toISOString() })
           .eq('id', command.machine_id);
+        if (machineStatusErr) {
+          console.warn('machines status update failed:', machineStatusErr.message);
+        }
 
         const relayKey = `relay_${command.relay_pin ?? 1}`;
         const { data: currentStatus } = await supabaseClient

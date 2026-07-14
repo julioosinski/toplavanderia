@@ -20,7 +20,7 @@
 #include <esp_task_wdt.h>
 #include <cstdio>
 
-#define FIRMWARE_VERSION "v1.1.1-toplav-poltrona"
+#define FIRMWARE_VERSION "v1.1.2-toplav-poltrona"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
@@ -43,7 +43,9 @@ const int TEMPO_RESFRIAMENTO_SEG = 30;
 // ===== Timers rede =====
 const unsigned long HEARTBEAT_INTERVAL_MS = 30000;
 const unsigned long POLL_INTERVAL_MS = 10000;
-const unsigned long HTTP_TIMEOUT_MS = 15000;
+// Timeout curto: vários HTTP seguidos + WDT 60s causavam reboot e desligavam a poltrona no meio da sessão.
+const unsigned long HTTP_TIMEOUT_MS = 8000;
+const unsigned long WDT_TIMEOUT_MS = 180000;
 
 // ===== DFPlayer / áudios =====
 HardwareSerial dfSerial(2);
@@ -239,11 +241,16 @@ void atualizarTimerSessao() {
   tempoRestanteSeg = tempoTotalSeg - decorrido;
 }
 
+void wdtKick() {
+  esp_task_wdt_reset();
+}
+
 bool sendHeartbeat() {
   if (WiFi.status() != WL_CONNECTED) {
     return false;
   }
 
+  wdtKick();
   HTTPClient http;
   String url = String(supabaseUrl) + "/functions/v1/esp32-monitor?action=heartbeat";
   http.begin(url);
@@ -262,6 +269,8 @@ bool sendHeartbeat() {
   doc["network_status"] = "connected";
   doc["auto_register"] = true;
   doc["uptime_seconds"] = millis() / 1000UL;
+  doc["session_status"] = statusAtual;
+  doc["session_remaining_sec"] = tempoRestanteSeg;
 
   JsonObject relay = doc.createNestedObject("relay_status");
   bool relayOn = (statusAtual == "em_uso" || executandoResfriamento);
@@ -271,6 +280,7 @@ bool sendHeartbeat() {
   serializeJson(doc, body);
   int code = http.POST(body);
   http.end();
+  wdtKick();
   return code == 200;
 }
 
@@ -279,6 +289,7 @@ bool confirmCommand(const char* commandId) {
     return false;
   }
 
+  wdtKick();
   HTTPClient http;
   String url = String(supabaseUrl) + "/functions/v1/esp32-monitor?action=confirm_command";
   http.begin(url);
@@ -294,21 +305,39 @@ bool confirmCommand(const char* commandId) {
   serializeJson(doc, body);
   int code = http.POST(body);
   http.end();
+  wdtKick();
   Serial.printf("confirm_command %s → HTTP %d\n", commandId, code);
   return code == 200;
 }
 
 int parseCycleMinutes(JsonObject cmd) {
-  int minutes = cmd["cycle_time_minutes"] | 0;
-  if (minutes > 0) {
-    return minutes;
+  int minutes = 0;
+  if (cmd["cycle_time_minutes"].is<int>()) {
+    minutes = cmd["cycle_time_minutes"].as<int>();
+  } else if (cmd["cycle_time_minutes"].is<float>()) {
+    minutes = (int)cmd["cycle_time_minutes"].as<float>();
+  } else if (cmd["cycle_time_minutes"].is<const char*>()) {
+    minutes = atoi(cmd["cycle_time_minutes"].as<const char*>());
   }
-  if (cmd.containsKey("payload")) {
+
+  if (minutes <= 0 && cmd.containsKey("payload")) {
     JsonObject payload = cmd["payload"];
-    minutes = payload["cycle_time_minutes"] | 0;
+    if (!payload.isNull()) {
+      if (payload["cycle_time_minutes"].is<int>()) {
+        minutes = payload["cycle_time_minutes"].as<int>();
+      } else if (payload["cycle_time_minutes"].is<float>()) {
+        minutes = (int)payload["cycle_time_minutes"].as<float>();
+      } else if (payload["cycle_time_minutes"].is<const char*>()) {
+        minutes = atoi(payload["cycle_time_minutes"].as<const char*>());
+      }
+    }
   }
+
   if (minutes <= 0) {
     minutes = DEFAULT_CYCLE_MINUTES;
+  }
+  if (minutes > 24 * 60) {
+    minutes = 24 * 60;
   }
   return minutes;
 }
@@ -360,6 +389,7 @@ void processCommand(JsonObject cmd, bool* startedThisPoll) {
     return;
   }
 
+  wdtKick();
   if (strcmp(action, "on") == 0 || strcmp(action, "activate") == 0 || strcmp(action, "turn_on") == 0) {
     applyRuntimeAudioConfig(cmd);
     int minutes = parseCycleMinutes(cmd);
@@ -367,9 +397,9 @@ void processCommand(JsonObject cmd, bool* startedThisPoll) {
     if (startedThisPoll != nullptr) {
       *startedThisPoll = true;
     }
-    if (confirmCommand(cmdId)) {
-      sendHeartbeat();
-    }
+    wdtKick();
+    // Confirma sem segundo heartbeat síncrono (evita cascata HTTP → WDT reboot).
+    confirmCommand(cmdId);
   } else if (strcmp(action, "off") == 0 || strcmp(action, "deactivate") == 0 || strcmp(action, "turn_off") == 0) {
     // Mesma poll: ON seguido de OFF velho na fila — confirma OFF sem matar a sessão nova.
     if (startedThisPoll != nullptr && *startedThisPoll) {
@@ -382,8 +412,8 @@ void processCommand(JsonObject cmd, bool* startedThisPoll) {
     } else {
       pararPoltrona(false);
     }
+    wdtKick();
     confirmCommand(cmdId);
-    sendHeartbeat();
   }
 }
 
@@ -392,6 +422,7 @@ void pollCommands() {
     return;
   }
 
+  wdtKick();
   HTTPClient http;
   String url = String(supabaseUrl) + "/functions/v1/esp32-monitor?action=poll_commands&esp32_id=" + ESP32_ID;
   http.begin(url);
@@ -402,11 +433,13 @@ void pollCommands() {
   int code = http.GET();
   if (code != 200) {
     http.end();
+    wdtKick();
     return;
   }
 
   String payload = http.getString();
   http.end();
+  wdtKick();
 
   StaticJsonDocument<4096> doc;
   if (deserializeJson(doc, payload)) {
@@ -421,6 +454,7 @@ void pollCommands() {
   bool startedThisPoll = false;
   for (JsonObject cmd : commands) {
     processCommand(cmd, &startedThisPoll);
+    wdtKick();
   }
 }
 
@@ -491,7 +525,7 @@ void setupDeviceHttpRoutes() {
 
 void setupWatchdog() {
   esp_task_wdt_config_t cfg = {
-    .timeout_ms = 60000,
+    .timeout_ms = WDT_TIMEOUT_MS,
     .idle_core_mask = 0,
     .trigger_panic = true,
   };
