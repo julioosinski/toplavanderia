@@ -2,6 +2,7 @@ package app.lovable.toplavanderia;
 
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.util.Log;
 import org.json.JSONArray;
@@ -1126,12 +1127,21 @@ public class SupabaseHelper {
     }
 
     /**
-     * Poll até o ESP32 confirmar a liberação (relé ON ou máquina "running"/"OCUPADA" no
-     * servidor) ou estourar o timeout. Aceita ambos os sinais porque o esp32-monitor grava
-     * relay_status e machines.status juntos ao confirmar o comando — evita falso timeout
-     * quando o firmware não replica o relay_status no heartbeat.
+     * Poll até o ESP32 confirmar a liberação (comando completed, relé ON ou máquina in_use)
+     * ou estourar o timeout. Aceita vários sinais porque pulso de 1s quase nunca aparece no
+     * heartbeat; o confirm_command é a fonte confiável.
      */
     public boolean waitForEsp32RelayOn(String esp32Id, int relayPin, String machineId, long timeoutMs) {
+        return waitForEsp32RelayOn(esp32Id, relayPin, machineId, timeoutMs, null);
+    }
+
+    public boolean waitForEsp32RelayOn(
+            String esp32Id,
+            int relayPin,
+            String machineId,
+            long timeoutMs,
+            String transactionId
+    ) {
         if (esp32Id == null || esp32Id.isEmpty()) {
             Log.w(TAG, "waitForEsp32RelayOn: esp32_id vazio");
             return false;
@@ -1139,9 +1149,9 @@ public class SupabaseHelper {
         int pin = relayPin > 0 ? relayPin : DEFAULT_RELAY_LOGICAL_PIN;
         long deadline = System.currentTimeMillis() + Math.max(timeoutMs, 5000L);
         Log.d(TAG, "Aguardando confirmação ESP32 (esp32=" + esp32Id + ", pin=" + pin
-            + ", machine=" + machineId + ", timeout=" + timeoutMs + "ms)");
+            + ", machine=" + machineId + ", tx=" + transactionId + ", timeout=" + timeoutMs + "ms)");
         while (System.currentTimeMillis() < deadline) {
-            if (isEsp32Confirmed(esp32Id, pin, machineId)) {
+            if (isEsp32Confirmed(esp32Id, pin, machineId, transactionId)) {
                 Log.i(TAG, "ESP32 confirmado (esp32=" + esp32Id + ", pin=" + pin + ")");
                 return true;
             }
@@ -1152,17 +1162,104 @@ public class SupabaseHelper {
                 return false;
             }
         }
-        boolean finalCheck = isEsp32Confirmed(esp32Id, pin, machineId);
+        boolean finalCheck = isEsp32Confirmed(esp32Id, pin, machineId, transactionId);
         Log.w(TAG, "Timeout confirmação ESP32 (esp32=" + esp32Id + ", pin=" + pin + ", ok=" + finalCheck + ")");
         return finalCheck;
     }
 
-    /** Relé ON no heartbeat OU máquina marcada running/OCUPADA no servidor. */
-    private boolean isEsp32Confirmed(String esp32Id, int relayPin, String machineId) {
+    /** Relé ON, máquina ocupada no servidor, OU pending_commands completed para a TX. */
+    private boolean isEsp32Confirmed(String esp32Id, int relayPin, String machineId, String transactionId) {
+        if (transactionId != null && !transactionId.isEmpty()
+                && isPendingCommandCompletedForTransaction(transactionId)) {
+            return true;
+        }
         if (isEsp32RelayOn(esp32Id, relayPin)) {
             return true;
         }
         return isMachineRunningOnServer(machineId);
+    }
+
+    /** True se algum comando da TX já foi completed pelo ESP (fonte mais confiável que relay). */
+    public boolean isPendingCommandCompletedForTransaction(String transactionId) {
+        if (transactionId == null || transactionId.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            String url = SUPABASE_URL + "/rest/v1/pending_commands"
+                + "?transaction_id=eq." + Uri.encode(transactionId.trim())
+                + "&status=eq.completed"
+                + "&select=id"
+                + "&limit=1";
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
+            connection.setRequestMethod("GET");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(10000);
+            int code = connection.getResponseCode();
+            if (code != 200) {
+                connection.disconnect();
+                return false;
+            }
+            BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                response.append(line);
+            }
+            br.close();
+            connection.disconnect();
+            String body = response.toString().trim();
+            return body.startsWith("[") && body.length() > 2;
+        } catch (Exception e) {
+            Log.e(TAG, "isPendingCommandCompletedForTransaction", e);
+            return false;
+        }
+    }
+
+    /** Marca comandos pending/processing da TX como failed (antes de estorno). */
+    public int failPendingCommandsForTransaction(String transactionId) {
+        if (transactionId == null || transactionId.trim().isEmpty()) {
+            return 0;
+        }
+        try {
+            String url = SUPABASE_URL + "/rest/v1/rpc/fail_pending_commands_for_transaction";
+            JSONObject payload = new JSONObject();
+            payload.put("_transaction_id", transactionId.trim());
+
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
+
+            OutputStream os = connection.getOutputStream();
+            os.write(payload.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+
+            int responseCode = connection.getResponseCode();
+            if (responseCode != 200) {
+                Log.e(TAG, "fail_pending_commands_for_transaction HTTP " + responseCode);
+                connection.disconnect();
+                return 0;
+            }
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                response.append(line);
+            }
+            br.close();
+            connection.disconnect();
+            String digits = response.toString().trim().replaceAll("[^0-9-]", "");
+            if (digits.isEmpty()) {
+                return 0;
+            }
+            return Integer.parseInt(digits);
+        } catch (Exception e) {
+            Log.e(TAG, "failPendingCommandsForTransaction", e);
+            return 0;
+        }
     }
 
     private boolean isMachineRunningOnServer(String machineId) {

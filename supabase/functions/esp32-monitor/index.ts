@@ -178,6 +178,23 @@ serve(async (req) => {
 
       console.log(`✅ Command ${command_id} confirmed by ${esp32_id}: relay_${command.relay_pin} → ${command.action}`);
 
+      // Recuperação: se o totem morreu após o pagamento, completa a TX quando o ESP confirmar.
+      if (command.transaction_id && (command.action === 'on' || command.action === 'credito')) {
+        try {
+          const { data: completed, error: completeErr } = await supabaseClient.rpc(
+            'complete_transaction_on_esp_confirm',
+            { _transaction_id: command.transaction_id }
+          );
+          if (completeErr) {
+            console.warn('complete_transaction_on_esp_confirm:', completeErr.message);
+          } else if (completed) {
+            console.log(`✅ TX ${command.transaction_id} completed via ESP confirm`);
+          }
+        } catch (e) {
+          console.warn('complete_transaction_on_esp_confirm exception:', e);
+        }
+      }
+
       // Audit log
       await supabaseClient.from('audit_logs').insert({
         action: 'ESP32_COMMAND_EXECUTED',

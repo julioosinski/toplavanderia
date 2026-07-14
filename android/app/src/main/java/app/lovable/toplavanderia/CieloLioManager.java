@@ -35,8 +35,9 @@ public class CieloLioManager implements PaymentManager {
     private static final long MIN_MS_BETWEEN_DEEP_LINKS = 4000L;
     private static final long MIN_MS_BETWEEN_SUCCESSIVE_PAYMENTS = 2000L;
     private static final long COOLDOWN_AFTER_4281_MS = 15000L;
-    /** Sem callback Cielo — só avisa após 3 min (não libera antes: evita -4281). */
+    /** Sem callback Cielo — cartão 3 min; PIX até 15 min (QR demora). */
     private static final long PROCESSING_WATCHDOG_MS = 180000L;
+    private static final long PROCESSING_WATCHDOG_PIX_MS = 900000L;
     private static final long REVERSAL_CALLBACK_TIMEOUT_MS = 120_000L;
     private static long lastSuccessfulPaymentAtMs;
     private static Runnable pendingEndSessionRunnable;
@@ -47,6 +48,11 @@ public class CieloLioManager implements PaymentManager {
     private static final String KEY_BOUND_MACHINE = "machine_id";
     private static final String KEY_BOUND_TX = "pending_tx_id";
     private static final String KEY_BOUND_STARTED = "started_at";
+    private static final String KEY_BOUND_AMOUNT = "amount_cents";
+    private static final String KEY_BOUND_PAY_CODE = "payment_code";
+    private static final String KEY_BOUND_REFERENCE = "reference";
+    /** Instância do totem — sobrevive a dropActiveInstance para callback PIX tardio. */
+    private static CieloLioManager registeredAppManager;
 
     public static void cancelScheduledEndSession() {
         if (pendingEndSessionRunnable != null) {
@@ -58,6 +64,7 @@ public class CieloLioManager implements PaymentManager {
     private final Context context;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private Runnable processingWatchdogRunnable;
+    private boolean pixWatchdogSoftExpired;
     private PaymentCallback callback;
     private boolean isProcessing;
     private boolean isInitialized;
@@ -106,6 +113,7 @@ public class CieloLioManager implements PaymentManager {
         this.context = context;
         this.isProcessing = false;
         this.isInitialized = false;
+        registeredAppManager = this;
         CieloOrderJanitor.loadLearnedMerchantId(context);
     }
 
@@ -180,22 +188,51 @@ public class CieloLioManager implements PaymentManager {
         return isProcessing;
     }
 
-    /** Pagamento aberto na Cielo há tempo demais sem callback. */
+    /** Pagamento aberto na Cielo há tempo demais sem callback. PIX usa janela longa (QR). */
     public boolean isProcessingStale() {
-        return isProcessing
-            && lastDeepLinkLaunchAtMs > 0L
-            && System.currentTimeMillis() - lastDeepLinkLaunchAtMs >= PROCESSING_WATCHDOG_MS;
+        if (!isProcessing || lastDeepLinkLaunchAtMs <= 0L) {
+            return false;
+        }
+        long limitMs = "PIX".equalsIgnoreCase(pendingPaymentCode)
+            ? PROCESSING_WATCHDOG_PIX_MS
+            : PROCESSING_WATCHDOG_MS;
+        return System.currentTimeMillis() - lastDeepLinkLaunchAtMs >= limitMs;
     }
 
-    /** Só após watchdog — evita segundo checkout enquanto Cielo ainda processa (-4281). */
+    /**
+     * Libera flag isProcessing se o checkout travou.
+     * PIX: soft — não cancela TX nem chama onPaymentError (cliente pode pagar o QR depois).
+     */
     public void releaseStaleProcessingIfNeeded() {
         if (!isProcessingStale()) {
+            return;
+        }
+        boolean isPix = "PIX".equalsIgnoreCase(pendingPaymentCode);
+        if (isPix) {
+            Log.w(TAG, "Watchdog PIX soft (releaseStale): mantendo binding/TX — sem cancelar");
+            pixWatchdogSoftExpired = true;
+            finishProcessingAfterCallback();
             return;
         }
         Log.w(TAG, "Watchdog: pagamento sem callback há " + PROCESSING_WATCHDOG_MS + "ms");
         finishProcessingAfterCallback();
         CieloPaymentSessionHelper.endSession(context);
         notifyPaymentError("Tempo esgotado aguardando resposta da Cielo. Tente novamente.");
+    }
+
+    /** True se ainda há checkout Cielo vinculado (ex.: PIX soft-expired aguardando pagamento). */
+    public boolean hasFreshBoundCheckout() {
+        long op = getBoundTotemOperationId();
+        if (op <= 0) {
+            return false;
+        }
+        long started = context.getApplicationContext()
+            .getSharedPreferences(PREFS_CHECKOUT, Context.MODE_PRIVATE)
+            .getLong(KEY_BOUND_STARTED, 0L);
+        if (started <= 0L) {
+            return true;
+        }
+        return System.currentTimeMillis() - started < PROCESSING_WATCHDOG_PIX_MS;
     }
 
     @Override
@@ -217,6 +254,11 @@ public class CieloLioManager implements PaymentManager {
         }
         if (isProcessing) {
             notifyPaymentError("Ja ha uma transacao em processamento");
+            return;
+        }
+        // PIX soft-expired ainda pode ser pago — não abre segundo checkout.
+        if (hasFreshBoundCheckout() && !successDelivered) {
+            notifyPaymentError("Ha um pagamento anterior ainda aberto na Cielo (ex.: PIX). Aguarde a confirmacao ou conclua/cancele no terminal.");
             return;
         }
         if (now - lastDeepLinkLaunchAtMs < MIN_MS_BETWEEN_DEEP_LINKS) {
@@ -270,6 +312,7 @@ public class CieloLioManager implements PaymentManager {
             pendingReference = reference;
             pendingAmountCents = amountCents;
             pendingPaymentCode = paymentCode;
+            persistCheckoutChallenge();
             CieloPaymentSessionHelper.beginSession(context, paymentCode);
             final boolean scheduleTarja = !"PIX".equalsIgnoreCase(paymentCode);
 
@@ -416,6 +459,19 @@ public class CieloLioManager implements PaymentManager {
             return;
         }
         Log.i(TAG, "Aprovação via broadcast — completando checkout (" + source + ")");
+        // Snapshot mínimo para estorno se a liberação ESP32 falhar depois.
+        if (mgr.lastApprovedPayment == null && mgr.pendingAmountCents > 0) {
+            mgr.lastApprovedPayment = new ApprovedPaymentSnapshot(
+                "broadcast-" + System.currentTimeMillis(),
+                "CIELO_BROADCAST",
+                "",
+                mgr.pendingAmountCents
+            );
+        }
+        if (mgr.lastDetectedSupabasePaymentMethod == null
+                && "PIX".equalsIgnoreCase(mgr.pendingPaymentCode)) {
+            mgr.lastDetectedSupabasePaymentMethod = "pix";
+        }
         mgr.deliverPaymentSuccess("CIELO_BROADCAST", "broadcast-" + System.currentTimeMillis(), "broadcast:" + source);
         // Broadcast não traz o id do pedido; fecha todos os pedidos abertos do EC para
         // evitar que o próximo checkout falhe com "pedido anterior aberto" (-4281).
@@ -426,7 +482,19 @@ public class CieloLioManager implements PaymentManager {
         if (activeInstance != null) {
             return activeInstance;
         }
-        return null;
+        if (registeredAppManager == null) {
+            return null;
+        }
+        if (!registeredAppManager.hasFreshBoundCheckout()) {
+            Log.w(TAG, "Reidratar checkout: binding ausente ou expirado");
+            return null;
+        }
+        registeredAppManager.restoreCheckoutChallengeFromPrefs();
+        Log.i(TAG, "Checkout Cielo reidratado (op="
+            + registeredAppManager.boundTotemOperationId
+            + ", tx=" + registeredAppManager.boundPendingTxId + ")");
+        activeInstance = registeredAppManager;
+        return activeInstance;
     }
 
     private void persistBoundCheckout() {
@@ -438,6 +506,40 @@ public class CieloLioManager implements PaymentManager {
             .putString(KEY_BOUND_TX, boundPendingTxId)
             .putLong(KEY_BOUND_STARTED, System.currentTimeMillis())
             .apply();
+        persistCheckoutChallenge();
+    }
+
+    private void persistCheckoutChallenge() {
+        context.getApplicationContext()
+            .getSharedPreferences(PREFS_CHECKOUT, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(KEY_BOUND_AMOUNT, pendingAmountCents)
+            .putString(KEY_BOUND_PAY_CODE, pendingPaymentCode == null ? "" : pendingPaymentCode)
+            .putString(KEY_BOUND_REFERENCE, pendingReference == null ? "" : pendingReference)
+            .apply();
+    }
+
+    private void restoreCheckoutChallengeFromPrefs() {
+        android.content.SharedPreferences prefs = context.getApplicationContext()
+            .getSharedPreferences(PREFS_CHECKOUT, Context.MODE_PRIVATE);
+        if (pendingAmountCents <= 0) {
+            pendingAmountCents = prefs.getLong(KEY_BOUND_AMOUNT, 0L);
+        }
+        if (pendingPaymentCode == null || pendingPaymentCode.isEmpty()) {
+            pendingPaymentCode = prefs.getString(KEY_BOUND_PAY_CODE, null);
+        }
+        if (pendingReference == null || pendingReference.isEmpty()) {
+            pendingReference = prefs.getString(KEY_BOUND_REFERENCE, null);
+        }
+        if (boundTotemOperationId <= 0) {
+            boundTotemOperationId = prefs.getLong(KEY_BOUND_OPERATION, 0L);
+        }
+        if (boundMachineId == null || boundMachineId.isEmpty()) {
+            boundMachineId = prefs.getString(KEY_BOUND_MACHINE, "");
+        }
+        if (boundPendingTxId == null || boundPendingTxId.isEmpty()) {
+            boundPendingTxId = prefs.getString(KEY_BOUND_TX, "");
+        }
     }
 
     private long loadBoundOperationIdFromPrefs() {
@@ -616,15 +718,29 @@ public class CieloLioManager implements PaymentManager {
 
     private void scheduleProcessingWatchdog() {
         cancelProcessingWatchdog();
+        pixWatchdogSoftExpired = false;
+        final boolean isPix = "PIX".equalsIgnoreCase(pendingPaymentCode);
+        final long timeoutMs = isPix ? PROCESSING_WATCHDOG_PIX_MS : PROCESSING_WATCHDOG_MS;
         processingWatchdogRunnable = () -> {
-            if (isProcessing) {
-                Log.w(TAG, "Watchdog: sem callback Cielo em " + PROCESSING_WATCHDOG_MS + "ms");
-                finishProcessingAfterCallback();
-                CieloPaymentSessionHelper.endSession(context);
-                notifyPaymentError("Tempo esgotado aguardando resposta da Cielo. Tente novamente.");
+            if (!isProcessing || successDelivered) {
+                return;
             }
+            if (isPix) {
+                // PIX: NÃO cancela TX/binding. Cliente pode ainda pagar o QR depois.
+                // Mantém binding para deep link/broadcast tardio completar a liberação.
+                Log.w(TAG, "Watchdog PIX: sem callback em " + timeoutMs
+                    + "ms — mantendo sessão (não cancela pagamento/TX)");
+                pixWatchdogSoftExpired = true;
+                finishProcessingAfterCallback();
+                // Mantém activeInstance + bound checkout; só encerra a flag isProcessing.
+                return;
+            }
+            Log.w(TAG, "Watchdog: sem callback Cielo em " + timeoutMs + "ms");
+            finishProcessingAfterCallback();
+            CieloPaymentSessionHelper.endSession(context);
+            notifyPaymentError("Tempo esgotado aguardando resposta da Cielo. Tente novamente.");
         };
-        mainHandler.postDelayed(processingWatchdogRunnable, PROCESSING_WATCHDOG_MS);
+        mainHandler.postDelayed(processingWatchdogRunnable, timeoutMs);
     }
 
     private void cancelProcessingWatchdog() {

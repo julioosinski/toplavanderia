@@ -59,7 +59,7 @@ public class TotemActivity extends Activity {
     /** Sem interação → volta à HOME (todas as telas do totem, inclusive Cielo em segundo plano). */
     private static final long SCREEN_IDLE_TIMEOUT_MS = 60_000L;
     /** Aguarda confirmação do relé ESP32 após pagamento Cielo (poll ~10s + margem). */
-    private static final long ESP32_CONFIRM_TIMEOUT_MS = 45_000L;
+    private static final long ESP32_CONFIRM_TIMEOUT_MS = 90_000L;
     private static final long IDLE_WATCHDOG_TICK_MS = 1_000L;
     private static final int ADMIN_SECRET_TAPS = 7;
     private static final long ADMIN_TAP_WINDOW_MS = 3000L;
@@ -383,7 +383,8 @@ public class TotemActivity extends Activity {
                 || paymentLaunchInProgress.get()
                 || postPaymentHardwarePending
                 || (activePaymentManager != null && activePaymentManager.isProcessing())
-                || CieloPaymentSessionHelper.isPaymentWindowOpen(this)) {
+                || CieloPaymentSessionHelper.isPaymentWindowOpen(this)
+                || (cieloManager != null && cieloManager.hasFreshBoundCheckout())) {
             return false;
         }
         return supabaseHelper != null
@@ -436,7 +437,8 @@ public class TotemActivity extends Activity {
                 || paymentLaunchInProgress.get()
                 || postPaymentHardwarePending
                 || (activePaymentManager != null && activePaymentManager.isProcessing())
-                || CieloPaymentSessionHelper.isPaymentWindowOpen(this)) {
+                || CieloPaymentSessionHelper.isPaymentWindowOpen(this)
+                || (cieloManager != null && cieloManager.hasFreshBoundCheckout())) {
             Log.d(TAG, "Idle timeout adiado — pagamento Cielo em andamento");
             bumpUserInteraction();
             return;
@@ -1208,6 +1210,13 @@ public class TotemActivity extends Activity {
             boolean canAutoRefund
     ) {
         final String machineId = machineSnapshot.getId();
+
+        // Antes de estornar: cancela ON pendente para a máquina não ligar depois do estorno.
+        if (pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
+            int failed = supabaseHelper.failPendingCommandsForTransaction(pendingTxIdFinal);
+            Log.w(TAG, "Comandos ESP cancelados antes do estorno: " + failed);
+        }
+
         boolean reversed = false;
         if (canAutoRefund && cieloManager != null && cieloManager.hasApprovedPaymentSnapshot()) {
             Log.w(TAG, "ESP32 não confirmou — iniciando estorno automático Cielo");
@@ -1984,7 +1993,8 @@ public class TotemActivity extends Activity {
         final boolean isCoffeePayment = coffeeSnapshot != null
             || "CAFE".equals(machineSnapshot.getType());
         final boolean cieloFastPath = "cielo".equalsIgnoreCase(activeProvider);
-        if (cieloFastPath && !isCoffeePayment) {
+        // Bloqueia idle durante liberação ESP32/café (antes de liberar awaiting).
+        if (cieloFastPath) {
             postPaymentHardwarePending = true;
             bumpUserInteraction();
         }
@@ -2025,7 +2035,41 @@ public class TotemActivity extends Activity {
                     creditQueued = supabaseHelper.enqueueCoffeeCredit(pendingTxIdFinal);
                 }
                 if (!creditQueued) {
+                    try { Thread.sleep(1500L); } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    }
+                    if (pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
+                        creditQueued = supabaseHelper.enqueueCoffeeCredit(pendingTxIdFinal);
+                    }
+                }
+                if (!creditQueued) {
                     Log.e(TAG, "❌ Crédito café não enfileirado — estorno automático se possível");
+                    handleEsp32FailureWithRefund(
+                        machineSnapshot, pendingTxIdFinal, operationId, true
+                    );
+                    return;
+                }
+
+                // Confirma execução do crédito no ESP (mesmo critério das lavadoras).
+                boolean creditConfirmed = supabaseHelper.waitForEsp32RelayOn(
+                    machineSnapshot.getEsp32Id(),
+                    machineSnapshot.getRelayPin(),
+                    machineId,
+                    ESP32_CONFIRM_TIMEOUT_MS,
+                    pendingTxIdFinal
+                );
+                if (!creditConfirmed) {
+                    Log.w(TAG, "Café: ESP sem confirmação — reenfileirando e aguardando novamente");
+                    supabaseHelper.enqueueCoffeeCredit(pendingTxIdFinal);
+                    creditConfirmed = supabaseHelper.waitForEsp32RelayOn(
+                        machineSnapshot.getEsp32Id(),
+                        machineSnapshot.getRelayPin(),
+                        machineId,
+                        ESP32_CONFIRM_TIMEOUT_MS,
+                        pendingTxIdFinal
+                    );
+                }
+                if (!creditConfirmed) {
                     handleEsp32FailureWithRefund(
                         machineSnapshot, pendingTxIdFinal, operationId, true
                     );
@@ -2036,7 +2080,7 @@ public class TotemActivity extends Activity {
                     pendingTxIdFinal, methodForComplete
                 );
                 if (!txCompleted) {
-                    Log.w(TAG, "Crédito enfileirado, mas falhou ao marcar TX café como concluída");
+                    Log.w(TAG, "Crédito confirmado, mas falhou ao marcar TX café como concluída");
                 }
 
                 runOnUiThread(() -> {
@@ -2056,14 +2100,33 @@ public class TotemActivity extends Activity {
                     esp32Id, relayPin, machineId, esp32TxId, durationMinutes
                 );
                 if (!queued) {
+                    // Uma retentativa rápida antes de estornar (rede intermitente).
+                    try { Thread.sleep(1500L); } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    }
+                    queued = supabaseHelper.queueEsp32RelayOn(
+                        esp32Id, relayPin, machineId, esp32TxId, durationMinutes
+                    );
+                }
+                if (!queued) {
                     handleEsp32FailureWithRefund(
                         machineSnapshot, pendingTxIdFinal, operationId, true
                     );
                     return;
                 }
                 boolean relayConfirmed = supabaseHelper.waitForEsp32RelayOn(
-                    esp32Id, relayPin, machineId, ESP32_CONFIRM_TIMEOUT_MS
+                    esp32Id, relayPin, machineId, ESP32_CONFIRM_TIMEOUT_MS, esp32TxId
                 );
+                if (!relayConfirmed) {
+                    // Re-enfileira e espera de novo antes de estornar (ESP offline temporário).
+                    Log.w(TAG, "ESP32 sem confirmação — reenfileirando ON e aguardando novamente");
+                    supabaseHelper.queueEsp32RelayOn(
+                        esp32Id, relayPin, machineId, esp32TxId, durationMinutes
+                    );
+                    relayConfirmed = supabaseHelper.waitForEsp32RelayOn(
+                        esp32Id, relayPin, machineId, ESP32_CONFIRM_TIMEOUT_MS, esp32TxId
+                    );
+                }
                 if (!relayConfirmed) {
                     handleEsp32FailureWithRefund(
                         machineSnapshot, pendingTxIdFinal, operationId, true

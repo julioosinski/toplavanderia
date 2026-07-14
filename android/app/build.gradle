@@ -48,8 +48,8 @@ android {
         applicationId "com.toplavanderia.app"
         minSdk 24
         targetSdk 35
-        versionCode 107
-        versionName "2.2.105"
+        versionCode 108
+        versionName "2.2.106"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField "String", "SUPABASE_URL", quoteBuildConfig(readConfigValue('supabaseUrl', 'VITE_SUPABASE_URL'))
         buildConfigField "String", "SUPABASE_ANON_KEY", quoteBuildConfig(readConfigValue('supabaseAnonKey', 'VITE_SUPABASE_PUBLISHABLE_KEY'))
