@@ -8,6 +8,7 @@ import { getMachineTypeMeta, mapDbMachineType, sortMachinesByDisplayType } from 
 import { LaundryDashboardSelector } from "@/components/admin/LaundryDashboardSelector";
 import { MachineStatusGrid } from "@/components/admin/MachineStatusGrid";
 import { ConsolidatedMachineStatus } from "@/components/admin/ConsolidatedMachineStatus";
+import { DashboardSalesSummary } from "@/components/admin/DashboardSalesSummary";
 import { type Machine, useMachines } from "@/hooks/useMachines";
 import { Badge } from "@/components/ui/badge";
 
@@ -56,7 +57,7 @@ const toDashboardMachine = (
 };
 
 export default function Dashboard() {
-  const { currentLaundry, isSuperAdmin, laundries, isViewingAllLaundries } = useLaundry();
+  const { currentLaundry, isSuperAdmin, isAdmin, laundries, isViewingAllLaundries } = useLaundry();
   const isViewingAll = isSuperAdmin && isViewingAllLaundries;
   const currentLaundryId = currentLaundry?.id;
   const laundryIdForMachines = isViewingAll ? undefined : currentLaundryId;
@@ -162,11 +163,17 @@ export default function Dashboard() {
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Máquinas</h1>
-          <p className="text-sm text-muted-foreground">Status e acionamento manual</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
+            {isAdmin ? "Dashboard" : "Máquinas"}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {isAdmin ? "Vendas, status e acionamento manual" : "Status e acionamento manual"}
+          </p>
         </div>
         <LaundryDashboardSelector />
       </div>
+
+      {isAdmin && <DashboardSalesSummary />}
 
       {hasAlerts && (
         <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/20">
