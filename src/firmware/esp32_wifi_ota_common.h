@@ -290,10 +290,11 @@ static void esp32ReportOtaResult(const String& jobId, bool success, const String
 
 // Hook opcional: o .ino do equipamento pode apontar para uma função própria
 // (ex.: poltrona não baixa OTA durante a sessão). Default = livre para OTA.
-using Esp32OtaBusyFn = bool (*)();
-static Esp32OtaBusyFn esp32OtaBusyHook = nullptr;
+// Assinatura sem typedef: o pré-processador do Arduino IDE gera protótipos e
+// quebra com "using"/"typedef" em funções static dentro do .ino embutido.
+static bool (*esp32OtaBusyHook)(void) = nullptr;
 
-static void esp32SetOtaBusyHook(Esp32OtaBusyFn fn) {
+static void esp32SetOtaBusyHook(bool (*fn)(void)) {
   esp32OtaBusyHook = fn;
 }
 
