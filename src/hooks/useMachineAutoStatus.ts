@@ -21,7 +21,7 @@ export const useMachineAutoStatus = () => {
         const { data: runningMachines, error } = await supabase
           .from('machines')
           .select('id, updated_at, cycle_time_minutes, esp32_id, relay_pin, laundry_id, type, device_profile')
-          .eq('status', 'running');
+          .in('status', ['running', 'in_use']);
 
         if (error) {
           console.error('Erro ao buscar máquinas em execução:', error);

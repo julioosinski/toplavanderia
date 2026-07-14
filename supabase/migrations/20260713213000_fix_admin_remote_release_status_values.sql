@@ -1,21 +1,6 @@
--- Cancela OFF pendentes ao liberar ON (evita poltrona ligar e desligar na mesma poll).
--- Alinha status da liberação manual para 'running' (compatível com useMachineAutoStatus).
-
--- Limpeza imediata: OFFs já enfileirados para poltronas timed_session.
--- status 'failed' — 'cancelled' viola CHECK de pending_commands.
-UPDATE public.pending_commands pc
-SET
-  status = 'failed',
-  error_message = COALESCE(pc.error_message, 'cancelled_before_new_on'),
-  updated_at = now()
-WHERE pc.status = 'pending'
-  AND pc.action = 'off'
-  AND EXISTS (
-    SELECT 1
-    FROM public.machines m
-    WHERE m.id = pc.machine_id
-      AND (m.type = 'massage' OR m.device_profile = 'timed_session')
-  );
+-- Corrige admin_remote_release: status inválidos quebravam liberação (400).
+-- machines.status aceita: available | in_use | maintenance | offline (NÃO "running")
+-- pending_commands.status aceita: pending | processing | completed | failed (NÃO "cancelled")
 
 CREATE OR REPLACE FUNCTION public.admin_remote_release(
   _machine_id uuid,
@@ -190,13 +175,13 @@ BEGIN
   END IF;
 
   _audio_volumes := jsonb_strip_nulls(jsonb_build_object(
-    'volume_audio_001', NULLIF(_machine.metadata->>'volume_audio_001', '')::integer,
-    'volume_audio_002', NULLIF(_machine.metadata->>'volume_audio_002', '')::integer,
-    'volume_audio_003', NULLIF(_machine.metadata->>'volume_audio_003', '')::integer,
-    'volume_audio_004', NULLIF(_machine.metadata->>'volume_audio_004', '')::integer,
-    'volume_audio_005', NULLIF(_machine.metadata->>'volume_audio_005', '')::integer,
-    'volume_audio_006', NULLIF(_machine.metadata->>'volume_audio_006', '')::integer,
-    'volume_audio_007', NULLIF(_machine.metadata->>'volume_audio_007', '')::integer
+    'volume_audio_001', CASE WHEN (_machine.metadata->>'volume_audio_001') ~ '^[0-9]+$' THEN (_machine.metadata->>'volume_audio_001')::integer ELSE NULL END,
+    'volume_audio_002', CASE WHEN (_machine.metadata->>'volume_audio_002') ~ '^[0-9]+$' THEN (_machine.metadata->>'volume_audio_002')::integer ELSE NULL END,
+    'volume_audio_003', CASE WHEN (_machine.metadata->>'volume_audio_003') ~ '^[0-9]+$' THEN (_machine.metadata->>'volume_audio_003')::integer ELSE NULL END,
+    'volume_audio_004', CASE WHEN (_machine.metadata->>'volume_audio_004') ~ '^[0-9]+$' THEN (_machine.metadata->>'volume_audio_004')::integer ELSE NULL END,
+    'volume_audio_005', CASE WHEN (_machine.metadata->>'volume_audio_005') ~ '^[0-9]+$' THEN (_machine.metadata->>'volume_audio_005')::integer ELSE NULL END,
+    'volume_audio_006', CASE WHEN (_machine.metadata->>'volume_audio_006') ~ '^[0-9]+$' THEN (_machine.metadata->>'volume_audio_006')::integer ELSE NULL END,
+    'volume_audio_007', CASE WHEN (_machine.metadata->>'volume_audio_007') ~ '^[0-9]+$' THEN (_machine.metadata->>'volume_audio_007')::integer ELSE NULL END
   ));
 
   INSERT INTO public.transactions (
@@ -212,8 +197,7 @@ BEGIN
   )
   RETURNING id INTO _tx_id;
 
-  -- Remove OFF velho da fila (timer Android / auto-status) antes do novo ON.
-  -- 'failed' (não 'cancelled'): CHECK pending_commands.status.
+  -- Remove OFF velho da fila (usa 'failed' — 'cancelled' viola CHECK da tabela).
   UPDATE public.pending_commands
   SET
     status = 'failed',

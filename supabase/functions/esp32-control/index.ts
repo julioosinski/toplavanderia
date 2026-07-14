@@ -111,13 +111,21 @@ Deno.serve(async (req) => {
       }
 
       // Cancela OFF pendente do mesmo relé — evita ON+OFF na mesma poll (poltrona liga e apaga).
+      // status 'failed' (não 'cancelled'): CHECK da tabela não inclui cancelled.
       const { error: cancelErr, count } = await supabase
         .from('pending_commands')
-        .update({ status: 'cancelled', updated_at: new Date().toISOString() }, { count: 'exact' })
+        .update(
+          {
+            status: 'failed',
+            error_message: 'cancelled_before_new_on',
+            updated_at: new Date().toISOString(),
+          },
+          { count: 'exact' }
+        )
         .eq('esp32_id', esp32_id)
         .eq('status', 'pending')
         .eq('relay_pin', resolvedRelayPin)
-        .in('action', ['off', 'deactivate', 'turn_off']);
+        .eq('action', 'off');
       if (cancelErr) {
         console.warn('⚠️ Falha ao cancelar OFF pendente:', cancelErr.message);
       } else if (count && count > 0) {
