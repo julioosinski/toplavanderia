@@ -20,7 +20,7 @@
 #include <esp_task_wdt.h>
 #include <cstdio>
 
-#define FIRMWARE_VERSION "v1.1.2-toplav-poltrona"
+#define FIRMWARE_VERSION "v1.1.3-toplav-poltrona"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
@@ -112,12 +112,10 @@ void executarCicloResfriamento() {
   executandoResfriamento = true;
   acionarRele(false);
   delay(PAUSA_ANTES_RESFRIAMENTO_SEG * 1000UL);
-  esp_task_wdt_reset();
 
   acionarRele(true);
   for (int i = 0; i < TEMPO_RESFRIAMENTO_SEG; i++) {
     delay(1000);
-    esp_task_wdt_reset();
   }
   acionarRele(false);
   executandoResfriamento = false;
@@ -242,7 +240,7 @@ void atualizarTimerSessao() {
 }
 
 void wdtKick() {
-  esp_task_wdt_reset();
+  // no-op: WDT desativado na poltrona
 }
 
 bool sendHeartbeat() {
@@ -407,6 +405,21 @@ void processCommand(JsonObject cmd, bool* startedThisPoll) {
       confirmCommand(cmdId);
       return;
     }
+    // Durante sessão: só aceita OFF forçado (admin_stop/force). Evita OFF do Android/auto-status.
+    bool forceOff = false;
+    if (cmd.containsKey("payload")) {
+      JsonObject payload = cmd["payload"];
+      if (!payload.isNull()) {
+        forceOff = payload["force"] | false;
+        if (!forceOff) forceOff = payload["remote_stop"] | false;
+        if (!forceOff) forceOff = payload["admin_stop"] | false;
+      }
+    }
+    if (statusAtual == "em_uso" && !forceOff) {
+      Serial.println("Ignorando OFF remoto sem force durante sessão timed_session");
+      confirmCommand(cmdId);
+      return;
+    }
     if (statusAtual == "em_uso") {
       pararPoltrona(true);
     } else {
@@ -524,15 +537,13 @@ void setupDeviceHttpRoutes() {
 }
 
 void setupWatchdog() {
-  esp_task_wdt_config_t cfg = {
-    .timeout_ms = WDT_TIMEOUT_MS,
-    .idle_core_mask = 0,
-    .trigger_panic = true,
-  };
+  // WDT desligado: HTTP + OTA + DFPlayer causavam reboot e desligavam o relé no meio da sessão.
   esp_task_wdt_deinit();
-  if (esp_task_wdt_init(&cfg) == ESP_OK) {
-    esp_task_wdt_add(nullptr);
-  }
+}
+
+/** Usado por esp32_wifi_ota_common.h — não baixa OTA no meio da massagem. */
+bool esp32DeviceIsBusyForOta() {
+  return statusAtual == "em_uso" || executandoResfriamento;
 }
 
 void setup() {
@@ -566,9 +577,10 @@ void setup() {
 }
 
 void loop() {
-  esp_task_wdt_reset();
-
   if (!esp32WifiOtaMaintain()) {
+    // Wi-Fi caiu: mantém o timer da sessão mesmo offline.
+    gerenciarAudios();
+    atualizarTimerSessao();
     delay(10);
     return;
   }

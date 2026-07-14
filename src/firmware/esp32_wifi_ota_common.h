@@ -288,13 +288,23 @@ static void esp32ReportOtaResult(const String& jobId, bool success, const String
   http.end();
 }
 
+static bool esp32DeviceIsBusyForOta();
+__attribute__((weak)) bool esp32DeviceIsBusyForOta() {
+  return false;
+}
+
 static void esp32PollOtaUpdate() {
   if (WiFi.status() != WL_CONNECTED) return;
+  if (esp32DeviceIsBusyForOta()) {
+    Serial.println("OTA adiado — equipamento em uso");
+    return;
+  }
 
   HTTPClient http;
   String enc = esp32UrlEncodeQueryValue(ESP32_ID);
   String url = String(supabaseUrl) + "/functions/v1/esp32-firmware-ota?action=poll&esp32_id=" + enc;
   http.begin(url);
+  http.setTimeout(8000);
   http.addHeader("apikey", supabaseApiKey);
   http.addHeader("Authorization", String("Bearer ") + String(supabaseApiKey));
 
@@ -321,6 +331,19 @@ static void esp32PollOtaUpdate() {
   String otaUrl = ota["url"].as<String>();
 
   if (otaUrl.length() == 0 || jobId.length() == 0) return;
+
+  // Evita gravar firmware de outro produto (ex.: v2.2.4 lavadora em poltrona).
+  String currentVersion = String(FIRMWARE_VERSION);
+  if (currentVersion.indexOf("poltrona") >= 0 && targetVersion.indexOf("poltrona") < 0) {
+    Serial.printf("OTA rejeitado: alvo %s incompativel com %s\n", targetVersion.c_str(), currentVersion.c_str());
+    esp32ReportOtaResult(jobId, false, "Firmware incompativel com poltrona");
+    return;
+  }
+  if (currentVersion.indexOf("cafe") >= 0 && targetVersion.indexOf("cafe") < 0) {
+    Serial.printf("OTA rejeitado: alvo %s incompativel com cafe\n", targetVersion.c_str());
+    esp32ReportOtaResult(jobId, false, "Firmware incompativel com cafe");
+    return;
+  }
 
   Serial.printf("OTA %s -> %s (job %s)\n", FIRMWARE_VERSION, targetVersion.c_str(), jobId.c_str());
 

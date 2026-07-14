@@ -17,7 +17,22 @@ interface ESP32ControlRequest {
 interface MachineControlConfig {
   cycle_time_minutes?: number | null;
   metadata?: Record<string, unknown> | null;
+  type?: string | null;
+  device_profile?: string | null;
 }
+
+const isForcedOff = (payload: Record<string, unknown> | undefined) => {
+  if (!payload) return false;
+  return payload.force === true
+    || payload.force === 'true'
+    || payload.remote_stop === true
+    || payload.admin_stop === true;
+};
+
+const isTimedSessionMachine = (machine: { type?: string | null; device_profile?: string | null } | null) => {
+  if (!machine) return false;
+  return machine.type === 'massage' || machine.device_profile === 'timed_session';
+};
 
 const getErrorMessage = (error: unknown) => {
   return error instanceof Error ? error.message : 'Erro inesperado';
@@ -69,11 +84,34 @@ Deno.serve(async (req) => {
     const resolvedRelayPin = action === 'credito' ? (relay_pin ?? 0) : (relay_pin ?? 1);
     const resolvedPayload: Record<string, unknown> = { ...(payload ?? {}) };
 
+    // Poltrona/timed_session: OFF remoto só com force (evita Android/auto-status matar a sessão).
+    if (action === 'off') {
+      const { data: machineForOff } = await supabase
+        .from('machines')
+        .select('type, device_profile')
+        .eq('id', machine_id)
+        .maybeSingle<Pick<MachineControlConfig, 'type' | 'device_profile'>>();
+
+      if (isTimedSessionMachine(machineForOff) && !isForcedOff(resolvedPayload)) {
+        console.warn(
+          `⛔ OFF bloqueado para timed_session/massage (${machine_id}) sem force — firmware controla o tempo`
+        );
+        return new Response(
+          JSON.stringify({
+            success: true,
+            skipped: true,
+            message: 'OFF ignorado: poltrona/timed_session controla o ciclo no firmware',
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+        );
+      }
+    }
+
     // Enriquecer payload com config dinâmica da máquina (tempo + volumes) para firmwares timed_session.
     if (action === 'on') {
       const { data: machineData, error: machineError } = await supabase
         .from('machines')
-        .select('cycle_time_minutes, metadata')
+        .select('cycle_time_minutes, metadata, type, device_profile')
         .eq('id', machine_id)
         .maybeSingle<MachineControlConfig>();
 

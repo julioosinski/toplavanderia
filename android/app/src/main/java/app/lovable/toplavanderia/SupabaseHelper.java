@@ -1365,22 +1365,24 @@ public class SupabaseHelper {
      * Agenda desligamento automático do relé após tempo de uso
      */
     private void scheduleEsp32TurnOff(String esp32Id, int relayPin, String machineId, int durationMinutes) {
-        if (durationMinutes <= 0) {
-            Log.w(TAG, "Ignorando OFF agendado: duration=" + durationMinutes);
-            return;
-        }
+        // Poltrona/timed_session: NUNCA enfileira OFF pelo Android — o ESP controla o tempo.
+        // Mesmo se cache local falhar, o esp32-control rejeita OFF sem force.
         if (isTimedSessionMachine(machineId)) {
             Log.d(TAG, "Ignorando OFF agendado: timed_session/MASSAGEM");
             return;
         }
+        if (durationMinutes <= 0) {
+            Log.w(TAG, "Ignorando OFF agendado: duration=" + durationMinutes);
+            return;
+        }
         final int waitMinutes = durationMinutes;
+        final String mid = machineId;
         new Thread(() -> {
             try {
                 Log.d(TAG, "⏰ Agendando desligamento em " + waitMinutes + " minutos");
                 Thread.sleep(waitMinutes * 60L * 1000L);
 
-                // Revalida: máquina pode ter virado poltrona / sessão timed no meio do wait.
-                if (isTimedSessionMachine(machineId)) {
+                if (isTimedSessionMachine(mid)) {
                     Log.i(TAG, "OFF agendado cancelado: máquina timed_session após wait");
                     return;
                 }
@@ -1393,7 +1395,7 @@ public class SupabaseHelper {
                 payload.put("esp32_id", esp32Id);
                 payload.put("relay_pin", relayPin);
                 payload.put("action", "off");
-                payload.put("machine_id", machineId);
+                payload.put("machine_id", mid);
 
                 HttpURLConnection connection = SupabaseConfig.openConnection(url);
                 connection.setRequestMethod("POST");
@@ -1410,7 +1412,7 @@ public class SupabaseHelper {
 
                 if (responseCode == 200) {
                     Log.d(TAG, "✅ ESP32 desligado automaticamente");
-                    updateMachineStatus(machineId, "LIVRE");
+                    updateMachineStatus(mid, "LIVRE");
                 }
 
             } catch (Exception e) {

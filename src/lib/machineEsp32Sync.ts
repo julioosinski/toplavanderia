@@ -234,7 +234,8 @@ export async function mergeRelayIntoEsp32Status(
 export async function queueEsp32RelayOff(
   esp32Id: string,
   relayPin: number,
-  machineId: string
+  machineId: string,
+  options?: { force?: boolean }
 ): Promise<void> {
   try {
     await supabase.functions.invoke('esp32-control', {
@@ -243,6 +244,7 @@ export async function queueEsp32RelayOff(
         relay_pin: relayPin,
         action: 'off',
         machine_id: machineId,
+        payload: options?.force ? { force: true, remote_stop: true } : {},
       },
     });
   } catch (e) {
@@ -277,7 +279,7 @@ export async function forceMachineReleased(params: {
     const pin = resolvedRelayPin(m.relay_pin);
     const { error: relayErr } = await mergeRelayIntoEsp32Status(m.esp32_id, m.laundry_id, pin, 'off');
     if (relayErr) console.warn('[forceMachineReleased] relay_status:', relayErr);
-    if (hardwareOff) await queueEsp32RelayOff(m.esp32_id, pin, machineId);
+    if (hardwareOff) await queueEsp32RelayOff(m.esp32_id, pin, machineId, { force: true });
   }
 
   return { error: null };
@@ -304,7 +306,7 @@ export async function forceMachineMaintenance(machineId: string): Promise<{ erro
     const pin = resolvedRelayPin(m.relay_pin);
     const { error: relayErr } = await mergeRelayIntoEsp32Status(m.esp32_id, m.laundry_id, pin, 'off');
     if (relayErr) console.warn('[forceMachineMaintenance] relay_status:', relayErr);
-    await queueEsp32RelayOff(m.esp32_id, pin, machineId);
+    await queueEsp32RelayOff(m.esp32_id, pin, machineId, { force: true });
   }
 
   return { error: null };
