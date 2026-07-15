@@ -9,6 +9,14 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useLaundry } from "@/hooks/useLaundry";
 import { billableRevenueAmount } from "@/lib/transactionRevenue";
+import {
+  brazilDayBoundsUtc,
+  brazilIsoDate,
+  brazilIsoDateDaysAgo,
+  brazilIsoDateLabel,
+  brazilMonthStartIsoDate,
+  brazilRangeBoundsUtc,
+} from "@/lib/brazilReportDates";
 
 interface LaundryStats {
   laundry_id: string;
@@ -29,8 +37,8 @@ export const ConsolidatedReportsTab = () => {
   const [stats, setStats] = useState<LaundryStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLaundryId, setSelectedLaundryId] = useState<string>("all");
-  const [startDate, setStartDate] = useState(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(brazilIsoDateDaysAgo(30));
+  const [endDate, setEndDate] = useState(brazilIsoDate());
 
   const loadConsolidatedStats = useCallback(async () => {
     try {
@@ -44,13 +52,14 @@ export const ConsolidatedReportsTab = () => {
           .eq('laundry_id', laundry.id);
         if (machinesError) throw machinesError;
 
+        const { startUtc, endUtc } = brazilRangeBoundsUtc(startDate, endDate);
         const txQuery = supabase
           .from('transactions')
           .select('id, total_amount, payment_method')
           .eq('laundry_id', laundry.id)
           .eq('status', 'completed')
-          .gte('created_at', startDate + 'T00:00:00')
-          .lte('created_at', endDate + 'T23:59:59');
+          .gte('created_at', startUtc)
+          .lte('created_at', endUtc);
 
         const { data: transactions, error: transactionsError } = await txQuery;
         if (transactionsError) throw transactionsError;
@@ -172,7 +181,7 @@ export const ConsolidatedReportsTab = () => {
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Performance por Lavanderia</CardTitle>
-            <CardDescription>Período: {new Date(startDate).toLocaleDateString('pt-BR')} — {new Date(endDate).toLocaleDateString('pt-BR')}</CardDescription>
+            <CardDescription>Período: {brazilIsoDateLabel(startDate)} — {brazilIsoDateLabel(endDate)}</CardDescription>
           </div>
           <Button onClick={loadConsolidatedStats} variant="outline" size="sm"><RefreshCw className="h-4 w-4 mr-2" />Atualizar</Button>
         </CardHeader>

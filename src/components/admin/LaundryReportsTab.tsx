@@ -11,6 +11,15 @@ import { useToast } from "@/hooks/use-toast";
 import { useLaundry } from "@/hooks/useLaundry";
 import { billableRevenueAmount, displayTransactionAmount, isManualRelease } from "@/lib/transactionRevenue";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  brazilDateKeyFromTimestamp,
+  brazilIsoDate,
+  brazilIsoDateDaysAgo,
+  brazilMonthKeyFromTimestamp,
+  brazilRangeBoundsUtc,
+  brazilWeekLabelFromTimestamp,
+  formatBrazilDateTime,
+} from "@/lib/brazilReportDates";
 
 interface Transaction {
   id: string;
@@ -48,8 +57,8 @@ export const LaundryReportsTab = () => {
   const [reportData, setReportData] = useState<ReportData[]>([]);
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState({
-    startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    endDate: new Date().toISOString().split('T')[0],
+    startDate: brazilIsoDateDaysAgo(7),
+    endDate: brazilIsoDate(),
     machineId: 'all',
     machineType: 'all',
     paymentMethod: 'all',
@@ -71,13 +80,14 @@ export const LaundryReportsTab = () => {
     if (!currentLaundryId) return;
     setLoading(true);
     try {
+      const { startUtc, endUtc } = brazilRangeBoundsUtc(filters.startDate, filters.endDate);
       let query = supabase
         .from('transactions')
         .select(`id, machine_id, total_amount, created_at, payment_method, user_id, machines!inner(name, type)`)
         .eq('laundry_id', currentLaundryId)
         .eq('status', 'completed')
-        .gte('created_at', filters.startDate + 'T00:00:00')
-        .lte('created_at', filters.endDate + 'T23:59:59.999')
+        .gte('created_at', startUtc)
+        .lte('created_at', endUtc)
         .order('created_at', { ascending: false });
 
       if (filters.machineId !== 'all') {
@@ -119,16 +129,13 @@ export const LaundryReportsTab = () => {
       // Process grouped data
       const groupedData: Record<string, ReportData> = {};
       enriched.forEach(transaction => {
-        const date = new Date(transaction.created_at);
         let key: string;
         if (filters.reportType === 'daily') {
-          key = date.toLocaleDateString('pt-BR');
+          key = brazilDateKeyFromTimestamp(transaction.created_at);
         } else if (filters.reportType === 'weekly') {
-          const weekStart = new Date(date);
-          weekStart.setDate(date.getDate() - date.getDay());
-          key = `Semana de ${weekStart.toLocaleDateString('pt-BR')}`;
+          key = brazilWeekLabelFromTimestamp(transaction.created_at);
         } else {
-          key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+          key = brazilMonthKeyFromTimestamp(transaction.created_at);
         }
         if (!groupedData[key]) {
           groupedData[key] = { date: key, sales: 0, revenue: 0, machine_name: filters.machineId !== 'all' ? transaction.machines.name : undefined };
@@ -170,7 +177,7 @@ export const LaundryReportsTab = () => {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.setAttribute('href', URL.createObjectURL(blob));
-    link.setAttribute('download', `relatorio_${currentLaundryName}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `relatorio_${currentLaundryName}_${brazilIsoDate()}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -407,8 +414,10 @@ export const LaundryReportsTab = () => {
                     <div>
                       <p className="font-medium">{transaction.machines.name}</p>
                       <p className="text-sm text-muted-foreground">
-                        {new Date(transaction.created_at).toLocaleDateString('pt-BR')} às{' '}
-                        {new Date(transaction.created_at).toLocaleTimeString('pt-BR')}
+                        {(() => {
+                          const { date, time } = formatBrazilDateTime(transaction.created_at);
+                          return `${date} às ${time}`;
+                        })()}
                       </p>
                     </div>
                   </div>

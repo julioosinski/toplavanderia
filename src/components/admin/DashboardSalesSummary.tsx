@@ -9,6 +9,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { useLaundry } from "@/hooks/useLaundry";
 import { billableRevenueAmount } from "@/lib/transactionRevenue";
 
+import {
+  brazilIsoDate,
+  brazilIsoDateDaysAgo,
+  brazilIsoDateLabel,
+  brazilMonthStartIsoDate,
+  brazilRangeBoundsUtc,
+} from "@/lib/brazilReportDates";
+
 type SalesPeriod = "daily" | "monthly" | "custom";
 
 interface SalesTotals {
@@ -16,12 +24,9 @@ interface SalesTotals {
   revenue: number;
 }
 
-const todayIsoDate = () => new Date().toISOString().split("T")[0];
+const todayIsoDate = () => brazilIsoDate();
 
-const monthStartIsoDate = () => {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
-};
+const monthStartIsoDate = () => brazilMonthStartIsoDate();
 
 const formatBrl = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -29,7 +34,7 @@ const formatBrl = (value: number) =>
 const periodLabel = (period: SalesPeriod, start: string, end: string) => {
   if (period === "daily") return "Hoje";
   if (period === "monthly") return "Mês atual";
-  return `${start.split("-").reverse().join("/")} – ${end.split("-").reverse().join("/")}`;
+  return `${brazilIsoDateLabel(start)} – ${brazilIsoDateLabel(end)}`;
 };
 
 export const DashboardSalesSummary = () => {
@@ -65,12 +70,13 @@ export const DashboardSalesSummary = () => {
 
     setLoading(true);
     try {
+      const { startUtc, endUtc } = brazilRangeBoundsUtc(range.start, range.end);
       let query = supabase
         .from("transactions")
         .select("id, total_amount, payment_method")
         .eq("status", "completed")
-        .gte("created_at", `${range.start}T00:00:00`)
-        .lte("created_at", `${range.end}T23:59:59.999`);
+        .gte("created_at", startUtc)
+        .lte("created_at", endUtc);
 
       if (isConsolidated) {
         const laundryIds = laundries.map((l) => l.id).filter(Boolean);

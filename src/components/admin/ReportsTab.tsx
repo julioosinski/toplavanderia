@@ -10,6 +10,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { BarChart3, Calendar, TrendingUp, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { billableRevenueAmount, displayTransactionAmount, isManualRelease } from "@/lib/transactionRevenue";
+import {
+  brazilDateKeyFromTimestamp,
+  brazilIsoDate,
+  brazilIsoDateDaysAgo,
+  brazilMonthKeyFromTimestamp,
+  brazilRangeBoundsUtc,
+  brazilWeekLabelFromTimestamp,
+  formatBrazilDateTime,
+} from "@/lib/brazilReportDates";
 
 interface Transaction {
   id: string;
@@ -40,8 +49,8 @@ export const ReportsTab = () => {
   const [reportData, setReportData] = useState<ReportData[]>([]);
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState({
-    startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    endDate: new Date().toISOString().split('T')[0],
+    startDate: brazilIsoDateDaysAgo(7),
+    endDate: brazilIsoDate(),
     machineId: 'all',
     reportType: 'daily'
   });
@@ -61,6 +70,7 @@ export const ReportsTab = () => {
   const generateReport = useCallback(async () => {
     setLoading(true);
     try {
+      const { startUtc, endUtc } = brazilRangeBoundsUtc(filters.startDate, filters.endDate);
       let query = supabase
         .from('transactions')
         .select(`
@@ -71,8 +81,8 @@ export const ReportsTab = () => {
           payment_method,
           machines!inner(name)
         `)
-        .gte('created_at', filters.startDate + 'T00:00:00')
-        .lte('created_at', filters.endDate + 'T23:59:59')
+        .gte('created_at', startUtc)
+        .lte('created_at', endUtc)
         .eq('status', 'completed')
         .order('created_at', { ascending: false });
 
@@ -91,17 +101,14 @@ export const ReportsTab = () => {
       const groupedData: Record<string, ReportData> = {};
 
       transactions.forEach(transaction => {
-        const date = new Date(transaction.created_at);
         let key: string;
 
         if (filters.reportType === 'daily') {
-          key = date.toLocaleDateString('pt-BR');
+          key = brazilDateKeyFromTimestamp(transaction.created_at);
         } else if (filters.reportType === 'weekly') {
-          const weekStart = new Date(date);
-          weekStart.setDate(date.getDate() - date.getDay());
-          key = `Semana de ${weekStart.toLocaleDateString('pt-BR')}`;
+          key = brazilWeekLabelFromTimestamp(transaction.created_at);
         } else {
-          key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+          key = brazilMonthKeyFromTimestamp(transaction.created_at);
         }
 
         if (!groupedData[key]) {
@@ -166,7 +173,7 @@ export const ReportsTab = () => {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `relatorio_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `relatorio_${brazilIsoDate()}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -365,8 +372,10 @@ export const ReportsTab = () => {
                     <div>
                       <p className="font-medium">{transaction.machines.name}</p>
                       <p className="text-sm text-muted-foreground">
-                        {new Date(transaction.created_at).toLocaleDateString('pt-BR')} às{' '}
-                        {new Date(transaction.created_at).toLocaleTimeString('pt-BR')}
+                        {(() => {
+                          const { date, time } = formatBrazilDateTime(transaction.created_at);
+                          return `${date} às ${time}`;
+                        })()}
                       </p>
                     </div>
                   </div>

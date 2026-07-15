@@ -17,6 +17,14 @@ import {
   displayTransactionAmount,
   isManualRelease,
 } from "@/lib/transactionRevenue";
+import {
+  brazilDayBoundsUtc,
+  brazilIsoDate,
+  brazilIsoDateDaysAgo,
+  brazilMonthStartIsoDate,
+  brazilRangeBoundsUtc,
+  formatBrazilDateTime,
+} from "@/lib/brazilReportDates";
 import { Navigate } from "react-router-dom";
 
 type Transaction = {
@@ -70,11 +78,8 @@ const columns: ColumnDef<Transaction>[] = [
     accessorKey: "created_at",
     header: "Data",
     cell: ({ row }) => {
-      const date = new Date(row.getValue("created_at"));
-      return date.toLocaleDateString("pt-BR", {
-        day: "2-digit", month: "2-digit", year: "numeric",
-        hour: "2-digit", minute: "2-digit",
-      });
+      const { date, time } = formatBrazilDateTime(row.getValue("created_at") as string);
+      return `${date} ${time}`;
     },
   },
   {
@@ -184,16 +189,23 @@ export default function Transactions() {
       .limit(200);
 
     if (dateFilter !== "all") {
-      const now = new Date();
-      let startDate: Date;
+      let startUtc: string;
+      let endUtc: string;
       if (dateFilter === "today") {
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const today = brazilIsoDate();
+        ({ startUtc, endUtc } = brazilDayBoundsUtc(today));
       } else if (dateFilter === "week") {
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        ({ startUtc, endUtc } = brazilRangeBoundsUtc(
+          brazilIsoDateDaysAgo(7),
+          brazilIsoDate(),
+        ));
       } else {
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        ({ startUtc, endUtc } = brazilRangeBoundsUtc(
+          brazilMonthStartIsoDate(),
+          brazilIsoDate(),
+        ));
       }
-      query = query.gte("created_at", startDate.toISOString());
+      query = query.gte("created_at", startUtc).lte("created_at", endUtc);
     }
 
     const { data: txData } = await query;
