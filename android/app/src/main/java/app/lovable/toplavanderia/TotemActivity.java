@@ -1567,7 +1567,21 @@ public class TotemActivity extends Activity {
         new Thread(() -> {
             try {
                 if ("cielo".equalsIgnoreCase(activeProvider)) {
-                    cieloManager.releaseStaleProcessingIfNeeded();
+                    if (cieloManager.releaseStaleProcessingIfNeeded()) {
+                        paymentLaunchInProgress.set(false);
+                        return;
+                    }
+                    if (cieloManager.hasExpiredBoundCheckout()) {
+                        cieloManager.abandonExpiredBoundCheckout("totem-pre-pay");
+                    }
+                    String abandonedTx = cieloManager.takeLastAbandonedTxId();
+                    if (abandonedTx != null && !abandonedTx.isEmpty()) {
+                        boolean cancelled = supabaseHelper.cancelTotemTransactionById(abandonedTx);
+                        Log.i(TAG, "TX abandonada cancelada (" + abandonedTx + "): " + cancelled);
+                        if (abandonedTx.equals(currentPendingTransactionId)) {
+                            currentPendingTransactionId = null;
+                        }
+                    }
                 }
                 if (activePaymentManager != null && activePaymentManager.isProcessing()) {
                     if ("cielo".equalsIgnoreCase(activeProvider)) {
