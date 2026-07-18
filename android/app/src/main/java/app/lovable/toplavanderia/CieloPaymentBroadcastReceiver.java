@@ -66,7 +66,7 @@ public class CieloPaymentBroadcastReceiver extends BroadcastReceiver {
         }
         Log.i(TAG, "Broadcast aprovado: " + action);
         CieloPrintDismissScheduler.onApprovedDetected(context, "broadcast:" + action);
-        CieloLioManager.tryCompleteFromBroadcast(context, action);
+        CieloLioManager.tryCompleteFromBroadcast(context, action, payload);
     }
 
     private static String extractPayload(Intent intent) {

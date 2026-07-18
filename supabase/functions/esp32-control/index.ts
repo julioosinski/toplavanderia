@@ -173,6 +173,40 @@ Deno.serve(async (req) => {
 
     console.log(`🎮 Controle ESP32: ${esp32_id} relay ${resolvedRelayPin} → ${action}`);
 
+    // A retentativa do totem deve reutilizar o mesmo comando. Criar outro ON/crédito
+    // para a mesma transação pode pulsar a lavadora duas vezes ou reiniciar a poltrona.
+    if (transaction_id) {
+      const { data: existingCommand, error: existingError } = await supabase
+        .from('pending_commands')
+        .select('id, status')
+        .eq('esp32_id', esp32_id)
+        .eq('transaction_id', transaction_id)
+        .eq('action', action)
+        .in('status', ['pending', 'processing', 'completed'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingError) {
+        console.warn('⚠️ Falha ao verificar comando idempotente:', existingError.message);
+      } else if (existingCommand) {
+        console.log(
+          `♻️ Comando já existe para TX ${transaction_id}: ${existingCommand.id} (${existingCommand.status})`
+        );
+        return new Response(
+          JSON.stringify({
+            success: true,
+            queued: existingCommand.status !== 'completed',
+            already_exists: true,
+            command_id: existingCommand.id,
+            command_status: existingCommand.status,
+            message: 'Comando existente reutilizado; nenhuma segunda liberação foi criada.',
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     // Inserir comando na fila - o ESP32 vai buscar via polling
     const { data, error } = await supabase.from('pending_commands').insert({
       esp32_id,

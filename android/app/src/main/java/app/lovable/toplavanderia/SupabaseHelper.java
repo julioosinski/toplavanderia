@@ -1169,9 +1169,15 @@ public class SupabaseHelper {
 
     /** Relé ON, máquina ocupada no servidor, OU pending_commands completed para a TX. */
     private boolean isEsp32Confirmed(String esp32Id, int relayPin, String machineId, String transactionId) {
-        if (transactionId != null && !transactionId.isEmpty()
-                && isPendingCommandCompletedForTransaction(transactionId)) {
-            return true;
+        if (transactionId != null && !transactionId.isEmpty()) {
+            if (isPendingCommandCompletedForTransaction(transactionId)) {
+                return true;
+            }
+            // Relé/máquina podem estar com estado antigo. Só os aceita como prova se
+            // existir um comando desta mesma cobrança ainda em trânsito.
+            if (!isPendingCommandInFlightForTransaction(transactionId)) {
+                return false;
+            }
         }
         if (isEsp32RelayOn(esp32Id, relayPin)) {
             return true;
@@ -1212,6 +1218,43 @@ public class SupabaseHelper {
             return body.startsWith("[") && body.length() > 2;
         } catch (Exception e) {
             Log.e(TAG, "isPendingCommandCompletedForTransaction", e);
+            return false;
+        }
+    }
+
+    /** True enquanto o comando desta TX foi enfileirado ou reservado pelo ESP. */
+    private boolean isPendingCommandInFlightForTransaction(String transactionId) {
+        if (transactionId == null || transactionId.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            String url = SUPABASE_URL + "/rest/v1/pending_commands"
+                + "?transaction_id=eq." + Uri.encode(transactionId.trim())
+                + "&status=in.(pending,processing)"
+                + "&select=id"
+                + "&limit=1";
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
+            connection.setRequestMethod("GET");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(10000);
+            int code = connection.getResponseCode();
+            if (code != 200) {
+                connection.disconnect();
+                return false;
+            }
+            BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                response.append(line);
+            }
+            br.close();
+            connection.disconnect();
+            String body = response.toString().trim();
+            return body.startsWith("[") && body.length() > 2;
+        } catch (Exception e) {
+            Log.e(TAG, "isPendingCommandInFlightForTransaction", e);
             return false;
         }
     }

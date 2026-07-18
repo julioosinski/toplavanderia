@@ -50,7 +50,7 @@ public final class CieloOrderJanitor {
 
     private static final String[] OPEN_STATUSES = { "ENTERED", "PAID", "RE-ENTERED", "DRAFT" };
 
-    private static final String[] CLOSE_OPERATIONS = { "CLOSE" };
+    private static final String[] CLOSE_OPERATIONS = { "close" };
     private static volatile boolean lastApiAuthFailed;
     /** EC do terminal DX8000 Sinuelo (fallback quando painel não tem merchant_code). */
     private static final String KNOWN_TERMINAL_MERCHANT = "0010000234570003";
@@ -739,7 +739,7 @@ public final class CieloOrderJanitor {
 
         try {
 
-            URL url = new URL(baseUrl + "/orders/" + orderId + "?operation=" + operation);
+            URL url = new URL(baseUrl + "/orders/" + orderId + "?action=" + operation);
 
             connection = SupabaseConfig.openConnection(url);
 

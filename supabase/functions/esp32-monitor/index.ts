@@ -50,16 +50,14 @@ serve(async (req) => {
         });
       }
 
-      const { data: commands, error } = await supabaseClient
-        .from('pending_commands')
-        .select('id, relay_pin, action, machine_id, transaction_id, payload')
-        .eq('esp32_id', esp32_id)
-        .eq('status', 'pending')
-        .order('created_at', { ascending: true })
-        .limit(10);
+      // Claim transacional: um comando só pode ser entregue por um poll.
+      const { data: commands, error } = await supabaseClient.rpc(
+        'claim_pending_esp32_commands',
+        { _esp32_id: esp32_id, _limit: 10 }
+      );
 
       if (error) {
-        console.error('Error fetching commands:', error);
+        console.error('Error claiming commands:', error);
         return new Response(JSON.stringify({ success: false, error: error.message }), {
           status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
@@ -128,6 +126,24 @@ serve(async (req) => {
         });
       }
 
+      // Nunca ressuscita comando invalidado por cancelamento/estorno.
+      if (command.status === 'failed') {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Command was cancelled before confirmation',
+        }), {
+          status: 409,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Retry idempotente caso o ESP não tenha recebido a resposta do primeiro confirm.
+      if (command.status === 'completed') {
+        return new Response(JSON.stringify({ success: true, message: 'Command already confirmed' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       // CHECK (status) permite completed, não "executed"
       const { error: updErr } = await supabaseClient
         .from('pending_commands')
@@ -136,7 +152,8 @@ serve(async (req) => {
           executed_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq('id', command_id);
+        .eq('id', command_id)
+        .in('status', ['pending', 'processing']);
 
       if (updErr) {
         console.error('pending_commands update failed:', updErr);

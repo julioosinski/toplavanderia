@@ -1209,7 +1209,9 @@ public class TotemActivity extends Activity {
             long operationId,
             boolean canAutoRefund
     ) {
-        final String machineId = machineSnapshot.getId();
+        final String machineId = machineSnapshot != null
+            ? machineSnapshot.getId()
+            : (cieloManager != null ? cieloManager.getBoundMachineId() : "");
 
         // Antes de estornar: cancela ON pendente para a máquina não ligar depois do estorno.
         if (pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
@@ -1225,18 +1227,24 @@ public class TotemActivity extends Activity {
             Log.e(TAG, "ESP32 não confirmou — estorno automático indisponível (sem snapshot Cielo)");
         }
 
-        if (pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
+        if (reversed && pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
             boolean cancelled = supabaseHelper.cancelTotemTransactionById(pendingTxIdFinal);
-            Log.d(TAG, "Transação totem cancelada após falha ESP32: " + cancelled);
+            Log.d(TAG, "Transação totem cancelada após estorno confirmado: " + cancelled);
+        } else if (pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
+            // Sem estorno confirmado, preservar o registro financeiro para reconciliação.
+            Log.e(TAG, "Pagamento sem liberação e sem estorno confirmado; TX mantida pending: "
+                + pendingTxIdFinal);
         }
-        supabaseHelper.updateMachineStatus(machineId, "LIVRE");
-        supabaseHelper.patchCachedMachineStatus(machineId, "LIVRE", false);
+        if (machineId != null && !machineId.isEmpty()) {
+            supabaseHelper.updateMachineStatus(machineId, "LIVRE");
+            supabaseHelper.patchCachedMachineStatus(machineId, "LIVRE", false);
+        }
         clearOptimisticOccupied();
 
         final String userMessage = reversed
             ? "Não foi possível liberar a máquina.\n\nPagamento estornado automaticamente.\nTente novamente ou escolha outra máquina."
             : (canAutoRefund
-                ? "Não foi possível liberar a máquina.\n\nEstorno solicitado — confira o comprovante no terminal.\nSe o valor não voltar, fale com o atendimento."
+                ? "Não foi possível liberar a máquina e o estorno não foi confirmado.\n\nO pagamento ficou registrado para conferência.\nFale com o atendimento."
                 : "Não foi possível liberar a máquina.\n\nFale com o atendimento para estorno do pagamento.");
 
         postPaymentHardwarePending = false;
@@ -1576,8 +1584,10 @@ public class TotemActivity extends Activity {
                     }
                     String abandonedTx = cieloManager.takeLastAbandonedTxId();
                     if (abandonedTx != null && !abandonedTx.isEmpty()) {
-                        boolean cancelled = supabaseHelper.cancelTotemTransactionById(abandonedTx);
-                        Log.i(TAG, "TX abandonada cancelada (" + abandonedTx + "): " + cancelled);
+                        // Timeout local não comprova cancelamento financeiro na Cielo.
+                        // Preserva pending para reconciliação em vez de apagar um PIX tardio pago.
+                        Log.w(TAG, "Checkout expirou localmente; TX preservada para reconciliação: "
+                            + abandonedTx);
                         if (abandonedTx.equals(currentPendingTransactionId)) {
                             currentPendingTransactionId = null;
                         }
@@ -1651,15 +1661,22 @@ public class TotemActivity extends Activity {
                     );
                 }
                 currentPendingTransactionId = pendingTxId;
+                if (pendingTxId == null || pendingTxId.trim().isEmpty()) {
+                    Log.e(TAG, "Pagamento bloqueado: não foi possível criar a transação pending no Supabase");
+                    paymentLaunchInProgress.set(false);
+                    currentOperationId = -1;
+                    currentPendingTransactionId = null;
+                    runOnUiThread(() -> handlePaymentError(
+                        "Não foi possível registrar o pagamento com segurança. Nenhuma cobrança foi iniciada. Tente novamente."
+                    ));
+                    return;
+                }
                 if ("cielo".equalsIgnoreCase(activeProvider)) {
                     cieloManager.bindTotemCheckout(
                         currentOperationId,
                         machine.getId(),
                         pendingTxId
                     );
-                }
-                if (pendingTxId == null) {
-                    Log.w(TAG, "Falha ao criar operação no Supabase; prosseguindo com fluxo local");
                 }
 
                 if ("cielo".equalsIgnoreCase(activeProvider)) {
@@ -1972,7 +1989,17 @@ public class TotemActivity extends Activity {
         }
         final SupabaseHelper.Machine machineSnapshot = resolvedMachine;
         if (machineSnapshot == null) {
-            runOnUiThread(() -> handlePaymentError("Pagamento aprovado, mas a máquina selecionada não está disponível."));
+            String pendingTxId = currentPendingTransactionId;
+            if ((pendingTxId == null || pendingTxId.isEmpty())
+                    && "cielo".equalsIgnoreCase(activeProvider)) {
+                pendingTxId = cieloManager.getBoundPendingTxId();
+            }
+            awaitingPaymentCallback = false;
+            paymentLaunchInProgress.set(false);
+            lastSucceededOperationId = operationId;
+            postPaymentHardwarePending = true;
+            Log.e(TAG, "Pagamento aprovado sem máquina resolvida; iniciando estorno/reconciliação");
+            handleEsp32FailureWithRefund(null, pendingTxId, operationId, true);
             return;
         }
 
@@ -2370,10 +2397,18 @@ public class TotemActivity extends Activity {
         final String pendingId = currentPendingTransactionId;
         currentPendingTransactionId = null;
         if (pendingId != null && !pendingId.isEmpty()) {
-            new Thread(() -> {
-                boolean cancelled = supabaseHelper.cancelTotemTransactionById(pendingId);
-                Log.d(TAG, "Pending cancelada após erro de pagamento (" + pendingId + "): " + cancelled);
-            }).start();
+            boolean uncertainCieloTimeout = "cielo".equalsIgnoreCase(activeProvider)
+                && error != null
+                && error.toLowerCase(java.util.Locale.ROOT).contains("tempo esgotado");
+            if (uncertainCieloTimeout) {
+                Log.w(TAG, "Timeout Cielo sem cancelamento financeiro confirmado; TX preservada: "
+                    + pendingId);
+            } else {
+                new Thread(() -> {
+                    boolean cancelled = supabaseHelper.cancelTotemTransactionById(pendingId);
+                    Log.d(TAG, "Pending cancelada após erro de pagamento (" + pendingId + "): " + cancelled);
+                }).start();
+            }
         }
 
         String displayError = error;

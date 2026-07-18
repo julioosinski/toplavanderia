@@ -39,9 +39,10 @@ public class CieloLioManager implements PaymentManager {
     private static final long PROCESSING_WATCHDOG_MS = 180000L;
     /**
      * PIX: após este tempo sem callback, abandona o checkout (libera novo pagamento).
-     * Antes era 15 min e bloqueava o totem com "pagamento anterior em aberto".
+     * Cinco minutos reduzem o risco de descartar uma aprovação PIX lenta sem voltar
+     * ao bloqueio indefinido que existia na 2.2.106.
      */
-    private static final long PROCESSING_WATCHDOG_PIX_MS = 120000L;
+    private static final long PROCESSING_WATCHDOG_PIX_MS = 300000L;
     private static final long REVERSAL_CALLBACK_TIMEOUT_MS = 120_000L;
     private static long lastSuccessfulPaymentAtMs;
     private static Runnable pendingEndSessionRunnable;
@@ -87,6 +88,8 @@ public class CieloLioManager implements PaymentManager {
     private long boundTotemOperationId;
     private String boundMachineId;
     private String boundPendingTxId;
+    /** Binding recém-criado pelo Totem para o checkout que ainda será lançado. */
+    private volatile boolean checkoutPreparedForLaunch;
     private volatile boolean successDelivered;
     /** Garante que o fechamento do pedido pago roda uma única vez por checkout (deep link ou broadcast). */
     private volatile boolean paidOrderCleanupDone;
@@ -305,7 +308,6 @@ public class CieloLioManager implements PaymentManager {
                 int purged = CieloOrderJanitor.closeOpenOrdersQuick(
                     clientId, accessToken, merchant, cieloEnv);
                 Log.i(TAG, "Pós-abandono: cloud purge=" + purged);
-                CieloLocalOrderPurge.clearStuckLocalOrders(context, 0L);
             } catch (Exception e) {
                 Log.w(TAG, "Falha ao limpar pedidos após abandono", e);
             }
@@ -340,8 +342,12 @@ public class CieloLioManager implements PaymentManager {
             notifyPaymentError("Ja ha uma transacao em processamento");
             return;
         }
+        // bindTotemCheckout é chamado antes de processPayment para persistir a correlação.
+        // Esse binding pertence ao checkout atual e não pode ser confundido com um anterior.
+        boolean isPreparedCurrentCheckout = checkoutPreparedForLaunch;
+        checkoutPreparedForLaunch = false;
         // Ainda dentro da janela — evita segundo checkout enquanto o anterior pode concluir.
-        if (hasFreshBoundCheckout() && !successDelivered) {
+        if (!isPreparedCurrentCheckout && hasFreshBoundCheckout() && !successDelivered) {
             long age = Math.max(0L, boundCheckoutAgeMs());
             long remainSec = Math.max(1L, (PROCESSING_WATCHDOG_PIX_MS - age + 999L) / 1000L);
             boolean isPixOpen = "PIX".equalsIgnoreCase(pendingPaymentCode)
@@ -404,11 +410,11 @@ public class CieloLioManager implements PaymentManager {
             activeInstance = this;
             isProcessing = true;
             paidOrderCleanupDone = false;
-            scheduleProcessingWatchdog();
             pendingReference = reference;
             pendingAmountCents = amountCents;
             pendingPaymentCode = paymentCode;
             persistCheckoutChallenge();
+            scheduleProcessingWatchdog();
             CieloPaymentSessionHelper.beginSession(context, paymentCode);
             final boolean scheduleTarja = !"PIX".equalsIgnoreCase(paymentCode);
 
@@ -494,6 +500,7 @@ public class CieloLioManager implements PaymentManager {
         boundTotemOperationId = operationId;
         boundMachineId = machineId == null ? "" : machineId.trim();
         boundPendingTxId = pendingTxId == null ? "" : pendingTxId.trim();
+        checkoutPreparedForLaunch = true;
         successDelivered = false;
         persistBoundCheckout();
     }
@@ -531,6 +538,7 @@ public class CieloLioManager implements PaymentManager {
         boundTotemOperationId = 0L;
         boundMachineId = "";
         boundPendingTxId = "";
+        checkoutPreparedForLaunch = false;
         successDelivered = false;
         context.getApplicationContext()
             .getSharedPreferences(PREFS_CHECKOUT, Context.MODE_PRIVATE)
@@ -540,7 +548,7 @@ public class CieloLioManager implements PaymentManager {
     }
 
     /** Broadcast Buzios quando deep link atrasa (comum no PIX). */
-    public static void tryCompleteFromBroadcast(Context context, String source) {
+    public static void tryCompleteFromBroadcast(Context context, String source, String payload) {
         CieloLioManager mgr = activeInstance;
         if (mgr == null) {
             mgr = tryRehydrateActiveInstance();
@@ -552,6 +560,16 @@ public class CieloLioManager implements PaymentManager {
             return;
         }
         if (!mgr.isProcessing && mgr.getBoundTotemOperationId() <= 0) {
+            return;
+        }
+        mgr.restoreCheckoutChallengeFromPrefs();
+        String currentReference = mgr.pendingReference == null ? "" : mgr.pendingReference;
+        String rawPayload = payload == null ? "" : payload;
+        if (!currentReference.isEmpty()
+                && rawPayload.toLowerCase(java.util.Locale.ROOT).contains("reference")
+                && !rawPayload.contains(currentReference)) {
+            Log.w(TAG, "Broadcast aprovado de outro checkout ignorado (ref atual="
+                + currentReference + ")");
             return;
         }
         Log.i(TAG, "Aprovação via broadcast — completando checkout (" + source + ")");
@@ -663,6 +681,7 @@ public class CieloLioManager implements PaymentManager {
             return;
         }
 
+        boolean finalizeCheckout = true;
         try {
             String responseBase64 = uri.getQueryParameter("response");
             String responseCode = uri.getQueryParameter("responsecode");
@@ -683,9 +702,6 @@ public class CieloLioManager implements PaymentManager {
                 String reason = json.optString("reason", "Erro desconhecido");
                 Log.w(TAG, "Cielo erro (code=" + code + "): " + reason + " | payload=" + decoded);
                 schedulePostCheckoutCleanup("error-code-" + code);
-                if (CieloOrderJanitor.is4281Error(reason)) {
-                    CieloLocalOrderPurge.clearStuckLocalOrders(context, 0L);
-                }
                 notifyPaymentError(formatCieloErrorMessage(code, reason));
                 return;
             }
@@ -709,7 +725,13 @@ public class CieloLioManager implements PaymentManager {
             String responseReference = json.optString("reference", "");
 
             if (!isExpectedReference(responseReference)) {
-                rejectSuspiciousCallback("Referencia Cielo divergente (ref=" + responseReference + ")");
+                // Pode ser retorno tardio de um PIX anterior. Não derruba o checkout atual.
+                Log.w(TAG, "Callback de outro checkout ignorado (recebida=" + responseReference
+                    + ", atual=" + pendingReference + ")");
+                finalizeCheckout = false;
+                isProcessing = true;
+                scheduleProcessingWatchdog();
+                CieloPaymentForegroundService.start(context);
                 return;
             }
 
@@ -794,9 +816,11 @@ public class CieloLioManager implements PaymentManager {
             Log.e(TAG, "Erro ao processar callback Cielo", e);
             notifyPaymentError("Erro ao processar retorno Cielo: " + e.getMessage());
         } finally {
-            scheduleEndPaymentSession();
-            clearPendingTransaction();
-            dropActiveInstance();
+            if (finalizeCheckout) {
+                scheduleEndPaymentSession();
+                clearPendingTransaction();
+                dropActiveInstance();
+            }
         }
     }
 
@@ -1020,7 +1044,7 @@ public class CieloLioManager implements PaymentManager {
         return false;
     }
 
-    private void deliverPaymentSuccess(String authCode, String txnId, String source) {
+    private synchronized void deliverPaymentSuccess(String authCode, String txnId, String source) {
         if (successDelivered) {
             Log.d(TAG, "Sucesso já entregue — ignorando " + source);
             return;
@@ -1088,7 +1112,6 @@ public class CieloLioManager implements PaymentManager {
         }
         if (lower.contains("4281") || lower.contains("ja efetuada") || lower.contains("já efetuada") || lower.contains("already")) {
             cieloCooldownUntilMs = System.currentTimeMillis() + 8000L;
-            CieloLocalOrderPurge.clearStuckLocalOrders(context, 0L);
             CieloOrderJanitor.scheduleCleanupWithRetry(
                 clientId, accessToken, merchantCodeForJanitor(),
                 CieloOrderJanitor.resolveEnvironment(environment), "4281");
@@ -1298,7 +1321,6 @@ public class CieloLioManager implements PaymentManager {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            CieloLocalOrderPurge.clearStuckLocalOrders(context, 0L);
         }, "cielo-post-success").start();
     }
 

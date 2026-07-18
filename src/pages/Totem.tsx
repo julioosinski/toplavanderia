@@ -40,6 +40,25 @@ interface PixPaymentPayload {
   expiresIn?: number;
 }
 
+const waitForEsp32Command = async (commandId: string, timeoutMs = 90_000) => {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const { data, error } = await supabase
+      .from('pending_commands')
+      .select('status, error_message')
+      .eq('id', commandId)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (data?.status === 'completed') return true;
+    if (data?.status === 'failed') {
+      throw new Error(data.error_message || 'O ESP32 não executou a liberação.');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  throw new Error('Pagamento aprovado, mas o ESP32 não confirmou a liberação em 90 segundos.');
+};
+
 // Totem sub-components
 import { TotemHeader } from "@/components/totem/TotemHeader";
 import { TotemMachineGrid } from "@/components/totem/TotemMachineGrid";
@@ -414,7 +433,7 @@ const Totem = () => {
 
   const activateMachine = useCallback(
     async (paymentMethod: string = 'TEF') => {
-      if (!selectedMachine || !currentLaundry) return;
+      if (!selectedMachine || !currentLaundry) return false;
       try {
         const esp32Id = selectedMachine.esp32_id || 'main';
         const relayPin = resolvedRelayPin(selectedMachine.relay_pin);
@@ -449,21 +468,17 @@ const Totem = () => {
           throw new Error(msg);
         }
 
-        // Marca a transação como concluída assim que o pagamento foi aprovado
-        // e o comando do ESP32 foi enfileirado. Isso garante que PIX/cartão/etc
-        // apareçam imediatamente nos relatórios (status='completed') e dispara
-        // o trigger update_machine_stats que agrega revenue/total_uses.
-        const { error: completeErr } = await supabase
-          .from('transactions')
-          .update({ status: 'completed', completed_at: new Date().toISOString() })
-          .eq('id', transactionId);
-        if (completeErr) {
-          console.warn('Falha ao marcar transação como concluída (relatório pode atrasar):', completeErr);
+        const commandId = espData && typeof espData === 'object' && 'command_id' in espData
+          ? String(espData.command_id)
+          : '';
+        if (!commandId) {
+          throw new Error('Comando ESP32 sem identificador de confirmação.');
         }
+        await waitForEsp32Command(commandId);
 
         rememberRunningAfterPayment(selectedMachine.id, selectedMachine.duration);
         await updateMachineStatus(selectedMachine.id, 'running', { suppressErrorToast: true });
-
+        return true;
       } catch (error) {
         console.error('Erro ao ativar máquina:', error);
         const description = error instanceof Error
@@ -474,6 +489,7 @@ const Totem = () => {
           description,
           variant: 'destructive',
         });
+        return false;
       }
     },
     [selectedMachine, currentLaundry, updateMachineStatus, rememberRunningAfterPayment, toast]
@@ -546,7 +562,11 @@ const Totem = () => {
         if (st.status === 'paid') {
           pixPollDoneRef.current = true;
           setPaymentStep('activating');
-          await activateMachine('PIX');
+          const activated = await activateMachine('PIX');
+          if (!activated) {
+            setPaymentStep('error');
+            return;
+          }
           setTransactionData({
             paymentMethod: 'PIX',
             orderId,
@@ -698,7 +718,13 @@ const Totem = () => {
         deviceMode={deviceMode}
         onSuccess={async (result) => {
           setPaymentStep('activating');
-          await activateMachine(`Universal - ${(result.method ?? 'pagamento').toUpperCase()}`);
+          const activated = await activateMachine(
+            `Universal - ${(result.method ?? 'pagamento').toUpperCase()}`
+          );
+          if (!activated) {
+            setPaymentStep('error');
+            return;
+          }
           const payload: PaymentPayload = (result.data && typeof result.data === 'object')
             ? (result.data as PaymentPayload)
             : (result as unknown as PaymentPayload);

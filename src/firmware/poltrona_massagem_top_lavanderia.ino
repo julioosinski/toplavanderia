@@ -20,7 +20,7 @@
 #include <esp_task_wdt.h>
 #include <cstdio>
 
-#define FIRMWARE_VERSION "v1.1.3-toplav-poltrona"
+#define FIRMWARE_VERSION "v1.1.4-toplav-poltrona"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
@@ -82,6 +82,9 @@ char ESP32_ID[16];
 
 unsigned long lastHeartbeat = 0;
 unsigned long lastPoll = 0;
+// Se o confirm HTTP falhar, o servidor pode reenviar o mesmo ID. Não reinicia
+// a sessão nem repete o acionamento; apenas tenta confirmar novamente.
+String lastExecutedCommandId = "";
 
 void buildEsp32Id() {
   WiFi.mode(WIFI_STA);
@@ -134,18 +137,34 @@ void pararPoltrona(bool comResfriamento) {
   tempoInicioCiclo = 0;
 }
 
-void iniciarPoltrona(int tempoMinutos) {
+bool iniciarPoltrona(int tempoMinutos) {
   if (executandoResfriamento) {
     Serial.println("Ignorando start — resfriamento em andamento");
-    return;
-  }
-  if (ultimoDesligamento > 0 && (millis() - ultimoDesligamento) < COOLDOWN_MS) {
-    Serial.println("Ignorando start — cooldown ativo");
-    return;
+    return false;
   }
 
   if (tempoMinutos <= 0) {
     tempoMinutos = DEFAULT_CYCLE_MINUTES;
+  }
+
+  // Uma segunda compra válida durante a sessão soma tempo, sem reiniciar áudio/relé.
+  if (statusAtual == "em_uso") {
+    unsigned long adicional = (unsigned long)tempoMinutos * 60UL;
+    tempoTotalSeg += adicional;
+    tempoRestanteSeg += adicional;
+    Serial.printf("Poltrona em uso — adicionados %lu s à sessão\n", adicional);
+    return true;
+  }
+
+  // Não descarta nem confirma falsamente um pagamento feito logo após o resfriamento.
+  if (ultimoDesligamento > 0 && (millis() - ultimoDesligamento) < COOLDOWN_MS) {
+    unsigned long espera = COOLDOWN_MS - (millis() - ultimoDesligamento);
+    Serial.printf("Aguardando cooldown por %lu ms antes de iniciar\n", espera);
+    unsigned long inicioEspera = millis();
+    while ((millis() - inicioEspera) < espera) {
+      wdtKick();
+      delay(50);
+    }
   }
 
   unsigned long tempoMinimoAudios = 1150;
@@ -162,6 +181,7 @@ void iniciarPoltrona(int tempoMinutos) {
   audiosPendentes = true;
 
   Serial.printf("Poltrona ON — %lu s (%d min solicitados)\n", tempoTotalSeg, tempoMinutos);
+  return true;
 }
 
 void gerenciarAudios() {
@@ -387,11 +407,21 @@ void processCommand(JsonObject cmd, bool* startedThisPoll) {
     return;
   }
 
+  if (lastExecutedCommandId == cmdId) {
+    Serial.println("Comando duplicado — sem reexecutar: " + String(cmdId));
+    confirmCommand(cmdId);
+    return;
+  }
+
   wdtKick();
   if (strcmp(action, "on") == 0 || strcmp(action, "activate") == 0 || strcmp(action, "turn_on") == 0) {
     applyRuntimeAudioConfig(cmd);
     int minutes = parseCycleMinutes(cmd);
-    iniciarPoltrona(minutes);
+    if (!iniciarPoltrona(minutes)) {
+      Serial.println("ON não executado — aguardando nova tentativa");
+      return;
+    }
+    lastExecutedCommandId = cmdId;
     if (startedThisPoll != nullptr) {
       *startedThisPoll = true;
     }
@@ -416,10 +446,12 @@ void processCommand(JsonObject cmd, bool* startedThisPoll) {
       }
     }
     if (statusAtual == "em_uso" && !forceOff) {
+      lastExecutedCommandId = cmdId;
       Serial.println("Ignorando OFF remoto sem force durante sessão timed_session");
       confirmCommand(cmdId);
       return;
     }
+    lastExecutedCommandId = cmdId;
     if (statusAtual == "em_uso") {
       pararPoltrona(true);
     } else {
