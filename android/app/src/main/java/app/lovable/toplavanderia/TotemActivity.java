@@ -58,8 +58,9 @@ public class TotemActivity extends Activity {
     private static final long POST_PAYMENT_SUCCESS_MS = 1000L;
     /** Sem interação → volta à HOME (todas as telas do totem, inclusive Cielo em segundo plano). */
     private static final long SCREEN_IDLE_TIMEOUT_MS = 60_000L;
-    /** Aguarda confirmação do relé ESP32 após pagamento Cielo (poll ~10s + margem). */
-    private static final long ESP32_CONFIRM_TIMEOUT_MS = 90_000L;
+    /** Confirmação ESP32 em background — não trava a grade para o próximo pagamento. */
+    private static final long ESP32_CONFIRM_TIMEOUT_MS = 35_000L;
+    private static final long ESP32_CONFIRM_RETRY_TIMEOUT_MS = 20_000L;
     private static final long IDLE_WATCHDOG_TICK_MS = 1_000L;
     private static final int ADMIN_SECRET_TAPS = 7;
     private static final long ADMIN_TAP_WINDOW_MS = 3000L;
@@ -1298,13 +1299,23 @@ public class TotemActivity extends Activity {
         // Verificar disponibilidade baseada no ESP32 e status da máquina
         String status = machine.getStatus();
         boolean isOnline = isMachineOnline(machine);
-        boolean isAvailable = isOnline && "LIVRE".equals(status);
+        boolean isMassage = "MASSAGEM".equals(machine.getType());
+        // Poltrona aceita novo pagamento mesmo em uso (soma tempo no firmware).
+        boolean isAvailable = isOnline && (
+            "LIVRE".equals(status) || (isMassage && "OCUPADA".equals(status))
+        );
         
         Log.d(TAG, "Criando botão para " + machine.getName() + " - Status: " + status + ", ESP32 Online: " + isOnline + ", Disponível: " + isAvailable);
         
-        if (isAvailable) {
+        if (isAvailable && "LIVRE".equals(status)) {
             button.setText(machine.getName() + "\n🟢 ONLINE\nDISPONÍVEL");
             button.setBackgroundColor(Color.parseColor("#238636")); // Verde GitHub
+            button.setTextColor(Color.WHITE);
+            button.setEnabled(true);
+            button.setElevation(12);
+        } else if (isAvailable && isMassage && "OCUPADA".equals(status)) {
+            button.setText(machine.getName() + "\n🟢 ONLINE\nEM USO — NOVA SESSÃO");
+            button.setBackgroundColor(Color.parseColor("#8957E5"));
             button.setTextColor(Color.WHITE);
             button.setEnabled(true);
             button.setElevation(12);
@@ -1730,6 +1741,12 @@ public class TotemActivity extends Activity {
         if (machine == null) {
             return false;
         }
+        boolean isMassage = "MASSAGEM".equals(machine.getType());
+        // Poltrona: permite pagar de novo enquanto em uso (firmware soma o tempo).
+        if (isMassage) {
+            return machine.isEsp32Online()
+                && ("LIVRE".equals(machine.getStatus()) || "OCUPADA".equals(machine.getStatus()));
+        }
         if (isOptimisticallyOccupied(machine.getId())) {
             return false;
         }
@@ -2091,7 +2108,14 @@ public class TotemActivity extends Activity {
                     return;
                 }
 
-                // Confirma execução do crédito no ESP (mesmo critério das lavadoras).
+                // Libera a grade imediatamente; confirmação ESP segue em background.
+                runOnUiThread(() -> {
+                    selectedMachine = null;
+                    selectedCoffeeProduct = null;
+                    finishCieloPaymentSession(operationId, true);
+                });
+                cieloManager.onTotemCheckoutFinished();
+
                 boolean creditConfirmed = supabaseHelper.waitForEsp32RelayOn(
                     machineSnapshot.getEsp32Id(),
                     machineSnapshot.getRelayPin(),
@@ -2106,7 +2130,7 @@ public class TotemActivity extends Activity {
                         machineSnapshot.getEsp32Id(),
                         machineSnapshot.getRelayPin(),
                         machineId,
-                        ESP32_CONFIRM_TIMEOUT_MS,
+                        ESP32_CONFIRM_RETRY_TIMEOUT_MS,
                         pendingTxIdFinal
                     );
                 }
@@ -2123,20 +2147,14 @@ public class TotemActivity extends Activity {
                 if (!txCompleted) {
                     Log.w(TAG, "Crédito confirmado, mas falhou ao marcar TX café como concluída");
                 }
-
-                runOnUiThread(() -> {
-                    selectedMachine = null;
-                    selectedCoffeeProduct = null;
-                    finishCieloPaymentSession(operationId, true);
-                });
-                cieloManager.onTotemCheckoutFinished();
                 return;
             }
 
             if (cieloFastPath && !isCoffeePayment) {
                 String esp32TxId = pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()
                     ? pendingTxIdFinal : transactionId;
-                Log.d(TAG, "=== CIELO: enfileirando ESP32 + aguardando confirmação ===");
+                final boolean isMassagePayment = "MASSAGEM".equals(machineSnapshot.getType());
+                Log.d(TAG, "=== CIELO: enfileirando ESP32 e liberando próximo pagamento ===");
                 boolean queued = supabaseHelper.queueEsp32RelayOn(
                     esp32Id, relayPin, machineId, esp32TxId, durationMinutes
                 );
@@ -2155,17 +2173,28 @@ public class TotemActivity extends Activity {
                     );
                     return;
                 }
+
+                // Volta à grade já — confirmação do ESP não deve travar pagamentos seguidos.
+                runOnUiThread(() -> {
+                    if (!isMassagePayment) {
+                        markMachineOptimisticallyOccupied(machineId);
+                    }
+                    selectedMachine = null;
+                    selectedCoffeeProduct = null;
+                    finishCieloPaymentSession(operationId, true);
+                });
+                cieloManager.onTotemCheckoutFinished();
+
                 boolean relayConfirmed = supabaseHelper.waitForEsp32RelayOn(
                     esp32Id, relayPin, machineId, ESP32_CONFIRM_TIMEOUT_MS, esp32TxId
                 );
                 if (!relayConfirmed) {
-                    // Re-enfileira e espera de novo antes de estornar (ESP offline temporário).
                     Log.w(TAG, "ESP32 sem confirmação — reenfileirando ON e aguardando novamente");
                     supabaseHelper.queueEsp32RelayOn(
                         esp32Id, relayPin, machineId, esp32TxId, durationMinutes
                     );
                     relayConfirmed = supabaseHelper.waitForEsp32RelayOn(
-                        esp32Id, relayPin, machineId, ESP32_CONFIRM_TIMEOUT_MS, esp32TxId
+                        esp32Id, relayPin, machineId, ESP32_CONFIRM_RETRY_TIMEOUT_MS, esp32TxId
                     );
                 }
                 if (!relayConfirmed) {
@@ -2193,14 +2222,6 @@ public class TotemActivity extends Activity {
                 if (!txCompleted) {
                     Log.w(TAG, "Não foi possível marcar a transação do totem como concluída");
                 }
-
-                runOnUiThread(() -> {
-                    markMachineOptimisticallyOccupied(machineId);
-                    selectedMachine = null;
-                    selectedCoffeeProduct = null;
-                    finishCieloPaymentSession(operationId, true);
-                });
-                cieloManager.onTotemCheckoutFinished();
                 return;
             }
 

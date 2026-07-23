@@ -32,17 +32,19 @@ public class CieloLioManager implements PaymentManager {
     private static long lastConsumedCallbackAtMs;
     private static long lastDeepLinkLaunchAtMs;
     private static long cieloCooldownUntilMs;
-    private static final long MIN_MS_BETWEEN_DEEP_LINKS = 4000L;
-    private static final long MIN_MS_BETWEEN_SUCCESSIVE_PAYMENTS = 2000L;
-    private static final long COOLDOWN_AFTER_4281_MS = 15000L;
-    /** Sem callback Cielo — cartão 3 min. */
-    private static final long PROCESSING_WATCHDOG_MS = 180000L;
+    /** Intervalo curto entre deep links para permitir pagamentos seguidos. */
+    private static final long MIN_MS_BETWEEN_DEEP_LINKS = 1500L;
+    private static final long MIN_MS_BETWEEN_SUCCESSIVE_PAYMENTS = 1200L;
+    private static final long COOLDOWN_AFTER_4281_MS = 8000L;
+    /** Sem callback Cielo — cartão; libera o totem sem espera longa. */
+    private static final long PROCESSING_WATCHDOG_MS = 90_000L;
     /**
-     * PIX: após este tempo sem callback, abandona o checkout (libera novo pagamento).
-     * Cinco minutos reduzem o risco de descartar uma aprovação PIX lenta sem voltar
-     * ao bloqueio indefinido que existia na 2.2.106.
+     * PIX sem callback: janela curta o bastante para pagamentos seguidos,
+     * ainda cobrindo QR lento típico da LIO.
      */
-    private static final long PROCESSING_WATCHDOG_PIX_MS = 300000L;
+    private static final long PROCESSING_WATCHDOG_PIX_MS = 90_000L;
+    /** Encerra sessão Cielo rápido para não segurar o próximo pagamento. */
+    private static final long END_SESSION_DELAY_MS = 2500L;
     private static final long REVERSAL_CALLBACK_TIMEOUT_MS = 120_000L;
     private static long lastSuccessfulPaymentAtMs;
     private static Runnable pendingEndSessionRunnable;
@@ -236,11 +238,15 @@ public class CieloLioManager implements PaymentManager {
         if (!hasAnyBoundCheckout()) {
             return false;
         }
+        // Sucesso já entregue ao totem: não bloqueia o próximo pagamento.
+        if (successDelivered) {
+            return false;
+        }
         long ageMs = boundCheckoutAgeMs();
         if (ageMs < 0L) {
             return true;
         }
-        return ageMs < PROCESSING_WATCHDOG_PIX_MS;
+        return ageMs < boundCheckoutLimitMs();
     }
 
     /** Binding existe mas já passou do tempo — deve ser liberado. */
@@ -249,7 +255,17 @@ public class CieloLioManager implements PaymentManager {
             return false;
         }
         long ageMs = boundCheckoutAgeMs();
-        return ageMs >= PROCESSING_WATCHDOG_PIX_MS;
+        return ageMs >= boundCheckoutLimitMs();
+    }
+
+    private long boundCheckoutLimitMs() {
+        String code = pendingPaymentCode;
+        if (code == null || code.isEmpty()) {
+            code = context.getApplicationContext()
+                .getSharedPreferences(PREFS_CHECKOUT, Context.MODE_PRIVATE)
+                .getString(KEY_BOUND_PAY_CODE, "");
+        }
+        return "PIX".equalsIgnoreCase(code) ? PROCESSING_WATCHDOG_PIX_MS : PROCESSING_WATCHDOG_MS;
     }
 
     private boolean hasAnyBoundCheckout() {
@@ -349,7 +365,7 @@ public class CieloLioManager implements PaymentManager {
         // Ainda dentro da janela — evita segundo checkout enquanto o anterior pode concluir.
         if (!isPreparedCurrentCheckout && hasFreshBoundCheckout() && !successDelivered) {
             long age = Math.max(0L, boundCheckoutAgeMs());
-            long remainSec = Math.max(1L, (PROCESSING_WATCHDOG_PIX_MS - age + 999L) / 1000L);
+            long remainSec = Math.max(1L, (boundCheckoutLimitMs() - age + 999L) / 1000L);
             boolean isPixOpen = "PIX".equalsIgnoreCase(pendingPaymentCode)
                 || "PIX".equalsIgnoreCase(
                     context.getApplicationContext()
@@ -497,6 +513,11 @@ public class CieloLioManager implements PaymentManager {
 
     /** Vincula operação do totem — sobrevive ao timeout de inatividade durante PIX na Cielo. */
     public void bindTotemCheckout(long operationId, String machineId, String pendingTxId) {
+        // Novo pagamento: se o anterior já concluiu (ou ficou órfão), limpa sem esperar watchdog.
+        if (hasAnyBoundCheckout() && !isProcessing) {
+            Log.i(TAG, "Novo checkout — liberando binding anterior para pagamento seguido");
+            clearBoundCheckout();
+        }
         boundTotemOperationId = operationId;
         boundMachineId = machineId == null ? "" : machineId.trim();
         boundPendingTxId = pendingTxId == null ? "" : pendingTxId.trim();
@@ -833,7 +854,7 @@ public class CieloLioManager implements PaymentManager {
                 CieloPaymentSessionHelper.endSession(context);
             }
         };
-        END_SESSION_HANDLER.postDelayed(pendingEndSessionRunnable, 30000L);
+        END_SESSION_HANDLER.postDelayed(pendingEndSessionRunnable, END_SESSION_DELAY_MS);
     }
 
     private void scheduleProcessingWatchdog() {
@@ -1111,7 +1132,7 @@ public class CieloLioManager implements PaymentManager {
             return "Erro Cielo: parâmetros inválidos no pedido de pagamento. Detalhe: " + r;
         }
         if (lower.contains("4281") || lower.contains("ja efetuada") || lower.contains("já efetuada") || lower.contains("already")) {
-            cieloCooldownUntilMs = System.currentTimeMillis() + 8000L;
+            cieloCooldownUntilMs = System.currentTimeMillis() + COOLDOWN_AFTER_4281_MS;
             CieloOrderJanitor.scheduleCleanupWithRetry(
                 clientId, accessToken, merchantCodeForJanitor(),
                 CieloOrderJanitor.resolveEnvironment(environment), "4281");

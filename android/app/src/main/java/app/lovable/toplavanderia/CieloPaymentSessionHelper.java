@@ -64,8 +64,9 @@ public final class CieloPaymentSessionHelper {
         if (hasActiveSession(context)) {
             return true;
         }
+        // Janela residual curta após fim de sessão (callbacks tardios).
         long started = prefs(context).getLong(KEY_SESSION_STARTED_AT, 0L);
-        return started > 0L && System.currentTimeMillis() - started < 120_000L;
+        return started > 0L && System.currentTimeMillis() - started < 15_000L;
     }
 
     public static void dismissCardShield(Context context) {
