@@ -1071,7 +1071,12 @@ public class SupabaseHelper {
             boolean statusUpdated = updateMachineStatus(machineId, "OCUPADA");
             
             if (statusUpdated) {
-                // Agendar liberação da máquina após o tempo de uso
+                // Poltrona: o firmware controla o ciclo. Um timer Android marcando LIVRE
+                // cedo (ex.: 2ª compra somando tempo) desalinha UI e pode disparar OFF legado.
+                if (isTimedSessionMachine(machineId)) {
+                    Log.d(TAG, "timed_session/MASSAGEM: sem scheduleMachineRelease no Android");
+                    return true;
+                }
                 scheduleMachineRelease(machineId, durationMinutes);
                 return true;
             }
@@ -1167,22 +1172,20 @@ public class SupabaseHelper {
         return finalCheck;
     }
 
-    /** Relé ON, máquina ocupada no servidor, OU pending_commands completed para a TX. */
+    /** Relé ON ou pending_commands completed. Não usa só status da máquina (falso positivo OCUPADA). */
     private boolean isEsp32Confirmed(String esp32Id, int relayPin, String machineId, String transactionId) {
         if (transactionId != null && !transactionId.isEmpty()) {
             if (isPendingCommandCompletedForTransaction(transactionId)) {
                 return true;
             }
-            // Relé/máquina podem estar com estado antigo. Só os aceita como prova se
-            // existir um comando desta mesma cobrança ainda em trânsito.
+            // Relé antigo / status OCUPADA residual não contam sem comando desta cobrança em trânsito.
             if (!isPendingCommandInFlightForTransaction(transactionId)) {
                 return false;
             }
         }
-        if (isEsp32RelayOn(esp32Id, relayPin)) {
-            return true;
-        }
-        return isMachineRunningOnServer(machineId);
+        // Prova física: relé ligado. Status "running"/"in_use" sozinho gerava falso positivo
+        // (máquina marcada OCUPADA sem o ESP executar) e bloqueava estorno.
+        return isEsp32RelayOn(esp32Id, relayPin);
     }
 
     /** True se algum comando da TX já foi completed pelo ESP (fonte mais confiável que relay). */

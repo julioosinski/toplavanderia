@@ -594,10 +594,13 @@ public class CieloLioManager implements PaymentManager {
             return;
         }
         Log.i(TAG, "Aprovação via broadcast — completando checkout (" + source + ")");
-        // Snapshot mínimo para estorno se a liberação ESP32 falhar depois.
+        // Preferir id real do Order Manager; broadcast-* não permite estorno Cielo.
         if (mgr.lastApprovedPayment == null && mgr.pendingAmountCents > 0) {
+            String paymentId = (mgr.pendingCloudOrderId != null && !mgr.pendingCloudOrderId.isEmpty())
+                ? mgr.pendingCloudOrderId
+                : ("broadcast-" + System.currentTimeMillis());
             mgr.lastApprovedPayment = new ApprovedPaymentSnapshot(
-                "broadcast-" + System.currentTimeMillis(),
+                paymentId,
                 "CIELO_BROADCAST",
                 "",
                 mgr.pendingAmountCents
@@ -608,9 +611,8 @@ public class CieloLioManager implements PaymentManager {
             mgr.lastDetectedSupabasePaymentMethod = "pix";
         }
         mgr.deliverPaymentSuccess("CIELO_BROADCAST", "broadcast-" + System.currentTimeMillis(), "broadcast:" + source);
-        // Broadcast não traz o id do pedido; fecha todos os pedidos abertos do EC para
-        // evitar que o próximo checkout falhe com "pedido anterior aberto" (-4281).
-        mgr.schedulePaidOrderCleanup(null);
+        // NÃO fecha o pedido aqui: o CLOSE precoce impede estorno se o ESP falhar.
+        // onTotemCheckoutFinished() agenda o janitor após confirmação ESP ou estorno.
     }
 
     private static CieloLioManager tryRehydrateActiveInstance() {
@@ -686,7 +688,9 @@ public class CieloLioManager implements PaymentManager {
     private void consumeDeepLinkResponse(Uri uri) {
         if (isDuplicateCallback(uri)) {
             if (successDelivered) {
-                Log.w(TAG, "Callback Cielo duplicado ignorado (sucesso já entregue)");
+                // Deep link tardio após broadcast PIX: atualiza paymentId real para estorno.
+                tryUpgradeApprovedPaymentSnapshotFromUri(uri);
+                Log.w(TAG, "Callback Cielo duplicado ignorado (sucesso já entregue; snapshot atualizado se possível)");
                 finishProcessingAfterCallback();
                 return;
             }
@@ -825,14 +829,10 @@ public class CieloLioManager implements PaymentManager {
             CieloPrintDismissScheduler.onApprovedDetected(context, "deeplink-success");
             deliverPaymentSuccess(authCode, txnId, "deeplink-success");
 
-            String cieloOrderId = json.optString("id", "");
-            if (cieloOrderId.isEmpty() && pendingCloudOrderId != null) {
-                cieloOrderId = pendingCloudOrderId;
-            }
-            schedulePaidOrderCleanup(cieloOrderId);
-
+            // CLOSE do pedido fica para onTotemCheckoutFinished (após ESP ou estorno).
             Log.d(TAG, "Cielo APPROVED: ref=" + pendingReference + " solicitado=" + pendingPaymentCode
-                + " detectadoSupabase=" + lastDetectedSupabasePaymentMethod + " brand=" + brand + " maskSuffix=" + lastFour(mask));
+                + " detectadoSupabase=" + lastDetectedSupabasePaymentMethod + " brand=" + brand + " maskSuffix=" + lastFour(mask)
+                + " paymentId=" + paymentId);
         } catch (Exception e) {
             Log.e(TAG, "Erro ao processar callback Cielo", e);
             notifyPaymentError("Erro ao processar retorno Cielo: " + e.getMessage());
@@ -1065,6 +1065,54 @@ public class CieloLioManager implements PaymentManager {
         return false;
     }
 
+    /**
+     * Após PIX via broadcast, o deep link tardio traz o payment.id real.
+     * Atualiza o snapshot para permitir estorno automático se o ESP falhar.
+     */
+    private void tryUpgradeApprovedPaymentSnapshotFromUri(Uri uri) {
+        if (uri == null) {
+            return;
+        }
+        try {
+            String responseBase64 = uri.getQueryParameter("response");
+            if (responseBase64 == null || responseBase64.isEmpty()) {
+                return;
+            }
+            String decoded = new String(Base64.decode(responseBase64, Base64.DEFAULT), StandardCharsets.UTF_8);
+            JSONObject json = new JSONObject(decoded);
+            if (json.has("code") && json.has("reason")) {
+                return;
+            }
+            JSONArray payments = json.optJSONArray("payments");
+            if (payments == null || payments.length() == 0) {
+                return;
+            }
+            JSONObject payment = payments.getJSONObject(payments.length() - 1);
+            String paymentId = payment.optString("id", "");
+            if (paymentId.isEmpty()) {
+                paymentId = json.optString("id", "");
+            }
+            if (paymentId.isEmpty() || paymentId.startsWith("broadcast-")) {
+                return;
+            }
+            String authCode = payment.optString("authCode", payment.optString("cieloCode", ""));
+            String cieloCode = payment.optString("cieloCode", "");
+            long amount = payment.optLong("amount", pendingAmountCents);
+            boolean needsUpgrade = lastApprovedPayment == null
+                || lastApprovedPayment.paymentId == null
+                || lastApprovedPayment.paymentId.isEmpty()
+                || lastApprovedPayment.paymentId.startsWith("broadcast-");
+            if (!needsUpgrade) {
+                return;
+            }
+            lastApprovedPayment = new ApprovedPaymentSnapshot(paymentId, authCode, cieloCode, amount);
+            rememberMerchantFromPayment(payment);
+            Log.i(TAG, "Snapshot de estorno atualizado com paymentId real=" + paymentId);
+        } catch (Exception e) {
+            Log.w(TAG, "Falha ao atualizar snapshot de estorno do deep link tardio", e);
+        }
+    }
+
     private synchronized void deliverPaymentSuccess(String authCode, String txnId, String source) {
         if (successDelivered) {
             Log.d(TAG, "Sucesso já entregue — ignorando " + source);
@@ -1159,16 +1207,43 @@ public class CieloLioManager implements PaymentManager {
         pendingCloudOrderId = null;
     }
 
-    /** Limpa checkout após sucesso ou erro definitivo no totem. */
-    public void onTotemCheckoutFinished() {
+    /**
+     * Libera o binding para o próximo pagamento sem descartar o snapshot
+     * necessário ao estorno se o ESP32 não confirmar.
+     */
+    public void releaseCheckoutForNextPayment() {
         clearBoundCheckout();
+        Log.d(TAG, "Checkout liberado para próximo pagamento (snapshot estorno preservado="
+            + hasApprovedPaymentSnapshot() + ")");
+    }
+
+    /** Descarta o snapshot de estorno após liberação ESP confirmada. */
+    public void consumeApprovedPaymentSnapshot() {
         lastApprovedPayment = null;
     }
 
+    /** Limpa checkout após sucesso confirmado, estorno ou erro definitivo no totem. */
+    public void onTotemCheckoutFinished() {
+        clearBoundCheckout();
+        lastApprovedPayment = null;
+        // Fecha pedidos cloud só depois de confirmar ESP ou tentar estorno —
+        // fechar antes impede o payment-reversal da Cielo.
+        schedulePaidOrderCleanup(null);
+    }
+
     public boolean hasApprovedPaymentSnapshot() {
-        return lastApprovedPayment != null
-            && lastApprovedPayment.paymentId != null
-            && !lastApprovedPayment.paymentId.isEmpty();
+        if (lastApprovedPayment == null) {
+            return false;
+        }
+        String id = lastApprovedPayment.paymentId;
+        if (id == null || id.isEmpty()) {
+            return false;
+        }
+        // ID sintético do broadcast não serve para lio://payment-reversal.
+        if (id.startsWith("broadcast-")) {
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -1179,6 +1254,10 @@ public class CieloLioManager implements PaymentManager {
         ApprovedPaymentSnapshot snap = lastApprovedPayment;
         if (snap == null || snap.paymentId.isEmpty()) {
             Log.e(TAG, "Estorno automático: snapshot de pagamento ausente");
+            return false;
+        }
+        if (snap.paymentId.startsWith("broadcast-")) {
+            Log.e(TAG, "Estorno automático: paymentId sintético de broadcast — sem id Cielo real");
             return false;
         }
         if (!isInitialized) {
