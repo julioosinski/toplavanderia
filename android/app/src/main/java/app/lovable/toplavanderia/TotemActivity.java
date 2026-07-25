@@ -633,14 +633,16 @@ public class TotemActivity extends Activity {
     private void openCategory(TotemScreen screen) {
         currentScreen = screen;
         selectedCoffeeProduct = null;
-        displayCurrentScreen();
+        // Garante a grade na tela: telas de pagamento trocam o contentView e
+        // displayCurrentScreen() sozinho só atualiza um machinesContainer órfão.
+        restoreMachineGrid();
     }
 
     private void goBackToHome() {
         currentScreen = TotemScreen.HOME;
         selectedMachine = null;
         selectedCoffeeProduct = null;
-        displayCurrentScreen();
+        restoreMachineGrid();
         if (isAtHomeIdle()) {
             cancelIdleTimeout();
         }
@@ -849,7 +851,12 @@ public class TotemActivity extends Activity {
         backBtn.setText("← Voltar ao cardápio");
         backBtn.setBackgroundColor(Color.parseColor("#21262D"));
         backBtn.setTextColor(Color.WHITE);
-        backBtn.setOnClickListener(v -> openCategory(TotemScreen.CAFE));
+        backBtn.setOnClickListener(v -> {
+            selectedMachine = null;
+            selectedCoffeeProduct = null;
+            currentPendingTransactionId = null;
+            openCategory(TotemScreen.CAFE);
+        });
         layout.addView(backBtn);
 
         scrollView.addView(layout);
