@@ -67,7 +67,7 @@ export const ESP32ConfigurationDialog = () => {
 
     toast({
       title: "Arquivo gerado!",
-      description: "Firmware v2.1.3 (ID auto via MAC, auto-registro, portal cativo DNS) — compile no Arduino IDE e use em qualquer ESP32"
+      description: "Firmware v2.2.5 lavadora/secadora (ID via MAC, pulso 1,5s, portal Wi‑Fi) — compile no Arduino IDE"
     });
   };
 
@@ -106,8 +106,8 @@ export const ESP32ConfigurationDialog = () => {
         <DialogHeader>
           <DialogTitle>Gerar Firmware ESP32</DialogTitle>
           <DialogDescription>
-            Firmware v2.1.3: cada ESP32 gera seu ID automaticamente via MAC Address.
-            O mesmo arquivo .ino funciona em qualquer placa — basta fazer upload e o ESP aparecerá para aprovação no painel.
+            Firmware v2.2.5 (lavadora e secadora): cada ESP32 gera o ID via MAC.
+            O mesmo .ino serve para qualquer placa — após o upload, aprove o dispositivo no painel.
           </DialogDescription>
         </DialogHeader>
 
@@ -181,7 +181,7 @@ export const ESP32ConfigurationDialog = () => {
                 value={cycleTimeMinutes}
                 onChange={(e) => setCycleTimeMinutes(Math.max(1, Math.min(1440, Number(e.target.value) || 40)))}
               />
-              <p className="text-xs text-muted-foreground">Igual a cycle_time_minutes; o ESP desliga o relé ao fim.</p>
+              <p className="text-xs text-muted-foreground">Igual a cycle_time_minutes no painel; o ESP envia pulso de crédito (1,5s).</p>
             </div>
           </div>
 

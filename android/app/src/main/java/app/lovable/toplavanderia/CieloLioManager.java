@@ -112,6 +112,16 @@ public class CieloLioManager implements PaymentManager {
         }
     }
 
+    private static final String PREFS_REFUND = "cielo_refund_snapshot";
+    private static final String KEY_REFUND_PAYMENT_ID = "payment_id";
+    private static final String KEY_REFUND_AUTH = "auth_code";
+    private static final String KEY_REFUND_CIELO = "cielo_code";
+    private static final String KEY_REFUND_AMOUNT = "amount_cents";
+    private static final String KEY_REFUND_SAVED_AT = "saved_at";
+    private static final String KEY_REFUND_REFERENCE = "reference";
+    /** Snapshot de estorno válido por 15 min após o pagamento. */
+    private static final long REFUND_SNAPSHOT_TTL_MS = 15 * 60_000L;
+
     private static final class ReversalWaitState {
         final CountDownLatch latch = new CountDownLatch(1);
         volatile boolean success;
@@ -596,15 +606,16 @@ public class CieloLioManager implements PaymentManager {
         Log.i(TAG, "Aprovação via broadcast — completando checkout (" + source + ")");
         // Preferir id real do Order Manager; broadcast-* não permite estorno Cielo.
         if (mgr.lastApprovedPayment == null && mgr.pendingAmountCents > 0) {
-            String paymentId = (mgr.pendingCloudOrderId != null && !mgr.pendingCloudOrderId.isEmpty())
-                ? mgr.pendingCloudOrderId
-                : ("broadcast-" + System.currentTimeMillis());
-            mgr.lastApprovedPayment = new ApprovedPaymentSnapshot(
+            String paymentId = extractPaymentIdFromBroadcastPayload(rawPayload);
+            if (paymentId.isEmpty()) {
+                paymentId = "broadcast-" + System.currentTimeMillis();
+            }
+            mgr.setApprovedPaymentSnapshot(new ApprovedPaymentSnapshot(
                 paymentId,
                 "CIELO_BROADCAST",
                 "",
                 mgr.pendingAmountCents
-            );
+            ));
         }
         if (mgr.lastDetectedSupabasePaymentMethod == null
                 && "PIX".equalsIgnoreCase(mgr.pendingPaymentCode)) {
@@ -613,6 +624,46 @@ public class CieloLioManager implements PaymentManager {
         mgr.deliverPaymentSuccess("CIELO_BROADCAST", "broadcast-" + System.currentTimeMillis(), "broadcast:" + source);
         // NÃO fecha o pedido aqui: o CLOSE precoce impede estorno se o ESP falhar.
         // onTotemCheckoutFinished() agenda o janitor após confirmação ESP ou estorno.
+    }
+
+    /** Extrai payment.id do payload Buzios quando disponível. */
+    private static String extractPaymentIdFromBroadcastPayload(String payload) {
+        if (payload == null || payload.isEmpty()) {
+            return "";
+        }
+        try {
+            String trimmed = payload.trim();
+            if (trimmed.startsWith("{")) {
+                JSONObject json = new JSONObject(trimmed);
+                String id = json.optString("id", "");
+                if (id.isEmpty() && json.has("payments")) {
+                    JSONArray payments = json.optJSONArray("payments");
+                    if (payments != null && payments.length() > 0) {
+                        id = payments.getJSONObject(payments.length() - 1).optString("id", "");
+                    }
+                }
+                if (id.isEmpty()) {
+                    id = json.optString("paymentId", json.optString("payment_id", ""));
+                }
+                if (!id.isEmpty() && !id.startsWith("broadcast-")) {
+                    return id;
+                }
+            }
+            // Heurística: "id":"uuid-or-cielo-id"
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("\"(?:id|paymentId|payment_id)\"\\s*:\\s*\"([^\"]+)\"",
+                    java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(payload);
+            if (m.find()) {
+                String id = m.group(1);
+                if (id != null && !id.isEmpty() && !id.startsWith("broadcast-")) {
+                    return id;
+                }
+            }
+        } catch (Exception ignored) {
+            // noop
+        }
+        return "";
     }
 
     private static CieloLioManager tryRehydrateActiveInstance() {
@@ -816,12 +867,12 @@ public class CieloLioManager implements PaymentManager {
                 paymentId = txnId;
             }
             long snapshotAmount = paidAmount > 0 ? paidAmount : pendingAmountCents;
-            lastApprovedPayment = new ApprovedPaymentSnapshot(
+            setApprovedPaymentSnapshot(new ApprovedPaymentSnapshot(
                 paymentId,
                 authCode,
                 cieloCode,
                 snapshotAmount
-            );
+            ));
 
             lastDetectedSupabasePaymentMethod = resolveSupabaseMethodFromCieloPayment(payment);
             rememberMerchantFromPayment(payment);
@@ -1106,6 +1157,7 @@ public class CieloLioManager implements PaymentManager {
                 return;
             }
             lastApprovedPayment = new ApprovedPaymentSnapshot(paymentId, authCode, cieloCode, amount);
+            persistRefundSnapshot(lastApprovedPayment);
             rememberMerchantFromPayment(payment);
             Log.i(TAG, "Snapshot de estorno atualizado com paymentId real=" + paymentId);
         } catch (Exception e) {
@@ -1217,33 +1269,192 @@ public class CieloLioManager implements PaymentManager {
             + hasApprovedPaymentSnapshot() + ")");
     }
 
+    /** Snapshot atual (ou persistido) para estorno — não consome. */
+    public ApprovedPaymentSnapshot peekApprovedPaymentSnapshot() {
+        if (isReversibleSnapshot(lastApprovedPayment)) {
+            return lastApprovedPayment;
+        }
+        ApprovedPaymentSnapshot fromPrefs = loadRefundSnapshot();
+        if (isReversibleSnapshot(fromPrefs)) {
+            lastApprovedPayment = fromPrefs;
+            return fromPrefs;
+        }
+        if (lastApprovedPayment != null) {
+            return lastApprovedPayment;
+        }
+        return fromPrefs;
+    }
+
+    public static boolean isReversibleSnapshot(ApprovedPaymentSnapshot snap) {
+        if (snap == null) {
+            return false;
+        }
+        String id = snap.paymentId;
+        return id != null && !id.isEmpty() && !id.startsWith("broadcast-");
+    }
+
+    private void setApprovedPaymentSnapshot(ApprovedPaymentSnapshot snap) {
+        lastApprovedPayment = snap;
+        // Persiste também ids sintéticos — a reference permite resolver o paymentId real depois.
+        persistRefundSnapshot(snap);
+        String ref = loadRefundReference();
+        if (ref != null && !ref.isEmpty()) {
+            CieloOrderJanitor.setProtectedRefundReference(ref);
+        }
+    }
+
+    private void persistRefundSnapshot(ApprovedPaymentSnapshot snap) {
+        if (snap == null || context == null) {
+            return;
+        }
+        String reference = pendingReference;
+        if (reference == null || reference.isEmpty()) {
+            reference = context.getApplicationContext()
+                .getSharedPreferences(PREFS_CHECKOUT, Context.MODE_PRIVATE)
+                .getString(KEY_BOUND_REFERENCE, "");
+        }
+        if (reference == null || reference.isEmpty()) {
+            reference = context.getApplicationContext()
+                .getSharedPreferences(PREFS_REFUND, Context.MODE_PRIVATE)
+                .getString(KEY_REFUND_REFERENCE, "");
+        }
+        context.getApplicationContext()
+            .getSharedPreferences(PREFS_REFUND, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_REFUND_PAYMENT_ID, snap.paymentId)
+            .putString(KEY_REFUND_AUTH, snap.authCode)
+            .putString(KEY_REFUND_CIELO, snap.cieloCode)
+            .putLong(KEY_REFUND_AMOUNT, snap.amountCents)
+            .putString(KEY_REFUND_REFERENCE, reference == null ? "" : reference)
+            .putLong(KEY_REFUND_SAVED_AT, System.currentTimeMillis())
+            .apply();
+    }
+
+    private ApprovedPaymentSnapshot loadRefundSnapshot() {
+        if (context == null) {
+            return null;
+        }
+        android.content.SharedPreferences prefs = context.getApplicationContext()
+            .getSharedPreferences(PREFS_REFUND, Context.MODE_PRIVATE);
+        long savedAt = prefs.getLong(KEY_REFUND_SAVED_AT, 0L);
+        if (savedAt <= 0L || System.currentTimeMillis() - savedAt > REFUND_SNAPSHOT_TTL_MS) {
+            return null;
+        }
+        String id = prefs.getString(KEY_REFUND_PAYMENT_ID, "");
+        if (id == null || id.isEmpty()) {
+            return null;
+        }
+        return new ApprovedPaymentSnapshot(
+            id,
+            prefs.getString(KEY_REFUND_AUTH, ""),
+            prefs.getString(KEY_REFUND_CIELO, ""),
+            prefs.getLong(KEY_REFUND_AMOUNT, 0L)
+        );
+    }
+
+    private String loadRefundReference() {
+        if (context == null) {
+            return "";
+        }
+        if (pendingReference != null && !pendingReference.isEmpty()) {
+            return pendingReference;
+        }
+        android.content.SharedPreferences refundPrefs = context.getApplicationContext()
+            .getSharedPreferences(PREFS_REFUND, Context.MODE_PRIVATE);
+        String fromRefund = refundPrefs.getString(KEY_REFUND_REFERENCE, "");
+        if (fromRefund != null && !fromRefund.isEmpty()) {
+            return fromRefund;
+        }
+        return context.getApplicationContext()
+            .getSharedPreferences(PREFS_CHECKOUT, Context.MODE_PRIVATE)
+            .getString(KEY_BOUND_REFERENCE, "");
+    }
+
+    /**
+     * Tenta obter payment.id real no Order Manager o quanto antes
+     * (antes do próximo checkout fechar pedidos PAID).
+     */
+    public void ensureReversiblePaymentSnapshot() {
+        try {
+            resolveReversibleSnapshot(peekApprovedPaymentSnapshot());
+        } catch (Exception e) {
+            Log.w(TAG, "ensureReversiblePaymentSnapshot falhou", e);
+        }
+    }
+
+    /**
+     * Quando o sucesso veio só por broadcast, busca payment.id real no Order Manager.
+     */
+    private ApprovedPaymentSnapshot resolveReversibleSnapshot(ApprovedPaymentSnapshot snap) {
+        if (isReversibleSnapshot(snap)) {
+            return snap;
+        }
+        String reference = loadRefundReference();
+        if (reference == null || reference.isEmpty()) {
+            Log.e(TAG, "Estorno: sem reference para resolver paymentId no Order Manager");
+            return snap;
+        }
+        CieloOrderJanitor.PaymentRef found = CieloOrderJanitor.findPaymentByReference(
+            clientId,
+            accessToken,
+            merchantCodeForJanitor(),
+            environment,
+            reference
+        );
+        if (found == null) {
+            Log.e(TAG, "Estorno: Order Manager não retornou payment para ref=" + reference);
+            return snap;
+        }
+        long amount = found.amountCents > 0
+            ? found.amountCents
+            : (snap != null ? snap.amountCents : pendingAmountCents);
+        ApprovedPaymentSnapshot resolved = new ApprovedPaymentSnapshot(
+            found.paymentId,
+            found.authCode.isEmpty() && snap != null ? snap.authCode : found.authCode,
+            found.cieloCode.isEmpty() && snap != null ? snap.cieloCode : found.cieloCode,
+            amount
+        );
+        setApprovedPaymentSnapshot(resolved);
+        Log.i(TAG, "Snapshot de estorno resolvido via Order Manager paymentId=" + found.paymentId);
+        return resolved;
+    }
+
+    private void clearRefundSnapshotPrefs() {
+        if (context == null) {
+            return;
+        }
+        context.getApplicationContext()
+            .getSharedPreferences(PREFS_REFUND, Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .apply();
+        CieloOrderJanitor.clearProtectedRefundReference();
+    }
+
     /** Descarta o snapshot de estorno após liberação ESP confirmada. */
     public void consumeApprovedPaymentSnapshot() {
         lastApprovedPayment = null;
+        clearRefundSnapshotPrefs();
     }
 
     /** Limpa checkout após sucesso confirmado, estorno ou erro definitivo no totem. */
     public void onTotemCheckoutFinished() {
         clearBoundCheckout();
         lastApprovedPayment = null;
+        clearRefundSnapshotPrefs();
         // Fecha pedidos cloud só depois de confirmar ESP ou tentar estorno —
         // fechar antes impede o payment-reversal da Cielo.
         schedulePaidOrderCleanup(null);
     }
 
     public boolean hasApprovedPaymentSnapshot() {
-        if (lastApprovedPayment == null) {
-            return false;
+        ApprovedPaymentSnapshot snap = peekApprovedPaymentSnapshot();
+        if (isReversibleSnapshot(snap)) {
+            return true;
         }
-        String id = lastApprovedPayment.paymentId;
-        if (id == null || id.isEmpty()) {
-            return false;
-        }
-        // ID sintético do broadcast não serve para lio://payment-reversal.
-        if (id.startsWith("broadcast-")) {
-            return false;
-        }
-        return true;
+        // Ainda pode estornar após resolver no Order Manager pela reference.
+        String ref = loadRefundReference();
+        return ref != null && !ref.isEmpty() && snap != null && snap.amountCents > 0;
     }
 
     /**
@@ -1251,13 +1462,16 @@ public class CieloLioManager implements PaymentManager {
      * Bloqueia até o callback order://response ou timeout.
      */
     public boolean requestAutomaticReversal() {
-        ApprovedPaymentSnapshot snap = lastApprovedPayment;
-        if (snap == null || snap.paymentId.isEmpty()) {
-            Log.e(TAG, "Estorno automático: snapshot de pagamento ausente");
-            return false;
+        return requestAutomaticReversal(peekApprovedPaymentSnapshot());
+    }
+
+    public boolean requestAutomaticReversal(ApprovedPaymentSnapshot snap) {
+        if (snap == null) {
+            snap = peekApprovedPaymentSnapshot();
         }
-        if (snap.paymentId.startsWith("broadcast-")) {
-            Log.e(TAG, "Estorno automático: paymentId sintético de broadcast — sem id Cielo real");
+        snap = resolveReversibleSnapshot(snap);
+        if (!isReversibleSnapshot(snap)) {
+            Log.e(TAG, "Estorno automático: snapshot de pagamento ausente ou inválido");
             return false;
         }
         if (!isInitialized) {
@@ -1310,6 +1524,7 @@ public class CieloLioManager implements PaymentManager {
             if (wait.success) {
                 Log.i(TAG, "Estorno Cielo confirmado");
                 lastApprovedPayment = null;
+                clearRefundSnapshotPrefs();
                 return true;
             }
             Log.e(TAG, "Estorno Cielo falhou: " + wait.errorMessage);

@@ -48,6 +48,17 @@ public final class CieloOrderJanitor {
 
     private static final int READ_MS = 12000;
 
+    /** Reference de checkout com estorno pendente — não fechar no janitor. */
+    private static volatile String protectedRefundReference = "";
+
+    public static void setProtectedRefundReference(String reference) {
+        protectedRefundReference = reference == null ? "" : reference.trim();
+    }
+
+    public static void clearProtectedRefundReference() {
+        protectedRefundReference = "";
+    }
+
     private static final String[] OPEN_STATUSES = { "ENTERED", "PAID", "RE-ENTERED", "DRAFT" };
 
     private static final String[] CLOSE_OPERATIONS = { "close" };
@@ -150,6 +161,92 @@ public final class CieloOrderJanitor {
     }
 
 
+
+    /**
+     * Localiza payment.id real no Order Manager pela reference do checkout.
+     * Necessário quando o sucesso veio só via broadcast (id sintético broadcast-*).
+     */
+    public static PaymentRef findPaymentByReference(String clientId, String accessToken,
+                                                    String merchantId, String environment,
+                                                    String reference) {
+        if (clientId == null || clientId.isEmpty()
+                || accessToken == null || accessToken.isEmpty()
+                || reference == null || reference.isEmpty()) {
+            return null;
+        }
+        String merchant = resolveMerchantId(merchantId);
+        String baseUrl = baseUrl(environment);
+        String[] statuses = new String[] { "PAID", "ENTERED", "RE-ENTERED", "CLOSED" };
+        for (String status : statuses) {
+            JSONArray orders = fetchOrdersQuick(baseUrl, clientId, accessToken, merchant, status);
+            PaymentRef found = extractPaymentMatchingReference(orders, reference);
+            if (found != null) {
+                Log.i(TAG, "Payment encontrado no Order Manager ref=" + reference
+                    + " paymentId=" + found.paymentId + " status=" + status);
+                return found;
+            }
+        }
+        // Fallback: listagem ampla recente.
+        JSONArray all = fetchOrdersByStatus(baseUrl, clientId, accessToken, merchant, "PAID");
+        PaymentRef found = extractPaymentMatchingReference(all, reference);
+        if (found != null) {
+            Log.i(TAG, "Payment encontrado (fallback) ref=" + reference
+                + " paymentId=" + found.paymentId);
+        }
+        return found;
+    }
+
+    public static final class PaymentRef {
+        public final String paymentId;
+        public final String authCode;
+        public final String cieloCode;
+        public final long amountCents;
+
+        public PaymentRef(String paymentId, String authCode, String cieloCode, long amountCents) {
+            this.paymentId = paymentId;
+            this.authCode = authCode == null ? "" : authCode;
+            this.cieloCode = cieloCode == null ? "" : cieloCode;
+            this.amountCents = amountCents;
+        }
+    }
+
+    private static PaymentRef extractPaymentMatchingReference(JSONArray orders, String reference) {
+        if (orders == null || orders.length() == 0) {
+            return null;
+        }
+        for (int i = 0; i < orders.length(); i++) {
+            JSONObject order = orders.optJSONObject(i);
+            if (order == null) {
+                continue;
+            }
+            String orderRef = order.optString("reference", order.optString("number", ""));
+            if (!reference.equals(orderRef)) {
+                continue;
+            }
+            JSONArray payments = order.optJSONArray("payments");
+            if (payments == null || payments.length() == 0) {
+                String orderId = order.optString("id", "");
+                if (!orderId.isEmpty() && !orderId.startsWith("broadcast-")) {
+                    // Alguns payloads só trazem o id do pedido; o reversal Cielo exige payment.id.
+                    continue;
+                }
+                continue;
+            }
+            JSONObject payment = payments.optJSONObject(payments.length() - 1);
+            if (payment == null) {
+                continue;
+            }
+            String paymentId = payment.optString("id", "");
+            if (paymentId.isEmpty() || paymentId.startsWith("broadcast-")) {
+                continue;
+            }
+            String authCode = payment.optString("authCode", payment.optString("cieloCode", ""));
+            String cieloCode = payment.optString("cieloCode", "");
+            long amount = payment.optLong("amount", order.optLong("price", 0L));
+            return new PaymentRef(paymentId, authCode, cieloCode, amount);
+        }
+        return null;
+    }
 
     /** Limpeza rápida (só PAID/ENTERED, 1 tentativa) — antes de novo checkout. */
 
@@ -473,6 +570,16 @@ public final class CieloOrderJanitor {
 
                 continue;
 
+            }
+
+            String orderRef = order.optString("reference", order.optString("number", ""));
+            String protectedRef = protectedRefundReference;
+            if (protectedRef != null && !protectedRef.isEmpty()
+                    && protectedRef.equals(orderRef)) {
+                Log.i(TAG, "Janitor: preservando pedido ref=" + orderRef
+                    + " (estorno/confirmação ESP pendente)");
+                seen.add(orderId);
+                continue;
             }
 
             String status = order.optString("status", "").toUpperCase(Locale.ROOT);

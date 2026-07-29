@@ -8,10 +8,12 @@ import android.util.Log;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.BufferedReader;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -1108,7 +1110,7 @@ public class SupabaseHelper {
         }).start();
     }
     
-    private static final long ESP32_RELAY_POLL_INTERVAL_MS = 3000L;
+    private static final long ESP32_RELAY_POLL_INTERVAL_MS = 1500L;
     private static final int DEFAULT_RELAY_LOGICAL_PIN = 1;
 
     /**
@@ -1160,12 +1162,26 @@ public class SupabaseHelper {
                 Log.i(TAG, "ESP32 confirmado (esp32=" + esp32Id + ", pin=" + pin + ")");
                 return true;
             }
+            // Ainda em processing: o ESP pode ter pulsado e só o confirm atrasou — não desistir cedo.
+            if (transactionId != null && !transactionId.isEmpty()) {
+                String st = fetchTotemCommandStatus(transactionId, null);
+                if ("failed".equals(st)) {
+                    Log.w(TAG, "Comando ESP falhou no servidor (tx=" + transactionId + ")");
+                    return false;
+                }
+            }
             try {
                 Thread.sleep(ESP32_RELAY_POLL_INTERVAL_MS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return false;
             }
+        }
+        // Última chance: completed atrasado após o timeout local.
+        if (transactionId != null && !transactionId.isEmpty()
+                && isPendingCommandCompletedForTransaction(transactionId)) {
+            Log.i(TAG, "ESP32 confirmado após timeout (completed tardio)");
+            return true;
         }
         boolean finalCheck = isEsp32Confirmed(esp32Id, pin, machineId, transactionId);
         Log.w(TAG, "Timeout confirmação ESP32 (esp32=" + esp32Id + ", pin=" + pin + ", ok=" + finalCheck + ")");
@@ -1175,91 +1191,99 @@ public class SupabaseHelper {
     /** Relé ON ou pending_commands completed. Não usa só status da máquina (falso positivo OCUPADA). */
     private boolean isEsp32Confirmed(String esp32Id, int relayPin, String machineId, String transactionId) {
         if (transactionId != null && !transactionId.isEmpty()) {
-            if (isPendingCommandCompletedForTransaction(transactionId)) {
+            String cmdStatus = fetchTotemCommandStatus(transactionId, null);
+            if ("completed".equals(cmdStatus)) {
                 return true;
             }
-            // Relé antigo / status OCUPADA residual não contam sem comando desta cobrança em trânsito.
-            if (!isPendingCommandInFlightForTransaction(transactionId)) {
+            if ("failed".equals(cmdStatus)) {
                 return false;
             }
+            // pending/processing: ainda em trânsito — não use relé residual de ciclo anterior.
+            if (cmdStatus == null || cmdStatus.isEmpty()) {
+                // Sem linha visível: tenta prova física só como fallback fraco.
+                return isEsp32RelayOn(esp32Id, relayPin);
+            }
+            return false;
         }
-        // Prova física: relé ligado. Status "running"/"in_use" sozinho gerava falso positivo
-        // (máquina marcada OCUPADA sem o ESP executar) e bloqueava estorno.
         return isEsp32RelayOn(esp32Id, relayPin);
+    }
+
+    /**
+     * Status do comando ON/crédito via RPC SECURITY DEFINER.
+     * SELECT direto em pending_commands é bloqueado para anon (RLS).
+     */
+    private String fetchTotemCommandStatus(String transactionId, String commandId) {
+        try {
+            String url = SUPABASE_URL + "/rest/v1/rpc/get_totem_command_status";
+            JSONObject body = new JSONObject();
+            if (transactionId != null && !transactionId.trim().isEmpty()) {
+                body.put("_transaction_id", transactionId.trim());
+            } else {
+                body.put("_transaction_id", JSONObject.NULL);
+            }
+            if (commandId != null && !commandId.trim().isEmpty()) {
+                body.put("_command_id", commandId.trim());
+            } else {
+                body.put("_command_id", JSONObject.NULL);
+            }
+
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(10000);
+            OutputStream os = connection.getOutputStream();
+            os.write(body.toString().getBytes(StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+
+            int code = connection.getResponseCode();
+            InputStream stream = code >= 200 && code < 300
+                ? connection.getInputStream()
+                : connection.getErrorStream();
+            StringBuilder response = new StringBuilder();
+            if (stream != null) {
+                BufferedReader br = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
+                String line;
+                while ((line = br.readLine()) != null) {
+                    response.append(line);
+                }
+                br.close();
+            }
+            connection.disconnect();
+            if (code < 200 || code >= 300) {
+                Log.w(TAG, "get_totem_command_status HTTP " + code + ": " + response);
+                return null;
+            }
+            String raw = response.toString().trim();
+            if (raw.isEmpty() || "[]".equals(raw) || "null".equals(raw)) {
+                return null;
+            }
+            if (raw.startsWith("[")) {
+                JSONArray arr = new JSONArray(raw);
+                if (arr.length() == 0) {
+                    return null;
+                }
+                return arr.getJSONObject(0).optString("status", null);
+            }
+            JSONObject obj = new JSONObject(raw);
+            return obj.optString("status", null);
+        } catch (Exception e) {
+            Log.e(TAG, "fetchTotemCommandStatus", e);
+            return null;
+        }
     }
 
     /** True se algum comando da TX já foi completed pelo ESP (fonte mais confiável que relay). */
     public boolean isPendingCommandCompletedForTransaction(String transactionId) {
-        if (transactionId == null || transactionId.trim().isEmpty()) {
-            return false;
-        }
-        try {
-            String url = SUPABASE_URL + "/rest/v1/pending_commands"
-                + "?transaction_id=eq." + Uri.encode(transactionId.trim())
-                + "&status=eq.completed"
-                + "&select=id"
-                + "&limit=1";
-            HttpURLConnection connection = SupabaseConfig.openConnection(url);
-            connection.setRequestMethod("GET");
-            SupabaseConfig.applyJsonHeaders(connection);
-            connection.setConnectTimeout(10000);
-            connection.setReadTimeout(10000);
-            int code = connection.getResponseCode();
-            if (code != 200) {
-                connection.disconnect();
-                return false;
-            }
-            BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-            StringBuilder response = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) {
-                response.append(line);
-            }
-            br.close();
-            connection.disconnect();
-            String body = response.toString().trim();
-            return body.startsWith("[") && body.length() > 2;
-        } catch (Exception e) {
-            Log.e(TAG, "isPendingCommandCompletedForTransaction", e);
-            return false;
-        }
+        return "completed".equals(fetchTotemCommandStatus(transactionId, null));
     }
 
     /** True enquanto o comando desta TX foi enfileirado ou reservado pelo ESP. */
     private boolean isPendingCommandInFlightForTransaction(String transactionId) {
-        if (transactionId == null || transactionId.trim().isEmpty()) {
-            return false;
-        }
-        try {
-            String url = SUPABASE_URL + "/rest/v1/pending_commands"
-                + "?transaction_id=eq." + Uri.encode(transactionId.trim())
-                + "&status=in.(pending,processing)"
-                + "&select=id"
-                + "&limit=1";
-            HttpURLConnection connection = SupabaseConfig.openConnection(url);
-            connection.setRequestMethod("GET");
-            SupabaseConfig.applyJsonHeaders(connection);
-            connection.setConnectTimeout(10000);
-            connection.setReadTimeout(10000);
-            int code = connection.getResponseCode();
-            if (code != 200) {
-                connection.disconnect();
-                return false;
-            }
-            BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-            StringBuilder response = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) {
-                response.append(line);
-            }
-            br.close();
-            connection.disconnect();
-            String body = response.toString().trim();
-            return body.startsWith("[") && body.length() > 2;
-        } catch (Exception e) {
-            Log.e(TAG, "isPendingCommandInFlightForTransaction", e);
-            return false;
-        }
+        String status = fetchTotemCommandStatus(transactionId, null);
+        return "pending".equals(status) || "processing".equals(status);
     }
 
     /** Marca comandos pending/processing da TX como failed (antes de estorno). */

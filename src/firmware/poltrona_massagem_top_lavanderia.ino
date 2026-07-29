@@ -18,9 +18,10 @@
 #include <ArduinoJson.h>
 #include <DFRobotDFPlayerMini.h>
 #include <esp_task_wdt.h>
+#include <Preferences.h>
 #include <cstdio>
 
-#define FIRMWARE_VERSION "v1.1.4-toplav-poltrona"
+#define FIRMWARE_VERSION "v1.1.5-toplav-poltrona"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
@@ -85,6 +86,46 @@ unsigned long lastPoll = 0;
 // Se o confirm HTTP falhar, o servidor pode reenviar o mesmo ID. Não reinicia
 // a sessão nem repete o acionamento; apenas tenta confirmar novamente.
 String lastExecutedCommandId = "";
+Preferences sessionPrefs;
+
+void clearPersistedSession() {
+  sessionPrefs.begin("poltrona_sess", false);
+  sessionPrefs.clear();
+  sessionPrefs.end();
+}
+
+void persistActiveSession() {
+  if (statusAtual != "em_uso" || tempoTotalSeg == 0 || tempoInicioCiclo == 0) {
+    clearPersistedSession();
+    return;
+  }
+  unsigned long decorrido = (millis() - tempoInicioCiclo) / 1000UL;
+  unsigned long restante = (decorrido >= tempoTotalSeg) ? 0UL : (tempoTotalSeg - decorrido);
+  sessionPrefs.begin("poltrona_sess", false);
+  sessionPrefs.putBool("active", restante > 0);
+  sessionPrefs.putULong("remain_s", restante);
+  sessionPrefs.putULong("saved_at_ms", millis());
+  sessionPrefs.end();
+}
+
+bool restorePersistedSession() {
+  sessionPrefs.begin("poltrona_sess", true);
+  bool active = sessionPrefs.getBool("active", false);
+  unsigned long remain = sessionPrefs.getULong("remain_s", 0);
+  sessionPrefs.end();
+  if (!active || remain < 15) {
+    clearPersistedSession();
+    return false;
+  }
+  // Reboot no meio da sessão: restaura o relé e o restante do tempo.
+  tempoTotalSeg = remain;
+  tempoRestanteSeg = remain;
+  tempoInicioCiclo = millis();
+  statusAtual = "em_uso";
+  acionarRele(true);
+  Serial.printf("Sessão restaurada após reboot — %lu s restantes\n", remain);
+  return true;
+}
 
 void buildEsp32Id() {
   WiFi.mode(WIFI_STA);
@@ -127,6 +168,7 @@ void executarCicloResfriamento() {
 
 void pararPoltrona(bool comResfriamento) {
   pararAudio();
+  clearPersistedSession();
   acionarRele(false);
   if (comResfriamento && statusAtual == "em_uso") {
     executarCicloResfriamento();
@@ -153,6 +195,7 @@ bool iniciarPoltrona(int tempoMinutos) {
     tempoTotalSeg += adicional;
     tempoRestanteSeg += adicional;
     Serial.printf("Poltrona em uso — adicionados %lu s à sessão\n", adicional);
+    persistActiveSession();
     return true;
   }
 
@@ -181,6 +224,7 @@ bool iniciarPoltrona(int tempoMinutos) {
   audiosPendentes = true;
 
   Serial.printf("Poltrona ON — %lu s (%d min solicitados)\n", tempoTotalSeg, tempoMinutos);
+  persistActiveSession();
   return true;
 }
 
@@ -257,6 +301,12 @@ void atualizarTimerSessao() {
     return;
   }
   tempoRestanteSeg = tempoTotalSeg - decorrido;
+  // Persiste a cada ~20s para sobreviver a reboot sem perder quase toda a sessão.
+  static unsigned long lastPersistMs = 0;
+  if (lastPersistMs == 0 || (millis() - lastPersistMs) >= 20000UL) {
+    persistActiveSession();
+    lastPersistMs = millis();
+  }
 }
 
 void wdtKick() {
@@ -595,6 +645,9 @@ void setup() {
   acionarRele(false);
 
   setupWatchdog();
+  if (!restorePersistedSession()) {
+    clearPersistedSession();
+  }
   esp32SetOtaBusyHook(poltronaOtaBusyHook);
   esp32WifiOtaRegisterPortalRoutes();
   setupDeviceHttpRoutes();

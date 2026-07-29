@@ -44,7 +44,7 @@ export const ESP32ConfigQRCode = () => {
 
     toast({
       title: "Firmware gerado!",
-      description: "Abra no Arduino IDE e faça upload para o ESP32.",
+      description: "v2.2.5 lavadora/secadora — abra no Arduino IDE e faça upload no ESP32.",
     });
 
     setDownloading(false);
@@ -58,9 +58,9 @@ export const ESP32ConfigQRCode = () => {
           Gerar Firmware ESP32
         </CardTitle>
         <CardDescription>
-          O ESP32 gera seu ID automaticamente via MAC. Após upload, se não houver Wi-Fi salvo
-          ou a rede mudar, ele abre o AP <strong>TopLavanderia-…</strong> (senha <code>toplav123</code>)
-          com o painel &quot;Configurar Wi-Fi&quot; no celular.
+          Lavadora e secadora usam o mesmo firmware v2.2.5. O ESP32 gera o ID via MAC. Sem Wi‑Fi
+          salvo, abre o AP <strong>TopLavanderia-…</strong> (senha <code>toplav123</code>).
+          Poltrona: use Admin → Poltrona de Massagem (v1.1.5).
         </CardDescription>
       </CardHeader>
       <CardContent>

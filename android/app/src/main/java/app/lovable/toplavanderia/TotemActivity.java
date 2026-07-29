@@ -58,9 +58,11 @@ public class TotemActivity extends Activity {
     private static final long POST_PAYMENT_SUCCESS_MS = 1000L;
     /** Sem interação → volta à HOME (todas as telas do totem, inclusive Cielo em segundo plano). */
     private static final long SCREEN_IDLE_TIMEOUT_MS = 60_000L;
-    /** Confirmação ESP32 em background — não trava a grade para o próximo pagamento. */
-    private static final long ESP32_CONFIRM_TIMEOUT_MS = 35_000L;
-    private static final long ESP32_CONFIRM_RETRY_TIMEOUT_MS = 20_000L;
+    /** Confirmação ESP rápida: poll ESP ~5s; usuário não espera na grade. */
+    private static final long ESP32_CONFIRM_TIMEOUT_MS = 20_000L;
+    private static final long ESP32_CONFIRM_RETRY_TIMEOUT_MS = 12_000L;
+    /** Máximo que a UI pode bloquear idle pós-pagamento (verificação/estorno). */
+    private static final long POST_PAYMENT_HARDWARE_MAX_MS = 40_000L;
     private static final long IDLE_WATCHDOG_TICK_MS = 1_000L;
     private static final int ADMIN_SECRET_TAPS = 7;
     private static final long ADMIN_TAP_WINDOW_MS = 3000L;
@@ -105,6 +107,7 @@ public class TotemActivity extends Activity {
     private volatile boolean awaitingPaymentCallback;
     /** Bloqueia idle timeout durante verificação ESP32 / estorno Cielo pós-pagamento. */
     private volatile boolean postPaymentHardwarePending;
+    private Runnable postPaymentHardwareWatchdog;
     /** Ignora erros tardios da Cielo após sucesso já exibido. */
     private volatile long lastSucceededOperationId = -1;
     /** Máquina paga recentemente — exibir OCUPADA na grade antes do poll do Supabase. */
@@ -1167,6 +1170,35 @@ public class TotemActivity extends Activity {
         optimisticOccupiedAtMs = 0L;
     }
 
+    private void markPostPaymentHardwarePending() {
+        postPaymentHardwarePending = true;
+        if (postPaymentHardwareWatchdog != null) {
+            adminTapHandler.removeCallbacks(postPaymentHardwareWatchdog);
+        }
+        postPaymentHardwareWatchdog = () -> {
+            postPaymentHardwareWatchdog = null;
+            if (!postPaymentHardwarePending) {
+                return;
+            }
+            Log.w(TAG, "Watchdog: postPaymentHardwarePending excedeu "
+                + POST_PAYMENT_HARDWARE_MAX_MS + "ms — forçando HOME");
+            postPaymentHardwarePending = false;
+            runOnUiThread(() -> {
+                bumpUserInteraction();
+                restoreHomeScreen();
+            });
+        };
+        adminTapHandler.postDelayed(postPaymentHardwareWatchdog, POST_PAYMENT_HARDWARE_MAX_MS);
+    }
+
+    private void clearPostPaymentHardwarePending() {
+        postPaymentHardwarePending = false;
+        if (postPaymentHardwareWatchdog != null) {
+            adminTapHandler.removeCallbacks(postPaymentHardwareWatchdog);
+            postPaymentHardwareWatchdog = null;
+        }
+    }
+
     private void showPostPaymentVerifyingScreen(SupabaseHelper.Machine machine) {
         cancelPendingSuccessScreen();
         ScrollView scrollView = new ScrollView(this);
@@ -1185,6 +1217,25 @@ public class TotemActivity extends Activity {
         statusText.setGravity(android.view.Gravity.CENTER);
         statusText.setLineSpacing(dp(4), 1f);
         layout.addView(statusText);
+
+        Button homeBtn = new Button(this);
+        homeBtn.setText("← Voltar à tela inicial");
+        homeBtn.setTextSize(16);
+        homeBtn.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        homeBtn.setBackgroundColor(Color.WHITE);
+        homeBtn.setTextColor(Color.parseColor("#1565C0"));
+        LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        btnParams.setMargins(0, dp(28), 0, 0);
+        homeBtn.setLayoutParams(btnParams);
+        homeBtn.setOnClickListener(v -> {
+            clearPostPaymentHardwarePending();
+            bumpUserInteraction();
+            restoreHomeScreen();
+        });
+        layout.addView(homeBtn);
 
         scrollView.addView(layout);
         setTotemContentView(scrollView);
@@ -1251,7 +1302,7 @@ public class TotemActivity extends Activity {
     }
 
     private void dismissEsp32FailureAndGoHome() {
-        postPaymentHardwarePending = false;
+        clearPostPaymentHardwarePending();
         clearOptimisticOccupied();
         if ("cielo".equalsIgnoreCase(activeProvider) && cieloManager != null) {
             cieloManager.onTotemCheckoutFinished();
@@ -1267,6 +1318,16 @@ public class TotemActivity extends Activity {
             String pendingTxIdFinal,
             long operationId,
             boolean canAutoRefund
+    ) {
+        handleEsp32FailureWithRefund(machineSnapshot, pendingTxIdFinal, operationId, canAutoRefund, null);
+    }
+
+    private void handleEsp32FailureWithRefund(
+            SupabaseHelper.Machine machineSnapshot,
+            String pendingTxIdFinal,
+            long operationId,
+            boolean canAutoRefund,
+            CieloLioManager.ApprovedPaymentSnapshot refundSnapshot
     ) {
         final String machineId = machineSnapshot != null
             ? machineSnapshot.getId()
@@ -1286,18 +1347,30 @@ public class TotemActivity extends Activity {
         }
 
         boolean reversed = false;
-        if (canAutoRefund && cieloManager != null && cieloManager.hasApprovedPaymentSnapshot()) {
-            Log.w(TAG, "ESP32 não confirmou — iniciando estorno automático Cielo");
-            reversed = cieloManager.requestAutomaticReversal();
-        } else if (canAutoRefund) {
-            Log.e(TAG, "ESP32 não confirmou — estorno automático indisponível (sem snapshot Cielo válido)");
+        if (canAutoRefund && cieloManager != null) {
+            CieloLioManager.ApprovedPaymentSnapshot snap = refundSnapshot;
+            if (snap == null) {
+                snap = cieloManager.peekApprovedPaymentSnapshot();
+            }
+            // Mesmo com id sintético (broadcast-*), o manager resolve paymentId no Order Manager.
+            if (snap != null || cieloManager.hasApprovedPaymentSnapshot()) {
+                Log.w(TAG, "ESP32 não confirmou — iniciando estorno automático Cielo"
+                    + (snap != null ? (" paymentId=" + snap.paymentId) : ""));
+                // Congela a UI na tela de estorno enquanto a Cielo processa.
+                runOnUiThread(() -> showEsp32FailureScreen(
+                    "A máquina não liberou.\n\nEstornando o pagamento automaticamente…\nAguarde.",
+                    false
+                ));
+                reversed = cieloManager.requestAutomaticReversal(snap);
+            } else {
+                Log.e(TAG, "ESP32 não confirmou — estorno indisponível (sem paymentId/reference Cielo)");
+            }
         }
 
         if (reversed && pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
             boolean cancelled = supabaseHelper.cancelTotemTransactionById(pendingTxIdFinal);
             Log.d(TAG, "Transação totem cancelada após estorno confirmado: " + cancelled);
         } else if (pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
-            // Sem estorno confirmado, preservar o registro financeiro para reconciliação.
             Log.e(TAG, "Pagamento sem liberação e sem estorno confirmado; TX mantida pending: "
                 + pendingTxIdFinal);
         }
@@ -1309,19 +1382,19 @@ public class TotemActivity extends Activity {
                 + "Toque em Voltar para realizar um novo pagamento."
             : (canAutoRefund
                 ? "A máquina não foi liberada pelo equipamento.\n\n"
-                    + "Não foi possível confirmar o estorno automático.\n"
+                    + "Não foi possível confirmar o estorno automático na Cielo.\n"
                     + "A máquina já está disponível. Fale com o atendimento se o valor permanecer cobrado."
                 : "A máquina não foi liberada.\n\n"
                     + "Fale com o atendimento para estorno do pagamento.\n"
                     + "A máquina já está disponível para nova tentativa.");
 
-        postPaymentHardwarePending = false;
+        clearPostPaymentHardwarePending();
         runOnUiThread(() -> {
+            bumpUserInteraction();
             showEsp32FailureScreen(userMessage, refunded);
             if (statusMonitor != null) {
                 statusMonitor.requestImmediatePoll();
             }
-            // Fallback se o usuário não tocar em Voltar.
             if (esp32FailureDismissRunnable != null) {
                 adminTapHandler.removeCallbacks(esp32FailureDismissRunnable);
             }
@@ -1332,10 +1405,8 @@ public class TotemActivity extends Activity {
                     dismissEsp32FailureAndGoHome();
                 }
             };
-            adminTapHandler.postDelayed(esp32FailureDismissRunnable, 45000L);
+            adminTapHandler.postDelayed(esp32FailureDismissRunnable, refunded ? 12_000L : 20_000L);
         });
-        // Não chama onTotemCheckoutFinished aqui: a tela de estorno precisa do estado
-        // estável; o Voltar / timeout faz a limpeza final (inclui janitor Cielo).
     }
     
     private void displayMachines() {
@@ -1823,6 +1894,16 @@ public class TotemActivity extends Activity {
             return machine.isEsp32Online()
                 && ("LIVRE".equals(machine.getStatus()) || "OCUPADA".equals(machine.getStatus()));
         }
+        // Lavadora/secadora/café: sem ESP online o comando nunca chega — bloqueia antes de cobrar.
+        if (!machine.isEsp32Online()) {
+            Log.w(TAG, "Pagamento bloqueado: ESP32 offline para " + machine.getName());
+            return false;
+        }
+        String esp32Id = machine.getEsp32Id();
+        if (esp32Id == null || esp32Id.trim().isEmpty() || "main".equalsIgnoreCase(esp32Id.trim())) {
+            Log.w(TAG, "Pagamento bloqueado: esp32_id inválido para " + machine.getName());
+            return false;
+        }
         if (isOptimisticallyOccupied(machine.getId())) {
             return false;
         }
@@ -2090,9 +2171,12 @@ public class TotemActivity extends Activity {
             awaitingPaymentCallback = false;
             paymentLaunchInProgress.set(false);
             lastSucceededOperationId = operationId;
-            postPaymentHardwarePending = true;
+            markPostPaymentHardwarePending();
             Log.e(TAG, "Pagamento aprovado sem máquina resolvida; iniciando estorno/reconciliação");
-            handleEsp32FailureWithRefund(null, pendingTxId, operationId, true);
+            handleEsp32FailureWithRefund(
+                null, pendingTxId, operationId, true,
+                cieloManager != null ? cieloManager.peekApprovedPaymentSnapshot() : null
+            );
             return;
         }
 
@@ -2129,7 +2213,7 @@ public class TotemActivity extends Activity {
         final boolean cieloFastPath = "cielo".equalsIgnoreCase(activeProvider);
         // Bloqueia idle durante liberação ESP32/café (antes de liberar awaiting).
         if (cieloFastPath) {
-            postPaymentHardwarePending = true;
+            markPostPaymentHardwarePending();
             bumpUserInteraction();
         }
 
@@ -2179,19 +2263,22 @@ public class TotemActivity extends Activity {
                 if (!creditQueued) {
                     Log.e(TAG, "❌ Crédito café não enfileirado — estorno automático se possível");
                     handleEsp32FailureWithRefund(
-                        machineSnapshot, pendingTxIdFinal, operationId, true
+                        machineSnapshot, pendingTxIdFinal, operationId, true,
+                        cieloManager != null ? cieloManager.peekApprovedPaymentSnapshot() : null
                     );
                     return;
                 }
 
-                // Libera a grade imediatamente; confirmação ESP segue em background.
-                // Preserva snapshot Cielo para estorno se o crédito não for confirmado.
+                // Volta à HOME imediatamente; resolve paymentId e confirma ESP em background.
                 runOnUiThread(() -> {
                     selectedMachine = null;
                     selectedCoffeeProduct = null;
                     finishCieloPaymentSession(operationId, true);
                 });
                 cieloManager.releaseCheckoutForNextPayment();
+                cieloManager.ensureReversiblePaymentSnapshot();
+                final CieloLioManager.ApprovedPaymentSnapshot coffeeRefundSnap =
+                    cieloManager.peekApprovedPaymentSnapshot();
 
                 boolean creditConfirmed = supabaseHelper.waitForEsp32RelayOn(
                     machineSnapshot.getEsp32Id(),
@@ -2211,9 +2298,13 @@ public class TotemActivity extends Activity {
                         pendingTxIdFinal
                     );
                 }
+                if (!creditConfirmed && pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()
+                        && supabaseHelper.isPendingCommandCompletedForTransaction(pendingTxIdFinal)) {
+                    creditConfirmed = true;
+                }
                 if (!creditConfirmed) {
                     handleEsp32FailureWithRefund(
-                        machineSnapshot, pendingTxIdFinal, operationId, true
+                        machineSnapshot, pendingTxIdFinal, operationId, true, coffeeRefundSnap
                     );
                     return;
                 }
@@ -2249,19 +2340,22 @@ public class TotemActivity extends Activity {
                 }
                 if (!queued) {
                     handleEsp32FailureWithRefund(
-                        machineSnapshot, pendingTxIdFinal, operationId, true
+                        machineSnapshot, pendingTxIdFinal, operationId, true,
+                        cieloManager != null ? cieloManager.peekApprovedPaymentSnapshot() : null
                     );
                     return;
                 }
 
-                // Volta à grade sem marcar OCUPADA ainda — só após confirmação ESP.
-                // Snapshot Cielo permanece para estorno automático se o ESP não responder.
+                // Volta à HOME imediatamente; resolve paymentId e confirma ESP em background.
                 runOnUiThread(() -> {
                     selectedMachine = null;
                     selectedCoffeeProduct = null;
                     finishCieloPaymentSession(operationId, true);
                 });
                 cieloManager.releaseCheckoutForNextPayment();
+                cieloManager.ensureReversiblePaymentSnapshot();
+                final CieloLioManager.ApprovedPaymentSnapshot refundSnap =
+                    cieloManager.peekApprovedPaymentSnapshot();
 
                 boolean relayConfirmed = supabaseHelper.waitForEsp32RelayOn(
                     esp32Id, relayPin, machineId, ESP32_CONFIRM_TIMEOUT_MS, esp32TxId
@@ -2275,9 +2369,15 @@ public class TotemActivity extends Activity {
                         esp32Id, relayPin, machineId, ESP32_CONFIRM_RETRY_TIMEOUT_MS, esp32TxId
                     );
                 }
+                // Confirmação tardia: comando pode ter completado após o wait (Wi-Fi).
+                if (!relayConfirmed && esp32TxId != null && !esp32TxId.isEmpty()
+                        && supabaseHelper.isPendingCommandCompletedForTransaction(esp32TxId)) {
+                    Log.i(TAG, "ESP32 confirmou após retentativa (completed tardio) — seguindo sem estorno");
+                    relayConfirmed = true;
+                }
                 if (!relayConfirmed) {
                     handleEsp32FailureWithRefund(
-                        machineSnapshot, pendingTxIdFinal, operationId, true
+                        machineSnapshot, pendingTxIdFinal, operationId, true, refundSnap
                     );
                     return;
                 }
@@ -2371,7 +2471,8 @@ public class TotemActivity extends Activity {
             Log.e(TAG, "Erro ao finalizar pós-pagamento (ESP32/Supabase)", e);
             if (cieloFastPath) {
                 handleEsp32FailureWithRefund(
-                    machineSnapshot, pendingTxIdFinal, operationId, true
+                    machineSnapshot, pendingTxIdFinal, operationId, true,
+                    cieloManager != null ? cieloManager.peekApprovedPaymentSnapshot() : null
                 );
             } else if ("cielo".equalsIgnoreCase(activeProvider)) {
                 runOnUiThread(() -> finishCieloPaymentSession(operationId, false));
@@ -2438,7 +2539,7 @@ public class TotemActivity extends Activity {
         if (operationId != currentOperationId && operationId != lastSucceededOperationId) {
             return;
         }
-        postPaymentHardwarePending = false;
+        clearPostPaymentHardwarePending();
         currentOperationId = -1;
         currentPendingTransactionId = null;
         selectedMachine = null;

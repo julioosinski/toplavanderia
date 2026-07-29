@@ -94,7 +94,7 @@ export const ESP32FirmwareOta = () => {
   const [devices, setDevices] = useState<Esp32Device[]>([]);
   const [jobs, setJobs] = useState<OtaJob[]>([]);
   const [selectedEsp32Id, setSelectedEsp32Id] = useState("");
-  const [firmwareVersion, setFirmwareVersion] = useState("v2.2.4");
+  const [firmwareVersion, setFirmwareVersion] = useState("v2.2.5");
   const [binFile, setBinFile] = useState<File | null>(null);
   const [binValidationError, setBinValidationError] = useState<string | null>(null);
   const [loadingDevices, setLoadingDevices] = useState(true);
@@ -165,7 +165,7 @@ export const ESP32FirmwareOta = () => {
     if (!/^v?\d+\.\d+\.\d+([\w.-]+)?$/i.test(version)) {
       toast({
         title: "Versão inválida",
-        description: "Use o formato v2.2.4 ou v1.1.0-toplav-poltrona",
+        description: "Use o formato v2.2.5 ou v1.1.5-toplav-poltrona",
         variant: "destructive",
       });
       return;
@@ -256,7 +256,7 @@ export const ESP32FirmwareOta = () => {
         <CardDescription>
           O admin gera o <strong>código-fonte</strong> (<code>.ino</code>); o OTA exige o{' '}
           <strong>binário compilado</strong> (<code>.bin</code>) — veja o passo a passo abaixo.
-          A primeira instalação com suporte OTA ainda exige upload USB (lavadoras v2.2.4+, café/poltrona v1.1.0+).
+          A primeira instalação com suporte OTA ainda exige upload USB (lavadoras/secadoras v2.2.5+, poltrona v1.1.5+, café v1.1.0+).
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -366,7 +366,7 @@ export const ESP32FirmwareOta = () => {
                   id="ota-version"
                   value={firmwareVersion}
                   onChange={(e) => setFirmwareVersion(e.target.value)}
-                  placeholder="v2.2.4"
+                  placeholder="v2.2.5"
                 />
               </div>
               <div className="space-y-2">

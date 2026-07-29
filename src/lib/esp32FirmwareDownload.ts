@@ -75,13 +75,18 @@ export interface Esp32FirmwareParams {
    * Índice lógico do relé no JSON Supabase (`relay_1`, `relay_2`…), igual ao campo relay_pin da máquina no painel.
    */
   relayLogicalPin?: number;
-  /** Duração do ciclo em minutos (contagem no sistema; relé recebe pulso de 1 s por crédito). */
+  /** Duração do ciclo em minutos (contagem no sistema; relé recebe pulso de 1,5 s por crédito). */
   cycleTimeMinutes?: number;
 }
 
+/** Versões dos templates canônicos em src/firmware/ — manter alinhado aos #define FIRMWARE_VERSION. */
+export const ESP32_LAVADORA_FIRMWARE_VERSION = "v2.2.5";
+export const ESP32_POLTRONA_FIRMWARE_VERSION = "v1.1.5-toplav-poltrona";
+export const ESP32_CAFE_FIRMWARE_VERSION = "v1.1.0-toplav-cafe";
+
 /**
  * Gera o .ino a partir do template em `src/firmware/esp32LavadoraTemplate.ino`
- * (mesma base que `public/arduino/ESP32_Lavadora_Individual_CORRIGIDO_v2.ino`).
+ * (lavadora e secadora — mesmo firmware de pulso de crédito).
  */
 export function buildEsp32LavadoraFirmware(params: Esp32FirmwareParams): string {
   const {

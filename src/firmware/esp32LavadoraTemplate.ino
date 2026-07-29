@@ -3,7 +3,7 @@
  * Fonte única: este arquivo. Placeholders __LAUNDRY_ID__, __MACHINE_NAME__, etc.
  * Firmware gerado fica em: public/arduino/generated/
  *
- * Versão: 2.2.4 — OTA Wi-Fi via Supabase + pulso 1 s + reconexão indefinida
+ * Versão: 2.2.5 — pulso 1,5 s + idempotência de comando (evita crédito duplicado no reclaim)
  */
 
 #include <WiFi.h>
@@ -16,7 +16,7 @@
 #include <Preferences.h>
 #include <cstdio>
 
-#define FIRMWARE_VERSION "v2.2.4"
+#define FIRMWARE_VERSION "v2.2.5"
 
 // ================== CONFIGURAÇÕES WIFI ==================
 // Wi-Fi é configurado via rede AP do próprio ESP32 e salvo em memória persistente (NVS).
@@ -75,13 +75,15 @@ unsigned long lastHeartbeat = 0;
 unsigned long lastPoll = 0;
 unsigned long lastOtaPoll = 0;
 const unsigned long HEARTBEAT_INTERVAL = 30000;  // 30 segundos
-const unsigned long POLL_INTERVAL = 10000;        // fila pending_commands (esp32-control)
+const unsigned long POLL_INTERVAL = 5000;        // fila pending_commands (esp32-control)
 const unsigned long OTA_POLL_INTERVAL = 300000;   // verifica atualização OTA remota (5 min)
-/** Pulso no relé = 1 crédito na lavadora/secadora (PLC); duração exigida pelo equipamento: 1 s */
-const unsigned long RELAY_PULSE_MS = 1000;
+/** Pulso no relé = 1 crédito na lavadora/secadora (PLC); 1,5 s melhora aceite em moedeiros lentos. */
+const unsigned long RELAY_PULSE_MS = 1500;
 bool relayState = false;
-unsigned long machineStartTime = 0;
 bool machineRunning = false;
+unsigned long machineStartTime = 0;
+/** Evita segundo pulso se o servidor reenviar o mesmo comando (confirm HTTP falhou). */
+String lastExecutedCommandId = "";
 bool registeredWithServer = false;
 
 String getConfigApSsid() {
@@ -692,6 +694,12 @@ void pollSupabaseCommands() {
     int cmdRelay = c["relay_pin"] | RELAY_LOGICAL_PIN;
     Serial.printf("📌 Comando relay_%d → GPIO físico %d\n", cmdRelay, RELAY_PIN);
 
+    if (cid.length() > 0 && cid == lastExecutedCommandId) {
+      Serial.println("♻️ Comando duplicado — só confirma, sem novo pulso");
+      confirmSupabaseCommand(cid);
+      continue;
+    }
+
     if (action == "on" || action == "activate" || action == "turn_on") {
       if (c.containsKey("cycle_time_minutes") && !c["cycle_time_minutes"].isNull()) {
         int newCycle = c["cycle_time_minutes"].as<int>();
@@ -701,12 +709,18 @@ void pollSupabaseCommands() {
         }
       }
       pulseCreditRelay();
+      if (cid.length() > 0) {
+        lastExecutedCommandId = cid;
+      }
       Serial.printf("⚡ Fila Supabase: crédito (pulso %lu ms, ciclo: %d min)\n", RELAY_PULSE_MS, cycleTimeMinutes);
     } else if (action == "off" || action == "deactivate" || action == "turn_off") {
       relayState = false;
       machineRunning = false;
       digitalWrite(RELAY_PIN, LOW);
       digitalWrite(LED_PIN, LOW);
+      if (cid.length() > 0) {
+        lastExecutedCommandId = cid;
+      }
       Serial.println("⚡ Fila Supabase: OFF");
     } else {
       Serial.println("⚡ Ação desconhecida: " + action);

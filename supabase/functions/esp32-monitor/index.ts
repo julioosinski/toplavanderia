@@ -82,11 +82,20 @@ serve(async (req) => {
             .eq('id', cmd.machine_id)
             .single();
           const cycleFromPayload = payload.cycle_time_minutes;
+          const cycleFromMachine = typeof machine?.cycle_time_minutes === 'number'
+            ? machine.cycle_time_minutes
+            : null;
+          // Banco é a fonte da verdade do tempo (evita cache curto do totem matar a poltrona).
+          const resolvedCycle = (cycleFromMachine && cycleFromMachine > 0)
+            ? cycleFromMachine
+            : (typeof cycleFromPayload === 'number' ? cycleFromPayload : null);
           enrichedCommands.push({
             ...cmd,
-            cycle_time_minutes: typeof cycleFromPayload === 'number'
-              ? cycleFromPayload
-              : (machine?.cycle_time_minutes ?? null),
+            cycle_time_minutes: resolvedCycle,
+            payload: {
+              ...payload,
+              ...(resolvedCycle ? { cycle_time_minutes: resolvedCycle } : {}),
+            },
           });
         } else {
           enrichedCommands.push(cmd);

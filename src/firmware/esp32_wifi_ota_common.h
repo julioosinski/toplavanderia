@@ -1,6 +1,6 @@
 /**
  * Wi-Fi persistente + portal cativo + OTA remoto (Supabase esp32-firmware-ota).
- * Mesmo padrão das lavadoras/secadoras (esp32LavadoraTemplate.ino v2.2.4).
+ * Mesmo padrão das lavadoras/secadoras (esp32LavadoraTemplate.ino v2.2.5).
  *
  * Antes de incluir, defina: FIRMWARE_VERSION, MACHINE_NAME (opcional no rodapé)
  * e declare: extern char ESP32_ID[16]; extern const char* supabaseUrl; extern const char* supabaseApiKey;

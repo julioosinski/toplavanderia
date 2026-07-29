@@ -40,23 +40,24 @@ interface PixPaymentPayload {
   expiresIn?: number;
 }
 
-const waitForEsp32Command = async (commandId: string, timeoutMs = 90_000) => {
+const waitForEsp32Command = async (commandId: string, timeoutMs = 20_000) => {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const { data, error } = await supabase
-      .from('pending_commands')
-      .select('status, error_message')
-      .eq('id', commandId)
-      .maybeSingle();
+    // RPC SECURITY DEFINER — SELECT direto em pending_commands é bloqueado para anon.
+    const { data, error } = await supabase.rpc('get_totem_command_status', {
+      _command_id: commandId,
+      _transaction_id: null,
+    });
 
     if (error) throw error;
-    if (data?.status === 'completed') return true;
-    if (data?.status === 'failed') {
-      throw new Error(data.error_message || 'O ESP32 não executou a liberação.');
+    const row = Array.isArray(data) ? data[0] : data;
+    if (row?.status === 'completed') return true;
+    if (row?.status === 'failed') {
+      throw new Error(row.error_message || 'O ESP32 não executou a liberação.');
     }
-    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
   }
-  throw new Error('Pagamento aprovado, mas o ESP32 não confirmou a liberação em 90 segundos.');
+  throw new Error('Pagamento aprovado, mas o ESP32 não confirmou a liberação a tempo.');
 };
 
 // Totem sub-components
@@ -460,6 +461,9 @@ const Totem = () => {
             action: 'on',
             machine_id: selectedMachine.id,
             transaction_id: transactionId,
+            payload: {
+              cycle_time_minutes: selectedMachine.duration > 0 ? selectedMachine.duration : undefined,
+            },
           },
         });
         if (espErr) throw espErr;

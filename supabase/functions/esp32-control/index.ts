@@ -121,8 +121,11 @@ Deno.serve(async (req) => {
         const cycleMinutes = typeof machineData.cycle_time_minutes === 'number'
           ? machineData.cycle_time_minutes
           : null;
-        if (cycleMinutes && cycleMinutes > 0 && !('cycle_time_minutes' in resolvedPayload)) {
-          resolvedPayload.cycle_time_minutes = cycleMinutes;
+        // timed_session: sempre usa o tempo cadastrado no banco (evita cache curto do totem).
+        if (cycleMinutes && cycleMinutes > 0) {
+          if (isTimedSessionMachine(machineData) || !('cycle_time_minutes' in resolvedPayload)) {
+            resolvedPayload.cycle_time_minutes = cycleMinutes;
+          }
         }
 
         const metadata = machineData.metadata ?? {};
@@ -148,26 +151,15 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Cancela OFF pendente do mesmo relé — evita ON+OFF na mesma poll (poltrona liga e apaga).
-      // status 'failed' (não 'cancelled'): CHECK da tabela não inclui cancelled.
-      const { error: cancelErr, count } = await supabase
-        .from('pending_commands')
-        .update(
-          {
-            status: 'failed',
-            error_message: 'cancelled_before_new_on',
-            updated_at: new Date().toISOString(),
-          },
-          { count: 'exact' }
-        )
-        .eq('esp32_id', esp32_id)
-        .eq('status', 'pending')
-        .eq('relay_pin', resolvedRelayPin)
-        .eq('action', 'off');
+      // Cancela OFF pending e processing — OFF já claimed ainda matava a poltrona.
+      const { data: cancelledCount, error: cancelErr } = await supabase.rpc(
+        'cancel_stale_off_commands',
+        { _esp32_id: esp32_id, _relay_pin: resolvedRelayPin }
+      );
       if (cancelErr) {
-        console.warn('⚠️ Falha ao cancelar OFF pendente:', cancelErr.message);
-      } else if (count && count > 0) {
-        console.log(`🧹 Cancelados ${count} comando(s) OFF pendente(s) antes do ON`);
+        console.warn('⚠️ Falha ao cancelar OFF pendente/processing:', cancelErr.message);
+      } else if (cancelledCount && Number(cancelledCount) > 0) {
+        console.log(`🧹 Cancelados ${cancelledCount} comando(s) OFF antes do ON`);
       }
     }
 
