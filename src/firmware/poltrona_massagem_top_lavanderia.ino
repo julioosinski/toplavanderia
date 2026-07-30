@@ -22,6 +22,10 @@
  * v1.2.0: corrige rst:int_wdt — gpio_hold_dis/en era chamado ~20x/s no loop
  * (seção crítica RTC) e estourava o interrupt watchdog, reiniciando o ESP e
  * derrubando o relé no meio da sessão. Agora só escreve no pino quando muda.
+ * v1.2.1: reboot não religa mais a poltrona sozinho — último comando executado
+ * persistido em NVS (ON reentregue vira duplicado); OFF mais novo na mesma poll
+ * volta a valer (regra antiga engolia o "parar"); brownout detector reativado
+ * (desligado virava int_wdt); boot sem glitch no pino do relé.
  */
 
 #include <WiFi.h>
@@ -32,11 +36,9 @@
 #include <Preferences.h>
 #include <cstdio>
 #include "driver/gpio.h"
-#include "soc/soc.h"
-#include "soc/rtc_cntl_reg.h"
 #include <esp_system.h>
 
-#define FIRMWARE_VERSION "v1.2.0-toplav-poltrona"
+#define FIRMWARE_VERSION "v1.2.1-toplav-poltrona"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
@@ -125,8 +127,23 @@ const char* describeResetReason() {
 }
 // Se o confirm HTTP falhar, o servidor pode reenviar o mesmo ID. Não reinicia
 // a sessão nem repete o acionamento; apenas tenta confirmar novamente.
+// Persistido em NVS: um reboot no meio da sessão apagava esse ID da RAM e o
+// comando ON reentregue religava a poltrona "sozinho".
 String lastExecutedCommandId = "";
 Preferences sessionPrefs;
+
+void loadLastExecutedCommandId() {
+  sessionPrefs.begin("poltrona_cmd", true);
+  lastExecutedCommandId = sessionPrefs.getString("last_id", "");
+  sessionPrefs.end();
+}
+
+void markCommandExecuted(const String& cmdId) {
+  lastExecutedCommandId = cmdId;
+  sessionPrefs.begin("poltrona_cmd", false);
+  sessionPrefs.putString("last_id", cmdId);
+  sessionPrefs.end();
+}
 
 bool peekPersistedSessionActive() {
   sessionPrefs.begin("poltrona_sess", true);
@@ -246,8 +263,13 @@ void pararPoltrona(bool comResfriamento) {
   pararAudio();
   clearPersistedSession();
   sessionMotorStartedAt = 0;
+  // Resfriamento só faz sentido depois de massagem de verdade; com <60 s de
+  // sessão (ex.: ON velho seguido de "parar") só desliga, sem religar por 30 s.
+  unsigned long decorridoSeg = (tempoInicioCiclo > 0)
+    ? (millis() - tempoInicioCiclo) / 1000UL
+    : 0UL;
   acionarRele(false);
-  if (comResfriamento && statusAtual == "em_uso") {
+  if (comResfriamento && statusAtual == "em_uso" && decorridoSeg >= 60) {
     executarCicloResfriamento();
   }
   statusAtual = "disponivel";
@@ -532,7 +554,7 @@ void applyRuntimeAudioConfig(JsonObject cmd) {
       volume_audio_005, volume_audio_006, volume_audio_007);
 }
 
-void processCommand(JsonObject cmd, bool* startedThisPoll) {
+void processCommand(JsonObject cmd) {
   const char* action = cmd["action"] | "";
   const char* cmdId = cmd["id"] | "";
   if (strlen(cmdId) == 0) {
@@ -553,20 +575,14 @@ void processCommand(JsonObject cmd, bool* startedThisPoll) {
       Serial.println("ON não executado — aguardando nova tentativa");
       return;
     }
-    lastExecutedCommandId = cmdId;
-    if (startedThisPoll != nullptr) {
-      *startedThisPoll = true;
-    }
+    markCommandExecuted(cmdId);
     wdtKick();
     // Confirma sem segundo heartbeat síncrono (evita cascata HTTP → WDT reboot).
     confirmCommand(cmdId);
   } else if (strcmp(action, "off") == 0 || strcmp(action, "deactivate") == 0 || strcmp(action, "turn_off") == 0) {
-    // Mesma poll: ON seguido de OFF velho na fila — confirma OFF sem matar a sessão nova.
-    if (startedThisPoll != nullptr && *startedThisPoll) {
-      Serial.println("Ignorando OFF na mesma poll após ON (fila stale)");
-      confirmCommand(cmdId);
-      return;
-    }
+    // A poll entrega em ordem de criação (ASC): um OFF depois de um ON na mesma
+    // leva é SEMPRE mais novo — é a intenção mais recente do usuário e deve valer.
+    // (A regra antiga "ignorar OFF após ON" engolia o comando de parar.)
     // Durante sessão: só aceita OFF forçado (admin_stop/force). Evita OFF do Android/auto-status.
     bool forceOff = false;
     if (cmd.containsKey("payload")) {
@@ -578,12 +594,12 @@ void processCommand(JsonObject cmd, bool* startedThisPoll) {
       }
     }
     if (statusAtual == "em_uso" && !forceOff) {
-      lastExecutedCommandId = cmdId;
+      markCommandExecuted(cmdId);
       Serial.println("Ignorando OFF remoto sem force durante sessão timed_session");
       confirmCommand(cmdId);
       return;
     }
-    lastExecutedCommandId = cmdId;
+    markCommandExecuted(cmdId);
     if (statusAtual == "em_uso") {
       pararPoltrona(true);
     } else {
@@ -628,9 +644,8 @@ void pollCommands() {
     return;
   }
 
-  bool startedThisPoll = false;
   for (JsonObject cmd : commands) {
-    processCommand(cmd, &startedThisPoll);
+    processCommand(cmd);
     wdtKick();
   }
 }
@@ -715,20 +730,23 @@ void setup() {
   Serial.begin(115200);
   delay(300);
 
-  // Evita reboot por brownout quando o motor da poltrona parte (queda de 5V).
-  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+  // Brownout detector fica ATIVO: desativado (v1.1.8), quedas de tensão viravam
+  // travamento int_wdt + ESP offline. Reset limpo + gpio_hold mantém o relé
+  // ligado durante o reboot e a sessão é restaurada sem o motor piscar.
 
   // Relé ANTES de qualquer Wi‑Fi: se havia sessão, mantém ligado (sem pulso OFF no boot).
-  pinMode(RELAY_PIN, OUTPUT);
-  gpio_hold_dis((gpio_num_t)RELAY_PIN);
   bool resumeSession = peekPersistedSessionActive();
-  if (resumeSession) {
-    relayAppliedLevel = RELAY_LOGICA_INVERTIDA ? LOW : HIGH;
-  } else {
-    relayAppliedLevel = RELAY_LOGICA_INVERTIDA ? HIGH : LOW;
-  }
+  relayAppliedLevel = resumeSession
+    ? (RELAY_LOGICA_INVERTIDA ? LOW : HIGH)
+    : (RELAY_LOGICA_INVERTIDA ? HIGH : LOW);
+  // Com o hold do boot anterior ainda ativo, prepara registrador/direção ANTES
+  // de soltar o hold — o pino já assume o nível certo, sem glitch para LOW.
+  pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, relayAppliedLevel);
+  gpio_hold_dis((gpio_num_t)RELAY_PIN);
   gpio_hold_en((gpio_num_t)RELAY_PIN);
+
+  loadLastExecutedCommandId();
 
   buildEsp32Id();
 
