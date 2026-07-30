@@ -434,26 +434,18 @@ export default function Machines() {
             }
             return;
           }
-          if (isOperator) {
-            // Operador: usa admin_remote_release (com validação de limite no backend)
-            if (!confirm(`Liberar máquina "${machine.name}" remotamente?`)) return;
-            const { error } = await adminRemoteRelease({ machineId: machine.id });
-            if (error) {
-              toast({ ...classifyReleaseError(error.message), variant: 'destructive' });
-            } else {
-              toast({ title: 'Máquina liberada', description: 'Comando enviado ao ESP32.' });
-              loadMachines();
-              void refetchPermission();
-            }
-            return;
-          }
-          if (!confirm('Liberar no totem (disponível), atualizar relé no painel e enviar comando OFF ao ESP32?')) return;
-          const { error } = await forceMachineReleased({ machineId: machine.id });
+          // Lavadora/secadora: sempre pulso ON (crédito). OFF era o bug do menu admin.
+          if (!confirm(`Liberar crédito (pulso) em "${machine.name}" remotamente?`)) return;
+          const { error } = await adminRemoteRelease({ machineId: machine.id });
           if (error) {
-            toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+            toast({ ...classifyReleaseError(error.message), variant: 'destructive' });
           } else {
-            toast({ title: 'Máquina liberada', description: 'Totem e esp32_status alinhados; comando de desligar relé enfileirado.' });
+            toast({
+              title: 'Crédito enfileirado',
+              description: 'Comando ON enviado ao ESP32. A máquina deve aceitar o crédito em alguns segundos.',
+            });
             loadMachines();
+            void refetchPermission();
           }
         };
 
@@ -461,7 +453,7 @@ export default function Machines() {
           return (
             <Button variant="outline" size="sm" onClick={handleRelease}>
               <Unlock className="mr-2 h-4 w-4" />
-              {machine.type === 'coffee' || machine.type === 'massage' ? 'Liberar remoto' : 'Liberar'}
+              {machine.type === 'coffee' || machine.type === 'massage' ? 'Liberar remoto' : 'Liberar crédito'}
             </Button>
           );
         }
@@ -480,8 +472,25 @@ export default function Machines() {
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleRelease}>
                 <Unlock className="mr-2 h-4 w-4" />
-                {machine.type === 'coffee' || machine.type === 'massage' ? 'Liberar remoto' : 'Liberar máquina'}
+                {machine.type === 'coffee' || machine.type === 'massage' ? 'Liberar remoto' : 'Liberar crédito (ON)'}
               </DropdownMenuItem>
+              {(machine.type === 'washing' || machine.type === 'drying') && (
+                <DropdownMenuItem
+                  onClick={async () => {
+                    if (!confirm('Apenas marcar disponível no totem e enviar OFF ao ESP (não dá crédito)?')) return;
+                    const { error } = await forceMachineReleased({ machineId: machine.id });
+                    if (error) {
+                      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+                    } else {
+                      toast({ title: 'Status alinhado', description: 'Máquina disponível; comando OFF enfileirado.' });
+                      loadMachines();
+                    }
+                  }}
+                >
+                  <Unlock className="mr-2 h-4 w-4" />
+                  Marcar disponível (OFF)
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 onClick={async () => {
                   if (!confirm('Colocar em manutenção, espelhar relé OFF e enviar comando OFF ao ESP32?')) return;

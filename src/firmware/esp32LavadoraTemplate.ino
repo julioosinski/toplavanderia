@@ -856,6 +856,7 @@ void sendHeartbeat() {
   http.begin(url);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("apikey", supabaseApiKey);
+  http.addHeader("Authorization", String("Bearer ") + String(supabaseApiKey));
   
   int httpCode = http.POST(payload);
   
