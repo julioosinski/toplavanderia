@@ -81,7 +81,7 @@ export interface Esp32FirmwareParams {
 
 /** Versões dos templates canônicos em src/firmware/ — manter alinhado aos #define FIRMWARE_VERSION. */
 export const ESP32_LAVADORA_FIRMWARE_VERSION = "v2.2.6";
-export const ESP32_POLTRONA_FIRMWARE_VERSION = "v1.1.7-toplav-poltrona";
+export const ESP32_POLTRONA_FIRMWARE_VERSION = "v1.1.8-toplav-poltrona";
 export const ESP32_CAFE_FIRMWARE_VERSION = "v1.1.0-toplav-cafe";
 
 /**

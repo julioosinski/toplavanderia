@@ -15,6 +15,8 @@
  * v1.1.7: se o ESP reiniciar no meio da sessão, NÃO desliga o relé no boot
  * e NÃO reinicia a trilha de áudio do zero (só retoma o loop ambiente).
  * Heartbeat/poll mais espaçados durante a massagem (menos HTTPS → menos reboot).
+ * v1.1.8: GPIO26 (ADC2) glitcha com Wi‑Fi — hold do pino + sem sleep Wi‑Fi +
+ * quiet de rede nos primeiros segundos após ligar (evita ligar/desligar em loop).
  */
 
 #include <WiFi.h>
@@ -24,8 +26,11 @@
 #include <esp_task_wdt.h>
 #include <Preferences.h>
 #include <cstdio>
+#include "driver/gpio.h"
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
-#define FIRMWARE_VERSION "v1.1.7-toplav-poltrona"
+#define FIRMWARE_VERSION "v1.1.8-toplav-poltrona"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
@@ -50,6 +55,8 @@ const unsigned long HEARTBEAT_INTERVAL_MS = 30000;
 const unsigned long HEARTBEAT_INTERVAL_BUSY_MS = 120000; // durante massagem: menos TLS
 const unsigned long POLL_INTERVAL_MS = 10000;
 const unsigned long POLL_INTERVAL_BUSY_MS = 20000;
+/** Após ligar o motor, evita HTTPS imediato (queda de tensão + glitch ADC2/Wi‑Fi). */
+const unsigned long SESSION_NET_QUIET_MS = 20000;
 // Timeout curto: vários HTTP seguidos + WDT 60s causavam reboot e desligavam a poltrona no meio da sessão.
 const unsigned long HTTP_TIMEOUT_MS = 6000;
 const unsigned long WDT_TIMEOUT_MS = 180000;
@@ -89,6 +96,8 @@ char ESP32_ID[16];
 
 unsigned long lastHeartbeat = 0;
 unsigned long lastPoll = 0;
+/** millis() em que a sessão (nova) ligou o relé — quiet de rede. */
+unsigned long sessionMotorStartedAt = 0;
 // Se o confirm HTTP falhar, o servidor pode reenviar o mesmo ID. Não reinicia
 // a sessão nem repete o acionamento; apenas tenta confirmar novamente.
 String lastExecutedCommandId = "";
@@ -142,6 +151,7 @@ bool restorePersistedSession() {
   proximoAudioNum = 7;
   tempo_inicio_audios = millis() > AUDIO_007_LOOP_MS ? (millis() - AUDIO_007_LOOP_MS) : 0;
   ultimo_play_audio_007 = millis();
+  sessionMotorStartedAt = millis();
   Serial.printf("Sessão restaurada após reboot — %lu s restantes (áudio em loop ambiente)\n", remain);
   return true;
 }
@@ -155,15 +165,23 @@ void buildEsp32Id() {
 }
 
 void acionarRele(bool ligar) {
+  // GPIO26 = ADC2: o rádio Wi‑Fi pode glitchar o pino. hold trava o nível elétrico.
+  gpio_hold_dis((gpio_num_t)RELAY_PIN);
   digitalWrite(RELAY_PIN, ligar
     ? (RELAY_LOGICA_INVERTIDA ? LOW : HIGH)
     : (RELAY_LOGICA_INVERTIDA ? HIGH : LOW));
+  gpio_hold_en((gpio_num_t)RELAY_PIN);
 }
 
 /** Mantém o nível elétrico do relé coerente com a sessão (combate glitch Wi‑Fi/OTA). */
 void reassertRelayOutput() {
   bool wantOn = (statusAtual == "em_uso" || executandoResfriamento);
   acionarRele(wantOn);
+}
+
+bool inSessionNetQuiet() {
+  if (sessionMotorStartedAt == 0) return false;
+  return (millis() - sessionMotorStartedAt) < SESSION_NET_QUIET_MS;
 }
 
 void pararAudio() {
@@ -194,6 +212,7 @@ void executarCicloResfriamento() {
 void pararPoltrona(bool comResfriamento) {
   pararAudio();
   clearPersistedSession();
+  sessionMotorStartedAt = 0;
   acionarRele(false);
   if (comResfriamento && statusAtual == "em_uso") {
     executarCicloResfriamento();
@@ -247,9 +266,13 @@ bool iniciarPoltrona(int tempoMinutos) {
   tempoRestanteSeg = tempoTotalSeg;
   proximoAudioNum = 0;
   audiosPendentes = true;
+  sessionMotorStartedAt = millis();
 
   Serial.printf("Poltrona ON — %lu s (%d min solicitados)\n", tempoTotalSeg, tempoMinutos);
   persistActiveSession();
+  // Estabiliza alimentação do motor antes de qualquer HTTPS (confirm).
+  delay(250);
+  reassertRelayOutput();
   return true;
 }
 
@@ -656,14 +679,19 @@ void setup() {
   Serial.begin(115200);
   delay(300);
 
+  // Evita reboot por brownout quando o motor da poltrona parte (queda de 5V).
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
   // Relé ANTES de qualquer Wi‑Fi: se havia sessão, mantém ligado (sem pulso OFF no boot).
   pinMode(RELAY_PIN, OUTPUT);
+  gpio_hold_dis((gpio_num_t)RELAY_PIN);
   bool resumeSession = peekPersistedSessionActive();
   if (resumeSession) {
     digitalWrite(RELAY_PIN, RELAY_LOGICA_INVERTIDA ? LOW : HIGH);
   } else {
     digitalWrite(RELAY_PIN, RELAY_LOGICA_INVERTIDA ? HIGH : LOW);
   }
+  gpio_hold_en((gpio_num_t)RELAY_PIN);
 
   buildEsp32Id();
 
@@ -686,6 +714,7 @@ void setup() {
   esp32WifiOtaRegisterPortalRoutes();
   setupDeviceHttpRoutes();
   esp32WifiOtaBegin();
+  WiFi.setSleep(false); // sleep do Wi‑Fi glitcha GPIO ADC2 (relé no 26)
 
   dfplayerDisponivel = initDfPlayer();
   Serial.printf("DFPlayer: %s\n", dfplayerDisponivel ? "OK" : "indisponível (sem áudio)");
@@ -696,12 +725,14 @@ void setup() {
   }
   lastHeartbeat = millis();
   lastPoll = millis();
+  reassertRelayOutput();
 }
 
 void loop() {
   const bool busy = (statusAtual == "em_uso" || executandoResfriamento);
   const unsigned long hbInterval = busy ? HEARTBEAT_INTERVAL_BUSY_MS : HEARTBEAT_INTERVAL_MS;
   const unsigned long pollInterval = busy ? POLL_INTERVAL_BUSY_MS : POLL_INTERVAL_MS;
+  const bool quietNet = busy && inSessionNetQuiet();
 
   if (!esp32WifiOtaMaintain()) {
     // Wi-Fi caiu: mantém o timer da sessão mesmo offline.
@@ -717,15 +748,20 @@ void loop() {
   reassertRelayOutput();
 
   unsigned long now = millis();
-  if (now - lastHeartbeat >= hbInterval) {
-    sendHeartbeat();
-    lastHeartbeat = now;
-    reassertRelayOutput();
-  }
-  if (now - lastPoll >= pollInterval) {
-    pollCommands();
-    lastPoll = now;
-    reassertRelayOutput();
+  // Nos primeiros segundos após ligar o motor: só áudio/timer/relé — sem HTTPS.
+  if (!quietNet) {
+    if (now - lastHeartbeat >= hbInterval) {
+      reassertRelayOutput();
+      sendHeartbeat();
+      lastHeartbeat = now;
+      reassertRelayOutput();
+    }
+    if (now - lastPoll >= pollInterval) {
+      reassertRelayOutput();
+      pollCommands();
+      lastPoll = now;
+      reassertRelayOutput();
+    }
   }
 
   delay(50);
