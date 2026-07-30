@@ -12,20 +12,12 @@
  *   DFPlayer Mini: TX=GPIO16, RX=GPIO17 (UART2, 9600)
  * Wi-Fi: portal TopLavanderia-{ESP32_ID} (senha toplav123) — /wifi — reconexão + OTA remoto
  *
- * v1.1.7: se o ESP reiniciar no meio da sessão, NÃO desliga o relé no boot
- * e NÃO reinicia a trilha de áudio do zero (só retoma o loop ambiente).
- * Heartbeat/poll mais espaçados durante a massagem (menos HTTPS → menos reboot).
- * v1.1.8: GPIO26 (ADC2) glitcha com Wi‑Fi — hold do pino + sem sleep Wi‑Fi +
- * quiet de rede nos primeiros segundos após ligar (evita ligar/desligar em loop).
- * v1.1.9: diagnóstico de reboot no meio da sessão — motivo do reset no Serial,
- * no /status e no heartbeat; HTTPS mínimo durante a massagem (poll 60 s).
- * v1.2.0: corrige rst:int_wdt — gpio_hold_dis/en era chamado ~20x/s no loop
- * (seção crítica RTC) e estourava o interrupt watchdog, reiniciando o ESP e
- * derrubando o relé no meio da sessão. Agora só escreve no pino quando muda.
- * v1.2.1: reboot não religa mais a poltrona sozinho — último comando executado
- * persistido em NVS (ON reentregue vira duplicado); OFF mais novo na mesma poll
- * volta a valer (regra antiga engolia o "parar"); brownout detector reativado
- * (desligado virava int_wdt); boot sem glitch no pino do relé.
+ * v1.3.0 (estabilidade):
+ * - REMOVE gpio_hold (causava int_wdt / offline)
+ * - REMOVE ciclo de resfriamento com delay de 32s (travava Wi‑Fi ao "Parar")
+ * - OFF/ON: confirma + heartbeat na hora (painel não fica "em uso" nem offline)
+ * - Poll 10s / heartbeat 30s sempre (parar responde rápido; online estável)
+ * - Último comando em NVS (ON reentregue após reboot não religa sozinho)
  */
 
 #include <WiFi.h>
@@ -35,10 +27,9 @@
 #include <esp_task_wdt.h>
 #include <Preferences.h>
 #include <cstdio>
-#include "driver/gpio.h"
 #include <esp_system.h>
 
-#define FIRMWARE_VERSION "v1.2.1-toplav-poltrona"
+#define FIRMWARE_VERSION "v1.3.0-toplav-poltrona"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
@@ -55,20 +46,10 @@ const int RELAY_PIN = 26;
 const bool RELAY_LOGICA_INVERTIDA = false;  // BC547 — HIGH liga
 
 // Áudios no SD (raiz, FAT32): 001.mp3 … 007.mp3
-const int PAUSA_ANTES_RESFRIAMENTO_SEG = 2;
-const int TEMPO_RESFRIAMENTO_SEG = 30;
-
-// ===== Timers rede =====
+// ===== Timers rede (fixos — "Parar" e online não podem esperar minutos) =====
 const unsigned long HEARTBEAT_INTERVAL_MS = 30000;
-const unsigned long HEARTBEAT_INTERVAL_BUSY_MS = 180000; // durante massagem: menos TLS
 const unsigned long POLL_INTERVAL_MS = 10000;
-// TLS a cada 20 s + motor derrubava a fonte → reboot no meio da sessão.
-const unsigned long POLL_INTERVAL_BUSY_MS = 60000;
-/** Após ligar o motor, evita HTTPS imediato (queda de tensão + glitch ADC2/Wi‑Fi). */
-const unsigned long SESSION_NET_QUIET_MS = 20000;
-// Timeout curto: vários HTTP seguidos + WDT 60s causavam reboot e desligavam a poltrona no meio da sessão.
-const unsigned long HTTP_TIMEOUT_MS = 6000;
-const unsigned long WDT_TIMEOUT_MS = 180000;
+const unsigned long HTTP_TIMEOUT_MS = 8000;
 
 // ===== DFPlayer / áudios =====
 HardwareSerial dfSerial(2);
@@ -97,18 +78,18 @@ String statusAtual = "disponivel";
 unsigned long tempoInicioCiclo = 0;
 unsigned long tempoTotalSeg = 0;
 unsigned long tempoRestanteSeg = 0;
-bool executandoResfriamento = false;
 unsigned long ultimoDesligamento = 0;
-const unsigned long COOLDOWN_MS = 5000;
+const unsigned long COOLDOWN_MS = 3000;
 
 char ESP32_ID[16];
 
 unsigned long lastHeartbeat = 0;
 unsigned long lastPoll = 0;
-/** millis() em que a sessão (nova) ligou o relé — quiet de rede. */
-unsigned long sessionMotorStartedAt = 0;
-/** Motivo do último reset (diagnóstico de reboot no meio da sessão). */
 const char* lastResetReason = "unknown";
+
+String lastExecutedCommandId = "";
+Preferences sessionPrefs;
+int relayAppliedLevel = -1;
 
 const char* describeResetReason() {
   switch (esp_reset_reason()) {
@@ -125,12 +106,6 @@ const char* describeResetReason() {
     default: return "unknown";
   }
 }
-// Se o confirm HTTP falhar, o servidor pode reenviar o mesmo ID. Não reinicia
-// a sessão nem repete o acionamento; apenas tenta confirmar novamente.
-// Persistido em NVS: um reboot no meio da sessão apagava esse ID da RAM e o
-// comando ON reentregue religava a poltrona "sozinho".
-String lastExecutedCommandId = "";
-Preferences sessionPrefs;
 
 void loadLastExecutedCommandId() {
   sessionPrefs.begin("poltrona_cmd", true);
@@ -173,31 +148,6 @@ void persistActiveSession() {
   sessionPrefs.end();
 }
 
-bool restorePersistedSession() {
-  sessionPrefs.begin("poltrona_sess", true);
-  bool active = sessionPrefs.getBool("active", false);
-  unsigned long remain = sessionPrefs.getULong("remain_s", 0);
-  sessionPrefs.end();
-  if (!active || remain < 15) {
-    clearPersistedSession();
-    return false;
-  }
-  // Reboot no meio da sessão: restaura o relé e o restante do tempo.
-  tempoTotalSeg = remain;
-  tempoRestanteSeg = remain;
-  tempoInicioCiclo = millis();
-  statusAtual = "em_uso";
-  acionarRele(true);
-  // Não reinicia 001–006 (parecia “massagem parou e começou de novo”).
-  audiosPendentes = true;
-  proximoAudioNum = 7;
-  tempo_inicio_audios = millis() > AUDIO_007_LOOP_MS ? (millis() - AUDIO_007_LOOP_MS) : 0;
-  ultimo_play_audio_007 = millis();
-  sessionMotorStartedAt = millis();
-  Serial.printf("Sessão restaurada após reboot — %lu s restantes (áudio em loop ambiente)\n", remain);
-  return true;
-}
-
 void buildEsp32Id() {
   WiFi.mode(WIFI_STA);
   delay(100);
@@ -206,32 +156,14 @@ void buildEsp32Id() {
   snprintf(ESP32_ID, sizeof(ESP32_ID), "esp32_%02x%02x%02x%02x", mac[2], mac[3], mac[4], mac[5]);
 }
 
-/** Último nível aplicado no pino (-1 = nunca escrito). */
-int relayAppliedLevel = -1;
-
 void acionarRele(bool ligar) {
   int nivel = ligar
     ? (RELAY_LOGICA_INVERTIDA ? LOW : HIGH)
     : (RELAY_LOGICA_INVERTIDA ? HIGH : LOW);
-  // gpio_hold_* mexe em registrador RTC (seção crítica). Chamar isso a cada
-  // iteração do loop estourava o interrupt watchdog (rst:int_wdt) e reiniciava
-  // o ESP no meio da sessão. Só toca no pino quando o nível muda de fato.
   if (nivel == relayAppliedLevel) return;
-  gpio_hold_dis((gpio_num_t)RELAY_PIN);
+  // Sem gpio_hold: hold + Wi‑Fi estourava interrupt WDT e deixava o ESP offline.
   digitalWrite(RELAY_PIN, nivel);
-  gpio_hold_en((gpio_num_t)RELAY_PIN);
   relayAppliedLevel = nivel;
-}
-
-/** Mantém o nível elétrico do relé coerente com a sessão (combate glitch Wi‑Fi/OTA). */
-void reassertRelayOutput() {
-  bool wantOn = (statusAtual == "em_uso" || executandoResfriamento);
-  acionarRele(wantOn);
-}
-
-bool inSessionNetQuiet() {
-  if (sessionMotorStartedAt == 0) return false;
-  return (millis() - sessionMotorStartedAt) < SESSION_NET_QUIET_MS;
 }
 
 void pararAudio() {
@@ -244,68 +176,59 @@ void pararAudio() {
   }
 }
 
-void executarCicloResfriamento() {
-  Serial.println("Resfriamento: pausa + relé 30s");
-  executandoResfriamento = true;
-  acionarRele(false);
-  delay(PAUSA_ANTES_RESFRIAMENTO_SEG * 1000UL);
-
-  acionarRele(true);
-  for (int i = 0; i < TEMPO_RESFRIAMENTO_SEG; i++) {
-    delay(1000);
-  }
-  acionarRele(false);
-  executandoResfriamento = false;
-  ultimoDesligamento = millis();
-}
-
-void pararPoltrona(bool comResfriamento) {
+/** Desliga na hora — sem delay/resfriamento (travava Wi‑Fi ~32s e o painel ia offline). */
+void pararPoltrona() {
   pararAudio();
   clearPersistedSession();
-  sessionMotorStartedAt = 0;
-  // Resfriamento só faz sentido depois de massagem de verdade; com <60 s de
-  // sessão (ex.: ON velho seguido de "parar") só desliga, sem religar por 30 s.
-  unsigned long decorridoSeg = (tempoInicioCiclo > 0)
-    ? (millis() - tempoInicioCiclo) / 1000UL
-    : 0UL;
   acionarRele(false);
-  if (comResfriamento && statusAtual == "em_uso" && decorridoSeg >= 60) {
-    executarCicloResfriamento();
-  }
   statusAtual = "disponivel";
   tempoTotalSeg = 0;
   tempoRestanteSeg = 0;
   tempoInicioCiclo = 0;
+  ultimoDesligamento = millis();
+}
+
+bool restorePersistedSession() {
+  sessionPrefs.begin("poltrona_sess", true);
+  bool active = sessionPrefs.getBool("active", false);
+  unsigned long remain = sessionPrefs.getULong("remain_s", 0);
+  sessionPrefs.end();
+  if (!active || remain < 15) {
+    clearPersistedSession();
+    return false;
+  }
+  tempoTotalSeg = remain;
+  tempoRestanteSeg = remain;
+  tempoInicioCiclo = millis();
+  statusAtual = "em_uso";
+  acionarRele(true);
+  audiosPendentes = true;
+  proximoAudioNum = 7;
+  tempo_inicio_audios = millis() > AUDIO_007_LOOP_MS ? (millis() - AUDIO_007_LOOP_MS) : 0;
+  ultimo_play_audio_007 = millis();
+  Serial.printf("Sessão restaurada após reboot — %lu s restantes\n", remain);
+  return true;
 }
 
 bool iniciarPoltrona(int tempoMinutos) {
-  if (executandoResfriamento) {
-    Serial.println("Ignorando start — resfriamento em andamento");
-    return false;
-  }
-
   if (tempoMinutos <= 0) {
     tempoMinutos = DEFAULT_CYCLE_MINUTES;
   }
 
-  // Uma segunda compra válida durante a sessão soma tempo, sem reiniciar áudio/relé.
   if (statusAtual == "em_uso") {
     unsigned long adicional = (unsigned long)tempoMinutos * 60UL;
     tempoTotalSeg += adicional;
     tempoRestanteSeg += adicional;
-    Serial.printf("Poltrona em uso — adicionados %lu s à sessão\n", adicional);
+    Serial.printf("Poltrona em uso — adicionados %lu s\n", adicional);
     persistActiveSession();
     return true;
   }
 
-  // Não descarta nem confirma falsamente um pagamento feito logo após o resfriamento.
   if (ultimoDesligamento > 0 && (millis() - ultimoDesligamento) < COOLDOWN_MS) {
     unsigned long espera = COOLDOWN_MS - (millis() - ultimoDesligamento);
-    Serial.printf("Aguardando cooldown por %lu ms antes de iniciar\n", espera);
     unsigned long inicioEspera = millis();
     while ((millis() - inicioEspera) < espera) {
-      wdtKick();
-      delay(50);
+      delay(20);
     }
   }
 
@@ -321,15 +244,13 @@ bool iniciarPoltrona(int tempoMinutos) {
   tempoRestanteSeg = tempoTotalSeg;
   proximoAudioNum = 0;
   audiosPendentes = true;
-  sessionMotorStartedAt = millis();
 
-  Serial.printf("Poltrona ON — %lu s (%d min solicitados)\n", tempoTotalSeg, tempoMinutos);
+  Serial.printf("Poltrona ON — %lu s (%d min)\n", tempoTotalSeg, tempoMinutos);
   persistActiveSession();
-  // Estabiliza alimentação do motor antes de qualquer HTTPS (confirm).
-  delay(250);
-  reassertRelayOutput();
   return true;
 }
+
+bool sendHeartbeat();
 
 void gerenciarAudios() {
   if (statusAtual != "em_uso" || !dfplayerDisponivel) {
@@ -399,12 +320,13 @@ void atualizarTimerSessao() {
   }
   unsigned long decorrido = (millis() - tempoInicioCiclo) / 1000UL;
   if (decorrido >= tempoTotalSeg) {
-    Serial.println("Tempo da sessão esgotado — encerrando com resfriamento");
-    pararPoltrona(true);
+    Serial.println("Tempo esgotado — desligando");
+    pararPoltrona();
+    // Notifica o painel na hora (senão fica "em uso" até alguém apertar Parar).
+    sendHeartbeat();
     return;
   }
   tempoRestanteSeg = tempoTotalSeg - decorrido;
-  // Persiste a cada ~8s para sobreviver a reboot sem perder quase toda a sessão.
   static unsigned long lastPersistMs = 0;
   if (lastPersistMs == 0 || (millis() - lastPersistMs) >= 8000UL) {
     persistActiveSession();
@@ -412,16 +334,11 @@ void atualizarTimerSessao() {
   }
 }
 
-void wdtKick() {
-  // no-op: WDT desativado na poltrona
-}
-
 bool sendHeartbeat() {
   if (WiFi.status() != WL_CONNECTED) {
     return false;
   }
 
-  wdtKick();
   HTTPClient http;
   String url = String(supabaseUrl) + "/functions/v1/esp32-monitor?action=heartbeat";
   http.begin(url);
@@ -437,22 +354,20 @@ bool sendHeartbeat() {
   doc["firmware_version"] = FIRMWARE_VERSION;
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
-  // Motivo do último reset visível no painel (diagnóstico de queda de energia).
   doc["network_status"] = String("connected|rst:") + lastResetReason;
   doc["auto_register"] = true;
   doc["uptime_seconds"] = millis() / 1000UL;
   doc["session_status"] = statusAtual;
   doc["session_remaining_sec"] = tempoRestanteSeg;
+  doc["device_profile"] = "timed_session";
 
   JsonObject relay = doc.createNestedObject("relay_status");
-  bool relayOn = (statusAtual == "em_uso" || executandoResfriamento);
-  relay[String("relay_1")] = relayOn ? "on" : "off";
+  relay[String("relay_1")] = (statusAtual == "em_uso") ? "on" : "off";
 
   String body;
   serializeJson(doc, body);
   int code = http.POST(body);
   http.end();
-  wdtKick();
   return code == 200;
 }
 
@@ -461,7 +376,6 @@ bool confirmCommand(const char* commandId) {
     return false;
   }
 
-  wdtKick();
   HTTPClient http;
   String url = String(supabaseUrl) + "/functions/v1/esp32-monitor?action=confirm_command";
   http.begin(url);
@@ -477,7 +391,6 @@ bool confirmCommand(const char* commandId) {
   serializeJson(doc, body);
   int code = http.POST(body);
   http.end();
-  wdtKick();
   Serial.printf("confirm_command %s → HTTP %d\n", commandId, code);
   return code == 200;
 }
@@ -525,9 +438,6 @@ void aplicarVolumeSeValido(JsonObject src, const char* key, int* target) {
 }
 
 void applyRuntimeAudioConfig(JsonObject cmd) {
-  // Aceita duas formas:
-  // 1) payload.volume_audio_001 ... payload.volume_audio_007
-  // 2) payload.audio_volumes.{volume_audio_001 ... volume_audio_007}
   if (!cmd.containsKey("payload")) {
     return;
   }
@@ -547,11 +457,6 @@ void applyRuntimeAudioConfig(JsonObject cmd) {
   aplicarVolumeSeValido(source, "volume_audio_005", &volume_audio_005);
   aplicarVolumeSeValido(source, "volume_audio_006", &volume_audio_006);
   aplicarVolumeSeValido(source, "volume_audio_007", &volume_audio_007);
-
-  Serial.printf(
-      "Volumes runtime aplicados: [%d,%d,%d,%d,%d,%d,%d]\n",
-      volume_audio_001, volume_audio_002, volume_audio_003, volume_audio_004,
-      volume_audio_005, volume_audio_006, volume_audio_007);
 }
 
 void processCommand(JsonObject cmd) {
@@ -562,60 +467,38 @@ void processCommand(JsonObject cmd) {
   }
 
   if (lastExecutedCommandId == cmdId) {
-    Serial.println("Comando duplicado — sem reexecutar: " + String(cmdId));
+    Serial.println("Comando duplicado — só confirma: " + String(cmdId));
     confirmCommand(cmdId);
     return;
   }
 
-  wdtKick();
   if (strcmp(action, "on") == 0 || strcmp(action, "activate") == 0 || strcmp(action, "turn_on") == 0) {
     applyRuntimeAudioConfig(cmd);
     int minutes = parseCycleMinutes(cmd);
     if (!iniciarPoltrona(minutes)) {
-      Serial.println("ON não executado — aguardando nova tentativa");
+      Serial.println("ON não executado");
       return;
     }
     markCommandExecuted(cmdId);
-    wdtKick();
-    // Confirma sem segundo heartbeat síncrono (evita cascata HTTP → WDT reboot).
     confirmCommand(cmdId);
+    sendHeartbeat();
+    lastHeartbeat = millis();
   } else if (strcmp(action, "off") == 0 || strcmp(action, "deactivate") == 0 || strcmp(action, "turn_off") == 0) {
-    // A poll entrega em ordem de criação (ASC): um OFF depois de um ON na mesma
-    // leva é SEMPRE mais novo — é a intenção mais recente do usuário e deve valer.
-    // (A regra antiga "ignorar OFF após ON" engolia o comando de parar.)
-    // Durante sessão: só aceita OFF forçado (admin_stop/force). Evita OFF do Android/auto-status.
-    bool forceOff = false;
-    if (cmd.containsKey("payload")) {
-      JsonObject payload = cmd["payload"];
-      if (!payload.isNull()) {
-        forceOff = payload["force"] | false;
-        if (!forceOff) forceOff = payload["remote_stop"] | false;
-        if (!forceOff) forceOff = payload["admin_stop"] | false;
-      }
-    }
-    if (statusAtual == "em_uso" && !forceOff) {
-      markCommandExecuted(cmdId);
-      Serial.println("Ignorando OFF remoto sem force durante sessão timed_session");
-      confirmCommand(cmdId);
-      return;
-    }
+    // Aceita qualquer OFF (admin "Parar" manda force/remote_stop; sem force também desliga).
+    // Prioridade: liberar o aparelho. Não bloquear com resfriamento.
     markCommandExecuted(cmdId);
-    if (statusAtual == "em_uso") {
-      pararPoltrona(true);
-    } else {
-      pararPoltrona(false);
-    }
-    wdtKick();
+    pararPoltrona();
     confirmCommand(cmdId);
+    sendHeartbeat();
+    lastHeartbeat = millis();
   }
 }
 
 void pollCommands() {
-  if (WiFi.status() != WL_CONNECTED || executandoResfriamento) {
+  if (WiFi.status() != WL_CONNECTED) {
     return;
   }
 
-  wdtKick();
   HTTPClient http;
   String url = String(supabaseUrl) + "/functions/v1/esp32-monitor?action=poll_commands&esp32_id=" + ESP32_ID;
   http.begin(url);
@@ -626,13 +509,11 @@ void pollCommands() {
   int code = http.GET();
   if (code != 200) {
     http.end();
-    wdtKick();
     return;
   }
 
   String payload = http.getString();
   http.end();
-  wdtKick();
 
   StaticJsonDocument<4096> doc;
   if (deserializeJson(doc, payload)) {
@@ -646,13 +527,12 @@ void pollCommands() {
 
   for (JsonObject cmd : commands) {
     processCommand(cmd);
-    wdtKick();
   }
 }
 
 bool initDfPlayer() {
   dfSerial.begin(9600, SERIAL_8N1, 17, 16);
-  delay(2000);
+  delay(1500);
 
   if (dfPlayer.begin(dfSerial, true, true)) {
     ackEnabled = true;
@@ -662,11 +542,11 @@ bool initDfPlayer() {
     return false;
   }
 
-  delay(500);
+  delay(300);
   dfPlayer.volume(28);
   dfPlayer.EQ(DFPLAYER_EQ_NORMAL);
   dfPlayer.outputDevice(DFPLAYER_DEVICE_SD);
-  delay(2000);
+  delay(500);
   return true;
 }
 
@@ -698,7 +578,8 @@ void setupDeviceHttpRoutes() {
   });
 
   esp32HttpServer().on("/stop", HTTP_POST, []() {
-    pararPoltrona(statusAtual == "em_uso");
+    pararPoltrona();
+    sendHeartbeat();
     esp32HttpServer().send(200, "application/json", "{\"success\":true}");
   });
 
@@ -709,6 +590,7 @@ void setupDeviceHttpRoutes() {
     tempoInicioCiclo = millis();
     tempoRestanteSeg = 10;
     audiosPendentes = false;
+    persistActiveSession();
     esp32HttpServer().send(200, "application/json", "{\"success\":true,\"test_seconds\":10}");
   });
 
@@ -717,39 +599,21 @@ void setupDeviceHttpRoutes() {
   });
 }
 
-void setupWatchdog() {
-  // WDT desligado: HTTP + OTA + DFPlayer causavam reboot e desligavam o relé no meio da sessão.
-  esp_task_wdt_deinit();
-}
-
 static bool poltronaOtaBusyHook() {
-  return statusAtual == "em_uso" || executandoResfriamento;
+  return statusAtual == "em_uso";
 }
 
 void setup() {
   Serial.begin(115200);
-  delay(300);
+  delay(200);
 
-  // Brownout detector fica ATIVO: desativado (v1.1.8), quedas de tensão viravam
-  // travamento int_wdt + ESP offline. Reset limpo + gpio_hold mantém o relé
-  // ligado durante o reboot e a sessão é restaurada sem o motor piscar.
-
-  // Relé ANTES de qualquer Wi‑Fi: se havia sessão, mantém ligado (sem pulso OFF no boot).
-  bool resumeSession = peekPersistedSessionActive();
-  relayAppliedLevel = resumeSession
-    ? (RELAY_LOGICA_INVERTIDA ? LOW : HIGH)
-    : (RELAY_LOGICA_INVERTIDA ? HIGH : LOW);
-  // Com o hold do boot anterior ainda ativo, prepara registrador/direção ANTES
-  // de soltar o hold — o pino já assume o nível certo, sem glitch para LOW.
   pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, relayAppliedLevel);
-  gpio_hold_dis((gpio_num_t)RELAY_PIN);
-  gpio_hold_en((gpio_num_t)RELAY_PIN);
+  bool resumeSession = peekPersistedSessionActive();
+  relayAppliedLevel = -1;
+  acionarRele(resumeSession);
 
   loadLastExecutedCommandId();
-
   buildEsp32Id();
-
   lastResetReason = describeResetReason();
 
   Serial.println();
@@ -758,12 +622,10 @@ void setup() {
   Serial.printf(" Firmware %s\n", FIRMWARE_VERSION);
   Serial.printf(" ESP32_ID: %s\n", ESP32_ID);
   Serial.printf(" Motivo do reset: %s\n", lastResetReason);
-  if (resumeSession) {
-    Serial.println(" ⚠️ REBOOT NO MEIO DA SESSÃO — verifique fonte/EMI do motor");
-  }
   Serial.println("=================================");
 
-  setupWatchdog();
+  esp_task_wdt_deinit();
+
   if (resumeSession) {
     restorePersistedSession();
   } else {
@@ -775,55 +637,36 @@ void setup() {
   esp32WifiOtaRegisterPortalRoutes();
   setupDeviceHttpRoutes();
   esp32WifiOtaBegin();
-  WiFi.setSleep(false); // sleep do Wi‑Fi glitcha GPIO ADC2 (relé no 26)
+  WiFi.setSleep(false);
 
   dfplayerDisponivel = initDfPlayer();
-  Serial.printf("DFPlayer: %s\n", dfplayerDisponivel ? "OK" : "indisponível (sem áudio)");
+  Serial.printf("DFPlayer: %s\n", dfplayerDisponivel ? "OK" : "indisponível");
 
-  // Evita HTTPS pesado logo após boot se a massagem está ativa (brownout → novo reboot).
-  if (statusAtual != "em_uso") {
-    sendHeartbeat();
-  }
+  sendHeartbeat();
   lastHeartbeat = millis();
   lastPoll = millis();
-  reassertRelayOutput();
 }
 
 void loop() {
-  const bool busy = (statusAtual == "em_uso" || executandoResfriamento);
-  const unsigned long hbInterval = busy ? HEARTBEAT_INTERVAL_BUSY_MS : HEARTBEAT_INTERVAL_MS;
-  const unsigned long pollInterval = busy ? POLL_INTERVAL_BUSY_MS : POLL_INTERVAL_MS;
-  const bool quietNet = busy && inSessionNetQuiet();
-
   if (!esp32WifiOtaMaintain()) {
-    // Wi-Fi caiu: mantém o timer da sessão mesmo offline.
     gerenciarAudios();
     atualizarTimerSessao();
-    reassertRelayOutput();
-    delay(10);
+    delay(20);
     return;
   }
 
   gerenciarAudios();
   atualizarTimerSessao();
-  reassertRelayOutput();
 
   unsigned long now = millis();
-  // Nos primeiros segundos após ligar o motor: só áudio/timer/relé — sem HTTPS.
-  if (!quietNet) {
-    if (now - lastHeartbeat >= hbInterval) {
-      reassertRelayOutput();
-      sendHeartbeat();
-      lastHeartbeat = now;
-      reassertRelayOutput();
-    }
-    if (now - lastPoll >= pollInterval) {
-      reassertRelayOutput();
-      pollCommands();
-      lastPoll = now;
-      reassertRelayOutput();
-    }
+  if (now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
+    sendHeartbeat();
+    lastHeartbeat = now;
+  }
+  if (now - lastPoll >= POLL_INTERVAL_MS) {
+    pollCommands();
+    lastPoll = now;
   }
 
-  delay(50);
+  delay(40);
 }

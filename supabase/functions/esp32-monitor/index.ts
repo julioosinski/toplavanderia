@@ -345,6 +345,29 @@ serve(async (req) => {
 
       console.log(`🔄 Relay remap for ${esp32Id}: firmware=${JSON.stringify(rawRelayStatus)} → db=${JSON.stringify(remappedRelayStatus)}`);
 
+      // Poltrona (timed_session): alinha machines.status com a sessão real do ESP.
+      // Sem isso, ao terminar o ciclo (ou cair Wi‑Fi no "Parar") o painel ficava "em uso".
+      const sessionStatus = typeof heartbeatData.session_status === 'string'
+        ? heartbeatData.session_status
+        : null;
+      if (
+        sessionStatus &&
+        esp32Machines &&
+        esp32Machines.length === 1 &&
+        (heartbeatData.device_profile === 'timed_session' ||
+          sessionStatus === 'em_uso' ||
+          sessionStatus === 'disponivel')
+      ) {
+        const machineStatus = sessionStatus === 'em_uso' ? 'in_use' : 'available';
+        const { error: sessErr } = await supabaseClient
+          .from('machines')
+          .update({ status: machineStatus, updated_at: new Date().toISOString() })
+          .eq('id', esp32Machines[0].id);
+        if (sessErr) {
+          console.warn('session_status → machines.status failed:', sessErr.message);
+        }
+      }
+
       // Get current status for change detection and merge
       const { data: currentStatus } = await supabaseClient
         .from('esp32_status')
