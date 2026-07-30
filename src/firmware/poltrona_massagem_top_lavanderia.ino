@@ -12,12 +12,12 @@
  *   DFPlayer Mini: TX=GPIO16, RX=GPIO17 (UART2, 9600)
  * Wi-Fi: portal TopLavanderia-{ESP32_ID} (senha toplav123) — /wifi — reconexão + OTA remoto
  *
- * v1.3.0 (estabilidade):
- * - REMOVE gpio_hold (causava int_wdt / offline)
- * - REMOVE ciclo de resfriamento com delay de 32s (travava Wi‑Fi ao "Parar")
- * - OFF/ON: confirma + heartbeat na hora (painel não fica "em uso" nem offline)
- * - Poll 10s / heartbeat 30s sempre (parar responde rápido; online estável)
- * - Último comando em NVS (ON reentregue após reboot não religa sozinho)
+ * v1.3.0: remove resfriamento com delay; Parar instantâneo; HB/poll rápidos.
+ * v1.3.1: poltrona NÃO desliga sozinha no meio do ciclo —
+ *   (1) GPIO26 + Wi‑Fi: hold só na transição ON/OFF + reassert a cada 2s
+ *       (sem hold no loop → int_wdt; sem reassert → relé glitcha e “desliga sozinho”)
+ *   (2) OFF remoto só com force durante sessão (OFF antigo reentregue não mata o ciclo)
+ *   (3) fim de sessão por deadline absoluto (millis), não contagem frágil
  */
 
 #include <WiFi.h>
@@ -28,8 +28,9 @@
 #include <Preferences.h>
 #include <cstdio>
 #include <esp_system.h>
+#include "driver/gpio.h"
 
-#define FIRMWARE_VERSION "v1.3.0-toplav-poltrona"
+#define FIRMWARE_VERSION "v1.3.1-toplav-poltrona"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
@@ -78,13 +79,17 @@ String statusAtual = "disponivel";
 unsigned long tempoInicioCiclo = 0;
 unsigned long tempoTotalSeg = 0;
 unsigned long tempoRestanteSeg = 0;
+/** millis() absoluto em que a sessão deve encerrar (evita desligar cedo por conta errada). */
+unsigned long sessionEndsAtMs = 0;
 unsigned long ultimoDesligamento = 0;
 const unsigned long COOLDOWN_MS = 3000;
+const unsigned long RELAY_REASSERT_MS = 2000;
 
 char ESP32_ID[16];
 
 unsigned long lastHeartbeat = 0;
 unsigned long lastPoll = 0;
+unsigned long lastRelayReassert = 0;
 const char* lastResetReason = "unknown";
 
 String lastExecutedCommandId = "";
@@ -160,10 +165,28 @@ void acionarRele(bool ligar) {
   int nivel = ligar
     ? (RELAY_LOGICA_INVERTIDA ? LOW : HIGH)
     : (RELAY_LOGICA_INVERTIDA ? HIGH : LOW);
-  if (nivel == relayAppliedLevel) return;
-  // Sem gpio_hold: hold + Wi‑Fi estourava interrupt WDT e deixava o ESP offline.
+  // Hold SÓ na transição: trava GPIO26 contra glitch do Wi‑Fi (ADC2).
+  // Nunca chamar hold_dis/en a cada loop — isso causava rst:int_wdt.
+  gpio_hold_dis((gpio_num_t)RELAY_PIN);
+  pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, nivel);
+  if (ligar) {
+    gpio_hold_en((gpio_num_t)RELAY_PIN);
+  }
   relayAppliedLevel = nivel;
+  lastRelayReassert = millis();
+}
+
+/** Reafirma HIGH a cada poucos segundos sem martelar hold (Wi‑Fi pode glitchar ADC2). */
+void reassertRelayIfSession() {
+  if (statusAtual != "em_uso") return;
+  unsigned long now = millis();
+  if (lastRelayReassert != 0 && (now - lastRelayReassert) < RELAY_REASSERT_MS) return;
+  gpio_hold_dis((gpio_num_t)RELAY_PIN);
+  digitalWrite(RELAY_PIN, RELAY_LOGICA_INVERTIDA ? LOW : HIGH);
+  gpio_hold_en((gpio_num_t)RELAY_PIN);
+  relayAppliedLevel = RELAY_LOGICA_INVERTIDA ? LOW : HIGH;
+  lastRelayReassert = now;
 }
 
 void pararAudio() {
@@ -185,6 +208,7 @@ void pararPoltrona() {
   tempoTotalSeg = 0;
   tempoRestanteSeg = 0;
   tempoInicioCiclo = 0;
+  sessionEndsAtMs = 0;
   ultimoDesligamento = millis();
 }
 
@@ -200,6 +224,7 @@ bool restorePersistedSession() {
   tempoTotalSeg = remain;
   tempoRestanteSeg = remain;
   tempoInicioCiclo = millis();
+  sessionEndsAtMs = millis() + (remain * 1000UL);
   statusAtual = "em_uso";
   acionarRele(true);
   audiosPendentes = true;
@@ -219,8 +244,14 @@ bool iniciarPoltrona(int tempoMinutos) {
     unsigned long adicional = (unsigned long)tempoMinutos * 60UL;
     tempoTotalSeg += adicional;
     tempoRestanteSeg += adicional;
+    if (sessionEndsAtMs == 0) {
+      sessionEndsAtMs = millis() + (tempoRestanteSeg * 1000UL);
+    } else {
+      sessionEndsAtMs += adicional * 1000UL;
+    }
     Serial.printf("Poltrona em uso — adicionados %lu s\n", adicional);
     persistActiveSession();
+    reassertRelayIfSession();
     return true;
   }
 
@@ -242,10 +273,11 @@ bool iniciarPoltrona(int tempoMinutos) {
   statusAtual = "em_uso";
   tempoInicioCiclo = millis();
   tempoRestanteSeg = tempoTotalSeg;
+  sessionEndsAtMs = millis() + (tempoTotalSeg * 1000UL);
   proximoAudioNum = 0;
   audiosPendentes = true;
 
-  Serial.printf("Poltrona ON — %lu s (%d min)\n", tempoTotalSeg, tempoMinutos);
+  Serial.printf("Poltrona ON — %lu s (%d min) até millis=%lu\n", tempoTotalSeg, tempoMinutos, sessionEndsAtMs);
   persistActiveSession();
   return true;
 }
@@ -315,22 +347,24 @@ void gerenciarAudios() {
 }
 
 void atualizarTimerSessao() {
-  if (statusAtual != "em_uso" || tempoTotalSeg == 0) {
+  if (statusAtual != "em_uso" || sessionEndsAtMs == 0) {
     return;
   }
-  unsigned long decorrido = (millis() - tempoInicioCiclo) / 1000UL;
-  if (decorrido >= tempoTotalSeg) {
+  unsigned long now = millis();
+  if (now >= sessionEndsAtMs) {
     Serial.println("Tempo esgotado — desligando");
     pararPoltrona();
-    // Notifica o painel na hora (senão fica "em uso" até alguém apertar Parar).
     sendHeartbeat();
     return;
   }
-  tempoRestanteSeg = tempoTotalSeg - decorrido;
+  tempoRestanteSeg = (sessionEndsAtMs - now) / 1000UL;
   static unsigned long lastPersistMs = 0;
-  if (lastPersistMs == 0 || (millis() - lastPersistMs) >= 8000UL) {
+  if (lastPersistMs == 0 || (now - lastPersistMs) >= 8000UL) {
+    // Persiste o restante real (deadline), não uma conta paralela.
+    tempoTotalSeg = tempoRestanteSeg;
+    tempoInicioCiclo = now;
     persistActiveSession();
-    lastPersistMs = millis();
+    lastPersistMs = now;
   }
 }
 
@@ -484,8 +518,24 @@ void processCommand(JsonObject cmd) {
     sendHeartbeat();
     lastHeartbeat = millis();
   } else if (strcmp(action, "off") == 0 || strcmp(action, "deactivate") == 0 || strcmp(action, "turn_off") == 0) {
-    // Aceita qualquer OFF (admin "Parar" manda force/remote_stop; sem force também desliga).
-    // Prioridade: liberar o aparelho. Não bloquear com resfriamento.
+    // Durante a sessão: só OFF forçado (Parar do admin). OFF antigo reentregue
+    // pela fila (reclaim) NÃO pode matar o ciclo — era o "desligou sozinho".
+    bool forceOff = false;
+    if (cmd.containsKey("payload")) {
+      JsonObject payload = cmd["payload"];
+      if (!payload.isNull()) {
+        forceOff = payload["force"] | false;
+        if (!forceOff) forceOff = payload["remote_stop"] | false;
+        if (!forceOff) forceOff = payload["admin_stop"] | false;
+      }
+    }
+    if (statusAtual == "em_uso" && !forceOff) {
+      markCommandExecuted(cmdId);
+      Serial.println("Ignorando OFF sem force durante sessão");
+      confirmCommand(cmdId);
+      reassertRelayIfSession();
+      return;
+    }
     markCommandExecuted(cmdId);
     pararPoltrona();
     confirmCommand(cmdId);
@@ -651,21 +701,25 @@ void loop() {
   if (!esp32WifiOtaMaintain()) {
     gerenciarAudios();
     atualizarTimerSessao();
+    reassertRelayIfSession();
     delay(20);
     return;
   }
 
   gerenciarAudios();
   atualizarTimerSessao();
+  reassertRelayIfSession();
 
   unsigned long now = millis();
   if (now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
     sendHeartbeat();
     lastHeartbeat = now;
+    reassertRelayIfSession();
   }
   if (now - lastPoll >= POLL_INTERVAL_MS) {
     pollCommands();
     lastPoll = now;
+    reassertRelayIfSession();
   }
 
   delay(40);
