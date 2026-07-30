@@ -434,26 +434,56 @@ export default function Machines() {
             }
             return;
           }
-          // Lavadora/secadora: sempre pulso ON (crédito). OFF era o bug do menu admin.
-          if (!confirm(`Liberar crédito (pulso) em "${machine.name}" remotamente?`)) return;
+          // Lavadora/secadora: 1 botão — livre = pulso ON; em uso = parar ciclo.
+          const isInUse =
+            machine.status === 'in_use' ||
+            machine.status === 'running' ||
+            machine.realStatus === 'running' ||
+            machine.realStatus === 'in_use';
+
+          if (isInUse) {
+            if (!confirm(`Parar ciclo de "${machine.name}" e marcar como disponível?`)) return;
+            const { error } = await forceMachineReleased({ machineId: machine.id });
+            if (error) {
+              toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+            } else {
+              toast({ title: 'Ciclo parado', description: 'Máquina disponível no totem.' });
+              loadMachines();
+            }
+            return;
+          }
+
+          if (!confirm(`Liberar crédito (pulso) em "${machine.name}"?`)) return;
           const { error } = await adminRemoteRelease({ machineId: machine.id });
           if (error) {
             toast({ ...classifyReleaseError(error.message), variant: 'destructive' });
           } else {
             toast({
               title: 'Crédito enfileirado',
-              description: 'Comando ON enviado ao ESP32. A máquina deve aceitar o crédito em alguns segundos.',
+              description: 'Pulso ON enviado ao ESP32.',
             });
             loadMachines();
             void refetchPermission();
           }
         };
 
+        const isWashDry = machine.type === 'washing' || machine.type === 'drying';
+        const isInUseBtn =
+          machine.status === 'in_use' ||
+          machine.status === 'running' ||
+          machine.realStatus === 'running' ||
+          machine.realStatus === 'in_use';
+        const liberarLabel = !isWashDry
+          ? (machine.type === 'coffee' || machine.type === 'massage' ? 'Liberar remoto' : 'Liberar')
+          : isInUseBtn
+            ? 'Parar ciclo'
+            : 'Liberar';
+
         if (isOperator) {
           return (
             <Button variant="outline" size="sm" onClick={handleRelease}>
               <Unlock className="mr-2 h-4 w-4" />
-              {machine.type === 'coffee' || machine.type === 'massage' ? 'Liberar remoto' : 'Liberar crédito'}
+              {liberarLabel}
             </Button>
           );
         }
@@ -472,25 +502,8 @@ export default function Machines() {
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleRelease}>
                 <Unlock className="mr-2 h-4 w-4" />
-                {machine.type === 'coffee' || machine.type === 'massage' ? 'Liberar remoto' : 'Liberar crédito (ON)'}
+                {liberarLabel}
               </DropdownMenuItem>
-              {(machine.type === 'washing' || machine.type === 'drying') && (
-                <DropdownMenuItem
-                  onClick={async () => {
-                    if (!confirm('Apenas marcar disponível no totem e enviar OFF ao ESP (não dá crédito)?')) return;
-                    const { error } = await forceMachineReleased({ machineId: machine.id });
-                    if (error) {
-                      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
-                    } else {
-                      toast({ title: 'Status alinhado', description: 'Máquina disponível; comando OFF enfileirado.' });
-                      loadMachines();
-                    }
-                  }}
-                >
-                  <Unlock className="mr-2 h-4 w-4" />
-                  Marcar disponível (OFF)
-                </DropdownMenuItem>
-              )}
               <DropdownMenuItem
                 onClick={async () => {
                   if (!confirm('Colocar em manutenção, espelhar relé OFF e enviar comando OFF ao ESP32?')) return;

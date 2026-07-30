@@ -89,7 +89,8 @@ export const MachineDetailsDialog = ({
   const getStatusColor = (status: string) => {
     switch (status) {
       case "available": return "bg-green-100 text-green-700";
-      case "running": return "bg-blue-100 text-blue-700";
+      case "running":
+      case "in_use": return "bg-blue-100 text-blue-700";
       case "offline": return "bg-red-100 text-red-700";
       case "maintenance": return "bg-amber-100 text-amber-800";
       default: return "bg-gray-100 text-gray-700";
@@ -99,7 +100,8 @@ export const MachineDetailsDialog = ({
   const getStatusText = (status: string) => {
     switch (status) {
       case "available": return "Disponível";
-      case "running": return "Em uso";
+      case "running":
+      case "in_use": return "Em uso";
       case "offline": return "Offline";
       case "maintenance": return "Manutenção";
       default: return "Desconhecido";
@@ -263,7 +265,7 @@ export const MachineDetailsDialog = ({
             </div>
           )}
 
-          {machine.status === "running" && machine.timeRemaining && (
+          { (machine.status === "running" || machine.status === "in_use") && machine.timeRemaining && (
             <>
               <Separator />
               <div className="bg-blue-50 dark:bg-blue-950/20 p-4 rounded-lg">
@@ -364,24 +366,24 @@ export const MachineDetailsDialog = ({
                 title={releaseBlocked ? "Bloqueado por autorização/limite" : undefined}
               >
                 <Play size={16} className="mr-1" />
-                {startingCycle ? "Iniciando…" : "Iniciar Ciclo Manual"}
+                {startingCycle ? "Iniciando…" : "Liberar"}
               </Button>
             )}
 
-            {machine.status === "running" && (
+            {(machine.status === "running" || machine.status === "in_use") && (
               <Button
                 variant="destructive"
                 className="flex-1"
                 disabled={releasing}
                 onClick={async () => {
-                  if (!confirm("Liberar no totem, marcar como disponível e enviar comando para desligar o relé no ESP32?")) return;
+                  if (!confirm("Parar ciclo, marcar como disponível e enviar OFF ao ESP32?")) return;
                   setReleasing(true);
                   try {
                     const { error } = await forceMachineReleased({ machineId: machine.id });
                     if (error) throw error;
                     toast({
-                      title: "Máquina liberada",
-                      description: "Status atualizado, relé desligado e comando enviado ao ESP32.",
+                      title: "Ciclo parado",
+                      description: "Máquina disponível no totem.",
                     });
                     onAfterAction?.();
                     onOpenChange(false);
@@ -396,7 +398,7 @@ export const MachineDetailsDialog = ({
                   }
                 }}
               >
-                {releasing ? "Liberando…" : "Parar / liberar"}
+                {releasing ? "Parando…" : "Parar ciclo"}
               </Button>
             )}
           </div>

@@ -75,12 +75,12 @@ export interface Esp32FirmwareParams {
    * Índice lógico do relé no JSON Supabase (`relay_1`, `relay_2`…), igual ao campo relay_pin da máquina no painel.
    */
   relayLogicalPin?: number;
-  /** Duração do ciclo em minutos (contagem no sistema; relé recebe pulso de 1,5 s por crédito). */
+  /** Duração do ciclo em minutos (contagem no sistema; relé recebe pulso de 1 s por crédito). */
   cycleTimeMinutes?: number;
 }
 
 /** Versões dos templates canônicos em src/firmware/ — manter alinhado aos #define FIRMWARE_VERSION. */
-export const ESP32_LAVADORA_FIRMWARE_VERSION = "v2.2.5";
+export const ESP32_LAVADORA_FIRMWARE_VERSION = "v2.2.6";
 export const ESP32_POLTRONA_FIRMWARE_VERSION = "v1.1.7-toplav-poltrona";
 export const ESP32_CAFE_FIRMWARE_VERSION = "v1.1.0-toplav-cafe";
 
