@@ -8,12 +8,10 @@
  * Hardware: Relé GPIO 26 (BC547 HIGH=liga) | DFPlayer TX16 RX17
  *
  * v1.3.2 — ESTABILIDADE DE REDE (corrige offline + liberação que não chega):
- * - v1.3.1 travava após o 1º heartbeat (HTTPS sem connect-timeout + gpio_hold no ADC2)
- * - HTTPS com WiFiClientSecure + connect/response timeout (não trava o loop)
- * - SEM gpio_hold (ADC2+hold derruba o Wi‑Fi)
- * - Watchdog de rede: se 3 falhas HTTPS, reconecta; se continuar, reinicia
- * - No máximo 1 comando por poll (evita cascata TLS)
- * - DFPlayer sem ACK (não bloqueia se o módulo falhar)
+ * - HTTPS com WiFiClientSecure + connect/response timeout; sem gpio_hold; watchdog
+ * v1.3.3 — Resfriamento pós-massagem (não bloqueante):
+ * - Após fim do tempo OU Parar manual: pausa 2s → relé ON 30s → OFF
+ * - Sem delay() longo (Wi‑Fi/heartbeat continuam durante o resfriamento)
  */
 
 #include <WiFi.h>
@@ -26,7 +24,7 @@
 #include <cstdio>
 #include <esp_system.h>
 
-#define FIRMWARE_VERSION "v1.3.2-toplav-poltrona"
+#define FIRMWARE_VERSION "v1.3.3-toplav-poltrona"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
@@ -48,6 +46,13 @@ const unsigned long HTTP_CONNECT_TIMEOUT_MS = 4000;
 const unsigned long RELAY_REASSERT_MS = 5000;
 const int NET_FAIL_RECONNECT = 3;
 const int NET_FAIL_RESTART = 8;
+
+/** Resfriamento: pausa (relé off) → motor 30s → off. Sem delay bloqueante. */
+const unsigned long COOL_PAUSE_MS = 2000;
+const unsigned long COOL_RUN_MS = 30000;
+const int COOL_IDLE = 0;
+const int COOL_PAUSE = 1;
+const int COOL_RUN = 2;
 
 HardwareSerial dfSerial(2);
 DFRobotDFPlayerMini dfPlayer;
@@ -74,6 +79,8 @@ unsigned long tempoRestanteSeg = 0;
 unsigned long sessionEndsAtMs = 0;
 unsigned long ultimoDesligamento = 0;
 const unsigned long COOLDOWN_MS = 2000;
+int coolPhase = COOL_IDLE;
+unsigned long coolPhaseStartedAt = 0;
 
 char ESP32_ID[16];
 unsigned long lastHeartbeat = 0;
@@ -170,8 +177,12 @@ void acionarRele(bool ligar) {
   lastRelayReassert = millis();
 }
 
+bool relayShouldBeOn() {
+  return statusAtual == "em_uso" || coolPhase == COOL_RUN;
+}
+
 void reassertRelayIfSession() {
-  if (statusAtual != "em_uso") return;
+  if (!relayShouldBeOn()) return;
   unsigned long now = millis();
   if (lastRelayReassert != 0 && (now - lastRelayReassert) < RELAY_REASSERT_MS) return;
   digitalWrite(RELAY_PIN, RELAY_LOGICA_INVERTIDA ? LOW : HIGH);
@@ -188,16 +199,57 @@ void pararAudio() {
   }
 }
 
-void pararPoltrona() {
+void cancelCooling() {
+  coolPhase = COOL_IDLE;
+  coolPhaseStartedAt = 0;
+}
+
+void startCooling() {
+  // Massagem já desligada → pausa 2s → liga 30s → desliga (tudo no loop, sem delay).
+  coolPhase = COOL_PAUSE;
+  coolPhaseStartedAt = millis();
+  acionarRele(false);
+  Serial.println("Resfriamento: pausa 2s, depois 30s ligados");
+}
+
+void atualizarResfriamento() {
+  if (coolPhase == COOL_IDLE) return;
+  unsigned long now = millis();
+  if (coolPhase == COOL_PAUSE) {
+    if (now - coolPhaseStartedAt >= COOL_PAUSE_MS) {
+      coolPhase = COOL_RUN;
+      coolPhaseStartedAt = now;
+      acionarRele(true);
+      Serial.println("Resfriamento: motor ON 30s");
+    }
+  } else if (coolPhase == COOL_RUN) {
+    if (now - coolPhaseStartedAt >= COOL_RUN_MS) {
+      acionarRele(false);
+      cancelCooling();
+      ultimoDesligamento = millis();
+      Serial.println("Resfriamento concluído");
+      sendHeartbeat();
+      lastHeartbeat = millis();
+    }
+  }
+}
+
+/** Encerra a massagem. comResfriamento=true: ciclo pausa+30s (fim natural ou Parar). */
+void pararPoltrona(bool comResfriamento) {
   pararAudio();
   clearPersistedSession();
-  acionarRele(false);
   statusAtual = "disponivel";
   tempoTotalSeg = 0;
   tempoRestanteSeg = 0;
   tempoInicioCiclo = 0;
   sessionEndsAtMs = 0;
-  ultimoDesligamento = millis();
+  acionarRele(false);
+  if (comResfriamento) {
+    startCooling();
+  } else {
+    cancelCooling();
+    ultimoDesligamento = millis();
+  }
 }
 
 bool restorePersistedSession() {
@@ -224,6 +276,12 @@ bool restorePersistedSession() {
 
 bool iniciarPoltrona(int tempoMinutos) {
   if (tempoMinutos <= 0) tempoMinutos = DEFAULT_CYCLE_MINUTES;
+
+  // Novo pagamento durante resfriamento: cancela o cool e inicia a sessão.
+  if (coolPhase != COOL_IDLE) {
+    cancelCooling();
+    acionarRele(false);
+  }
 
   if (statusAtual == "em_uso") {
     unsigned long adicional = (unsigned long)tempoMinutos * 60UL;
@@ -297,9 +355,10 @@ void atualizarTimerSessao() {
   if (statusAtual != "em_uso" || sessionEndsAtMs == 0) return;
   unsigned long now = millis();
   if (now >= sessionEndsAtMs) {
-    Serial.println("Tempo esgotado");
-    pararPoltrona();
+    Serial.println("Tempo esgotado — resfriamento");
+    pararPoltrona(true);
     sendHeartbeat();
+    lastHeartbeat = millis();
     return;
   }
   tempoRestanteSeg = (sessionEndsAtMs - now) / 1000UL;
@@ -347,8 +406,9 @@ bool sendHeartbeat() {
   doc["session_status"] = statusAtual;
   doc["session_remaining_sec"] = tempoRestanteSeg;
   doc["device_profile"] = "timed_session";
+  doc["cooling"] = (coolPhase != COOL_IDLE);
   JsonObject relay = doc.createNestedObject("relay_status");
-  relay["relay_1"] = (statusAtual == "em_uso") ? "on" : "off";
+  relay["relay_1"] = relayShouldBeOn() ? "on" : "off";
 
   String body;
   serializeJson(doc, body);
@@ -470,7 +530,8 @@ void processCommand(JsonObject cmd) {
       return;
     }
     markCommandExecuted(cmdId);
-    pararPoltrona();
+    // Parar manual também faz o resfriamento de 30s (não bloqueia a rede).
+    pararPoltrona(true);
     confirmCommand(cmdId);
     sendHeartbeat();
     lastHeartbeat = millis();
@@ -548,7 +609,7 @@ void setupDeviceHttpRoutes() {
     esp32HttpServer().send(200, "application/json", out);
   });
   esp32HttpServer().on("/stop", HTTP_POST, []() {
-    pararPoltrona();
+    pararPoltrona(true);
     sendHeartbeat();
     esp32HttpServer().send(200, "application/json", "{\"success\":true}");
   });
@@ -558,7 +619,7 @@ void setupDeviceHttpRoutes() {
 }
 
 static bool poltronaOtaBusyHook() {
-  return statusAtual == "em_uso";
+  return statusAtual == "em_uso" || coolPhase != COOL_IDLE;
 }
 
 void handleNetWatchdog() {
@@ -618,6 +679,7 @@ void loop() {
   if (!esp32WifiOtaMaintain()) {
     gerenciarAudios();
     atualizarTimerSessao();
+    atualizarResfriamento();
     reassertRelayIfSession();
     delay(30);
     return;
@@ -625,6 +687,7 @@ void loop() {
 
   gerenciarAudios();
   atualizarTimerSessao();
+  atualizarResfriamento();
   reassertRelayIfSession();
   handleNetWatchdog();
 
