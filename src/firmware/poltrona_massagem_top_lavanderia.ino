@@ -19,6 +19,9 @@
  * quiet de rede nos primeiros segundos após ligar (evita ligar/desligar em loop).
  * v1.1.9: diagnóstico de reboot no meio da sessão — motivo do reset no Serial,
  * no /status e no heartbeat; HTTPS mínimo durante a massagem (poll 60 s).
+ * v1.2.0: corrige rst:int_wdt — gpio_hold_dis/en era chamado ~20x/s no loop
+ * (seção crítica RTC) e estourava o interrupt watchdog, reiniciando o ESP e
+ * derrubando o relé no meio da sessão. Agora só escreve no pino quando muda.
  */
 
 #include <WiFi.h>
@@ -33,7 +36,7 @@
 #include "soc/rtc_cntl_reg.h"
 #include <esp_system.h>
 
-#define FIRMWARE_VERSION "v1.1.9-toplav-poltrona"
+#define FIRMWARE_VERSION "v1.2.0-toplav-poltrona"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
@@ -186,13 +189,21 @@ void buildEsp32Id() {
   snprintf(ESP32_ID, sizeof(ESP32_ID), "esp32_%02x%02x%02x%02x", mac[2], mac[3], mac[4], mac[5]);
 }
 
+/** Último nível aplicado no pino (-1 = nunca escrito). */
+int relayAppliedLevel = -1;
+
 void acionarRele(bool ligar) {
-  // GPIO26 = ADC2: o rádio Wi‑Fi pode glitchar o pino. hold trava o nível elétrico.
-  gpio_hold_dis((gpio_num_t)RELAY_PIN);
-  digitalWrite(RELAY_PIN, ligar
+  int nivel = ligar
     ? (RELAY_LOGICA_INVERTIDA ? LOW : HIGH)
-    : (RELAY_LOGICA_INVERTIDA ? HIGH : LOW));
+    : (RELAY_LOGICA_INVERTIDA ? HIGH : LOW);
+  // gpio_hold_* mexe em registrador RTC (seção crítica). Chamar isso a cada
+  // iteração do loop estourava o interrupt watchdog (rst:int_wdt) e reiniciava
+  // o ESP no meio da sessão. Só toca no pino quando o nível muda de fato.
+  if (nivel == relayAppliedLevel) return;
+  gpio_hold_dis((gpio_num_t)RELAY_PIN);
+  digitalWrite(RELAY_PIN, nivel);
   gpio_hold_en((gpio_num_t)RELAY_PIN);
+  relayAppliedLevel = nivel;
 }
 
 /** Mantém o nível elétrico do relé coerente com a sessão (combate glitch Wi‑Fi/OTA). */
@@ -712,10 +723,11 @@ void setup() {
   gpio_hold_dis((gpio_num_t)RELAY_PIN);
   bool resumeSession = peekPersistedSessionActive();
   if (resumeSession) {
-    digitalWrite(RELAY_PIN, RELAY_LOGICA_INVERTIDA ? LOW : HIGH);
+    relayAppliedLevel = RELAY_LOGICA_INVERTIDA ? LOW : HIGH;
   } else {
-    digitalWrite(RELAY_PIN, RELAY_LOGICA_INVERTIDA ? HIGH : LOW);
+    relayAppliedLevel = RELAY_LOGICA_INVERTIDA ? HIGH : LOW;
   }
+  digitalWrite(RELAY_PIN, relayAppliedLevel);
   gpio_hold_en((gpio_num_t)RELAY_PIN);
 
   buildEsp32Id();
