@@ -12,8 +12,9 @@
  *   DFPlayer Mini: TX=GPIO16, RX=GPIO17 (UART2, 9600)
  * Wi-Fi: portal TopLavanderia-{ESP32_ID} (senha toplav123) — /wifi — reconexão + OTA remoto
  *
- * v1.1.6: evita “toque” espúrio do relé a cada ~5 min (OTA/TLS) e no boot
- * (não usa mais INPUT_PULLUP no GPIO do relé; reafirma estado após Wi‑Fi/OTA).
+ * v1.1.7: se o ESP reiniciar no meio da sessão, NÃO desliga o relé no boot
+ * e NÃO reinicia a trilha de áudio do zero (só retoma o loop ambiente).
+ * Heartbeat/poll mais espaçados durante a massagem (menos HTTPS → menos reboot).
  */
 
 #include <WiFi.h>
@@ -24,7 +25,7 @@
 #include <Preferences.h>
 #include <cstdio>
 
-#define FIRMWARE_VERSION "v1.1.6-toplav-poltrona"
+#define FIRMWARE_VERSION "v1.1.7-toplav-poltrona"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
@@ -46,9 +47,11 @@ const int TEMPO_RESFRIAMENTO_SEG = 30;
 
 // ===== Timers rede =====
 const unsigned long HEARTBEAT_INTERVAL_MS = 30000;
+const unsigned long HEARTBEAT_INTERVAL_BUSY_MS = 120000; // durante massagem: menos TLS
 const unsigned long POLL_INTERVAL_MS = 10000;
+const unsigned long POLL_INTERVAL_BUSY_MS = 20000;
 // Timeout curto: vários HTTP seguidos + WDT 60s causavam reboot e desligavam a poltrona no meio da sessão.
-const unsigned long HTTP_TIMEOUT_MS = 8000;
+const unsigned long HTTP_TIMEOUT_MS = 6000;
 const unsigned long WDT_TIMEOUT_MS = 180000;
 
 // ===== DFPlayer / áudios =====
@@ -91,6 +94,14 @@ unsigned long lastPoll = 0;
 String lastExecutedCommandId = "";
 Preferences sessionPrefs;
 
+bool peekPersistedSessionActive() {
+  sessionPrefs.begin("poltrona_sess", true);
+  bool active = sessionPrefs.getBool("active", false);
+  unsigned long remain = sessionPrefs.getULong("remain_s", 0);
+  sessionPrefs.end();
+  return active && remain >= 15;
+}
+
 void clearPersistedSession() {
   sessionPrefs.begin("poltrona_sess", false);
   sessionPrefs.clear();
@@ -126,7 +137,12 @@ bool restorePersistedSession() {
   tempoInicioCiclo = millis();
   statusAtual = "em_uso";
   acionarRele(true);
-  Serial.printf("Sessão restaurada após reboot — %lu s restantes\n", remain);
+  // Não reinicia 001–006 (parecia “massagem parou e começou de novo”).
+  audiosPendentes = true;
+  proximoAudioNum = 7;
+  tempo_inicio_audios = millis() > AUDIO_007_LOOP_MS ? (millis() - AUDIO_007_LOOP_MS) : 0;
+  ultimo_play_audio_007 = millis();
+  Serial.printf("Sessão restaurada após reboot — %lu s restantes (áudio em loop ambiente)\n", remain);
   return true;
 }
 
@@ -310,9 +326,9 @@ void atualizarTimerSessao() {
     return;
   }
   tempoRestanteSeg = tempoTotalSeg - decorrido;
-  // Persiste a cada ~20s para sobreviver a reboot sem perder quase toda a sessão.
+  // Persiste a cada ~8s para sobreviver a reboot sem perder quase toda a sessão.
   static unsigned long lastPersistMs = 0;
-  if (lastPersistMs == 0 || (millis() - lastPersistMs) >= 20000UL) {
+  if (lastPersistMs == 0 || (millis() - lastPersistMs) >= 8000UL) {
     persistActiveSession();
     lastPersistMs = millis();
   }
@@ -638,7 +654,17 @@ static bool poltronaOtaBusyHook() {
 
 void setup() {
   Serial.begin(115200);
-  delay(500);
+  delay(300);
+
+  // Relé ANTES de qualquer Wi‑Fi: se havia sessão, mantém ligado (sem pulso OFF no boot).
+  pinMode(RELAY_PIN, OUTPUT);
+  bool resumeSession = peekPersistedSessionActive();
+  if (resumeSession) {
+    digitalWrite(RELAY_PIN, RELAY_LOGICA_INVERTIDA ? LOW : HIGH);
+  } else {
+    digitalWrite(RELAY_PIN, RELAY_LOGICA_INVERTIDA ? HIGH : LOW);
+  }
+
   buildEsp32Id();
 
   Serial.println();
@@ -648,15 +674,14 @@ void setup() {
   Serial.printf(" ESP32_ID: %s\n", ESP32_ID);
   Serial.println("=================================");
 
-  pinMode(RELAY_PIN, OUTPUT);
-  // Nunca INPUT_PULLUP no GPIO do relé: pull-up = HIGH = liga o BC547 (toque no boot/reboot).
-  digitalWrite(RELAY_PIN, RELAY_LOGICA_INVERTIDA ? HIGH : LOW);
-  acionarRele(false);
-
   setupWatchdog();
-  if (!restorePersistedSession()) {
+  if (resumeSession) {
+    restorePersistedSession();
+  } else {
     clearPersistedSession();
+    acionarRele(false);
   }
+
   esp32SetOtaBusyHook(poltronaOtaBusyHook);
   esp32WifiOtaRegisterPortalRoutes();
   setupDeviceHttpRoutes();
@@ -665,12 +690,19 @@ void setup() {
   dfplayerDisponivel = initDfPlayer();
   Serial.printf("DFPlayer: %s\n", dfplayerDisponivel ? "OK" : "indisponível (sem áudio)");
 
-  sendHeartbeat();
+  // Evita HTTPS pesado logo após boot se a massagem está ativa (brownout → novo reboot).
+  if (statusAtual != "em_uso") {
+    sendHeartbeat();
+  }
   lastHeartbeat = millis();
   lastPoll = millis();
 }
 
 void loop() {
+  const bool busy = (statusAtual == "em_uso" || executandoResfriamento);
+  const unsigned long hbInterval = busy ? HEARTBEAT_INTERVAL_BUSY_MS : HEARTBEAT_INTERVAL_MS;
+  const unsigned long pollInterval = busy ? POLL_INTERVAL_BUSY_MS : POLL_INTERVAL_MS;
+
   if (!esp32WifiOtaMaintain()) {
     // Wi-Fi caiu: mantém o timer da sessão mesmo offline.
     gerenciarAudios();
@@ -685,12 +717,12 @@ void loop() {
   reassertRelayOutput();
 
   unsigned long now = millis();
-  if (now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
+  if (now - lastHeartbeat >= hbInterval) {
     sendHeartbeat();
     lastHeartbeat = now;
     reassertRelayOutput();
   }
-  if (now - lastPoll >= POLL_INTERVAL_MS) {
+  if (now - lastPoll >= pollInterval) {
     pollCommands();
     lastPoll = now;
     reassertRelayOutput();
