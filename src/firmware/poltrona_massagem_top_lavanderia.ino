@@ -17,6 +17,8 @@
  * Heartbeat/poll mais espaçados durante a massagem (menos HTTPS → menos reboot).
  * v1.1.8: GPIO26 (ADC2) glitcha com Wi‑Fi — hold do pino + sem sleep Wi‑Fi +
  * quiet de rede nos primeiros segundos após ligar (evita ligar/desligar em loop).
+ * v1.1.9: diagnóstico de reboot no meio da sessão — motivo do reset no Serial,
+ * no /status e no heartbeat; HTTPS mínimo durante a massagem (poll 60 s).
  */
 
 #include <WiFi.h>
@@ -29,8 +31,9 @@
 #include "driver/gpio.h"
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
+#include <esp_system.h>
 
-#define FIRMWARE_VERSION "v1.1.8-toplav-poltrona"
+#define FIRMWARE_VERSION "v1.1.9-toplav-poltrona"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
@@ -52,9 +55,10 @@ const int TEMPO_RESFRIAMENTO_SEG = 30;
 
 // ===== Timers rede =====
 const unsigned long HEARTBEAT_INTERVAL_MS = 30000;
-const unsigned long HEARTBEAT_INTERVAL_BUSY_MS = 120000; // durante massagem: menos TLS
+const unsigned long HEARTBEAT_INTERVAL_BUSY_MS = 180000; // durante massagem: menos TLS
 const unsigned long POLL_INTERVAL_MS = 10000;
-const unsigned long POLL_INTERVAL_BUSY_MS = 20000;
+// TLS a cada 20 s + motor derrubava a fonte → reboot no meio da sessão.
+const unsigned long POLL_INTERVAL_BUSY_MS = 60000;
 /** Após ligar o motor, evita HTTPS imediato (queda de tensão + glitch ADC2/Wi‑Fi). */
 const unsigned long SESSION_NET_QUIET_MS = 20000;
 // Timeout curto: vários HTTP seguidos + WDT 60s causavam reboot e desligavam a poltrona no meio da sessão.
@@ -98,6 +102,24 @@ unsigned long lastHeartbeat = 0;
 unsigned long lastPoll = 0;
 /** millis() em que a sessão (nova) ligou o relé — quiet de rede. */
 unsigned long sessionMotorStartedAt = 0;
+/** Motivo do último reset (diagnóstico de reboot no meio da sessão). */
+const char* lastResetReason = "unknown";
+
+const char* describeResetReason() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON: return "poweron";
+    case ESP_RST_SW: return "software";
+    case ESP_RST_PANIC: return "panic";
+    case ESP_RST_INT_WDT: return "int_wdt";
+    case ESP_RST_TASK_WDT: return "task_wdt";
+    case ESP_RST_WDT: return "wdt";
+    case ESP_RST_BROWNOUT: return "brownout";
+    case ESP_RST_DEEPSLEEP: return "deepsleep";
+    case ESP_RST_EXT: return "ext_pin";
+    case ESP_RST_SDIO: return "sdio";
+    default: return "unknown";
+  }
+}
 // Se o confirm HTTP falhar, o servidor pode reenviar o mesmo ID. Não reinicia
 // a sessão nem repete o acionamento; apenas tenta confirmar novamente.
 String lastExecutedCommandId = "";
@@ -382,7 +404,8 @@ bool sendHeartbeat() {
   doc["firmware_version"] = FIRMWARE_VERSION;
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
-  doc["network_status"] = "connected";
+  // Motivo do último reset visível no painel (diagnóstico de queda de energia).
+  doc["network_status"] = String("connected|rst:") + lastResetReason;
   doc["auto_register"] = true;
   doc["uptime_seconds"] = millis() / 1000UL;
   doc["session_status"] = statusAtual;
@@ -640,6 +663,8 @@ void setupDeviceHttpRoutes() {
     doc["rssi"] = WiFi.RSSI();
     doc["online"] = true;
     doc["dfplayer"] = dfplayerDisponivel;
+    doc["last_reset_reason"] = lastResetReason;
+    doc["uptime_seconds"] = millis() / 1000UL;
     String out;
     serializeJson(doc, out);
     esp32HttpServer().sendHeader("Access-Control-Allow-Origin", "*");
@@ -695,11 +720,17 @@ void setup() {
 
   buildEsp32Id();
 
+  lastResetReason = describeResetReason();
+
   Serial.println();
   Serial.println("=================================");
   Serial.println(" Poltrona Massagem — Top Lavanderia");
   Serial.printf(" Firmware %s\n", FIRMWARE_VERSION);
   Serial.printf(" ESP32_ID: %s\n", ESP32_ID);
+  Serial.printf(" Motivo do reset: %s\n", lastResetReason);
+  if (resumeSession) {
+    Serial.println(" ⚠️ REBOOT NO MEIO DA SESSÃO — verifique fonte/EMI do motor");
+  }
   Serial.println("=================================");
 
   setupWatchdog();
