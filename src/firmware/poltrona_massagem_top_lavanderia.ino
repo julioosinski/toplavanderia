@@ -11,6 +11,9 @@
  *   Relé massagem: GPIO 26 (BC547 — lógica normal: HIGH=ligado)
  *   DFPlayer Mini: TX=GPIO16, RX=GPIO17 (UART2, 9600)
  * Wi-Fi: portal TopLavanderia-{ESP32_ID} (senha toplav123) — /wifi — reconexão + OTA remoto
+ *
+ * v1.1.6: evita “toque” espúrio do relé a cada ~5 min (OTA/TLS) e no boot
+ * (não usa mais INPUT_PULLUP no GPIO do relé; reafirma estado após Wi‑Fi/OTA).
  */
 
 #include <WiFi.h>
@@ -21,7 +24,7 @@
 #include <Preferences.h>
 #include <cstdio>
 
-#define FIRMWARE_VERSION "v1.1.5-toplav-poltrona"
+#define FIRMWARE_VERSION "v1.1.6-toplav-poltrona"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
@@ -139,6 +142,12 @@ void acionarRele(bool ligar) {
   digitalWrite(RELAY_PIN, ligar
     ? (RELAY_LOGICA_INVERTIDA ? LOW : HIGH)
     : (RELAY_LOGICA_INVERTIDA ? HIGH : LOW));
+}
+
+/** Mantém o nível elétrico do relé coerente com a sessão (combate glitch Wi‑Fi/OTA). */
+void reassertRelayOutput() {
+  bool wantOn = (statusAtual == "em_uso" || executandoResfriamento);
+  acionarRele(wantOn);
 }
 
 void pararAudio() {
@@ -639,9 +648,9 @@ void setup() {
   Serial.printf(" ESP32_ID: %s\n", ESP32_ID);
   Serial.println("=================================");
 
-  pinMode(RELAY_PIN, INPUT_PULLUP);
-  delay(50);
   pinMode(RELAY_PIN, OUTPUT);
+  // Nunca INPUT_PULLUP no GPIO do relé: pull-up = HIGH = liga o BC547 (toque no boot/reboot).
+  digitalWrite(RELAY_PIN, RELAY_LOGICA_INVERTIDA ? HIGH : LOW);
   acionarRele(false);
 
   setupWatchdog();
@@ -666,21 +675,25 @@ void loop() {
     // Wi-Fi caiu: mantém o timer da sessão mesmo offline.
     gerenciarAudios();
     atualizarTimerSessao();
+    reassertRelayOutput();
     delay(10);
     return;
   }
 
   gerenciarAudios();
   atualizarTimerSessao();
+  reassertRelayOutput();
 
   unsigned long now = millis();
   if (now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
     sendHeartbeat();
     lastHeartbeat = now;
+    reassertRelayOutput();
   }
   if (now - lastPoll >= POLL_INTERVAL_MS) {
     pollCommands();
     lastPoll = now;
+    reassertRelayOutput();
   }
 
   delay(50);

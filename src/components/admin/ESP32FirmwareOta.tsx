@@ -165,7 +165,7 @@ export const ESP32FirmwareOta = () => {
     if (!/^v?\d+\.\d+\.\d+([\w.-]+)?$/i.test(version)) {
       toast({
         title: "Versão inválida",
-        description: "Use o formato v2.2.5 ou v1.1.5-toplav-poltrona",
+        description: "Use o formato v2.2.5 ou v1.1.6-toplav-poltrona",
         variant: "destructive",
       });
       return;
@@ -256,7 +256,7 @@ export const ESP32FirmwareOta = () => {
         <CardDescription>
           O admin gera o <strong>código-fonte</strong> (<code>.ino</code>); o OTA exige o{' '}
           <strong>binário compilado</strong> (<code>.bin</code>) — veja o passo a passo abaixo.
-          A primeira instalação com suporte OTA ainda exige upload USB (lavadoras/secadoras v2.2.5+, poltrona v1.1.5+, café v1.1.0+).
+          A primeira instalação com suporte OTA ainda exige upload USB (lavadoras/secadoras v2.2.5+, poltrona v1.1.6+, café v1.1.0+).
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">

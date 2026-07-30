@@ -51,7 +51,7 @@ static unsigned long lastOtaPoll = 0;
 static const unsigned long WIFI_RETRY_INTERVAL = 15000;
 static const unsigned long STA_CONNECT_TIMEOUT_MS = 12000;
 static const unsigned long CONFIG_PORTAL_HINT_AFTER_MS = 120000;
-static const unsigned long OTA_POLL_INTERVAL_MS = 300000; // 5 min (economia; OTA agendado no admin)
+static const unsigned long OTA_POLL_INTERVAL_MS = 1800000; // 30 min (TLS a cada 5 min podia glitchar GPIO/relé)
 
 static const char* ESP32_OTA_NO_PARTITION_MSG =
     "Sem particao OTA na flash — regrave via USB (Minimal SPIFFS with OTA). OTA remoto nao altera a tabela de particoes.";
@@ -515,6 +515,7 @@ static bool esp32WifiOtaMaintain() {
   if (now - lastOtaPoll >= OTA_POLL_INTERVAL_MS) {
     esp32PollOtaUpdate();
     lastOtaPoll = now;
+    // Após HTTPS/OTA o nível do GPIO pode glitchar — o equipamento reafirma no loop.
   }
 
   return true;

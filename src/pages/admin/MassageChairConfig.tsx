@@ -152,7 +152,7 @@ export default function MassageChairConfig() {
     toast({
       title: 'Firmware gerado!',
       description:
-        'v1.1.5-toplav-poltrona (.ino + .h). Arduino IDE: partition Minimal SPIFFS (1.9MB APP with OTA), USB + Wi‑Fi em TopLavanderia-{ESP32_ID}.',
+        'v1.1.6-toplav-poltrona (.ino + .h). Arduino IDE: partition Minimal SPIFFS (1.9MB APP with OTA), USB + Wi‑Fi em TopLavanderia-{ESP32_ID}.',
     });
     setDownloading(false);
   };
