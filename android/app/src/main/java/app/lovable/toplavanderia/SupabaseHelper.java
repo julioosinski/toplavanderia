@@ -1526,9 +1526,9 @@ public class SupabaseHelper {
         if (!queued) {
             return false;
         }
-        boolean confirmed = waitForEsp32RelayOn(esp32Id, relayPin, machineId, 90_000L, transactionId);
+        boolean confirmed = waitForEsp32RelayOn(esp32Id, relayPin, machineId, 25_000L, transactionId);
         if (!confirmed) {
-            confirmed = waitForEsp32RelayOn(esp32Id, relayPin, machineId, 60_000L, transactionId);
+            confirmed = waitForEsp32RelayOn(esp32Id, relayPin, machineId, 15_000L, transactionId);
         }
         if (confirmed) {
             onEsp32RelayConfirmed(esp32Id, relayPin, machineId, durationMinutes);

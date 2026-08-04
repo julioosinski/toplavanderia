@@ -146,6 +146,36 @@ serve(async (req) => {
         });
       }
 
+      // TX já cancelada/estornada: não marca máquina em uso nem completa pagamento.
+      if (command.transaction_id) {
+        const { data: txRow } = await supabaseClient
+          .from('transactions')
+          .select('id, status')
+          .eq('id', command.transaction_id)
+          .maybeSingle();
+        if (txRow && (txRow.status === 'cancelled' || txRow.status === 'refunded')) {
+          await supabaseClient
+            .from('pending_commands')
+            .update({
+              status: 'failed',
+              error_message: 'transaction_cancelled_before_confirm',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', command_id)
+            .in('status', ['pending', 'processing']);
+          console.warn(
+            `⛔ confirm bloqueado: TX ${command.transaction_id} status=${txRow.status}`
+          );
+          return new Response(JSON.stringify({
+            success: false,
+            error: 'Transaction was cancelled or refunded before ESP confirm',
+          }), {
+            status: 409,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+      }
+
       // Retry idempotente caso o ESP não tenha recebido a resposta do primeiro confirm.
       if (command.status === 'completed') {
         return new Response(JSON.stringify({ success: true, message: 'Command already confirmed' }), {

@@ -40,8 +40,17 @@ interface PixPaymentPayload {
   expiresIn?: number;
 }
 
-/** Espera confirmação do ESP. Janela larga: reclaim no banco é ~20–40s e o poll do ESP ~5–8s. */
-const waitForEsp32Command = async (commandId: string, timeoutMs = 90_000) => {
+/**
+ * Política de confirmação ESP (rápida + proteção do cliente):
+ * - Caminho feliz: até 25s (ESP poll ~5–8s → 2–4 tentativas)
+ * - 1 retentativa: +15s após reenfileirar o mesmo TX
+ * - Se falhar: cancela TX/comandos (web) ou estorna Cielo (Android)
+ * Não usar waits de 90–150s: trava UX e atrasa o estorno.
+ */
+const ESP_CONFIRM_FAST_MS = 25_000;
+const ESP_CONFIRM_RETRY_MS = 15_000;
+
+const waitForEsp32Command = async (commandId: string, timeoutMs = ESP_CONFIRM_FAST_MS) => {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     // RPC SECURITY DEFINER — SELECT direto em pending_commands é bloqueado para anon.
@@ -56,9 +65,9 @@ const waitForEsp32Command = async (commandId: string, timeoutMs = 90_000) => {
     if (row?.status === 'failed') {
       throw new Error(row.error_message || 'O ESP32 não executou a liberação.');
     }
-    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
   }
-  throw new Error('Pagamento aprovado, mas o ESP32 não confirmou a liberação a tempo.');
+  throw new Error('ESP32_CONFIRM_TIMEOUT');
 };
 
 // Totem sub-components
@@ -501,18 +510,38 @@ const Totem = () => {
         if (!commandId) {
           throw new Error('Comando ESP32 sem identificador de confirmação.');
         }
-        // 90s + 60s extras se ainda estiver pending/processing (Wi‑Fi oscilante).
+
+        // Caminho feliz rápido; 1 refila + retry curto; depois cancela (protege o cliente).
         try {
-          await waitForEsp32Command(commandId, 90_000);
+          await waitForEsp32Command(commandId, ESP_CONFIRM_FAST_MS);
         } catch (firstWaitErr) {
           const { data: st } = await supabase.rpc('get_totem_command_status', {
             _command_id: commandId,
             _transaction_id: null,
           });
           const row = Array.isArray(st) ? st[0] : st;
-          const stillAlive = row?.status === 'pending' || row?.status === 'processing';
-          if (!stillAlive) throw firstWaitErr;
-          await waitForEsp32Command(commandId, 60_000);
+          if (row?.status === 'completed') {
+            // ok
+          } else if (row?.status === 'pending' || row?.status === 'processing') {
+            // Idempotente: reusa o mesmo command_id da TX ou cria outro se o anterior expirou.
+            const { data: retryData } = await supabase.functions.invoke('esp32-control', {
+              body: {
+                esp32_id: esp32Id,
+                relay_pin: relayPin,
+                action: 'on',
+                machine_id: selectedMachine.id,
+                transaction_id: transactionId,
+                payload: { cycle_time_minutes: durationMinutes },
+              },
+            });
+            const retryCmdId =
+              retryData && typeof retryData === 'object' && 'command_id' in retryData
+                ? String(retryData.command_id)
+                : commandId;
+            await waitForEsp32Command(retryCmdId, ESP_CONFIRM_RETRY_MS);
+          } else {
+            throw firstWaitErr;
+          }
         }
 
         paidActivationRef.current = null;
@@ -521,11 +550,23 @@ const Totem = () => {
         return true;
       } catch (error) {
         console.error('Erro ao ativar máquina:', error);
-        const description = error instanceof Error
-          ? error.message
-          : 'Pagamento aprovado, mas o comando do ESP32 falhou. Verifique esp32_id e fila pending_commands.';
+        const txId = paidActivationRef.current?.transactionId;
+        if (txId) {
+          // Cancela TX + falha comandos: ESP tardio não libera de graça após falha.
+          try {
+            await supabase.rpc('cancel_totem_transaction_by_id', { _transaction_id: txId });
+          } catch (cancelErr) {
+            console.warn('cancel_totem_transaction_by_id:', cancelErr);
+          }
+          paidActivationRef.current = null;
+        }
+        const raw = error instanceof Error ? error.message : '';
+        const description =
+          raw === 'ESP32_CONFIRM_TIMEOUT' || raw.includes('não confirmou')
+            ? 'Não foi possível liberar a máquina a tempo. A operação foi cancelada. No totem Cielo o valor é estornado automaticamente; nos demais casos, fale com o atendimento.'
+            : (raw || 'Pagamento aprovado, mas o ESP32 não liberou. Operação cancelada.');
         toast({
-          title: 'Atenção',
+          title: 'Liberação não confirmada',
           description,
           variant: 'destructive',
         });
@@ -744,7 +785,8 @@ const Totem = () => {
     return (
       <ErrorScreen
         onRetry={() => {
-          // Pagamento já foi aprovado: só reenvia o comando ao ESP (não cobra de novo).
+          // TX já cancelada após falha de ESP → novo pagamento (não reutiliza TX).
+          // Se ainda houver TX viva (caso raro), tenta só o ESP.
           if (paidActivationRef.current) {
             void retryEspActivationAfterPaid();
             return;

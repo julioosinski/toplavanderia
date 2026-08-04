@@ -59,8 +59,8 @@ public class TotemActivity extends Activity {
     /** Sem interação → volta à HOME (todas as telas do totem, inclusive Cielo em segundo plano). */
     private static final long SCREEN_IDLE_TIMEOUT_MS = 60_000L;
     /** Confirmação ESP rápida: poll ESP ~5s; usuário não espera na grade. */
-    private static final long ESP32_CONFIRM_TIMEOUT_MS = 90_000L;
-    private static final long ESP32_CONFIRM_RETRY_TIMEOUT_MS = 60_000L;
+    private static final long ESP32_CONFIRM_TIMEOUT_MS = 25_000L;
+    private static final long ESP32_CONFIRM_RETRY_TIMEOUT_MS = 15_000L;
     /** Máximo que a UI pode bloquear idle pós-pagamento (verificação/estorno). */
     private static final long POST_PAYMENT_HARDWARE_MAX_MS = 40_000L;
     private static final long IDLE_WATCHDOG_TICK_MS = 1_000L;
