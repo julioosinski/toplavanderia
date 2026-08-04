@@ -40,7 +40,8 @@ interface PixPaymentPayload {
   expiresIn?: number;
 }
 
-const waitForEsp32Command = async (commandId: string, timeoutMs = 20_000) => {
+/** Espera confirmação do ESP. Janela larga: reclaim no banco é ~20–40s e o poll do ESP ~5–8s. */
+const waitForEsp32Command = async (commandId: string, timeoutMs = 90_000) => {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     // RPC SECURITY DEFINER — SELECT direto em pending_commands é bloqueado para anon.
@@ -82,6 +83,14 @@ const Totem = () => {
   const [pixPaymentData, setPixPaymentData] = useState<PixPaymentPayload | null>(null);
   const [loadingTimeout, setLoadingTimeout] = useState(false);
   const pixPollDoneRef = useRef(false);
+  /** Após pagamento aprovado: permite reenviar o comando ESP sem cobrar de novo. */
+  const paidActivationRef = useRef<{
+    transactionId: string;
+    machineId: string;
+    esp32Id: string;
+    relayPin: number;
+    durationMinutes: number;
+  } | null>(null);
 
   // Logo tap gesture for reconfiguration
   const [logoTapCount, setLogoTapCount] = useState(0);
@@ -439,20 +448,34 @@ const Totem = () => {
         const esp32Id = selectedMachine.esp32_id || 'main';
         const relayPin = resolvedRelayPin(selectedMachine.relay_pin);
         const normalizedMethod = normalizePaymentMethod(paymentMethod);
+        const durationMinutes = selectedMachine.duration > 0 ? selectedMachine.duration : 40;
 
-        const { data: transactionId, error: txError } = await supabase
-          .rpc('create_totem_transaction', {
-            _machine_id: selectedMachine.id,
-            _total_amount: selectedMachine.price,
-            _duration_minutes: selectedMachine.duration,
-            _payment_method: normalizedMethod,
-            _laundry_id: currentLaundry.id,
-          });
+        // Reutiliza a TX do pagamento já aprovado (retry após falha de ESP).
+        let transactionId = paidActivationRef.current?.transactionId;
+        if (!transactionId || paidActivationRef.current?.machineId !== selectedMachine.id) {
+          const { data: newTxId, error: txError } = await supabase
+            .rpc('create_totem_transaction', {
+              _machine_id: selectedMachine.id,
+              _total_amount: selectedMachine.price,
+              _duration_minutes: selectedMachine.duration,
+              _payment_method: normalizedMethod,
+              _laundry_id: currentLaundry.id,
+            });
 
-        if (txError || !transactionId) {
-          console.error('Erro ao registrar transação:', txError);
-          throw new Error('Pagamento aprovado, mas a transação não foi registrada.');
+          if (txError || !newTxId) {
+            console.error('Erro ao registrar transação:', txError);
+            throw new Error('Pagamento aprovado, mas a transação não foi registrada.');
+          }
+          transactionId = String(newTxId);
         }
+
+        paidActivationRef.current = {
+          transactionId,
+          machineId: selectedMachine.id,
+          esp32Id,
+          relayPin,
+          durationMinutes,
+        };
 
         const { data: espData, error: espErr } = await supabase.functions.invoke('esp32-control', {
           body: {
@@ -462,7 +485,7 @@ const Totem = () => {
             machine_id: selectedMachine.id,
             transaction_id: transactionId,
             payload: {
-              cycle_time_minutes: selectedMachine.duration > 0 ? selectedMachine.duration : undefined,
+              cycle_time_minutes: durationMinutes,
             },
           },
         });
@@ -478,8 +501,21 @@ const Totem = () => {
         if (!commandId) {
           throw new Error('Comando ESP32 sem identificador de confirmação.');
         }
-        await waitForEsp32Command(commandId);
+        // 90s + 60s extras se ainda estiver pending/processing (Wi‑Fi oscilante).
+        try {
+          await waitForEsp32Command(commandId, 90_000);
+        } catch (firstWaitErr) {
+          const { data: st } = await supabase.rpc('get_totem_command_status', {
+            _command_id: commandId,
+            _transaction_id: null,
+          });
+          const row = Array.isArray(st) ? st[0] : st;
+          const stillAlive = row?.status === 'pending' || row?.status === 'processing';
+          if (!stillAlive) throw firstWaitErr;
+          await waitForEsp32Command(commandId, 60_000);
+        }
 
+        paidActivationRef.current = null;
         rememberRunningAfterPayment(selectedMachine.id, selectedMachine.duration);
         await updateMachineStatus(selectedMachine.id, 'running', { suppressErrorToast: true });
         return true;
@@ -505,7 +541,18 @@ const Totem = () => {
     setTransactionData(null);
     setPixPaymentData(null);
     setSelectedOperation(null);
+    paidActivationRef.current = null;
   }, []);
+
+  const retryEspActivationAfterPaid = useCallback(async () => {
+    setPaymentStep('activating');
+    const activated = await activateMachine('retry_esp');
+    if (!activated) {
+      setPaymentStep('error');
+      return;
+    }
+    setPaymentStep('success');
+  }, [activateMachine]);
 
   // Admin footer gesture (7 clicks)
   const handleAdminAccess = () => {
@@ -693,7 +740,21 @@ const Totem = () => {
   if (paymentStep === "activating") {
     return <ProcessingScreen variant="activating" onCancel={resetTotem} />;
   }
-  if (paymentStep === "error") return <ErrorScreen onRetry={() => setPaymentStep("payment")} onCancel={resetTotem} />;
+  if (paymentStep === "error") {
+    return (
+      <ErrorScreen
+        onRetry={() => {
+          // Pagamento já foi aprovado: só reenvia o comando ao ESP (não cobra de novo).
+          if (paidActivationRef.current) {
+            void retryEspActivationAfterPaid();
+            return;
+          }
+          setPaymentStep("payment");
+        }}
+        onCancel={resetTotem}
+      />
+    );
+  }
 
   if (paymentStep === "pix_qr" && pixPaymentData) {
     return (

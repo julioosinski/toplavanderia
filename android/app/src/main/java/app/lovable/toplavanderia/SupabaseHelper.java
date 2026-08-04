@@ -1513,8 +1513,9 @@ public class SupabaseHelper {
     }
 
     /**
-     * Aciona relé do ESP32 via Edge Function
-     * Envia comando HTTP para a Edge Function que controla os ESP32s
+     * Aciona relé do ESP32 via Edge Function e AGUARDA confirmação.
+     * Não marcar OCUPADA só porque o comando foi enfileirado — isso perdia pagamentos
+     * quando o ESP estava offline/blip de Wi‑Fi.
      */
     public boolean activateEsp32Relay(String esp32Id, int relayPin, String machineId, String transactionId, int durationMinutes) {
         Log.d(TAG, "=== ACIONANDO ESP32 ===");
@@ -1522,10 +1523,17 @@ public class SupabaseHelper {
         Log.d(TAG, "Relay: " + relayPin);
         Log.d(TAG, "Máquina: " + machineId);
         boolean queued = queueEsp32RelayOn(esp32Id, relayPin, machineId, transactionId, durationMinutes);
-        if (queued) {
+        if (!queued) {
+            return false;
+        }
+        boolean confirmed = waitForEsp32RelayOn(esp32Id, relayPin, machineId, 90_000L, transactionId);
+        if (!confirmed) {
+            confirmed = waitForEsp32RelayOn(esp32Id, relayPin, machineId, 60_000L, transactionId);
+        }
+        if (confirmed) {
             onEsp32RelayConfirmed(esp32Id, relayPin, machineId, durationMinutes);
         }
-        return queued;
+        return confirmed;
     }
     
     /**
