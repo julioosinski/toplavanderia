@@ -11,7 +11,11 @@
  * - HTTPS com WiFiClientSecure + connect/response timeout; sem gpio_hold; watchdog
  * v1.3.3 — Resfriamento pós-massagem (não bloqueante):
  * - Após fim do tempo OU Parar manual: pausa 2s → relé ON 30s → OFF
- * - Sem delay() longo (Wi‑Fi/heartbeat continuam durante o resfriamento)
+ * v1.3.4 — Auto-recuperação quando fica offline e não volta:
+ * - Watchdog de tarefa (90s): se HTTPS/TLS travar, reinicia sozinho
+ * - Sem heartbeat OK por 3 min → reinicia (mesmo com Wi‑Fi “conectado”)
+ * - Wi‑Fi caído por 3 min → reinicia
+ * - Sessão em NVS sobrevive ao reboot (relé/tempo restaurados)
  */
 
 #include <WiFi.h>
@@ -24,7 +28,7 @@
 #include <cstdio>
 #include <esp_system.h>
 
-#define FIRMWARE_VERSION "v1.3.3-toplav-poltrona"
+#define FIRMWARE_VERSION "v1.3.4-toplav-poltrona"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
@@ -40,12 +44,15 @@ const int RELAY_PIN = 26;
 const bool RELAY_LOGICA_INVERTIDA = false;
 
 const unsigned long HEARTBEAT_INTERVAL_MS = 25000;
+const unsigned long HEARTBEAT_RETRY_MS = 5000;
 const unsigned long POLL_INTERVAL_MS = 8000;
 const unsigned long HTTP_TIMEOUT_MS = 5000;
 const unsigned long HTTP_CONNECT_TIMEOUT_MS = 4000;
 const unsigned long RELAY_REASSERT_MS = 5000;
+const unsigned long NET_STALE_RESTART_MS = 180000; // 3 min sem HTTPS OK ou sem Wi‑Fi
+const unsigned long WDT_TIMEOUT_S = 90;
 const int NET_FAIL_RECONNECT = 3;
-const int NET_FAIL_RESTART = 8;
+const int NET_FAIL_RESTART = 6;
 
 /** Resfriamento: pausa (relé off) → motor 30s → off. Sem delay bloqueante. */
 const unsigned long COOL_PAUSE_MS = 2000;
@@ -87,6 +94,7 @@ unsigned long lastHeartbeat = 0;
 unsigned long lastPoll = 0;
 unsigned long lastRelayReassert = 0;
 unsigned long lastNetOkMs = 0;
+unsigned long wifiDownSinceMs = 0;
 int netFailCount = 0;
 const char* lastResetReason = "unknown";
 String lastExecutedCommandId = "";
@@ -95,6 +103,18 @@ int relayAppliedLevel = -1;
 
 bool sendHeartbeat();
 bool confirmCommand(const char* commandId);
+
+void wdtKick() {
+  esp_task_wdt_reset();
+}
+
+void setupWatchdog() {
+  // Se TLS/HTTPS travar (timeout não respeitado), o WDT reinicia o ESP.
+  // Sessão ativa é restaurada do NVS — a massagem não “some” no reboot.
+  esp_task_wdt_deinit();
+  esp_task_wdt_init(WDT_TIMEOUT_S, true);
+  esp_task_wdt_add(NULL);
+}
 
 const char* describeResetReason() {
   switch (esp_reset_reason()) {
@@ -371,6 +391,7 @@ void atualizarTimerSessao() {
 
 /** HTTPS com timeout de conexão — evita o travamento eterno que deixava o ESP "offline". */
 bool httpsBegin(HTTPClient& http, WiFiClientSecure& client, const String& url) {
+  wdtKick();
   client.setInsecure();
   client.setTimeout(HTTP_CONNECT_TIMEOUT_MS / 1000);
   http.setConnectTimeout(HTTP_CONNECT_TIMEOUT_MS);
@@ -415,6 +436,7 @@ bool sendHeartbeat() {
   int code = http.POST(body);
   http.end();
   client.stop();
+  wdtKick();
 
   if (code == 200) {
     noteNetOk();
@@ -428,6 +450,7 @@ bool confirmCommand(const char* commandId) {
   if (!commandId || strlen(commandId) == 0) return false;
   if (WiFi.status() != WL_CONNECTED) return false;
 
+  wdtKick();
   WiFiClientSecure client;
   HTTPClient http;
   String url = String(supabaseUrl) + "/functions/v1/esp32-monitor?action=confirm_command";
@@ -447,6 +470,7 @@ bool confirmCommand(const char* commandId) {
   int code = http.POST(body);
   http.end();
   client.stop();
+  wdtKick();
   Serial.printf("confirm %s → %d\n", commandId, code);
   if (code == 200) noteNetOk();
   else noteNetFail();
@@ -541,6 +565,7 @@ void processCommand(JsonObject cmd) {
 void pollCommands() {
   if (WiFi.status() != WL_CONNECTED) return;
 
+  wdtKick();
   WiFiClientSecure client;
   HTTPClient http;
   String url = String(supabaseUrl) + "/functions/v1/esp32-monitor?action=poll_commands&esp32_id=" + ESP32_ID;
@@ -556,12 +581,14 @@ void pollCommands() {
     http.end();
     client.stop();
     noteNetFail();
+    wdtKick();
     return;
   }
 
   String payload = http.getString();
   http.end();
   client.stop();
+  wdtKick();
   noteNetOk();
 
   StaticJsonDocument<3072> doc;
@@ -623,15 +650,47 @@ static bool poltronaOtaBusyHook() {
 }
 
 void handleNetWatchdog() {
+  unsigned long now = millis();
+
+  // 1) Sem HTTPS bem-sucedido por tempo demais (Wi‑Fi pode parecer "conectado" e TLS estar morto).
+  if (lastNetOkMs == 0) {
+    if (now > NET_STALE_RESTART_MS) {
+      Serial.println("Sem heartbeat desde o boot — reiniciando");
+      delay(150);
+      ESP.restart();
+    }
+  } else if ((now - lastNetOkMs) >= NET_STALE_RESTART_MS) {
+    Serial.println("Sem HTTPS OK por 3 min — reiniciando");
+    delay(150);
+    ESP.restart();
+  }
+
+  // 2) Wi‑Fi caído por tempo demais (antes só reconectava e nunca reiniciava).
+  if (WiFi.status() != WL_CONNECTED) {
+    if (wifiDownSinceMs == 0) wifiDownSinceMs = now;
+    else if ((now - wifiDownSinceMs) >= NET_STALE_RESTART_MS) {
+      Serial.println("Wi-Fi down 3 min — reiniciando");
+      delay(150);
+      ESP.restart();
+    }
+  } else {
+    wifiDownSinceMs = 0;
+  }
+
+  // 3) Falhas HTTPS consecutivas: força reconexão e, se persistir, reinicia.
   if (netFailCount >= NET_FAIL_RESTART) {
     Serial.println("Rede irrecuperável — reiniciando ESP");
-    delay(200);
+    delay(150);
     ESP.restart();
   }
   if (netFailCount >= NET_FAIL_RECONNECT && WiFi.status() == WL_CONNECTED) {
     Serial.println("Reconectando Wi‑Fi após falhas HTTPS");
+    WiFi.disconnect(false, false);
+    delay(200);
     WiFi.reconnect();
-    delay(500);
+    delay(400);
+    // Evita martelar reconnect a cada loop; próxima falha HTTPS sobe o contador.
+    netFailCount = NET_FAIL_RECONNECT - 1;
   }
 }
 
@@ -653,7 +712,7 @@ void setup() {
   Serial.printf(" ESP32_ID: %s rst:%s\n", ESP32_ID, lastResetReason);
   Serial.println("=================================");
 
-  esp_task_wdt_deinit();
+  setupWatchdog();
 
   if (resumeSession) restorePersistedSession();
   else { clearPersistedSession(); acionarRele(false); }
@@ -664,38 +723,38 @@ void setup() {
   esp32WifiOtaBegin();
   WiFi.setSleep(false);
 
-  // Rede primeiro — DFPlayer depois (não pode bloquear o online).
+  // Não forçar lastNetOkMs aqui: se o 1º HB falhar, o watchdog de 3 min reinicia.
   sendHeartbeat();
   lastHeartbeat = millis();
   lastPoll = millis();
-  lastNetOkMs = millis();
+  wdtKick();
 
   dfplayerDisponivel = initDfPlayer();
   Serial.printf("DFPlayer: %s\n", dfplayerDisponivel ? "OK" : "off");
   reassertRelayIfSession();
+  wdtKick();
 }
 
 void loop() {
-  if (!esp32WifiOtaMaintain()) {
-    gerenciarAudios();
-    atualizarTimerSessao();
-    atualizarResfriamento();
-    reassertRelayIfSession();
-    delay(30);
-    return;
-  }
+  wdtKick();
 
+  const bool wifiOk = esp32WifiOtaMaintain();
   gerenciarAudios();
   atualizarTimerSessao();
   atualizarResfriamento();
   reassertRelayIfSession();
   handleNetWatchdog();
 
+  if (!wifiOk) {
+    delay(40);
+    return;
+  }
+
   unsigned long now = millis();
-  // Alterna HB e poll (nunca os dois no mesmo ciclo) — menos pressão no TLS.
+  // Alterna HB e poll; em falha de HB tenta de novo em 5s (não espera 25s).
   if (now - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
-    sendHeartbeat();
-    lastHeartbeat = now;
+    bool ok = sendHeartbeat();
+    lastHeartbeat = ok ? now : (now - HEARTBEAT_INTERVAL_MS + HEARTBEAT_RETRY_MS);
     reassertRelayIfSession();
   } else if (now - lastPoll >= POLL_INTERVAL_MS) {
     pollCommands();

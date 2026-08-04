@@ -60,7 +60,7 @@ export const ESP32ConfigQRCode = () => {
         <CardDescription>
           Lavadora e secadora usam o mesmo firmware v2.2.6. O ESP32 gera o ID via MAC. Sem Wi‑Fi
           salvo, abre o AP <strong>TopLavanderia-…</strong> (senha <code>toplav123</code>).
-          Poltrona: use Admin → Poltrona de Massagem (v1.3.3).
+          Poltrona: use Admin → Poltrona de Massagem (v1.3.4).
         </CardDescription>
       </CardHeader>
       <CardContent>
