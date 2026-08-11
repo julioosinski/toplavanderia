@@ -16,6 +16,11 @@
  * - Sem heartbeat OK por 3 min → reinicia (mesmo com Wi‑Fi “conectado”)
  * - Wi‑Fi caído por 3 min → reinicia
  * - Sessão em NVS sobrevive ao reboot (relé/tempo restaurados)
+ * v1.3.5 — Compat Arduino-ESP32 3.x (esp_task_wdt_init com esp_task_wdt_config_t)
+ * v1.3.6 — Relé estável no meio do ciclo (regressão do hold):
+ * - GPIO26=ADC2: hold SÓ na transição ON/OFF + reassert a cada 2s (padrão v1.3.1)
+ * - Sem pinMode a cada write; sem Wi‑Fi.disconnect / restart no meio da sessão
+ * - Brownout off na partida do motor; quiet de rede 12s após ligar
  */
 
 #include <WiFi.h>
@@ -27,8 +32,11 @@
 #include <Preferences.h>
 #include <cstdio>
 #include <esp_system.h>
+#include "driver/gpio.h"
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
-#define FIRMWARE_VERSION "v1.3.4-toplav-poltrona"
+#define FIRMWARE_VERSION "v1.3.6-toplav-poltrona"
 
 #define LAUNDRY_ID "__LAUNDRY_ID__"
 #define MACHINE_NAME "__MACHINE_NAME__"
@@ -48,8 +56,9 @@ const unsigned long HEARTBEAT_RETRY_MS = 5000;
 const unsigned long POLL_INTERVAL_MS = 8000;
 const unsigned long HTTP_TIMEOUT_MS = 5000;
 const unsigned long HTTP_CONNECT_TIMEOUT_MS = 4000;
-const unsigned long RELAY_REASSERT_MS = 5000;
-const unsigned long NET_STALE_RESTART_MS = 180000; // 3 min sem HTTPS OK ou sem Wi‑Fi
+const unsigned long RELAY_REASSERT_MS = 2000;
+const unsigned long NET_STALE_RESTART_MS = 180000; // 3 min sem HTTPS OK ou sem Wi‑Fi (só fora da sessão)
+const unsigned long SESSION_NET_QUIET_MS = 12000;  // após ligar motor: evita HTTPS imediato
 const unsigned long WDT_TIMEOUT_S = 90;
 const int NET_FAIL_RECONNECT = 3;
 const int NET_FAIL_RESTART = 6;
@@ -95,11 +104,13 @@ unsigned long lastPoll = 0;
 unsigned long lastRelayReassert = 0;
 unsigned long lastNetOkMs = 0;
 unsigned long wifiDownSinceMs = 0;
+unsigned long sessionMotorStartedAt = 0;
 int netFailCount = 0;
 const char* lastResetReason = "unknown";
 String lastExecutedCommandId = "";
 Preferences sessionPrefs;
 int relayAppliedLevel = -1;
+bool relayPinReady = false;
 
 bool sendHeartbeat();
 bool confirmCommand(const char* commandId);
@@ -111,8 +122,19 @@ void wdtKick() {
 void setupWatchdog() {
   // Se TLS/HTTPS travar (timeout não respeitado), o WDT reinicia o ESP.
   // Sessão ativa é restaurada do NVS — a massagem não “some” no reboot.
+  // Arduino-ESP32 3.x / ESP-IDF 5: esp_task_wdt_init(const esp_task_wdt_config_t*).
   esp_task_wdt_deinit();
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  // idle_core_mask=0: não vigia idle tasks (TLS longo + idle WDT = reboot no meio da massagem).
+  esp_task_wdt_config_t wdtConfig = {
+    .timeout_ms = static_cast<uint32_t>(WDT_TIMEOUT_S * 1000UL),
+    .idle_core_mask = 0,
+    .trigger_panic = true,
+  };
+  esp_task_wdt_init(&wdtConfig);
+#else
   esp_task_wdt_init(WDT_TIMEOUT_S, true);
+#endif
   esp_task_wdt_add(NULL);
 }
 
@@ -186,13 +208,25 @@ void buildEsp32Id() {
   snprintf(ESP32_ID, sizeof(ESP32_ID), "esp32_%02x%02x%02x%02x", mac[2], mac[3], mac[4], mac[5]);
 }
 
-/** Relé simples — SEM gpio_hold (hold no GPIO26 ADC2 derruba o Wi‑Fi e o ESP fica offline). */
+/** Relé GPIO26 (ADC2): hold só na transição — Wi‑Fi glitcha o pino sem hold. */
+void ensureRelayPinMode() {
+  if (relayPinReady) return;
+  pinMode(RELAY_PIN, OUTPUT);
+  relayPinReady = true;
+}
+
 void acionarRele(bool ligar) {
   int nivel = ligar
     ? (RELAY_LOGICA_INVERTIDA ? LOW : HIGH)
     : (RELAY_LOGICA_INVERTIDA ? HIGH : LOW);
-  pinMode(RELAY_PIN, OUTPUT);
+  // Hold SÓ na transição: trava GPIO26 contra glitch do Wi‑Fi (ADC2).
+  // Não chamar hold_dis/en a cada loop — isso causava rst:int_wdt.
+  gpio_hold_dis((gpio_num_t)RELAY_PIN);
+  ensureRelayPinMode();
   digitalWrite(RELAY_PIN, nivel);
+  if (ligar) {
+    gpio_hold_en((gpio_num_t)RELAY_PIN);
+  }
   relayAppliedLevel = nivel;
   lastRelayReassert = millis();
 }
@@ -201,11 +235,20 @@ bool relayShouldBeOn() {
   return statusAtual == "em_uso" || coolPhase == COOL_RUN;
 }
 
+bool inSessionNetQuiet() {
+  if (sessionMotorStartedAt == 0) return false;
+  if (statusAtual != "em_uso" && coolPhase == COOL_IDLE) return false;
+  return (millis() - sessionMotorStartedAt) < SESSION_NET_QUIET_MS;
+}
+
 void reassertRelayIfSession() {
   if (!relayShouldBeOn()) return;
   unsigned long now = millis();
   if (lastRelayReassert != 0 && (now - lastRelayReassert) < RELAY_REASSERT_MS) return;
+  // Reafirma HIGH sem martelar pinMode; hold breve protege contra ADC2/Wi‑Fi.
+  gpio_hold_dis((gpio_num_t)RELAY_PIN);
   digitalWrite(RELAY_PIN, RELAY_LOGICA_INVERTIDA ? LOW : HIGH);
+  gpio_hold_en((gpio_num_t)RELAY_PIN);
   relayAppliedLevel = RELAY_LOGICA_INVERTIDA ? LOW : HIGH;
   lastRelayReassert = now;
 }
@@ -228,6 +271,7 @@ void startCooling() {
   // Massagem já desligada → pausa 2s → liga 30s → desliga (tudo no loop, sem delay).
   coolPhase = COOL_PAUSE;
   coolPhaseStartedAt = millis();
+  sessionMotorStartedAt = 0;
   acionarRele(false);
   Serial.println("Resfriamento: pausa 2s, depois 30s ligados");
 }
@@ -263,6 +307,7 @@ void pararPoltrona(bool comResfriamento) {
   tempoRestanteSeg = 0;
   tempoInicioCiclo = 0;
   sessionEndsAtMs = 0;
+  sessionMotorStartedAt = 0;
   acionarRele(false);
   if (comResfriamento) {
     startCooling();
@@ -287,6 +332,7 @@ bool restorePersistedSession() {
   sessionEndsAtMs = millis() + (remain * 1000UL);
   statusAtual = "em_uso";
   acionarRele(true);
+  sessionMotorStartedAt = millis();
   proximoAudioNum = 7;
   tempo_inicio_audios = millis() > AUDIO_007_LOOP_MS ? (millis() - AUDIO_007_LOOP_MS) : 0;
   ultimo_play_audio_007 = millis();
@@ -312,6 +358,7 @@ bool iniciarPoltrona(int tempoMinutos) {
       : (sessionEndsAtMs + adicional * 1000UL);
     persistActiveSession();
     acionarRele(true);
+    sessionMotorStartedAt = millis();
     return true;
   }
 
@@ -327,9 +374,13 @@ bool iniciarPoltrona(int tempoMinutos) {
   tempoInicioCiclo = millis();
   tempoRestanteSeg = tempoTotalSeg;
   sessionEndsAtMs = millis() + (tempoTotalSeg * 1000UL);
+  sessionMotorStartedAt = millis();
   proximoAudioNum = 0;
   Serial.printf("Poltrona ON — %lu s (%d min)\n", tempoTotalSeg, tempoMinutos);
   persistActiveSession();
+  // Estabiliza alimentação do motor antes do 1º HTTPS (confirm).
+  delay(250);
+  reassertRelayIfSession();
   return true;
 }
 
@@ -651,6 +702,22 @@ static bool poltronaOtaBusyHook() {
 
 void handleNetWatchdog() {
   unsigned long now = millis();
+  const bool sessionBusy = (statusAtual == "em_uso" || coolPhase != COOL_IDLE);
+
+  // Durante a massagem: NÃO reinicia e NÃO faz WiFi.disconnect — GPIO26 glitcha e o motor “pisca”.
+  if (sessionBusy) {
+    if (WiFi.status() != WL_CONNECTED) {
+      if (wifiDownSinceMs == 0) wifiDownSinceMs = now;
+      // Só tenta reconnect suave; sem disconnect forçado.
+      if ((now - wifiDownSinceMs) >= 15000UL) {
+        WiFi.reconnect();
+        wifiDownSinceMs = now;
+      }
+    } else {
+      wifiDownSinceMs = 0;
+    }
+    return;
+  }
 
   // 1) Sem HTTPS bem-sucedido por tempo demais (Wi‑Fi pode parecer "conectado" e TLS estar morto).
   if (lastNetOkMs == 0) {
@@ -698,7 +765,12 @@ void setup() {
   Serial.begin(115200);
   delay(150);
 
+  // Queda de 5V na partida do motor não pode reiniciar o ESP (relé piscaria).
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
+  gpio_hold_dis((gpio_num_t)RELAY_PIN);
   pinMode(RELAY_PIN, OUTPUT);
+  relayPinReady = true;
   bool resumeSession = peekPersistedSessionActive();
   relayAppliedLevel = -1;
   acionarRele(resumeSession);
@@ -721,7 +793,7 @@ void setup() {
   esp32WifiOtaRegisterPortalRoutes();
   setupDeviceHttpRoutes();
   esp32WifiOtaBegin();
-  WiFi.setSleep(false);
+  WiFi.setSleep(false); // sleep do Wi‑Fi glitcha GPIO ADC2 (relé no 26)
 
   // Não forçar lastNetOkMs aqui: se o 1º HB falhar, o watchdog de 3 min reinicia.
   sendHeartbeat();
@@ -746,6 +818,12 @@ void loop() {
   handleNetWatchdog();
 
   if (!wifiOk) {
+    delay(40);
+    return;
+  }
+
+  // Após ligar o motor: adia HTTPS (tensão + ADC2) — evita piscar o relé.
+  if (inSessionNetQuiet()) {
     delay(40);
     return;
   }

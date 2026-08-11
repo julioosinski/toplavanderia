@@ -41,17 +41,20 @@ interface PixPaymentPayload {
 }
 
 /**
- * Política de confirmação ESP (rápida + proteção do cliente):
- * - Caminho feliz: até 25s (ESP poll ~5–8s → 2–4 tentativas)
- * - 1 retentativa: +15s após reenfileirar o mesmo TX
+ * Política de confirmação ESP (rápida na UI + proteção do cliente):
+ * - Caminho feliz: até 45s (estende se pending/processing)
+ * - Se ainda em voo: +30s sem refila
+ * - Senão: refila + 30s
  * - Se falhar: cancela TX/comandos (web) ou estorna Cielo (Android)
- * Não usar waits de 90–150s: trava UX e atrasa o estorno.
  */
-const ESP_CONFIRM_FAST_MS = 25_000;
-const ESP_CONFIRM_RETRY_MS = 15_000;
+const ESP_CONFIRM_FAST_MS = 45_000;
+const ESP_CONFIRM_RETRY_MS = 30_000;
+const ESP_CONFIRM_EXTEND_MS = 30_000;
 
 const waitForEsp32Command = async (commandId: string, timeoutMs = ESP_CONFIRM_FAST_MS) => {
-  const deadline = Date.now() + timeoutMs;
+  const started = Date.now();
+  const hardCap = started + Math.max(timeoutMs, 90_000);
+  let deadline = started + timeoutMs;
   while (Date.now() < deadline) {
     // RPC SECURITY DEFINER — SELECT direto em pending_commands é bloqueado para anon.
     const { data, error } = await supabase.rpc('get_totem_command_status', {
@@ -64,6 +67,9 @@ const waitForEsp32Command = async (commandId: string, timeoutMs = ESP_CONFIRM_FA
     if (row?.status === 'completed') return true;
     if (row?.status === 'failed') {
       throw new Error(row.error_message || 'O ESP32 não executou a liberação.');
+    }
+    if ((row?.status === 'pending' || row?.status === 'processing') && Date.now() < hardCap) {
+      deadline = Math.min(hardCap, Date.now() + 8_000);
     }
     await new Promise((resolve) => setTimeout(resolve, 1_200));
   }
@@ -511,7 +517,7 @@ const Totem = () => {
           throw new Error('Comando ESP32 sem identificador de confirmação.');
         }
 
-        // Caminho feliz rápido; 1 refila + retry curto; depois cancela (protege o cliente).
+        // Caminho feliz; se ainda pending/processing espera mais; senão refila.
         try {
           await waitForEsp32Command(commandId, ESP_CONFIRM_FAST_MS);
         } catch (firstWaitErr) {
@@ -523,7 +529,26 @@ const Totem = () => {
           if (row?.status === 'completed') {
             // ok
           } else if (row?.status === 'pending' || row?.status === 'processing') {
-            // Idempotente: reusa o mesmo command_id da TX ou cria outro se o anterior expirou.
+            try {
+              await waitForEsp32Command(commandId, ESP_CONFIRM_EXTEND_MS);
+            } catch {
+              const { data: retryData } = await supabase.functions.invoke('esp32-control', {
+                body: {
+                  esp32_id: esp32Id,
+                  relay_pin: relayPin,
+                  action: 'on',
+                  machine_id: selectedMachine.id,
+                  transaction_id: transactionId,
+                  payload: { cycle_time_minutes: durationMinutes },
+                },
+              });
+              const retryCmdId =
+                retryData && typeof retryData === 'object' && 'command_id' in retryData
+                  ? String(retryData.command_id)
+                  : commandId;
+              await waitForEsp32Command(retryCmdId, ESP_CONFIRM_RETRY_MS);
+            }
+          } else {
             const { data: retryData } = await supabase.functions.invoke('esp32-control', {
               body: {
                 esp32_id: esp32Id,
@@ -539,8 +564,6 @@ const Totem = () => {
                 ? String(retryData.command_id)
                 : commandId;
             await waitForEsp32Command(retryCmdId, ESP_CONFIRM_RETRY_MS);
-          } else {
-            throw firstWaitErr;
           }
         }
 

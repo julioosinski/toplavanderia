@@ -1137,6 +1137,8 @@ public class SupabaseHelper {
      * Poll até o ESP32 confirmar a liberação (comando completed, relé ON ou máquina in_use)
      * ou estourar o timeout. Aceita vários sinais porque pulso de 1s quase nunca aparece no
      * heartbeat; o confirm_command é a fonte confiável.
+     * Se o comando ainda está pending/processing, estende a espera até {@code absoluteMaxMs}
+     * (Wi‑Fi oscilante / poltrona lenta) em vez de estornar cedo demais.
      */
     public boolean waitForEsp32RelayOn(String esp32Id, int relayPin, String machineId, long timeoutMs) {
         return waitForEsp32RelayOn(esp32Id, relayPin, machineId, timeoutMs, null);
@@ -1149,25 +1151,49 @@ public class SupabaseHelper {
             long timeoutMs,
             String transactionId
     ) {
+        return waitForEsp32RelayOn(esp32Id, relayPin, machineId, timeoutMs, transactionId, 90_000L);
+    }
+
+    public boolean waitForEsp32RelayOn(
+            String esp32Id,
+            int relayPin,
+            String machineId,
+            long timeoutMs,
+            String transactionId,
+            long absoluteMaxMs
+    ) {
         if (esp32Id == null || esp32Id.isEmpty()) {
             Log.w(TAG, "waitForEsp32RelayOn: esp32_id vazio");
             return false;
         }
         int pin = relayPin > 0 ? relayPin : DEFAULT_RELAY_LOGICAL_PIN;
-        long deadline = System.currentTimeMillis() + Math.max(timeoutMs, 5000L);
+        long startedAt = System.currentTimeMillis();
+        long hardCap = startedAt + Math.max(absoluteMaxMs, timeoutMs);
+        long deadline = startedAt + Math.max(timeoutMs, 5000L);
+        if (deadline > hardCap) {
+            deadline = hardCap;
+        }
         Log.d(TAG, "Aguardando confirmação ESP32 (esp32=" + esp32Id + ", pin=" + pin
-            + ", machine=" + machineId + ", tx=" + transactionId + ", timeout=" + timeoutMs + "ms)");
+            + ", machine=" + machineId + ", tx=" + transactionId
+            + ", timeout=" + timeoutMs + "ms, cap=" + absoluteMaxMs + "ms)");
         while (System.currentTimeMillis() < deadline) {
             if (isEsp32Confirmed(esp32Id, pin, machineId, transactionId)) {
                 Log.i(TAG, "ESP32 confirmado (esp32=" + esp32Id + ", pin=" + pin + ")");
                 return true;
             }
-            // Ainda em processing: o ESP pode ter pulsado e só o confirm atrasou — não desistir cedo.
             if (transactionId != null && !transactionId.isEmpty()) {
                 String st = fetchTotemCommandStatus(transactionId, null);
                 if ("failed".equals(st)) {
                     Log.w(TAG, "Comando ESP falhou no servidor (tx=" + transactionId + ")");
                     return false;
+                }
+                // Ainda em trânsito: não estorna — estende até o hard cap (ex.: poltrona ~50s).
+                if (("pending".equals(st) || "processing".equals(st))
+                        && System.currentTimeMillis() < hardCap) {
+                    long extended = System.currentTimeMillis() + 8_000L;
+                    if (extended > deadline) {
+                        deadline = Math.min(hardCap, extended);
+                    }
                 }
             }
             try {
@@ -1186,6 +1212,149 @@ public class SupabaseHelper {
         boolean finalCheck = isEsp32Confirmed(esp32Id, pin, machineId, transactionId);
         Log.w(TAG, "Timeout confirmação ESP32 (esp32=" + esp32Id + ", pin=" + pin + ", ok=" + finalCheck + ")");
         return finalCheck;
+    }
+
+    /**
+     * Enfileira ON (com retentativas) e espera confirmação de forma robusta:
+     * espera longa enquanto pending/processing; só reenfileira se não houver comando em voo.
+     */
+    public boolean confirmEsp32ReleaseRobust(
+            String esp32Id,
+            int relayPin,
+            String machineId,
+            String transactionId,
+            int cycleTimeMinutes
+    ) {
+        boolean queued = false;
+        for (int attempt = 1; attempt <= 3 && !queued; attempt++) {
+            queued = queueEsp32RelayOn(esp32Id, relayPin, machineId, transactionId, cycleTimeMinutes);
+            if (!queued) {
+                Log.w(TAG, "Fila ESP ON falhou (tentativa " + attempt + "/3)");
+                try {
+                    Thread.sleep(1200L * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            }
+        }
+        if (!queued) {
+            return false;
+        }
+
+        // 1ª janela: 45s (estende até 90s se ainda pending/processing).
+        if (waitForEsp32RelayOn(esp32Id, relayPin, machineId, 45_000L, transactionId, 90_000L)) {
+            return true;
+        }
+        if (transactionId != null && !transactionId.isEmpty()
+                && isPendingCommandCompletedForTransaction(transactionId)) {
+            return true;
+        }
+
+        // Ainda em voo: mais 30s sem refila (evita matar comando quase pronto).
+        if (transactionId != null && !transactionId.isEmpty()
+                && isPendingCommandInFlightForTransaction(transactionId)) {
+            Log.w(TAG, "ESP ainda pending/processing — esperando mais 30s sem refila");
+            if (waitForEsp32RelayOn(esp32Id, relayPin, machineId, 30_000L, transactionId, 30_000L)) {
+                return true;
+            }
+        }
+
+        // Refila só se não há comando em voo (ou falhou).
+        if (transactionId == null || transactionId.isEmpty()
+                || !isPendingCommandInFlightForTransaction(transactionId)) {
+            Log.w(TAG, "Reenfileirando ON após ausência de confirmação");
+            queueEsp32RelayOn(esp32Id, relayPin, machineId, transactionId, cycleTimeMinutes);
+        }
+        if (waitForEsp32RelayOn(esp32Id, relayPin, machineId, 30_000L, transactionId, 45_000L)) {
+            return true;
+        }
+        return transactionId != null && !transactionId.isEmpty()
+            && isPendingCommandCompletedForTransaction(transactionId);
+    }
+
+    /** Marca TX como pagamento autorizado (metadata) — base para reconcile/estorno. */
+    public boolean markTotemPaymentAuthorized(
+            String transactionId,
+            String paymentMethod,
+            String cieloPaymentId,
+            String cieloAuthCode,
+            long amountCents
+    ) {
+        if (transactionId == null || transactionId.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            String url = SUPABASE_URL + "/rest/v1/rpc/mark_totem_payment_authorized";
+            JSONObject payload = new JSONObject();
+            payload.put("_transaction_id", transactionId.trim());
+            if (paymentMethod != null && !paymentMethod.isEmpty()) {
+                payload.put("_payment_method", paymentMethod);
+            } else {
+                payload.put("_payment_method", JSONObject.NULL);
+            }
+            if (cieloPaymentId != null && !cieloPaymentId.isEmpty()) {
+                payload.put("_cielo_payment_id", cieloPaymentId);
+            } else {
+                payload.put("_cielo_payment_id", JSONObject.NULL);
+            }
+            if (cieloAuthCode != null && !cieloAuthCode.isEmpty()) {
+                payload.put("_cielo_auth_code", cieloAuthCode);
+            } else {
+                payload.put("_cielo_auth_code", JSONObject.NULL);
+            }
+            if (amountCents > 0) {
+                payload.put("_amount_cents", amountCents);
+            } else {
+                payload.put("_amount_cents", JSONObject.NULL);
+            }
+            payload.put("_extra", new JSONObject());
+
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(10000);
+            OutputStream os = connection.getOutputStream();
+            os.write(payload.toString().getBytes(StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+            int code = connection.getResponseCode();
+            connection.disconnect();
+            boolean ok = code >= 200 && code < 300;
+            Log.d(TAG, "mark_totem_payment_authorized HTTP " + code + " tx=" + transactionId);
+            return ok;
+        } catch (Exception e) {
+            Log.e(TAG, "markTotemPaymentAuthorized", e);
+            return false;
+        }
+    }
+
+    public boolean markTotemPaymentNeedsRefund(String transactionId, String reason) {
+        if (transactionId == null || transactionId.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            String url = SUPABASE_URL + "/rest/v1/rpc/mark_totem_payment_needs_refund";
+            JSONObject payload = new JSONObject();
+            payload.put("_transaction_id", transactionId.trim());
+            payload.put("_reason", reason == null ? "esp32_not_confirmed" : reason);
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
+            OutputStream os = connection.getOutputStream();
+            os.write(payload.toString().getBytes(StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+            int code = connection.getResponseCode();
+            connection.disconnect();
+            return code >= 200 && code < 300;
+        } catch (Exception e) {
+            Log.e(TAG, "markTotemPaymentNeedsRefund", e);
+            return false;
+        }
     }
 
     /** Relé ON ou pending_commands completed. Não usa só status da máquina (falso positivo OCUPADA). */
@@ -1522,14 +1691,9 @@ public class SupabaseHelper {
         Log.d(TAG, "ESP32: " + esp32Id);
         Log.d(TAG, "Relay: " + relayPin);
         Log.d(TAG, "Máquina: " + machineId);
-        boolean queued = queueEsp32RelayOn(esp32Id, relayPin, machineId, transactionId, durationMinutes);
-        if (!queued) {
-            return false;
-        }
-        boolean confirmed = waitForEsp32RelayOn(esp32Id, relayPin, machineId, 25_000L, transactionId);
-        if (!confirmed) {
-            confirmed = waitForEsp32RelayOn(esp32Id, relayPin, machineId, 15_000L, transactionId);
-        }
+        boolean confirmed = confirmEsp32ReleaseRobust(
+            esp32Id, relayPin, machineId, transactionId, durationMinutes
+        );
         if (confirmed) {
             onEsp32RelayConfirmed(esp32Id, relayPin, machineId, durationMinutes);
         }

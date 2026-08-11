@@ -17,7 +17,7 @@ SaÃ­da: `android/app/build/outputs/apk/cieloRelease/app-cieloRelease.apk`
 - Assinatura **V1 + V2** (targetSdk 35 â€” V2 obrigatÃ³rio)
 - Certificado **debug** = mesmo do APK homologado na maquininha
 
-Envie: `releases/TopLavanderia-Totem-2.2.118-cielo.apk` (confirm ESP 25s+15s; estorno se falhar; reclaim 20s)
+Envie: `releases/TopLavanderia-Totem-2.2.120-cielo.apk` (pagamentos sequenciais + confirm ESP robusto + estorno por TX)
 
 ### SHA-256 dos certificados (referÃªncia)
 
@@ -38,7 +38,9 @@ adb install -r app\build\outputs\apk\release\app-release.apk
 
 | Arquivo | versionName | Uso |
 |---------|-------------|-----|
-| `TopLavanderia-Totem-2.2.118-cielo.apk` | 2.2.118 | **Atual** — confirm ESP rapido (25s+15s); estorno Cielo se falhar; reclaim 20s |
+| `TopLavanderia-Totem-2.2.120-cielo.apk` | 2.2.120 | **Atual** — pagamentos sequenciais sem travar; confirm ESP robusto; estorno por TX |
+| `TopLavanderia-Totem-2.2.119-cielo.apk` | 2.2.119 | confirm ESP estendido; snapshot estorno por TX; needs_refund |
+| `TopLavanderia-Totem-2.2.118-cielo.apk` | 2.2.118 | confirm ESP 25s+15s; estorno se falhar; reclaim 20s |
 | `TopLavanderia-Totem-2.2.105.apk` | 2.2.105 | bloqueia OFF automatico da poltrona (servidor+APK) |
 | `TopLavanderia-Totem-2.2.104.apk` | 2.2.104 | tarja presa + harden OFF MASSAGEM |
 | `TopLavanderia-Totem-2.2.103.apk` | 2.2.103 | fix tarja presa na home (overlay bloqueava toques) |

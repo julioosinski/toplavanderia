@@ -45,7 +45,7 @@ public class CieloLioManager implements PaymentManager {
     private static final long PROCESSING_WATCHDOG_PIX_MS = 90_000L;
     /** Encerra sessão Cielo rápido para não segurar o próximo pagamento. */
     private static final long END_SESSION_DELAY_MS = 2500L;
-    private static final long REVERSAL_CALLBACK_TIMEOUT_MS = 120_000L;
+    private static final long REVERSAL_CALLBACK_TIMEOUT_MS = 45_000L;
     private static long lastSuccessfulPaymentAtMs;
     private static Runnable pendingEndSessionRunnable;
     private static int pendingEndSessionId;
@@ -113,6 +113,7 @@ public class CieloLioManager implements PaymentManager {
     }
 
     private static final String PREFS_REFUND = "cielo_refund_snapshot";
+    private static final String PREFS_REFUND_BY_TX = "cielo_refund_by_tx";
     private static final String KEY_REFUND_PAYMENT_ID = "payment_id";
     private static final String KEY_REFUND_AUTH = "auth_code";
     private static final String KEY_REFUND_CIELO = "cielo_code";
@@ -121,6 +122,9 @@ public class CieloLioManager implements PaymentManager {
     private static final String KEY_REFUND_REFERENCE = "reference";
     /** Snapshot de estorno válido por 15 min após o pagamento. */
     private static final long REFUND_SNAPSHOT_TTL_MS = 15 * 60_000L;
+    /** Snapshots por TX totem — próximo pagamento NÃO sobrescreve estorno do anterior. */
+    private final java.util.concurrent.ConcurrentHashMap<String, ApprovedPaymentSnapshot> refundByTotemTx =
+        new java.util.concurrent.ConcurrentHashMap<>();
 
     private static final class ReversalWaitState {
         final CountDownLatch latch = new CountDownLatch(1);
@@ -504,10 +508,22 @@ public class CieloLioManager implements PaymentManager {
 
     /**
      * Called by CieloResponseActivity when callback order://response arrives.
+     * Durante estorno, NÃO engole callback de um pagamento novo (máquinas em sequência).
      */
     public static void handleDeepLinkResponse(Uri uri) {
         if (pendingReversal != null) {
-            new Thread(() -> consumeReversalDeepLinkResponse(uri), "cielo-reversal-callback").start();
+            new Thread(() -> {
+                CieloLioManager mgr = activeInstance != null ? activeInstance : tryRehydrateActiveInstance();
+                boolean looksReversal = uriLooksLikeReversalCallback(uri);
+                boolean checkoutAlive = mgr != null && (mgr.isProcessing || mgr.hasFreshBoundCheckout())
+                    && !mgr.successDelivered;
+                if (checkoutAlive && !looksReversal) {
+                    Log.w(TAG, "Callback durante estorno roteado ao pagamento em curso");
+                    mgr.consumeDeepLinkResponse(uri);
+                    return;
+                }
+                consumeReversalDeepLinkResponse(uri);
+            }, "cielo-callback-route").start();
             return;
         }
         if (activeInstance == null) {
@@ -519,6 +535,33 @@ public class CieloLioManager implements PaymentManager {
             return;
         }
         new Thread(() -> activeInstance.consumeDeepLinkResponse(uri), "cielo-callback").start();
+    }
+
+    /** Heurística: estorno Cielo costuma trazer statusCode=2 no paymentFields. */
+    private static boolean uriLooksLikeReversalCallback(Uri uri) {
+        if (uri == null) {
+            return false;
+        }
+        try {
+            String responseBase64 = uri.getQueryParameter("response");
+            if (responseBase64 == null || responseBase64.isEmpty()) {
+                return false;
+            }
+            String decoded = new String(Base64.decode(responseBase64, Base64.DEFAULT), StandardCharsets.UTF_8);
+            String lower = decoded.toLowerCase(Locale.ROOT);
+            if (lower.contains("\"statuscode\":\"2\"") || lower.contains("\"statuscode\":2")) {
+                return true;
+            }
+            if (lower.contains("revers") || lower.contains("cancelament") || lower.contains("estorno")) {
+                return true;
+            }
+            if (lower.contains("\"authcode\"") || lower.contains("\"cielocode\"")) {
+                return false;
+            }
+        } catch (Exception ignored) {
+            // noop
+        }
+        return false;
     }
 
     /** Vincula operação do totem — sobrevive ao timeout de inatividade durante PIX na Cielo. */
@@ -1158,6 +1201,13 @@ public class CieloLioManager implements PaymentManager {
             }
             lastApprovedPayment = new ApprovedPaymentSnapshot(paymentId, authCode, cieloCode, amount);
             persistRefundSnapshot(lastApprovedPayment);
+            String txId = boundPendingTxId;
+            if (txId == null || txId.isEmpty()) {
+                txId = getBoundPendingTxId();
+            }
+            if (txId != null && !txId.isEmpty()) {
+                rememberRefundSnapshotForTx(txId, lastApprovedPayment);
+            }
             rememberMerchantFromPayment(payment);
             Log.i(TAG, "Snapshot de estorno atualizado com paymentId real=" + paymentId);
         } catch (Exception e) {
@@ -1297,9 +1347,120 @@ public class CieloLioManager implements PaymentManager {
         lastApprovedPayment = snap;
         // Persiste também ids sintéticos — a reference permite resolver o paymentId real depois.
         persistRefundSnapshot(snap);
+        String txId = boundPendingTxId;
+        if (txId == null || txId.isEmpty()) {
+            txId = getBoundPendingTxId();
+        }
+        if (txId != null && !txId.isEmpty()) {
+            rememberRefundSnapshotForTx(txId, snap);
+        }
         String ref = loadRefundReference();
         if (ref != null && !ref.isEmpty()) {
             CieloOrderJanitor.setProtectedRefundReference(ref);
+        }
+    }
+
+    /** Guarda snapshot de estorno ligado à TX totem (sobrevive ao próximo checkout). */
+    public void rememberRefundSnapshotForTx(String totemTxId, ApprovedPaymentSnapshot snap) {
+        if (totemTxId == null || totemTxId.trim().isEmpty() || snap == null) {
+            return;
+        }
+        String key = totemTxId.trim();
+        refundByTotemTx.put(key, snap);
+        persistTxRefundSnapshot(key, snap);
+        Log.d(TAG, "Snapshot estorno ligado à TX totem=" + key
+            + " paymentId=" + snap.paymentId + " reversible=" + isReversibleSnapshot(snap));
+    }
+
+    /** Prefere snapshot da TX; senão cai no snapshot global. */
+    public ApprovedPaymentSnapshot peekRefundSnapshotForTx(String totemTxId) {
+        if (totemTxId != null && !totemTxId.trim().isEmpty()) {
+            String key = totemTxId.trim();
+            ApprovedPaymentSnapshot mem = refundByTotemTx.get(key);
+            if (isReversibleSnapshot(mem)) {
+                return mem;
+            }
+            ApprovedPaymentSnapshot disk = loadTxRefundSnapshot(key);
+            if (isReversibleSnapshot(disk)) {
+                refundByTotemTx.put(key, disk);
+                return disk;
+            }
+            if (mem != null) {
+                return resolveReversibleSnapshot(mem);
+            }
+            if (disk != null) {
+                return resolveReversibleSnapshot(disk);
+            }
+        }
+        return peekApprovedPaymentSnapshot();
+    }
+
+    public void clearRefundSnapshotForTx(String totemTxId) {
+        if (totemTxId == null || totemTxId.trim().isEmpty()) {
+            return;
+        }
+        String key = totemTxId.trim();
+        refundByTotemTx.remove(key);
+        if (context != null) {
+            context.getApplicationContext()
+                .getSharedPreferences(PREFS_REFUND_BY_TX, Context.MODE_PRIVATE)
+                .edit()
+                .remove(key)
+                .apply();
+        }
+    }
+
+    private void persistTxRefundSnapshot(String totemTxId, ApprovedPaymentSnapshot snap) {
+        if (context == null || totemTxId == null || snap == null) {
+            return;
+        }
+        try {
+            JSONObject json = new JSONObject();
+            json.put("payment_id", snap.paymentId);
+            json.put("auth_code", snap.authCode);
+            json.put("cielo_code", snap.cieloCode);
+            json.put("amount_cents", snap.amountCents);
+            json.put("reference", loadRefundReference());
+            json.put("saved_at", System.currentTimeMillis());
+            context.getApplicationContext()
+                .getSharedPreferences(PREFS_REFUND_BY_TX, Context.MODE_PRIVATE)
+                .edit()
+                .putString(totemTxId, json.toString())
+                .apply();
+        } catch (Exception e) {
+            Log.w(TAG, "persistTxRefundSnapshot falhou", e);
+        }
+    }
+
+    private ApprovedPaymentSnapshot loadTxRefundSnapshot(String totemTxId) {
+        if (context == null || totemTxId == null) {
+            return null;
+        }
+        try {
+            String raw = context.getApplicationContext()
+                .getSharedPreferences(PREFS_REFUND_BY_TX, Context.MODE_PRIVATE)
+                .getString(totemTxId, null);
+            if (raw == null || raw.isEmpty()) {
+                return null;
+            }
+            JSONObject json = new JSONObject(raw);
+            long savedAt = json.optLong("saved_at", 0L);
+            if (savedAt <= 0L || System.currentTimeMillis() - savedAt > REFUND_SNAPSHOT_TTL_MS) {
+                return null;
+            }
+            String id = json.optString("payment_id", "");
+            if (id.isEmpty()) {
+                return null;
+            }
+            return new ApprovedPaymentSnapshot(
+                id,
+                json.optString("auth_code", ""),
+                json.optString("cielo_code", ""),
+                json.optLong("amount_cents", 0L)
+            );
+        } catch (Exception e) {
+            Log.w(TAG, "loadTxRefundSnapshot falhou", e);
+            return null;
         }
     }
 
@@ -1522,9 +1683,12 @@ public class CieloLioManager implements PaymentManager {
                 return false;
             }
             if (wait.success) {
-                Log.i(TAG, "Estorno Cielo confirmado");
-                lastApprovedPayment = null;
-                clearRefundSnapshotPrefs();
+                Log.i(TAG, "Estorno Cielo confirmado paymentId=" + snap.paymentId);
+                if (lastApprovedPayment != null
+                        && snap.paymentId.equals(lastApprovedPayment.paymentId)) {
+                    lastApprovedPayment = null;
+                    clearRefundSnapshotPrefs();
+                }
                 return true;
             }
             Log.e(TAG, "Estorno Cielo falhou: " + wait.errorMessage);
