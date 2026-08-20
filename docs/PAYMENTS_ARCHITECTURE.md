@@ -62,8 +62,10 @@ Sugestão: executar a cada **2 minutos** via scheduler externo (pg_cron, GitHub 
 
 ## Checklist operacional
 
-- [ ] Aplicar migration `20260819120000_payment_sessions_cielo_reconcile.sql`
-- [ ] Deploy edge function `reconcile-payments`
-- [ ] Configurar cron com secret
-- [ ] Instalar APK com `beginTotemPaymentSession` (após build)
-- [ ] Monitorar painel Admin → Pagamentos
+- [x] Aplicar migration `20260819120000_payment_sessions_cielo_reconcile.sql`
+- [x] Deploy edge function `reconcile-payments`
+- [x] Secret `RECONCILE_PAYMENTS_CRON_SECRET` no projeto
+- [x] Cron local `reconcile-payments-local` (pg_cron a cada 2 min) — `run_payment_reconcile_local()`
+- [ ] Instalar APK `2.2.121` nas máquinas Cielo
+- [ ] Validar no painel Admin → Pagamentos após 1–2 checkouts reais
+- [ ] (Opcional) Chamar edge `reconcile-payments` com `x-cron-secret` para consultar Order Manager Cielo
