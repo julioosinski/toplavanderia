@@ -76,6 +76,13 @@ export interface PaymentProviderAdapter {
   }): Promise<boolean>;
 }
 
+export interface StoneCredentials {
+  stone_code: string;
+  stone_app_key: string;
+  stone_environment: "sandbox" | "production";
+  stone_device_serial?: string | null;
+}
+
 /** Placeholder Stone — implementar quando POS e credenciais estiverem definidos. */
 export const stoneAdapterPlaceholder: PaymentProviderAdapter = {
   provider: "stone",

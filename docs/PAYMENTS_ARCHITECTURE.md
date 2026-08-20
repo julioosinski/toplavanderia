@@ -42,13 +42,22 @@ Sugestão: executar a cada **2 minutos** via scheduler externo (pg_cron, GitHub 
 
 ---
 
-## Fase B — Stone POS (planejada)
+## Fase B — Stone POS (em andamento)
 
-1. Cadastrar terminal em `payment_terminals` (`provider = 'stone'`).
-2. Implementar `StonePaymentAdapter` no Android (`PaymentProviderAdapter` em `src/lib/payments/types.ts`).
-3. Reutilizar `begin_totem_payment_session` com `_provider = 'stone'`.
-4. Edge function: consulta API Stone para reconciliação (análogo ao Order Manager Cielo).
-5. Mesmo fluxo ESP: `enqueue_totem_machine_release` + pulso 1s.
+### Já feito
+- Opção **Stone POS** em Admin → Configurações → Provedor
+- Campos: `stone_code`, `stone_app_key`, `stone_environment`, `stone_device_serial`
+- Tabela `payment_terminals` + coluna `stone_transaction_id` em `payment_sessions`
+- Contratos em `src/lib/payments/types.ts`
+
+### Ainda falta
+1. Implementar `StonePaymentManager` no Android (SDK Stone).
+2. Flavor/APK Stone (ou mesmo app, conforme exigência da Stone).
+3. Totem ler `paygo_provedor = stone` e usar o manager Stone.
+4. Reconciliação Stone na edge `reconcile-payments`.
+5. Homologação / instalação no POS Stone.
+
+**Onde o usuário escolhe:** Admin da lavanderia em **Configurações → Provedor de Pagamento** (`paygo` | `cielo` | `stone`). O cliente no totem não escolhe o gateway.
 
 ---
 

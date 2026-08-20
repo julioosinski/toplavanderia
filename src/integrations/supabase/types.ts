@@ -667,6 +667,10 @@ export type Database = {
           paygo_retry_delay: number | null
           paygo_timeout: number | null
           signal_threshold_warning: number | null
+          stone_app_key: string | null
+          stone_code: string | null
+          stone_device_serial: string | null
+          stone_environment: string | null
           tef_config: string | null
           tef_terminal_id: string | null
           updated_at: string
@@ -706,6 +710,10 @@ export type Database = {
           paygo_retry_delay?: number | null
           paygo_timeout?: number | null
           signal_threshold_warning?: number | null
+          stone_app_key?: string | null
+          stone_code?: string | null
+          stone_device_serial?: string | null
+          stone_environment?: string | null
           tef_config?: string | null
           tef_terminal_id?: string | null
           updated_at?: string
@@ -745,6 +753,10 @@ export type Database = {
           paygo_retry_delay?: number | null
           paygo_timeout?: number | null
           signal_threshold_warning?: number | null
+          stone_app_key?: string | null
+          stone_code?: string | null
+          stone_device_serial?: string | null
+          stone_environment?: string | null
           tef_config?: string | null
           tef_terminal_id?: string | null
           updated_at?: string

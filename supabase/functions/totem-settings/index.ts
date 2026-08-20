@@ -53,7 +53,7 @@ serve(async (req) => {
       });
     }
 
-    // Service role: inclui credenciais Cielo (removidas do RPC público get_totem_settings por segurança).
+    // Service role: inclui credenciais Cielo/Stone (removidas do RPC público get_totem_settings por segurança).
     const { data, error } = await supabaseClient
       .from('system_settings')
       .select(`
@@ -74,7 +74,11 @@ serve(async (req) => {
         cielo_client_id,
         cielo_access_token,
         cielo_merchant_code,
-        cielo_environment
+        cielo_environment,
+        stone_code,
+        stone_app_key,
+        stone_environment,
+        stone_device_serial
       `)
       .eq('laundry_id', laundry_id)
       .maybeSingle();

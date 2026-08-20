@@ -48,6 +48,12 @@ export interface SystemSettings {
   cielo_access_token: string | null;
   cielo_merchant_code: string | null;
   cielo_environment: string | null;
+
+  // Stone POS Settings (SDK Android ainda não integrado)
+  stone_code: string | null;
+  stone_app_key: string | null;
+  stone_environment: string | null;
+  stone_device_serial: string | null;
   
   // TEF Settings
   tef_config: string | null;
@@ -140,6 +146,10 @@ const totemSettingsDefaults = (laundryId: string): SystemSettings => ({
   cielo_access_token: null,
   cielo_merchant_code: null,
   cielo_environment: 'sandbox',
+  stone_code: null,
+  stone_app_key: null,
+  stone_environment: 'sandbox',
+  stone_device_serial: null,
   tef_config: null,
   tef_terminal_id: null,
   nfse_enabled: false,

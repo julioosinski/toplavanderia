@@ -49,12 +49,26 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
       });
       return;
     }
+    if (localSettings.paygo_provedor === "stone") {
+      const code = (localSettings.stone_code || "").trim();
+      const appKey = (localSettings.stone_app_key || "").trim();
+      if (!code || !appKey) {
+        toast({
+          title: "Credenciais Stone incompletas",
+          description: "Informe Stone Code e AppKey antes de salvar com provedor Stone.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
     onUpdate(localSettings);
     toast({
       title: "Configurações salvas",
       description: `Configurações de ${currentLaundry?.name} atualizadas com sucesso`,
     });
   };
+
+  const paymentProvider = (localSettings.paygo_provedor || "paygo").toLowerCase();
 
   return (
     <>
@@ -129,88 +143,95 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="sitef-host">Endereço do Servidor</Label>
-              <Input
-                id="sitef-host"
-                value={localSettings.paygo_host || ''}
-                onChange={(e) => updateSetting('paygo_host', e.target.value)}
-                placeholder="pos-transac-sb.tpgweb.io"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="sitef-port">Porta</Label>
-              <Input
-                id="sitef-port"
-                type="number"
-                min="1"
-                max="65535"
-                value={localSettings.paygo_port || 31735}
-                onChange={(e) => updateSetting('paygo_port', parseInt(e.target.value) || 31735)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="sitef-ponto-captura">Ponto de Captura</Label>
-              <Input
-                id="sitef-ponto-captura"
-                value={localSettings.tef_terminal_id || ''}
-                onChange={(e) => updateSetting('tef_terminal_id', e.target.value)}
-                placeholder="102251"
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="payment-provider">Provedor de Pagamento</Label>
+            <Select
+              value={localSettings.paygo_provedor || "paygo"}
+              onValueChange={(value) => updateSetting("paygo_provedor", value)}
+            >
+              <SelectTrigger id="payment-provider">
+                <SelectValue placeholder="Selecione o provedor" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="paygo">PayGo</SelectItem>
+                <SelectItem value="cielo">Cielo LIO</SelectItem>
+                <SelectItem value="stone">Stone POS</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Define qual integração o totem usa nesta lavanderia. O cliente no totem só escolhe crédito, débito ou PIX.
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="sitef-senha">Senha Técnica</Label>
-              <Input
-                id="sitef-senha"
-                type="password"
-                value={localSettings.paygo_automation_key || ''}
-                onChange={(e) => updateSetting('paygo_automation_key', e.target.value)}
-                placeholder="Senha fornecida pela credenciadora"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="sitef-cnpj">CNPJ de Instalação</Label>
-              <Input
-                id="sitef-cnpj"
-                value={localSettings.paygo_cnpj_cpf || ''}
-                onChange={(e) => updateSetting('paygo_cnpj_cpf', e.target.value)}
-                placeholder="43652666000137"
-              />
-            </div>
-          </div>
+          {paymentProvider === "paygo" && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="sitef-host">Endereço do Servidor</Label>
+                  <Input
+                    id="sitef-host"
+                    value={localSettings.paygo_host || ""}
+                    onChange={(e) => updateSetting("paygo_host", e.target.value)}
+                    placeholder="pos-transac-sb.tpgweb.io"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="sitef-port">Porta</Label>
+                  <Input
+                    id="sitef-port"
+                    type="number"
+                    min="1"
+                    max="65535"
+                    value={localSettings.paygo_port || 31735}
+                    onChange={(e) => updateSetting("paygo_port", parseInt(e.target.value) || 31735)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="sitef-ponto-captura">Ponto de Captura</Label>
+                  <Input
+                    id="sitef-ponto-captura"
+                    value={localSettings.tef_terminal_id || ""}
+                    onChange={(e) => updateSetting("tef_terminal_id", e.target.value)}
+                    placeholder="102251"
+                  />
+                </div>
+              </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="sitef-extra-config">Configuração Adicional (JSON)</Label>
-              <Input
-                id="sitef-extra-config"
-                value={localSettings.tef_config || ''}
-                onChange={(e) => updateSetting('tef_config', e.target.value)}
-                placeholder='{"ambiente": "sandbox"}'
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="payment-provider">Provedor de Pagamento</Label>
-              <Select
-                value={localSettings.paygo_provedor || 'paygo'}
-                onValueChange={(value) => updateSetting('paygo_provedor', value)}
-              >
-                <SelectTrigger id="payment-provider">
-                  <SelectValue placeholder="Selecione o provedor" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="paygo">PayGo (padrão)</SelectItem>
-                  <SelectItem value="cielo">Cielo LIO</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="sitef-senha">Senha Técnica</Label>
+                  <Input
+                    id="sitef-senha"
+                    type="password"
+                    value={localSettings.paygo_automation_key || ""}
+                    onChange={(e) => updateSetting("paygo_automation_key", e.target.value)}
+                    placeholder="Senha fornecida pela credenciadora"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="sitef-cnpj">CNPJ de Instalação</Label>
+                  <Input
+                    id="sitef-cnpj"
+                    value={localSettings.paygo_cnpj_cpf || ""}
+                    onChange={(e) => updateSetting("paygo_cnpj_cpf", e.target.value)}
+                    placeholder="43652666000137"
+                  />
+                </div>
+              </div>
 
-          {(localSettings.paygo_provedor === 'cielo') && (
+              <div className="space-y-2">
+                <Label htmlFor="sitef-extra-config">Configuração Adicional (JSON)</Label>
+                <Input
+                  id="sitef-extra-config"
+                  value={localSettings.tef_config || ""}
+                  onChange={(e) => updateSetting("tef_config", e.target.value)}
+                  placeholder='{"ambiente": "sandbox"}'
+                />
+              </div>
+            </>
+          )}
+
+          {paymentProvider === "cielo" && (
             <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
               <h4 className="text-sm font-semibold">Credenciais Cielo LIO</h4>
               <Alert>
@@ -220,7 +241,7 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
                   Em produção use <strong>Access Token de produção</strong> do portal Cielo Desenvolvedores.
                 </AlertDescription>
               </Alert>
-              {localSettings.cielo_environment === 'sandbox' && (
+              {localSettings.cielo_environment === "sandbox" && (
                 <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/30">
                   <AlertDescription>
                     Ambiente <strong>sandbox</strong> costuma falhar em terminais Cielo Smart de produção. Use <strong>production</strong> com token de produção.
@@ -232,8 +253,8 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
                   <Label htmlFor="cielo-client-id">Client ID</Label>
                   <Input
                     id="cielo-client-id"
-                    value={localSettings.cielo_client_id || ''}
-                    onChange={(e) => updateSetting('cielo_client_id', e.target.value)}
+                    value={localSettings.cielo_client_id || ""}
+                    onChange={(e) => updateSetting("cielo_client_id", e.target.value)}
                     placeholder="Cielo Client ID"
                   />
                 </div>
@@ -242,8 +263,8 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
                   <Input
                     id="cielo-access-token"
                     type="password"
-                    value={localSettings.cielo_access_token || ''}
-                    onChange={(e) => updateSetting('cielo_access_token', e.target.value)}
+                    value={localSettings.cielo_access_token || ""}
+                    onChange={(e) => updateSetting("cielo_access_token", e.target.value)}
                     placeholder="Token de acesso"
                   />
                 </div>
@@ -253,18 +274,77 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
                   <Label htmlFor="cielo-merchant-code">Código do Estabelecimento (EC)</Label>
                   <Input
                     id="cielo-merchant-code"
-                    value={localSettings.cielo_merchant_code || ''}
-                    onChange={(e) => updateSetting('cielo_merchant_code', e.target.value)}
+                    value={localSettings.cielo_merchant_code || ""}
+                    onChange={(e) => updateSetting("cielo_merchant_code", e.target.value)}
                     placeholder="Ex: 1234567890"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="cielo-environment">Ambiente</Label>
                   <Select
-                    value={localSettings.cielo_environment || 'sandbox'}
-                    onValueChange={(value) => updateSetting('cielo_environment', value)}
+                    value={localSettings.cielo_environment || "sandbox"}
+                    onValueChange={(value) => updateSetting("cielo_environment", value)}
                   >
                     <SelectTrigger id="cielo-environment">
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="sandbox">Sandbox (teste)</SelectItem>
+                      <SelectItem value="production">Produção</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {paymentProvider === "stone" && (
+            <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
+              <h4 className="text-sm font-semibold">Credenciais Stone POS</h4>
+              <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/30">
+                <AlertDescription>
+                  Você já pode salvar as credenciais aqui. A cobrança via SDK Stone no totem Android ainda
+                  <strong> não está ativa</strong> — use Cielo ou PayGo até a integração ser liberada.
+                </AlertDescription>
+              </Alert>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="stone-code">Stone Code</Label>
+                  <Input
+                    id="stone-code"
+                    value={localSettings.stone_code || ""}
+                    onChange={(e) => updateSetting("stone_code", e.target.value)}
+                    placeholder="Código do estabelecimento Stone"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="stone-app-key">AppKey</Label>
+                  <Input
+                    id="stone-app-key"
+                    type="password"
+                    value={localSettings.stone_app_key || ""}
+                    onChange={(e) => updateSetting("stone_app_key", e.target.value)}
+                    placeholder="Chave de aplicação Stone"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="stone-device-serial">Serial do terminal (opcional)</Label>
+                  <Input
+                    id="stone-device-serial"
+                    value={localSettings.stone_device_serial || ""}
+                    onChange={(e) => updateSetting("stone_device_serial", e.target.value)}
+                    placeholder="Ex.: número de série do POS"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="stone-environment">Ambiente</Label>
+                  <Select
+                    value={localSettings.stone_environment || "sandbox"}
+                    onValueChange={(value) => updateSetting("stone_environment", value)}
+                  >
+                    <SelectTrigger id="stone-environment">
                       <SelectValue placeholder="Selecione" />
                     </SelectTrigger>
                     <SelectContent>
