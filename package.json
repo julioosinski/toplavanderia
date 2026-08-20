@@ -27,10 +27,11 @@
     "supabase:deploy:esp32-firmware-ota": "pnpm dlx supabase functions deploy esp32-firmware-ota --project-ref rkdybjzwiwwqqzjfmerm --no-verify-jwt --use-api",
     "supabase:deploy:transaction-webhook": "pnpm dlx supabase functions deploy transaction-webhook --project-ref rkdybjzwiwwqqzjfmerm --no-verify-jwt --use-api",
     "supabase:deploy:auto-release-machines": "pnpm dlx supabase functions deploy auto-release-machines --project-ref rkdybjzwiwwqqzjfmerm --no-verify-jwt --use-api",
+    "supabase:deploy:reconcile-payments": "pnpm dlx supabase functions deploy reconcile-payments --project-ref rkdybjzwiwwqqzjfmerm --no-verify-jwt --use-api",
     "supabase:deploy:totem-settings": "pnpm dlx supabase functions deploy totem-settings --project-ref rkdybjzwiwwqqzjfmerm --no-verify-jwt --use-api",
     "supabase:deploy:nfse-automation": "pnpm dlx supabase functions deploy nfse-automation --project-ref rkdybjzwiwwqqzjfmerm --no-verify-jwt --use-api",
     "supabase:deploy:totem-functions": "pnpm run supabase:deploy:update-machine-status && pnpm run supabase:deploy:esp32-control && pnpm run supabase:deploy:esp32-monitor && pnpm run supabase:deploy:totem-settings",
-    "supabase:deploy:all": "pnpm run supabase:deploy:create-user && pnpm run supabase:deploy:list-laundry-admins && pnpm run supabase:deploy:esp32-credit-release && pnpm run supabase:deploy:esp32-load-balancer && pnpm run supabase:deploy:esp32-network-test && pnpm run supabase:deploy:esp32-health-check && pnpm run supabase:deploy:update-machine-status && pnpm run supabase:deploy:esp32-control && pnpm run supabase:deploy:esp32-monitor && pnpm run supabase:deploy:transaction-webhook && pnpm run supabase:deploy:auto-release-machines && pnpm run supabase:deploy:totem-settings && pnpm run supabase:deploy:nfse-automation"
+    "supabase:deploy:all": "pnpm run supabase:deploy:create-user && pnpm run supabase:deploy:list-laundry-admins && pnpm run supabase:deploy:esp32-credit-release && pnpm run supabase:deploy:esp32-load-balancer && pnpm run supabase:deploy:esp32-network-test && pnpm run supabase:deploy:esp32-health-check && pnpm run supabase:deploy:update-machine-status && pnpm run supabase:deploy:esp32-control && pnpm run supabase:deploy:esp32-monitor && pnpm run supabase:deploy:transaction-webhook && pnpm run supabase:deploy:auto-release-machines && pnpm run supabase:deploy:reconcile-payments && pnpm run supabase:deploy:totem-settings && pnpm run supabase:deploy:nfse-automation"
   },
   "dependencies": {
     "@capacitor-community/bluetooth-le": "^8.1.3",

@@ -80,6 +80,8 @@ public class TotemActivity extends Activity {
     private long currentOperationId = -1;
     /** UUID Supabase da transação pending criada antes do pagamento. */
     private String currentPendingTransactionId = null;
+    /** Sessão persistida (payment_sessions) — reconciliação Cielo/Stone. */
+    private String currentPaymentSessionId = null;
     /** credit, debit ou pix — alinhado à constraint do Supabase (transactions.payment_method). */
     private String currentOperationSupabasePaymentMethod = "credit";
     private LinearLayout rootLayout;
@@ -456,7 +458,9 @@ public class TotemActivity extends Activity {
         awaitingPaymentCallback = false;
         paymentLaunchInProgress.set(false);
         currentOperationId = -1;
+        final String sessionId = currentPaymentSessionId;
         currentPendingTransactionId = null;
+        currentPaymentSessionId = null;
         paymentContextMachine = null;
         selectedMachine = null;
         selectedCoffeeProduct = null;
@@ -464,6 +468,11 @@ public class TotemActivity extends Activity {
             new Thread(() -> {
                 boolean cancelled = supabaseHelper.cancelTotemTransactionById(pendingId);
                 Log.d(TAG, "Transação cancelada por inatividade (" + pendingId + "): " + cancelled);
+                if (!cancelled && sessionId != null && !sessionId.isEmpty()) {
+                    supabaseHelper.updatePaymentSession(
+                        sessionId, "RECONCILIATION_PENDING", null, null, null, null
+                    );
+                }
             }).start();
         }
         restoreHomeScreen();
@@ -1399,12 +1408,22 @@ public class TotemActivity extends Activity {
         }
 
         if (reversed && pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
+            if (currentPaymentSessionId != null) {
+                supabaseHelper.updatePaymentSession(
+                    currentPaymentSessionId, "REVERSED", null, null, null, null
+                );
+            }
             boolean cancelled = supabaseHelper.cancelTotemTransactionById(pendingTxIdFinal);
             Log.d(TAG, "Transação totem cancelada após estorno confirmado: " + cancelled);
             if (cieloManager != null) {
                 cieloManager.clearRefundSnapshotForTx(pendingTxIdFinal);
             }
         } else if (pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
+            if (currentPaymentSessionId != null) {
+                supabaseHelper.updatePaymentSession(
+                    currentPaymentSessionId, "RECONCILIATION_PENDING", null, null, null, null
+                );
+            }
             Log.e(TAG, "Pagamento sem liberação e sem estorno confirmado; TX marcada needs_refund: "
                 + pendingTxIdFinal);
             supabaseHelper.markTotemPaymentNeedsRefund(
@@ -1840,32 +1859,49 @@ public class TotemActivity extends Activity {
                 currentOperationId = System.nanoTime();
                 final String cieloReference = UUID.randomUUID().toString();
                 final SupabaseHelper.CoffeeProduct coffeeProductSnapshot = selectedCoffeeProduct;
-                String pendingTxId;
+                final String paymentProvider = "cielo".equalsIgnoreCase(activeProvider)
+                    ? "cielo" : "paygo";
+                SupabaseHelper.PaymentSessionResult sessionResult;
                 if (coffeeProductSnapshot != null) {
-                    pendingTxId = supabaseHelper.createCoffeeTransaction(
+                    sessionResult = supabaseHelper.beginTotemCoffeePaymentSession(
                         coffeeProductSnapshot.getId(),
-                        supabaseMethod
+                        supabaseMethod,
+                        paymentProvider,
+                        cieloReference
                     );
                 } else {
-                    pendingTxId = supabaseHelper.createTransaction(
+                    sessionResult = supabaseHelper.beginTotemPaymentSession(
                         machine.getId(),
-                        machine.getTypeDisplay(),
                         machine.getPrice(),
-                        "PENDING",
-                        "TXN" + currentOperationId,
-                        supabaseMethod
+                        machine.getDuration() > 0 ? machine.getDuration() : 40,
+                        supabaseMethod,
+                        paymentProvider,
+                        cieloReference
                     );
                 }
+                String pendingTxId = sessionResult != null ? sessionResult.transactionId : null;
                 currentPendingTransactionId = pendingTxId;
+                currentPaymentSessionId = sessionResult != null ? sessionResult.sessionId : null;
                 if (pendingTxId == null || pendingTxId.trim().isEmpty()) {
-                    Log.e(TAG, "Pagamento bloqueado: não foi possível criar a transação pending no Supabase");
+                    Log.e(TAG, "Pagamento bloqueado: não foi possível reservar máquina/sessão no Supabase");
                     paymentLaunchInProgress.set(false);
                     currentOperationId = -1;
                     currentPendingTransactionId = null;
+                    currentPaymentSessionId = null;
                     runOnUiThread(() -> handlePaymentError(
                         "Não foi possível registrar o pagamento com segurança. Nenhuma cobrança foi iniciada. Tente novamente."
                     ));
                     return;
+                }
+                if (currentPaymentSessionId != null) {
+                    supabaseHelper.updatePaymentSession(
+                        currentPaymentSessionId,
+                        "PAYMENT_PENDING",
+                        cieloReference,
+                        null,
+                        null,
+                        supabaseMethod
+                    );
                 }
                 if ("cielo".equalsIgnoreCase(activeProvider)) {
                     cieloManager.bindTotemCheckout(
@@ -2236,6 +2272,7 @@ public class TotemActivity extends Activity {
             pendingTxId = cieloManager.getBoundPendingTxId();
         }
         final String pendingTxIdFinal = pendingTxId;
+        final String paymentSessionIdFinal = currentPaymentSessionId;
         final int durationMinutes = machineSnapshot.getDuration() > 0
             ? machineSnapshot.getDuration()
             : 40;
@@ -2302,6 +2339,11 @@ public class TotemActivity extends Activity {
                 }
                 boolean creditQueued = false;
                 if (pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
+                    if (paymentSessionIdFinal != null) {
+                        supabaseHelper.updatePaymentSession(
+                            paymentSessionIdFinal, "RELEASE_PENDING", null, null, null, methodForComplete
+                        );
+                    }
                     creditQueued = supabaseHelper.enqueueCoffeeCredit(pendingTxIdFinal);
                 }
                 if (!creditQueued) {
@@ -2406,6 +2448,12 @@ public class TotemActivity extends Activity {
                 }
                 final CieloLioManager.ApprovedPaymentSnapshot refundSnap =
                     cieloManager.peekRefundSnapshotForTx(pendingTxIdFinal);
+
+                if (paymentSessionIdFinal != null) {
+                    supabaseHelper.updatePaymentSession(
+                        paymentSessionIdFinal, "RELEASE_PENDING", null, null, null, methodForComplete
+                    );
+                }
 
                 boolean relayConfirmed = supabaseHelper.confirmEsp32ReleaseRobust(
                     esp32Id, relayPin, machineId, esp32TxId, durationMinutes
@@ -2580,6 +2628,7 @@ public class TotemActivity extends Activity {
         clearPostPaymentHardwarePending();
         currentOperationId = -1;
         currentPendingTransactionId = null;
+        currentPaymentSessionId = null;
         selectedMachine = null;
         selectedCoffeeProduct = null;
         paymentContextMachine = null;
@@ -2603,6 +2652,7 @@ public class TotemActivity extends Activity {
         lastSucceededOperationId = -1;
         awaitingPaymentCallback = false;
         currentPendingTransactionId = null;
+        currentPaymentSessionId = null;
         currentOperationSupabasePaymentMethod = "credit";
         paymentLaunchInProgress.set(false);
         createTotemInterface();

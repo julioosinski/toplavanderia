@@ -468,20 +468,26 @@ const Totem = () => {
         // Reutiliza a TX do pagamento já aprovado (retry após falha de ESP).
         let transactionId = paidActivationRef.current?.transactionId;
         if (!transactionId || paidActivationRef.current?.machineId !== selectedMachine.id) {
-          const { data: newTxId, error: txError } = await supabase
-            .rpc('create_totem_transaction', {
-              _machine_id: selectedMachine.id,
-              _total_amount: selectedMachine.price,
-              _duration_minutes: selectedMachine.duration,
-              _payment_method: normalizedMethod,
-              _laundry_id: currentLaundry.id,
-            });
+          const { data: sessionData, error: txError } = await supabase.rpc('begin_totem_payment_session', {
+            _machine_id: selectedMachine.id,
+            _total_amount: selectedMachine.price,
+            _duration_minutes: selectedMachine.duration,
+            _payment_method: normalizedMethod,
+            _laundry_id: currentLaundry.id,
+            _provider: 'paygo',
+            _external_reference: null,
+            _coffee_product_id: null,
+          });
 
-          if (txError || !newTxId) {
-            console.error('Erro ao registrar transação:', txError);
+          if (txError || !sessionData) {
+            console.error('Erro ao registrar sessão de pagamento:', txError);
             throw new Error('Pagamento aprovado, mas a transação não foi registrada.');
           }
-          transactionId = String(newTxId);
+          const parsed = sessionData as { transaction_id?: string };
+          transactionId = parsed.transaction_id ? String(parsed.transaction_id) : '';
+          if (!transactionId) {
+            throw new Error('Sessão de pagamento sem transaction_id.');
+          }
         }
 
         paidActivationRef.current = {

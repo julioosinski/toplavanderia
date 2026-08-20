@@ -773,6 +773,203 @@ public class SupabaseHelper {
         return createTransaction(machineId, service, price, paymentCode, transactionId, "card") != null;
     }
 
+    /** Resultado de begin_totem_payment_session (reserva atômica + sessão persistida). */
+    public static final class PaymentSessionResult {
+        public final String sessionId;
+        public final String transactionId;
+        public final String machineId;
+        public final long amountCents;
+
+        PaymentSessionResult(String sessionId, String transactionId, String machineId, long amountCents) {
+            this.sessionId = sessionId;
+            this.transactionId = transactionId;
+            this.machineId = machineId;
+            this.amountCents = amountCents;
+        }
+    }
+
+    /**
+     * Inicia sessão de pagamento com reserva atômica da máquina.
+     * Substitui create_totem_transaction no fluxo Cielo (Fase A).
+     */
+    public PaymentSessionResult beginTotemPaymentSession(
+            String machineId,
+            double price,
+            int durationMinutes,
+            String supabasePaymentMethod,
+            String provider,
+            String externalReference
+    ) {
+        if (!isOnline() || currentLaundryId == null || currentLaundryId.isEmpty()) {
+            return null;
+        }
+        try {
+            String url = SUPABASE_URL + "/rest/v1/rpc/begin_totem_payment_session";
+            JSONObject body = new JSONObject();
+            body.put("_machine_id", machineId);
+            body.put("_total_amount", price);
+            body.put("_duration_minutes", durationMinutes);
+            body.put("_payment_method", supabasePaymentMethod == null || supabasePaymentMethod.isEmpty()
+                ? "credit" : supabasePaymentMethod);
+            body.put("_laundry_id", currentLaundryId);
+            body.put("_provider", provider == null || provider.isEmpty() ? "cielo" : provider);
+            if (externalReference != null && !externalReference.isEmpty()) {
+                body.put("_external_reference", externalReference);
+            } else {
+                body.put("_external_reference", JSONObject.NULL);
+            }
+            body.put("_coffee_product_id", JSONObject.NULL);
+
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
+            OutputStream os = connection.getOutputStream();
+            os.write(body.toString().getBytes(StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+
+            int code = connection.getResponseCode();
+            if (code != 200) {
+                Log.e(TAG, "begin_totem_payment_session HTTP " + code);
+                connection.disconnect();
+                return null;
+            }
+            BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                response.append(line);
+            }
+            br.close();
+            connection.disconnect();
+
+            JSONObject json = new JSONObject(response.toString().trim());
+            String sessionId = json.optString("session_id", "");
+            String txId = json.optString("transaction_id", "");
+            String resolvedMachineId = json.optString("machine_id", machineId);
+            long amountCents = json.optLong("amount_cents", Math.round(price * 100));
+            if (sessionId.isEmpty() || txId.isEmpty()) {
+                Log.e(TAG, "begin_totem_payment_session resposta incompleta");
+                return null;
+            }
+            Log.d(TAG, "Sessão de pagamento criada session=" + sessionId + " tx=" + txId);
+            return new PaymentSessionResult(sessionId, txId, resolvedMachineId, amountCents);
+        } catch (Exception e) {
+            Log.e(TAG, "beginTotemPaymentSession", e);
+            return null;
+        }
+    }
+
+    public PaymentSessionResult beginTotemCoffeePaymentSession(
+            String productId,
+            String supabasePaymentMethod,
+            String provider,
+            String externalReference
+    ) {
+        if (!isOnline() || currentLaundryId == null || currentLaundryId.isEmpty()) {
+            return null;
+        }
+        try {
+            String url = SUPABASE_URL + "/rest/v1/rpc/begin_totem_payment_session";
+            JSONObject body = new JSONObject();
+            body.put("_machine_id", JSONObject.NULL);
+            body.put("_total_amount", JSONObject.NULL);
+            body.put("_duration_minutes", JSONObject.NULL);
+            body.put("_payment_method", supabasePaymentMethod == null || supabasePaymentMethod.isEmpty()
+                ? "credit" : supabasePaymentMethod);
+            body.put("_laundry_id", currentLaundryId);
+            body.put("_provider", provider == null || provider.isEmpty() ? "cielo" : provider);
+            if (externalReference != null && !externalReference.isEmpty()) {
+                body.put("_external_reference", externalReference);
+            } else {
+                body.put("_external_reference", JSONObject.NULL);
+            }
+            body.put("_coffee_product_id", productId);
+
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
+            OutputStream os = connection.getOutputStream();
+            os.write(body.toString().getBytes(StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+
+            int code = connection.getResponseCode();
+            if (code != 200) {
+                Log.e(TAG, "begin_totem_payment_session (café) HTTP " + code);
+                connection.disconnect();
+                return null;
+            }
+            BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            StringBuilder response = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                response.append(line);
+            }
+            br.close();
+            connection.disconnect();
+
+            JSONObject json = new JSONObject(response.toString().trim());
+            String sessionId = json.optString("session_id", "");
+            String txId = json.optString("transaction_id", "");
+            String resolvedMachineId = json.optString("machine_id", "");
+            long amountCents = json.optLong("amount_cents", 0L);
+            if (sessionId.isEmpty() || txId.isEmpty()) {
+                return null;
+            }
+            return new PaymentSessionResult(sessionId, txId, resolvedMachineId, amountCents);
+        } catch (Exception e) {
+            Log.e(TAG, "beginTotemCoffeePaymentSession", e);
+            return null;
+        }
+    }
+
+    public boolean updatePaymentSession(
+            String sessionId,
+            String state,
+            String externalReference,
+            String cieloOrderId,
+            String cieloPaymentId,
+            String paymentMethod
+    ) {
+        if (sessionId == null || sessionId.trim().isEmpty() || state == null || state.isEmpty()) {
+            return false;
+        }
+        try {
+            String url = SUPABASE_URL + "/rest/v1/rpc/update_payment_session";
+            JSONObject payload = new JSONObject();
+            payload.put("_session_id", sessionId.trim());
+            payload.put("_state", state);
+            payload.put("_external_reference", externalReference != null && !externalReference.isEmpty()
+                ? externalReference : JSONObject.NULL);
+            payload.put("_cielo_order_id", cieloOrderId != null && !cieloOrderId.isEmpty()
+                ? cieloOrderId : JSONObject.NULL);
+            payload.put("_cielo_payment_id", cieloPaymentId != null && !cieloPaymentId.isEmpty()
+                ? cieloPaymentId : JSONObject.NULL);
+            payload.put("_stone_transaction_id", JSONObject.NULL);
+            payload.put("_payment_method", paymentMethod != null && !paymentMethod.isEmpty()
+                ? paymentMethod : JSONObject.NULL);
+            payload.put("_extra", new JSONObject());
+
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
+            OutputStream os = connection.getOutputStream();
+            os.write(payload.toString().getBytes(StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+            int code = connection.getResponseCode();
+            connection.disconnect();
+            return code >= 200 && code < 300;
+        } catch (Exception e) {
+            Log.e(TAG, "updatePaymentSession", e);
+            return false;
+        }
+    }
+
     public String createTransaction(String machineId, String service, double price, String paymentCode, String transactionId, String supabasePaymentMethod) {
         try {
             if (isOnline()) {

@@ -26,6 +26,7 @@ const Settings = lazy(() => import("./pages/admin/Settings"));
 const Profile = lazy(() => import("./pages/admin/Profile"));
 const ESP32Diagnostics = lazy(() => import("./pages/admin/ESP32Diagnostics"));
 const BLEDiagnostics = lazy(() => import("./pages/admin/BLEDiagnostics"));
+const Payments = lazy(() => import("./pages/admin/Payments"));
 
 const queryClient = new QueryClient();
 
@@ -72,7 +73,7 @@ const App = () => (
                 <Route path="users" element={<Suspense fallback={<AdminFallback />}><Users /></Suspense>} />
                 <Route path="laundries" element={<Suspense fallback={<AdminFallback />}><Laundries /></Suspense>} />
                 <Route path="reports" element={<Suspense fallback={<AdminFallback />}><Reports /></Suspense>} />
-                <Route path="payments" element={<Navigate to="/admin/dashboard" replace />} />
+                <Route path="payments" element={<Suspense fallback={<AdminFallback />}><Payments /></Suspense>} />
                 <Route path="security" element={<Navigate to="/admin/dashboard" replace />} />
                 <Route path="settings" element={<Suspense fallback={<AdminFallback />}><Settings /></Suspense>} />
                 <Route path="profile" element={<Suspense fallback={<AdminFallback />}><Profile /></Suspense>} />
