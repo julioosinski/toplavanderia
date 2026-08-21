@@ -810,17 +810,23 @@ public class TotemActivity extends Activity {
 
     private void selectCoffeeProduct(SupabaseHelper.CoffeeProduct product) {
         selectedCoffeeProduct = product;
-        SupabaseHelper.Machine coffeeMachine = supabaseHelper.findMachineById(product.getMachineId());
-        if (coffeeMachine == null) {
-            coffeeMachine = new SupabaseHelper.Machine();
-            coffeeMachine.setId(product.getMachineId());
-            coffeeMachine.setName("Máquina de Café");
-            coffeeMachine.setType("CAFE");
-            coffeeMachine.setPrice(product.getPrice());
-            coffeeMachine.setDuration(0);
-            coffeeMachine.setEsp32Online(true);
+        // Cópia local: não mutar o Machine compartilhado da lista (poll sobrescrevia o preço).
+        SupabaseHelper.Machine coffeeMachine = new SupabaseHelper.Machine();
+        SupabaseHelper.Machine cached = supabaseHelper.findMachineById(product.getMachineId());
+        coffeeMachine.setId(product.getMachineId());
+        coffeeMachine.setName(product.getName());
+        coffeeMachine.setType("CAFE");
+        coffeeMachine.setPrice(product.getPrice());
+        coffeeMachine.setDuration(0);
+        if (cached != null) {
+            coffeeMachine.setEsp32Id(cached.getEsp32Id());
+            coffeeMachine.setRelayPin(cached.getRelayPin());
+            coffeeMachine.setEsp32Online(cached.isEsp32Online());
+            coffeeMachine.setStatus(cached.getStatus());
+            coffeeMachine.setLocation(cached.getLocation());
         } else {
-            coffeeMachine.setPrice(product.getPrice());
+            coffeeMachine.setEsp32Online(true);
+            coffeeMachine.setStatus("LIVRE");
         }
         selectedMachine = coffeeMachine;
         showCoffeePaymentScreen(product, coffeeMachine);
@@ -990,7 +996,8 @@ public class TotemActivity extends Activity {
                                 : "coffee".equals(status.machineType) ? "CAFE" : "LAVAR";
                         machine.setType(mappedType);
                     }
-                    if (status.pricePerCycle > 0) {
+                    // Café: preço vem do produto (cardápio), não de price_per_cycle da máquina.
+                    if (status.pricePerCycle > 0 && !"CAFE".equals(machine.getType())) {
                         machine.setPrice(status.pricePerCycle);
                     }
                     if (status.cycleTimeMinutes > 0) {
@@ -1751,8 +1758,15 @@ public class TotemActivity extends Activity {
 
         TextView details = new TextView(this);
         String machineName = machine != null ? machine.getName() : "";
-        String price = machine != null
-            ? "R$ " + new DecimalFormat("0.00").format(machine.getPrice())
+        double displayPrice = machine != null ? machine.getPrice() : 0;
+        if (selectedCoffeeProduct != null) {
+            displayPrice = selectedCoffeeProduct.getPrice();
+            if (machineName == null || machineName.isEmpty()) {
+                machineName = selectedCoffeeProduct.getName();
+            }
+        }
+        String price = displayPrice > 0
+            ? "R$ " + new DecimalFormat("0.00").format(displayPrice)
             : "";
         details.setText(machineName + "\n" + formatPaymentTypeLabel(paymentType)
             + (price.isEmpty() ? "" : "\n" + price)
@@ -1936,6 +1950,22 @@ public class TotemActivity extends Activity {
                     ));
                     return;
                 }
+                // Café: cobrar o valor do produto/sessão — nunca price_per_cycle da máquina.
+                final double chargeAmountReais;
+                if (coffeeProductSnapshot != null) {
+                    if (sessionResult != null && sessionResult.amountCents > 0) {
+                        chargeAmountReais = sessionResult.amountCents / 100.0;
+                    } else if (coffeeProductSnapshot.getPriceCents() > 0) {
+                        chargeAmountReais = coffeeProductSnapshot.getPriceCents() / 100.0;
+                    } else {
+                        chargeAmountReais = coffeeProductSnapshot.getPrice();
+                    }
+                    Log.i(TAG, "Cobrança café produto=" + coffeeProductSnapshot.getName()
+                        + " amount=" + chargeAmountReais
+                        + " (machinePrice=" + machine.getPrice() + ")");
+                } else {
+                    chargeAmountReais = machine.getPrice();
+                }
                 if (currentPaymentSessionId != null) {
                     supabaseHelper.updatePaymentSession(
                         currentPaymentSessionId,
@@ -1999,7 +2029,7 @@ public class TotemActivity extends Activity {
                     ? coffeeProductSnapshot.getName()
                     : machine.getName();
                 activePaymentManager.processPayment(
-                    machine.getPrice(),
+                    chargeAmountReais,
                     managerPaymentType,
                     "Top Lavanderia - " + paymentLabel,
                     cieloReference
@@ -2429,13 +2459,7 @@ public class TotemActivity extends Activity {
                 });
                 releasePosCheckoutForNextPayment(pendingTxIdFinal);
 
-                boolean creditConfirmed = supabaseHelper.confirmEsp32ReleaseRobust(
-                    machineSnapshot.getEsp32Id(),
-                    machineSnapshot.getRelayPin(),
-                    machineId,
-                    pendingTxIdFinal,
-                    1
-                );
+                boolean creditConfirmed = supabaseHelper.confirmCoffeeCreditRobust(pendingTxIdFinal);
                 if (!creditConfirmed) {
                     handleEsp32FailureWithRefund(
                         machineSnapshot, pendingTxIdFinal, operationId, true,

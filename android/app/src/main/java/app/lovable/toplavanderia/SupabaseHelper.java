@@ -2377,6 +2377,116 @@ public class SupabaseHelper {
         }
     }
 
+    /**
+     * Confirma liberação de crédito café (ação credito) — NUNCA enfileira ON de lavadora.
+     * O firmware de café só executa credito/liberar; ON ficava pending e gerava falso timeout/estorno.
+     */
+    public boolean confirmCoffeeCreditRobust(String transactionId) {
+        if (transactionId == null || transactionId.trim().isEmpty()) {
+            return false;
+        }
+        long startedAt = System.currentTimeMillis();
+        long deadline = startedAt + 45_000L;
+        Log.d(TAG, "Aguardando confirmação crédito café tx=" + transactionId);
+        while (System.currentTimeMillis() < deadline) {
+            String st = fetchCoffeeCreditCommandStatus(transactionId);
+            if ("completed".equals(st)) {
+                Log.i(TAG, "Crédito café confirmado (completed) tx=" + transactionId);
+                return true;
+            }
+            if ("failed".equals(st)) {
+                Log.w(TAG, "Crédito café failed no servidor — reenfileirando uma vez");
+                enqueueCoffeeCredit(transactionId);
+                try {
+                    Thread.sleep(1500L);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+                st = fetchCoffeeCreditCommandStatus(transactionId);
+                if ("completed".equals(st)) {
+                    return true;
+                }
+                if ("failed".equals(st)) {
+                    return false;
+                }
+            }
+            try {
+                Thread.sleep(1200L);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        // Última chance: completed tardio
+        if ("completed".equals(fetchCoffeeCreditCommandStatus(transactionId))) {
+            Log.i(TAG, "Crédito café confirmado após timeout (completed tardio)");
+            return true;
+        }
+        // Sem linha credito: tenta refila e espera mais 20s
+        Log.w(TAG, "Timeout crédito café — reenfileirando e aguardando 20s");
+        enqueueCoffeeCredit(transactionId);
+        long extendUntil = System.currentTimeMillis() + 20_000L;
+        while (System.currentTimeMillis() < extendUntil) {
+            if ("completed".equals(fetchCoffeeCreditCommandStatus(transactionId))) {
+                return true;
+            }
+            try {
+                Thread.sleep(1200L);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return "completed".equals(fetchCoffeeCreditCommandStatus(transactionId));
+    }
+
+    private String fetchCoffeeCreditCommandStatus(String transactionId) {
+        try {
+            String url = SUPABASE_URL + "/rest/v1/rpc/get_totem_credit_command_status";
+            JSONObject body = new JSONObject();
+            body.put("_transaction_id", transactionId.trim());
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
+            connection.setConnectTimeout(8000);
+            connection.setReadTimeout(8000);
+            OutputStream os = connection.getOutputStream();
+            os.write(body.toString().getBytes(StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+            int code = connection.getResponseCode();
+            if (code != 200) {
+                connection.disconnect();
+                return null;
+            }
+            BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                sb.append(line);
+            }
+            br.close();
+            connection.disconnect();
+            String raw = sb.toString().trim();
+            if (raw.isEmpty() || "null".equalsIgnoreCase(raw) || "[]".equals(raw)) {
+                return null;
+            }
+            if (raw.startsWith("[")) {
+                org.json.JSONArray arr = new org.json.JSONArray(raw);
+                if (arr.length() == 0) {
+                    return null;
+                }
+                return arr.getJSONObject(0).optString("status", null);
+            }
+            return new JSONObject(raw).optString("status", null);
+        } catch (Exception e) {
+            Log.e(TAG, "fetchCoffeeCreditCommandStatus", e);
+            return null;
+        }
+    }
+
     public Machine findMachineById(String machineId) {
         if (machineId == null || realMachines == null) {
             return null;
