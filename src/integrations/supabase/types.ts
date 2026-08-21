@@ -479,6 +479,159 @@ export type Database = {
           },
         ]
       }
+      payment_sessions: {
+        Row: {
+          amount_cents: number
+          authorized_at: string | null
+          cielo_order_id: string | null
+          cielo_payment_id: string | null
+          created_at: string
+          expires_at: string | null
+          external_reference: string | null
+          id: string
+          laundry_id: string
+          machine_id: string | null
+          metadata: Json
+          payment_method: string | null
+          provider: string
+          released_at: string | null
+          state: string
+          stone_transaction_id: string | null
+          terminal_id: string | null
+          transaction_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount_cents: number
+          authorized_at?: string | null
+          cielo_order_id?: string | null
+          cielo_payment_id?: string | null
+          created_at?: string
+          expires_at?: string | null
+          external_reference?: string | null
+          id?: string
+          laundry_id: string
+          machine_id?: string | null
+          metadata?: Json
+          payment_method?: string | null
+          provider: string
+          released_at?: string | null
+          state?: string
+          stone_transaction_id?: string | null
+          terminal_id?: string | null
+          transaction_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount_cents?: number
+          authorized_at?: string | null
+          cielo_order_id?: string | null
+          cielo_payment_id?: string | null
+          created_at?: string
+          expires_at?: string | null
+          external_reference?: string | null
+          id?: string
+          laundry_id?: string
+          machine_id?: string | null
+          metadata?: Json
+          payment_method?: string | null
+          provider?: string
+          released_at?: string | null
+          state?: string
+          stone_transaction_id?: string | null
+          terminal_id?: string | null
+          transaction_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_sessions_laundry_id_fkey"
+            columns: ["laundry_id"]
+            isOneToOne: false
+            referencedRelation: "laundries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_sessions_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machine_status_view"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_sessions_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "machines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_sessions_machine_id_fkey"
+            columns: ["machine_id"]
+            isOneToOne: false
+            referencedRelation: "public_machines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_sessions_terminal_id_fkey"
+            columns: ["terminal_id"]
+            isOneToOne: false
+            referencedRelation: "payment_terminals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_sessions_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_terminals: {
+        Row: {
+          created_at: string
+          device_serial: string | null
+          id: string
+          is_active: boolean
+          label: string
+          laundry_id: string
+          metadata: Json
+          provider: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          device_serial?: string | null
+          id?: string
+          is_active?: boolean
+          label?: string
+          laundry_id: string
+          metadata?: Json
+          provider: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          device_serial?: string | null
+          id?: string
+          is_active?: boolean
+          label?: string
+          laundry_id?: string
+          metadata?: Json
+          provider?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_terminals_laundry_id_fkey"
+            columns: ["laundry_id"]
+            isOneToOne: false
+            referencedRelation: "laundries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pending_commands: {
         Row: {
           action: string
@@ -1036,6 +1189,10 @@ export type Database = {
       }
     }
     Functions: {
+      _payment_session_blocks_machine: {
+        Args: { _machine_id: string }
+        Returns: boolean
+      }
       admin_remote_release: {
         Args: {
           _machine_id: string
@@ -1044,9 +1201,37 @@ export type Database = {
         }
         Returns: string
       }
+      begin_totem_payment_session: {
+        Args: {
+          _coffee_product_id?: string
+          _duration_minutes?: number
+          _external_reference?: string
+          _laundry_id?: string
+          _machine_id?: string
+          _payment_method?: string
+          _provider?: string
+          _total_amount?: number
+        }
+        Returns: Json
+      }
+      cancel_stale_off_commands: {
+        Args: { _esp32_id: string; _relay_pin?: number }
+        Returns: number
+      }
       cancel_totem_transaction_by_id: {
         Args: { _transaction_id: string }
         Returns: boolean
+      }
+      claim_pending_esp32_commands: {
+        Args: { _esp32_id: string; _limit?: number }
+        Returns: {
+          action: string
+          id: string
+          machine_id: string
+          payload: Json
+          relay_pin: number
+          transaction_id: string
+        }[]
       }
       cleanup_esp32_ota_jobs: { Args: never; Returns: undefined }
       cleanup_old_logs: { Args: never; Returns: undefined }
@@ -1055,6 +1240,10 @@ export type Database = {
       cleanup_stale_pending_transactions: { Args: never; Returns: undefined }
       complete_totem_transaction_by_id: {
         Args: { _payment_method?: string; _transaction_id: string }
+        Returns: boolean
+      }
+      complete_transaction_on_esp_confirm: {
+        Args: { _transaction_id: string }
         Returns: boolean
       }
       create_default_system_settings: {
@@ -1082,6 +1271,18 @@ export type Database = {
       enqueue_coffee_credit_command: {
         Args: { _laundry_id: string; _transaction_id: string }
         Returns: boolean
+      }
+      enqueue_totem_machine_release: {
+        Args: { _transaction_id: string }
+        Returns: string
+      }
+      expire_stale_payment_sessions: {
+        Args: { _max_age_minutes?: number }
+        Returns: number
+      }
+      fail_pending_commands_for_transaction: {
+        Args: { _transaction_id: string }
+        Returns: number
       }
       get_coffee_products: {
         Args: { _laundry_id: string }
@@ -1145,6 +1346,17 @@ export type Database = {
           updated_at: string
         }[]
       }
+      get_totem_command_status: {
+        Args: { _command_id?: string; _transaction_id?: string }
+        Returns: {
+          action: string
+          created_at: string
+          error_message: string
+          id: string
+          status: string
+          updated_at: string
+        }[]
+      }
       get_totem_settings: { Args: { _laundry_id: string }; Returns: Json }
       get_user_laundry_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
@@ -1156,6 +1368,46 @@ export type Database = {
         Returns: boolean
       }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
+      list_orphan_totem_releases: {
+        Args: { _max_age_minutes?: number; _min_age_seconds?: number }
+        Returns: {
+          cielo_payment_id: string
+          created_at: string
+          cycle_time_minutes: number
+          esp32_id: string
+          has_in_flight_command: boolean
+          machine_id: string
+          payment_method: string
+          relay_pin: number
+          total_amount: number
+          transaction_id: string
+        }[]
+      }
+      list_payment_diagnostics_admin: {
+        Args: { _hours?: number; _laundry_id: string; _limit?: number }
+        Returns: {
+          amount_cents: number
+          authorized_at: string
+          cielo_order_id: string
+          cielo_payment_id: string
+          created_at: string
+          esp_command_status: string
+          external_reference: string
+          has_in_flight_command: boolean
+          machine_id: string
+          machine_name: string
+          needs_refund: boolean
+          payment_authorized: boolean
+          payment_method: string
+          provider: string
+          reconciliation_pending: boolean
+          released_at: string
+          session_id: string
+          session_state: string
+          transaction_id: string
+          transaction_status: string
+        }[]
+      }
       log_security_event: {
         Args: {
           _details?: Json
@@ -1167,6 +1419,35 @@ export type Database = {
         Returns: string
       }
       mark_stale_esp32_offline: { Args: never; Returns: undefined }
+      mark_totem_payment_authorized: {
+        Args: {
+          _amount_cents?: number
+          _cielo_auth_code?: string
+          _cielo_payment_id?: string
+          _extra?: Json
+          _payment_method?: string
+          _transaction_id: string
+        }
+        Returns: boolean
+      }
+      mark_totem_payment_needs_refund: {
+        Args: { _reason?: string; _transaction_id: string }
+        Returns: boolean
+      }
+      run_payment_reconcile_local: { Args: never; Returns: Json }
+      update_payment_session: {
+        Args: {
+          _cielo_order_id?: string
+          _cielo_payment_id?: string
+          _external_reference?: string
+          _extra?: Json
+          _payment_method?: string
+          _session_id: string
+          _state: string
+          _stone_transaction_id?: string
+        }
+        Returns: boolean
+      }
       user_belongs_to_laundry: {
         Args: { _laundry_id: string; _user_id: string }
         Returns: boolean
