@@ -11,6 +11,16 @@
         <package android:name="br.com.setis.clientepaygoweb" />
         <!-- Cielo Smart UriApp (Deep Link integration) -->
         <package android:name="com.ads.lio.uriappclient" />
+        <!-- Stone POS payment / cancel apps (Deeplink) -->
+        <package android:name="br.com.stone" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="payment-app" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="cancel-app" />
+        </intent>
     </queries>
 
     <application
@@ -86,6 +96,20 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="order" android:host="response" />
+            </intent-filter>
+        </activity>
+
+        <!-- Receives Stone Deeplink callbacks: toplavanderia-stone://... -->
+        <activity
+            android:name="app.lovable.toplavanderia.StoneResponseActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="toplavanderia-stone" />
             </intent-filter>
         </activity>
 

@@ -301,10 +301,11 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
           {paymentProvider === "stone" && (
             <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
               <h4 className="text-sm font-semibold">Credenciais Stone POS</h4>
-              <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/30">
+              <Alert>
                 <AlertDescription>
-                  Você já pode salvar as credenciais aqui. A cobrança via SDK Stone no totem Android ainda
-                  <strong> não está ativa</strong> — use Cielo ou PayGo até a integração ser liberada.
+                  Integração via <strong>Deeplink Stone</strong> (modelo oficial recomendado).
+                  Instale o APK neste POS Stone e selecione o provedor <strong>Stone POS</strong>.
+                  Cobrança e estorno usam os apps nativos <code>payment-app</code> / <code>cancel-app</code>.
                 </AlertDescription>
               </Alert>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

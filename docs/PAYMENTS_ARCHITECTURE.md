@@ -42,22 +42,28 @@ Sugestão: executar a cada **2 minutos** via scheduler externo (pg_cron, GitHub 
 
 ---
 
-## Fase B — Stone POS (em andamento)
+## Fase B — Stone POS (Deeplink ativo)
 
-### Já feito
-- Opção **Stone POS** em Admin → Configurações → Provedor
+### Implementado
+- Opção **Stone POS** em Admin → Configurações
 - Campos: `stone_code`, `stone_app_key`, `stone_environment`, `stone_device_serial`
-- Tabela `payment_terminals` + coluna `stone_transaction_id` em `payment_sessions`
-- Contratos em `src/lib/payments/types.ts`
+- Android: `StoneDeeplinkManager` + `StoneResponseActivity` (`toplavanderia-stone://`)
+- Pagamento: `payment-app://pay` — Cancelamento: `cancel-app://cancel`
+- Totem usa o mesmo fluxo de sessão/liberação ESP da Cielo quando `paygo_provedor = stone`
+- Tabela `payment_terminals` + `stone_transaction_id` em `payment_sessions`
 
-### Ainda falta
-1. Implementar `StonePaymentManager` no Android (SDK Stone).
-2. Flavor/APK Stone (ou mesmo app, conforme exigência da Stone).
-3. Totem ler `paygo_provedor = stone` e usar o manager Stone.
-4. Reconciliação Stone na edge `reconcile-payments`.
-5. Homologação / instalação no POS Stone.
+### SDK nativo (Provider) — opcional
+O SDK completo (`br.com.stone:stone-sdk`) exige **token PackageCloud** privado da Stone.
+Deeplink **não precisa** desse token e é o modelo recomendado pela Stone para POS Android.
 
-**Onde o usuário escolhe:** Admin da lavanderia em **Configurações → Provedor de Pagamento** (`paygo` | `cielo` | `stone`). O cliente no totem não escolhe o gateway.
+Para habilitar o SDK Provider no futuro:
+1. Obter token PackageCloud com o time Stone
+2. Passar `-PstonePackageCloudToken=...` no Gradle e descomentar dependências em `android/app/build.gradle`
+
+### Ainda opcional
+- Reconciliação Stone na edge (consulta API Stone além do ATK local)
+- Flavor APK dedicado por fabricante (Sunmi/Gertec) se usar Provider SDK
+
 
 ---
 

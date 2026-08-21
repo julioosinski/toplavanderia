@@ -338,6 +338,26 @@ public class SupabaseHelper {
         JSONObject s = fetchSystemSettings();
         return s != null ? s.optString("cielo_environment", "sandbox") : "sandbox";
     }
+
+    public String getStoneCode() {
+        JSONObject s = fetchSystemSettings();
+        return s != null ? s.optString("stone_code", "") : "";
+    }
+
+    public String getStoneAppKey() {
+        JSONObject s = fetchSystemSettings();
+        return s != null ? s.optString("stone_app_key", "") : "";
+    }
+
+    public String getStoneEnvironment() {
+        JSONObject s = fetchSystemSettings();
+        return s != null ? s.optString("stone_environment", "sandbox") : "sandbox";
+    }
+
+    public String getStoneDeviceSerial() {
+        JSONObject s = fetchSystemSettings();
+        return s != null ? s.optString("stone_device_serial", "") : "";
+    }
     
     public void setOnMachinesLoadedListener(OnMachinesLoadedListener listener) {
         this.listener = listener;
@@ -934,6 +954,20 @@ public class SupabaseHelper {
             String cieloPaymentId,
             String paymentMethod
     ) {
+        return updatePaymentSession(
+            sessionId, state, externalReference, cieloOrderId, cieloPaymentId, null, paymentMethod
+        );
+    }
+
+    public boolean updatePaymentSession(
+            String sessionId,
+            String state,
+            String externalReference,
+            String cieloOrderId,
+            String cieloPaymentId,
+            String stoneTransactionId,
+            String paymentMethod
+    ) {
         if (sessionId == null || sessionId.trim().isEmpty() || state == null || state.isEmpty()) {
             return false;
         }
@@ -948,7 +982,8 @@ public class SupabaseHelper {
                 ? cieloOrderId : JSONObject.NULL);
             payload.put("_cielo_payment_id", cieloPaymentId != null && !cieloPaymentId.isEmpty()
                 ? cieloPaymentId : JSONObject.NULL);
-            payload.put("_stone_transaction_id", JSONObject.NULL);
+            payload.put("_stone_transaction_id", stoneTransactionId != null && !stoneTransactionId.isEmpty()
+                ? stoneTransactionId : JSONObject.NULL);
             payload.put("_payment_method", paymentMethod != null && !paymentMethod.isEmpty()
                 ? paymentMethod : JSONObject.NULL);
             payload.put("_extra", new JSONObject());

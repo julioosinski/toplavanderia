@@ -71,6 +71,7 @@ public class TotemActivity extends Activity {
     private PaymentManager activePaymentManager;
     private RealPayGoManager payGoManager;
     private CieloLioManager cieloManager;
+    private StoneDeeplinkManager stoneManager;
     private String activeProvider = "paygo";
     private MachineStatusMonitor statusMonitor;
     private List<SupabaseHelper.Machine> machines;
@@ -1340,7 +1341,9 @@ public class TotemActivity extends Activity {
     ) {
         final String machineId = machineSnapshot != null
             ? machineSnapshot.getId()
-            : (cieloManager != null ? cieloManager.getBoundMachineId() : "");
+            : (isStoneProvider() && stoneManager != null
+                ? stoneManager.getBoundMachineId()
+                : (cieloManager != null ? cieloManager.getBoundMachineId() : ""));
 
         // Última checagem: comando pode ter completado enquanto montávamos o estorno.
         if (pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()
@@ -1365,6 +1368,10 @@ public class TotemActivity extends Activity {
                 cieloManager.clearRefundSnapshotForTx(pendingTxIdFinal);
                 cieloManager.onTotemCheckoutFinished();
             }
+            if (stoneManager != null) {
+                stoneManager.clearRefundSnapshotForTx(pendingTxIdFinal);
+                stoneManager.onTotemCheckoutFinished();
+            }
             clearPostPaymentHardwarePending();
             runOnUiThread(this::restoreHomeScreen);
             return;
@@ -1384,7 +1391,7 @@ public class TotemActivity extends Activity {
         }
 
         boolean reversed = false;
-        if (canAutoRefund && cieloManager != null) {
+        if (canAutoRefund && isCieloProvider() && cieloManager != null) {
             CieloLioManager.ApprovedPaymentSnapshot snap = refundSnapshot;
             if (snap == null && pendingTxIdFinal != null) {
                 snap = cieloManager.peekRefundSnapshotForTx(pendingTxIdFinal);
@@ -1392,11 +1399,9 @@ public class TotemActivity extends Activity {
             if (snap == null) {
                 snap = cieloManager.peekApprovedPaymentSnapshot();
             }
-            // Mesmo com id sintético (broadcast-*), o manager resolve paymentId no Order Manager.
             if (snap != null || cieloManager.hasApprovedPaymentSnapshot()) {
                 Log.w(TAG, "ESP32 não confirmou — iniciando estorno automático Cielo"
                     + (snap != null ? (" paymentId=" + snap.paymentId) : ""));
-                // Congela a UI na tela de estorno enquanto a Cielo processa.
                 runOnUiThread(() -> showEsp32FailureScreen(
                     "A máquina não liberou.\n\nEstornando o pagamento automaticamente…\nAguarde.",
                     false
@@ -1404,6 +1409,25 @@ public class TotemActivity extends Activity {
                 reversed = cieloManager.requestAutomaticReversal(snap);
             } else {
                 Log.e(TAG, "ESP32 não confirmou — estorno indisponível (sem paymentId/reference Cielo)");
+            }
+        } else if (canAutoRefund && isStoneProvider() && stoneManager != null) {
+            StoneDeeplinkManager.ApprovedPaymentSnapshot snap = null;
+            if (pendingTxIdFinal != null) {
+                snap = stoneManager.peekRefundSnapshotForTx(pendingTxIdFinal);
+            }
+            if (snap == null) {
+                snap = stoneManager.peekApprovedPaymentSnapshot();
+            }
+            if (snap != null || stoneManager.hasApprovedPaymentSnapshot()) {
+                Log.w(TAG, "ESP32 não confirmou — iniciando estorno automático Stone"
+                    + (snap != null ? (" atk=" + snap.atk) : ""));
+                runOnUiThread(() -> showEsp32FailureScreen(
+                    "A máquina não liberou.\n\nEstornando o pagamento automaticamente…\nAguarde.",
+                    false
+                ));
+                reversed = stoneManager.requestAutomaticReversal(snap);
+            } else {
+                Log.e(TAG, "ESP32 não confirmou — estorno indisponível (sem ATK Stone)");
             }
         }
 
@@ -1417,6 +1441,9 @@ public class TotemActivity extends Activity {
             Log.d(TAG, "Transação totem cancelada após estorno confirmado: " + cancelled);
             if (cieloManager != null) {
                 cieloManager.clearRefundSnapshotForTx(pendingTxIdFinal);
+            }
+            if (stoneManager != null) {
+                stoneManager.clearRefundSnapshotForTx(pendingTxIdFinal);
             }
         } else if (pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
             if (currentPaymentSessionId != null) {
@@ -1758,16 +1785,31 @@ public class TotemActivity extends Activity {
         return button;
     }
     
+    private boolean isCieloProvider() {
+        return "cielo".equalsIgnoreCase(activeProvider);
+    }
+
+    private boolean isStoneProvider() {
+        return "stone".equalsIgnoreCase(activeProvider);
+    }
+
+    /** Cielo LIO ou Stone POS — deep link + liberação ESP em background. */
+    private boolean isPosDeepLinkProvider() {
+        return isCieloProvider() || isStoneProvider();
+    }
+
     /** Feedback imediato na UI; trabalho pesado roda em background. */
     private void startPaymentFlow(SupabaseHelper.Machine machine, String paymentType) {
-        if ("cielo".equalsIgnoreCase(activeProvider)) {
+        if (isPosDeepLinkProvider()) {
             if (!paymentLaunchInProgress.compareAndSet(false, true)) {
-                Log.d(TAG, "Pagamento Cielo já em abertura — toque ignorado");
+                Log.d(TAG, "Pagamento POS já em abertura — toque ignorado");
                 return;
             }
             paymentContextMachine = machine;
             currentOperationSupabasePaymentMethod = toSupabasePaymentMethod(paymentType);
-            warnCieloPrerequisitesIfNeeded();
+            if (isCieloProvider()) {
+                warnCieloPrerequisitesIfNeeded();
+            }
             showCieloLaunchingScreen(machine, paymentType);
             processPayment(machine, paymentType);
             return;
@@ -1789,7 +1831,7 @@ public class TotemActivity extends Activity {
     private void processPayment(SupabaseHelper.Machine machine, String paymentTypeForManager) {
         new Thread(() -> {
             try {
-                if ("cielo".equalsIgnoreCase(activeProvider)) {
+                if (isCieloProvider()) {
                     if (cieloManager.releaseStaleProcessingIfNeeded()) {
                         paymentLaunchInProgress.set(false);
                         return;
@@ -1799,8 +1841,6 @@ public class TotemActivity extends Activity {
                     }
                     String abandonedTx = cieloManager.takeLastAbandonedTxId();
                     if (abandonedTx != null && !abandonedTx.isEmpty()) {
-                        // Timeout local não comprova cancelamento financeiro na Cielo.
-                        // Preserva pending para reconciliação em vez de apagar um PIX tardio pago.
                         Log.w(TAG, "Checkout expirou localmente; TX preservada para reconciliação: "
                             + abandonedTx);
                         if (abandonedTx.equals(currentPendingTransactionId)) {
@@ -1809,14 +1849,14 @@ public class TotemActivity extends Activity {
                     }
                 }
                 if (activePaymentManager != null && activePaymentManager.isProcessing()) {
-                    if ("cielo".equalsIgnoreCase(activeProvider)) {
+                    if (isPosDeepLinkProvider()) {
                         paymentLaunchInProgress.set(false);
                     }
                     runOnUiThread(() -> handlePaymentError("Aguarde: pagamento anterior ainda em processamento na maquininha."));
                     return;
                 }
-                final boolean cieloFlow = "cielo".equalsIgnoreCase(activeProvider);
-                if (!cieloFlow) {
+                final boolean posFlow = isPosDeepLinkProvider();
+                if (!posFlow) {
                     if (!paymentLaunchInProgress.compareAndSet(false, true)) {
                         runOnUiThread(() -> handlePaymentError("Pagamento já está sendo iniciado. Aguarde."));
                         return;
@@ -1829,8 +1869,10 @@ public class TotemActivity extends Activity {
                     runOnUiThread(() -> showCieloLaunchingScreen(machine, paymentTypeForManager));
                 }
 
-                if ("cielo".equalsIgnoreCase(activeProvider)) {
+                if (isCieloProvider()) {
                     cieloManager.takeLastDetectedSupabasePaymentMethod();
+                } else if (isStoneProvider() && stoneManager != null) {
+                    stoneManager.takeLastDetectedSupabasePaymentMethod();
                 }
                 final String supabaseMethod = toSupabasePaymentMethod(paymentTypeForManager);
                 currentOperationSupabasePaymentMethod = supabaseMethod;
@@ -1859,8 +1901,9 @@ public class TotemActivity extends Activity {
                 currentOperationId = System.nanoTime();
                 final String cieloReference = UUID.randomUUID().toString();
                 final SupabaseHelper.CoffeeProduct coffeeProductSnapshot = selectedCoffeeProduct;
-                final String paymentProvider = "cielo".equalsIgnoreCase(activeProvider)
-                    ? "cielo" : "paygo";
+                final String paymentProvider = isCieloProvider()
+                    ? "cielo"
+                    : (isStoneProvider() ? "stone" : "paygo");
                 SupabaseHelper.PaymentSessionResult sessionResult;
                 if (coffeeProductSnapshot != null) {
                     sessionResult = supabaseHelper.beginTotemCoffeePaymentSession(
@@ -1903,19 +1946,34 @@ public class TotemActivity extends Activity {
                         supabaseMethod
                     );
                 }
-                if ("cielo".equalsIgnoreCase(activeProvider)) {
+                if (isCieloProvider()) {
                     cieloManager.bindTotemCheckout(
+                        currentOperationId,
+                        machine.getId(),
+                        pendingTxId
+                    );
+                } else if (isStoneProvider() && stoneManager != null) {
+                    stoneManager.bindTotemCheckout(
                         currentOperationId,
                         machine.getId(),
                         pendingTxId
                     );
                 }
 
-                if ("cielo".equalsIgnoreCase(activeProvider)) {
+                if (isCieloProvider()) {
                     ensureCieloConfigured();
                     String configErr = cieloManager.getConfigurationError();
                     if (configErr != null) {
                         Log.e(TAG, "Pagamento bloqueado — config Cielo: " + configErr);
+                        paymentLaunchInProgress.set(false);
+                        runOnUiThread(() -> handlePaymentError(configErr));
+                        return;
+                    }
+                } else if (isStoneProvider()) {
+                    ensureStoneConfigured();
+                    String configErr = stoneManager != null ? stoneManager.getConfigurationError() : "Stone não inicializado";
+                    if (configErr != null) {
+                        Log.e(TAG, "Pagamento bloqueado — config Stone: " + configErr);
                         paymentLaunchInProgress.set(false);
                         runOnUiThread(() -> handlePaymentError(configErr));
                         return;
@@ -1925,7 +1983,9 @@ public class TotemActivity extends Activity {
                 if (activePaymentManager != null && !activePaymentManager.isInitialized()) {
                     paymentLaunchInProgress.set(false);
                     runOnUiThread(() -> handlePaymentError(
-                        "Pagamento não configurado. Verifique credenciais Cielo no painel admin.",
+                        isStoneProvider()
+                            ? "Pagamento Stone não configurado. Verifique Stone Code e AppKey no painel admin."
+                            : "Pagamento não configurado. Verifique credenciais Cielo no painel admin.",
                         currentOperationId));
                     return;
                 }
@@ -1944,7 +2004,7 @@ public class TotemActivity extends Activity {
                     "Top Lavanderia - " + paymentLabel,
                     cieloReference
                 );
-                if (!"cielo".equalsIgnoreCase(activeProvider)) {
+                if (!isPosDeepLinkProvider()) {
                     runOnUiThread(() -> showPaymentProcessing(machine, managerPaymentType));
                 }
             } catch (Exception e) {
@@ -2183,14 +2243,15 @@ public class TotemActivity extends Activity {
         if (operationId == currentOperationId) {
             return true;
         }
-        return "cielo".equalsIgnoreCase(activeProvider) && cieloManager.matchesBoundOperation(operationId);
+        return isCieloProvider() && cieloManager != null && cieloManager.matchesBoundOperation(operationId)
+            || isStoneProvider() && stoneManager != null && stoneManager.matchesBoundOperation(operationId);
     }
 
     private long resolvePaymentOperationId() {
         if (currentOperationId > 0) {
             return currentOperationId;
         }
-        if ("cielo".equalsIgnoreCase(activeProvider)) {
+        if (isCieloProvider() && cieloManager != null) {
             return cieloManager.getBoundTotemOperationId();
         }
         return currentOperationId;
@@ -2224,8 +2285,10 @@ public class TotemActivity extends Activity {
         SupabaseHelper.Machine machineForRefresh = selectedMachine != null
             ? selectedMachine
             : paymentContextMachine;
-        if (machineForRefresh == null && "cielo".equalsIgnoreCase(activeProvider)) {
+        if (machineForRefresh == null && isCieloProvider() && cieloManager != null) {
             machineForRefresh = findMachineById(cieloManager.getBoundMachineId());
+        } else if (machineForRefresh == null && isStoneProvider() && stoneManager != null) {
+            machineForRefresh = findMachineById(stoneManager.getBoundMachineId());
         }
         SupabaseHelper.Machine resolvedMachine = machineForRefresh;
         // Sempre revalida preço/tempo do servidor (também no Cielo) para não usar cache curto.
@@ -2238,9 +2301,10 @@ public class TotemActivity extends Activity {
         final SupabaseHelper.Machine machineSnapshot = resolvedMachine;
         if (machineSnapshot == null) {
             String pendingTxId = currentPendingTransactionId;
-            if ((pendingTxId == null || pendingTxId.isEmpty())
-                    && "cielo".equalsIgnoreCase(activeProvider)) {
+            if ((pendingTxId == null || pendingTxId.isEmpty()) && isCieloProvider() && cieloManager != null) {
                 pendingTxId = cieloManager.getBoundPendingTxId();
+            } else if ((pendingTxId == null || pendingTxId.isEmpty()) && isStoneProvider() && stoneManager != null) {
+                pendingTxId = stoneManager.getBoundPendingTxId();
             }
             awaitingPaymentCallback = false;
             paymentLaunchInProgress.set(false);
@@ -2249,16 +2313,23 @@ public class TotemActivity extends Activity {
             Log.e(TAG, "Pagamento aprovado sem máquina resolvida; iniciando estorno/reconciliação");
             handleEsp32FailureWithRefund(
                 null, pendingTxId, operationId, true,
-                cieloManager != null ? cieloManager.peekApprovedPaymentSnapshot() : null
+                isCieloProvider() && cieloManager != null
+                    ? cieloManager.peekApprovedPaymentSnapshot() : null
             );
             return;
         }
 
-        if ("cielo".equalsIgnoreCase(activeProvider)) {
+        if (isCieloProvider() && cieloManager != null) {
             String detected = cieloManager.takeLastDetectedSupabasePaymentMethod();
             if (detected != null && !detected.isEmpty()) {
                 currentOperationSupabasePaymentMethod = detected;
                 Log.d(TAG, "Forma de pagamento confirmada pela Cielo (Supabase): " + detected);
+            }
+        } else if (isStoneProvider() && stoneManager != null) {
+            String detected = stoneManager.takeLastDetectedSupabasePaymentMethod();
+            if (detected != null && !detected.isEmpty()) {
+                currentOperationSupabasePaymentMethod = detected;
+                Log.d(TAG, "Forma de pagamento confirmada pela Stone (Supabase): " + detected);
             }
         }
 
@@ -2268,8 +2339,10 @@ public class TotemActivity extends Activity {
 
         final String machineId = machineSnapshot.getId();
         String pendingTxId = currentPendingTransactionId;
-        if ((pendingTxId == null || pendingTxId.isEmpty()) && "cielo".equalsIgnoreCase(activeProvider)) {
+        if ((pendingTxId == null || pendingTxId.isEmpty()) && isCieloProvider() && cieloManager != null) {
             pendingTxId = cieloManager.getBoundPendingTxId();
+        } else if ((pendingTxId == null || pendingTxId.isEmpty()) && isStoneProvider() && stoneManager != null) {
+            pendingTxId = stoneManager.getBoundPendingTxId();
         }
         final String pendingTxIdFinal = pendingTxId;
         final String paymentSessionIdFinal = currentPaymentSessionId;
@@ -2285,14 +2358,14 @@ public class TotemActivity extends Activity {
         // Machine type cobre retorno Cielo quando selectedCoffeeProduct já foi limpo.
         final boolean isCoffeePayment = coffeeSnapshot != null
             || "CAFE".equals(machineSnapshot.getType());
-        final boolean cieloFastPath = "cielo".equalsIgnoreCase(activeProvider);
+        final boolean posFastPath = isPosDeepLinkProvider();
         // Bloqueia idle durante liberação ESP32/café (antes de liberar awaiting).
-        if (cieloFastPath) {
+        if (posFastPath) {
             markPostPaymentHardwarePending();
             bumpUserInteraction();
         }
 
-        if (!isCoffeePayment && supabaseHelper != null && !cieloFastPath) {
+        if (!isCoffeePayment && supabaseHelper != null && !posFastPath) {
             supabaseHelper.patchCachedMachineStatus(machineId, "OCUPADA", true);
         }
 
@@ -2301,13 +2374,8 @@ public class TotemActivity extends Activity {
                 return;
             }
             triggerAutomaticReceiptPrint(machineSnapshot, authorizationCode, transactionId);
-            if (cieloFastPath) {
-                if (!isCoffeePayment) {
-                    showPostPaymentVerifyingScreen(machineSnapshot);
-                } else {
-                    // Mantém tela de liberação enquanto o crédito é enfileirado.
-                    showPostPaymentVerifyingScreen(machineSnapshot);
-                }
+            if (posFastPath) {
+                showPostPaymentVerifyingScreen(machineSnapshot);
             } else {
                 if (!isCoffeePayment) {
                     markMachineOptimisticallyOccupied(machineId);
@@ -2321,22 +2389,11 @@ public class TotemActivity extends Activity {
             Log.d(TAG, "Código: " + authorizationCode);
             Log.d(TAG, "Transação: " + transactionId);
 
-            if (cieloFastPath && isCoffeePayment) {
-                Log.d(TAG, "=== CIELO: enfileirando crédito café (antes de concluir TX) ===");
-                // Marca autorização + snapshot por TX antes de liberar o checkout.
-                CieloLioManager.ApprovedPaymentSnapshot earlySnap =
-                    cieloManager != null ? cieloManager.peekApprovedPaymentSnapshot() : null;
-                if (pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
-                    if (cieloManager != null && earlySnap != null) {
-                        cieloManager.rememberRefundSnapshotForTx(pendingTxIdFinal, earlySnap);
-                    }
-                    String payId = earlySnap != null ? earlySnap.paymentId : null;
-                    String auth = earlySnap != null ? earlySnap.authCode : authorizationCode;
-                    long cents = earlySnap != null ? earlySnap.amountCents : 0L;
-                    supabaseHelper.markTotemPaymentAuthorized(
-                        pendingTxIdFinal, methodForComplete, payId, auth, cents
-                    );
-                }
+            if (posFastPath && isCoffeePayment) {
+                Log.d(TAG, "=== POS: enfileirando crédito café (antes de concluir TX) ===");
+                markAuthorizedAfterPosPayment(
+                    pendingTxIdFinal, paymentSessionIdFinal, methodForComplete, authorizationCode
+                );
                 boolean creditQueued = false;
                 if (pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
                     if (paymentSessionIdFinal != null) {
@@ -2358,29 +2415,19 @@ public class TotemActivity extends Activity {
                     Log.e(TAG, "❌ Crédito café não enfileirado — estorno automático se possível");
                     handleEsp32FailureWithRefund(
                         machineSnapshot, pendingTxIdFinal, operationId, true,
-                        cieloManager != null
+                        isCieloProvider() && cieloManager != null
                             ? cieloManager.peekRefundSnapshotForTx(pendingTxIdFinal) : null
                     );
                     return;
                 }
 
-                // Volta à HOME imediatamente; confirma ESP / estorno em background.
-                // Libera flag de hardware ANTES da espera longa — senão trava o próximo pagamento.
                 clearPostPaymentHardwarePending();
                 runOnUiThread(() -> {
                     selectedMachine = null;
                     selectedCoffeeProduct = null;
                     finishCieloPaymentSession(operationId, true);
                 });
-                cieloManager.releaseCheckoutForNextPayment();
-                cieloManager.ensureReversiblePaymentSnapshot();
-                if (pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
-                    cieloManager.rememberRefundSnapshotForTx(
-                        pendingTxIdFinal, cieloManager.peekApprovedPaymentSnapshot()
-                    );
-                }
-                final CieloLioManager.ApprovedPaymentSnapshot coffeeRefundSnap =
-                    cieloManager.peekRefundSnapshotForTx(pendingTxIdFinal);
+                releasePosCheckoutForNextPayment(pendingTxIdFinal);
 
                 boolean creditConfirmed = supabaseHelper.confirmEsp32ReleaseRobust(
                     machineSnapshot.getEsp32Id(),
@@ -2391,7 +2438,9 @@ public class TotemActivity extends Activity {
                 );
                 if (!creditConfirmed) {
                     handleEsp32FailureWithRefund(
-                        machineSnapshot, pendingTxIdFinal, operationId, true, coffeeRefundSnap
+                        machineSnapshot, pendingTxIdFinal, operationId, true,
+                        isCieloProvider() && cieloManager != null
+                            ? cieloManager.peekRefundSnapshotForTx(pendingTxIdFinal) : null
                     );
                     return;
                 }
@@ -2402,52 +2451,29 @@ public class TotemActivity extends Activity {
                 if (!txCompleted) {
                     Log.w(TAG, "Crédito confirmado, mas falhou ao marcar TX café como concluída");
                 }
-                if (pendingTxIdFinal != null) {
-                    cieloManager.clearRefundSnapshotForTx(pendingTxIdFinal);
-                }
-                cieloManager.onTotemCheckoutFinished();
+                clearPosRefundSnapshot(pendingTxIdFinal);
                 return;
             }
 
-            if (cieloFastPath && !isCoffeePayment) {
+            if (posFastPath && !isCoffeePayment) {
                 String esp32TxId = pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()
                     ? pendingTxIdFinal : transactionId;
                 final boolean isMassagePayment = "MASSAGEM".equals(machineSnapshot.getType());
-                Log.d(TAG, "=== CIELO: liberação ESP robusta (confirm + estorno por TX) ===");
+                Log.d(TAG, "=== POS: liberação ESP robusta (confirm + estorno por TX) ===");
                 Log.d(TAG, "Duração solicitada: " + durationMinutes + " min (tipo="
                     + machineSnapshot.getType() + ")");
 
-                CieloLioManager.ApprovedPaymentSnapshot earlySnap =
-                    cieloManager != null ? cieloManager.peekApprovedPaymentSnapshot() : null;
-                if (pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
-                    if (cieloManager != null && earlySnap != null) {
-                        cieloManager.rememberRefundSnapshotForTx(pendingTxIdFinal, earlySnap);
-                    }
-                    String payId = earlySnap != null ? earlySnap.paymentId : null;
-                    String auth = earlySnap != null ? earlySnap.authCode : authorizationCode;
-                    long cents = earlySnap != null ? earlySnap.amountCents : 0L;
-                    supabaseHelper.markTotemPaymentAuthorized(
-                        pendingTxIdFinal, methodForComplete, payId, auth, cents
-                    );
-                }
+                markAuthorizedAfterPosPayment(
+                    pendingTxIdFinal, paymentSessionIdFinal, methodForComplete, authorizationCode
+                );
 
-                // Volta à HOME imediatamente; confirma ESP / estorno em background.
-                // Libera flag de hardware ANTES da espera longa — senão trava o próximo pagamento.
                 clearPostPaymentHardwarePending();
                 runOnUiThread(() -> {
                     selectedMachine = null;
                     selectedCoffeeProduct = null;
                     finishCieloPaymentSession(operationId, true);
                 });
-                cieloManager.releaseCheckoutForNextPayment();
-                cieloManager.ensureReversiblePaymentSnapshot();
-                if (pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
-                    cieloManager.rememberRefundSnapshotForTx(
-                        pendingTxIdFinal, cieloManager.peekApprovedPaymentSnapshot()
-                    );
-                }
-                final CieloLioManager.ApprovedPaymentSnapshot refundSnap =
-                    cieloManager.peekRefundSnapshotForTx(pendingTxIdFinal);
+                releasePosCheckoutForNextPayment(pendingTxIdFinal);
 
                 if (paymentSessionIdFinal != null) {
                     supabaseHelper.updatePaymentSession(
@@ -2460,7 +2486,9 @@ public class TotemActivity extends Activity {
                 );
                 if (!relayConfirmed) {
                     handleEsp32FailureWithRefund(
-                        machineSnapshot, pendingTxIdFinal, operationId, true, refundSnap
+                        machineSnapshot, pendingTxIdFinal, operationId, true,
+                        isCieloProvider() && cieloManager != null
+                            ? cieloManager.peekRefundSnapshotForTx(pendingTxIdFinal) : null
                     );
                     return;
                 }
@@ -2486,10 +2514,7 @@ public class TotemActivity extends Activity {
                 if (!txCompleted) {
                     Log.w(TAG, "Não foi possível marcar a transação do totem como concluída");
                 }
-                if (pendingTxIdFinal != null) {
-                    cieloManager.clearRefundSnapshotForTx(pendingTxIdFinal);
-                }
-                cieloManager.onTotemCheckoutFinished();
+                clearPosRefundSnapshot(pendingTxIdFinal);
                 if (statusMonitor != null) {
                     statusMonitor.requestImmediatePoll();
                 }
@@ -2548,20 +2573,19 @@ public class TotemActivity extends Activity {
                 }
             }
 
-            if ("cielo".equalsIgnoreCase(activeProvider)) {
+            if (isPosDeepLinkProvider()) {
                 final boolean activated = hardwareOk;
                 runOnUiThread(() -> finishCieloPaymentSession(operationId, activated));
-                cieloManager.onTotemCheckoutFinished();
+                clearPosRefundSnapshot(pendingTxIdFinal);
             }
         } catch (Exception e) {
             Log.e(TAG, "Erro ao finalizar pós-pagamento (ESP32/Supabase)", e);
-            if (cieloFastPath) {
+            if (isPosDeepLinkProvider()) {
                 handleEsp32FailureWithRefund(
                     machineSnapshot, pendingTxIdFinal, operationId, true,
-                    cieloManager != null ? cieloManager.peekApprovedPaymentSnapshot() : null
+                    isCieloProvider() && cieloManager != null
+                        ? cieloManager.peekApprovedPaymentSnapshot() : null
                 );
-            } else if ("cielo".equalsIgnoreCase(activeProvider)) {
-                runOnUiThread(() -> finishCieloPaymentSession(operationId, false));
             }
         }
     }
@@ -2975,19 +2999,109 @@ public class TotemActivity extends Activity {
         cieloManager.configure(cId, cToken, cMerchant, cEnv);
     }
 
+    private void ensureStoneConfigured() {
+        if (stoneManager == null) {
+            stoneManager = new StoneDeeplinkManager(this);
+        }
+        supabaseHelper.clearSettingsCache();
+        stoneManager.configure(
+            supabaseHelper.getStoneCode(),
+            supabaseHelper.getStoneAppKey(),
+            supabaseHelper.getStoneEnvironment(),
+            supabaseHelper.getStoneDeviceSerial()
+        );
+    }
+
+    private void markAuthorizedAfterPosPayment(
+            String pendingTxId,
+            String paymentSessionId,
+            String methodForComplete,
+            String authorizationCode
+    ) {
+        if (pendingTxId == null || pendingTxId.isEmpty()) {
+            return;
+        }
+        if (isCieloProvider() && cieloManager != null) {
+            CieloLioManager.ApprovedPaymentSnapshot earlySnap = cieloManager.peekApprovedPaymentSnapshot();
+            if (earlySnap != null) {
+                cieloManager.rememberRefundSnapshotForTx(pendingTxId, earlySnap);
+            }
+            String payId = earlySnap != null ? earlySnap.paymentId : null;
+            String auth = earlySnap != null ? earlySnap.authCode : authorizationCode;
+            long cents = earlySnap != null ? earlySnap.amountCents : 0L;
+            supabaseHelper.markTotemPaymentAuthorized(pendingTxId, methodForComplete, payId, auth, cents);
+            if (paymentSessionId != null) {
+                supabaseHelper.updatePaymentSession(
+                    paymentSessionId, "AUTHORIZED", null, null, payId, methodForComplete
+                );
+            }
+        } else if (isStoneProvider() && stoneManager != null) {
+            StoneDeeplinkManager.ApprovedPaymentSnapshot earlySnap = stoneManager.peekApprovedPaymentSnapshot();
+            if (earlySnap != null) {
+                stoneManager.rememberRefundSnapshotForTx(pendingTxId, earlySnap);
+            }
+            String atk = earlySnap != null ? earlySnap.atk : null;
+            String auth = earlySnap != null ? earlySnap.authCode : authorizationCode;
+            long cents = earlySnap != null ? earlySnap.amountCents : 0L;
+            supabaseHelper.markTotemPaymentAuthorized(pendingTxId, methodForComplete, atk, auth, cents);
+            if (paymentSessionId != null) {
+                supabaseHelper.updatePaymentSession(
+                    paymentSessionId, "AUTHORIZED", null, null, null, atk, methodForComplete
+                );
+            }
+        }
+    }
+
+    private void releasePosCheckoutForNextPayment(String pendingTxId) {
+        if (isCieloProvider() && cieloManager != null) {
+            cieloManager.releaseCheckoutForNextPayment();
+            cieloManager.ensureReversiblePaymentSnapshot();
+            if (pendingTxId != null && !pendingTxId.isEmpty()) {
+                cieloManager.rememberRefundSnapshotForTx(
+                    pendingTxId, cieloManager.peekApprovedPaymentSnapshot()
+                );
+            }
+        } else if (isStoneProvider() && stoneManager != null) {
+            stoneManager.releaseCheckoutForNextPayment();
+            if (pendingTxId != null && !pendingTxId.isEmpty()) {
+                stoneManager.rememberRefundSnapshotForTx(
+                    pendingTxId, stoneManager.peekApprovedPaymentSnapshot()
+                );
+            }
+        }
+    }
+
+    private void clearPosRefundSnapshot(String pendingTxId) {
+        if (pendingTxId != null) {
+            if (cieloManager != null) {
+                cieloManager.clearRefundSnapshotForTx(pendingTxId);
+            }
+            if (stoneManager != null) {
+                stoneManager.clearRefundSnapshotForTx(pendingTxId);
+            }
+        }
+        if (isCieloProvider() && cieloManager != null) {
+            cieloManager.onTotemCheckoutFinished();
+        }
+        if (isStoneProvider() && stoneManager != null) {
+            stoneManager.onTotemCheckoutFinished();
+        }
+    }
+
     /**
      * Inicializa apenas o provedor necessário. Terminais Cielo Smart não carregam PayGo no boot.
      */
     private void initializePaymentManagers() {
         activeProvider = supabaseHelper.getPaymentProvider();
-        if (!"cielo".equalsIgnoreCase(activeProvider) && isCieloSmartTerminal()) {
+        if (!isCieloProvider() && !isStoneProvider() && isCieloSmartTerminal()) {
             Log.d(TAG, "Terminal Cielo detectado: priorizando provedor Cielo LIO");
             activeProvider = "cielo";
         }
 
         cieloManager = new CieloLioManager(this);
+        stoneManager = new StoneDeeplinkManager(this);
 
-        if ("cielo".equalsIgnoreCase(activeProvider)) {
+        if (isCieloProvider()) {
             String cId = supabaseHelper.getCieloClientId();
             String cToken = supabaseHelper.getCieloAccessToken();
             String cMerchant = supabaseHelper.getCieloMerchantCode();
@@ -2997,7 +3111,12 @@ public class TotemActivity extends Activity {
             }
             activePaymentManager = cieloManager;
             payGoManager = null;
-            Log.d(TAG, "Provedor de pagamento: Cielo LIO (PayGo não carregado)");
+            Log.d(TAG, "Provedor de pagamento: Cielo LIO");
+        } else if (isStoneProvider()) {
+            ensureStoneConfigured();
+            activePaymentManager = stoneManager;
+            payGoManager = null;
+            Log.d(TAG, "Provedor de pagamento: Stone POS (Deeplink)");
         } else {
             payGoManager = new RealPayGoManager(this);
             activePaymentManager = payGoManager;
@@ -3015,25 +3134,43 @@ public class TotemActivity extends Activity {
     }
 
     private String getPaymentInstructionTitle() {
-        return "cielo".equalsIgnoreCase(activeProvider)
-                ? "PAGAMENTO SERÁ PROCESSADO NA CIELO"
-                : "PAGAMENTO SERÁ PROCESSADO NA PPC930";
+        if (isCieloProvider()) {
+            return "PAGAMENTO SERÁ PROCESSADO NA CIELO";
+        }
+        if (isStoneProvider()) {
+            return "PAGAMENTO SERÁ PROCESSADO NA STONE";
+        }
+        return "PAGAMENTO SERÁ PROCESSADO NA PPC930";
     }
 
     private String getPaymentInstructionSubtitle() {
-        return "cielo".equalsIgnoreCase(activeProvider)
-                ? "Siga as instruções na maquininha Cielo"
-                : "Insira seu cartão quando solicitado";
+        if (isCieloProvider()) {
+            return "Siga as instruções na maquininha Cielo";
+        }
+        if (isStoneProvider()) {
+            return "Siga as instruções no app de pagamento Stone";
+        }
+        return "Insira seu cartão quando solicitado";
     }
 
     private String getPaymentProcessingText() {
-        return "cielo".equalsIgnoreCase(activeProvider)
-                ? "COMUNICAÇÃO COM CIELO DX8000..."
-                : "COMUNICAÇÃO COM PPC930...";
+        if (isCieloProvider()) {
+            return "COMUNICAÇÃO COM CIELO DX8000...";
+        }
+        if (isStoneProvider()) {
+            return "COMUNICAÇÃO COM STONE POS...";
+        }
+        return "COMUNICAÇÃO COM PPC930...";
     }
 
     private String getCieloPaymentHint(String paymentType) {
-        if (!"cielo".equalsIgnoreCase(activeProvider)) {
+        if (isStoneProvider()) {
+            if (paymentType != null && "pix".equalsIgnoreCase(paymentType.trim())) {
+                return "Na Stone, siga as instruções do PIX.\n\n";
+            }
+            return "Na Stone: aproxime, insira ou passe o cartão.\n\n";
+        }
+        if (!isCieloProvider()) {
             return "";
         }
         if (paymentType != null && "pix".equalsIgnoreCase(paymentType.trim())) {
