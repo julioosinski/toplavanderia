@@ -157,7 +157,7 @@ export function PaymentDiagnosticsPanel() {
                 return (
                   <TableRow key={row.session_id}>
                     <TableCell className="whitespace-nowrap text-xs">
-                      {formatBrazilDateTime(row.created_at)}
+                      {`${formatBrazilDateTime(row.created_at).date} ${formatBrazilDateTime(row.created_at).time}`}
                     </TableCell>
                     <TableCell className="text-sm">{row.machine_name ?? "—"}</TableCell>
                     <TableCell className="text-sm">{formatAmount(row.amount_cents)}</TableCell>

@@ -265,7 +265,7 @@ export const MachineDetailsDialog = ({
             </div>
           )}
 
-          { (machine.status === "running" || machine.status === "in_use") && machine.timeRemaining && (
+          { (["running", "in_use"].includes(machine.status as string)) && machine.timeRemaining && (
             <>
               <Separator />
               <div className="bg-blue-50 dark:bg-blue-950/20 p-4 rounded-lg">
@@ -370,7 +370,7 @@ export const MachineDetailsDialog = ({
               </Button>
             )}
 
-            {(machine.status === "running" || machine.status === "in_use") && (
+            {(["running", "in_use"].includes(machine.status as string)) && (
               <Button
                 variant="destructive"
                 className="flex-1"
