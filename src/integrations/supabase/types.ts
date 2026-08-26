@@ -1357,6 +1357,17 @@ export type Database = {
           updated_at: string
         }[]
       }
+      get_totem_credit_command_status: {
+        Args: { _transaction_id: string }
+        Returns: {
+          action: string
+          created_at: string
+          error_message: string
+          id: string
+          status: string
+          updated_at: string
+        }[]
+      }
       get_totem_settings: { Args: { _laundry_id: string }; Returns: Json }
       get_user_laundry_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
