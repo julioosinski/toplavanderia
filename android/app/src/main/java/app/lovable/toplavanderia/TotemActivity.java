@@ -1391,11 +1391,8 @@ public class TotemActivity extends Activity {
             supabaseHelper.patchCachedMachineStatus(machineId, "LIVRE", false);
         }
 
-        // Antes de estornar: cancela ON pendente para a máquina não ligar depois do estorno.
-        if (pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
-            int failed = supabaseHelper.failPendingCommandsForTransaction(pendingTxIdFinal);
-            Log.w(TAG, "Comandos ESP cancelados antes do estorno: " + failed);
-        }
+        // Não mata o comando ANTES do estorno: se o PIX não estornar, o mesmo ON
+        // precisa continuar (processing órfão volta a pending). Só cancela após estorno OK.
 
         boolean reversed = false;
         if (canAutoRefund && isCieloProvider() && cieloManager != null) {
@@ -1439,6 +1436,8 @@ public class TotemActivity extends Activity {
         }
 
         if (reversed && pendingTxIdFinal != null && !pendingTxIdFinal.isEmpty()) {
+            int failed = supabaseHelper.failPendingCommandsForTransaction(pendingTxIdFinal);
+            Log.w(TAG, "Comandos ESP cancelados após estorno confirmado: " + failed);
             if (currentPaymentSessionId != null) {
                 supabaseHelper.updatePaymentSession(
                     currentPaymentSessionId, "REVERSED", null, null, null, null
@@ -1458,12 +1457,14 @@ public class TotemActivity extends Activity {
                     currentPaymentSessionId, "RECONCILIATION_PENDING", null, null, null, null
                 );
             }
-            Log.e(TAG, "Pagamento sem liberação e sem estorno confirmado; TX marcada needs_refund: "
+            Log.e(TAG, "Pagamento sem liberação e sem estorno confirmado; reenfileira ESP: "
                 + pendingTxIdFinal);
             supabaseHelper.markTotemPaymentNeedsRefund(
                 pendingTxIdFinal,
                 canAutoRefund ? "esp_timeout_refund_failed" : "esp_timeout_no_auto_refund"
             );
+            boolean requeued = supabaseHelper.enqueueTotemMachineRelease(pendingTxIdFinal);
+            Log.w(TAG, "enqueue_totem_machine_release após falha de ESP/estorno: " + requeued);
         }
 
         final boolean refunded = reversed;
@@ -1474,10 +1475,10 @@ public class TotemActivity extends Activity {
             : (canAutoRefund
                 ? "A máquina não foi liberada pelo equipamento.\n\n"
                     + "Não foi possível confirmar o estorno automático na Cielo.\n"
-                    + "A máquina já está disponível. Fale com o atendimento se o valor permanecer cobrado."
+                    + "A liberação continua sendo tentada. Aguarde ou fale com o atendimento se o valor permanecer cobrado."
                 : "A máquina não foi liberada.\n\n"
-                    + "Fale com o atendimento para estorno do pagamento.\n"
-                    + "A máquina já está disponível para nova tentativa.");
+                    + "A liberação continua sendo tentada sem nova cobrança.\n"
+                    + "Fale com o atendimento se o valor permanecer cobrado.");
 
         clearPostPaymentHardwarePending();
         runOnUiThread(() -> {

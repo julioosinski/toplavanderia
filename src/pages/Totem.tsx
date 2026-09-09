@@ -498,6 +498,18 @@ const Totem = () => {
           durationMinutes,
         };
 
+        // Marca autorizado ANTES de esperar o ESP. Sem isso o timeout cancelava a TX
+        // e falhava o comando — o cron nunca reentregava um pagamento já cobrado.
+        try {
+          await supabase.rpc('mark_totem_payment_authorized', {
+            _transaction_id: transactionId,
+            _payment_method: normalizedMethod,
+            _extra: { authorized_source: 'totem_activate' },
+          });
+        } catch (authMarkErr) {
+          console.warn('mark_totem_payment_authorized:', authMarkErr);
+        }
+
         const { data: espData, error: espErr } = await supabase.functions.invoke('esp32-control', {
           body: {
             esp32_id: esp32Id,
@@ -581,19 +593,29 @@ const Totem = () => {
         console.error('Erro ao ativar máquina:', error);
         const txId = paidActivationRef.current?.transactionId;
         if (txId) {
-          // Cancela TX + falha comandos: ESP tardio não libera de graça após falha.
+          // Pagamento já cobrado: não cancela nem mata o comando. Reenfileira para o ESP
+          // (e o cron de reconciliação) em vez de deixar a máquina presa "em uso".
           try {
-            await supabase.rpc('cancel_totem_transaction_by_id', { _transaction_id: txId });
-          } catch (cancelErr) {
-            console.warn('cancel_totem_transaction_by_id:', cancelErr);
+            await supabase.rpc('mark_totem_payment_needs_refund', {
+              _transaction_id: txId,
+              _reason: 'esp32_confirm_timeout',
+            });
+          } catch (refundMarkErr) {
+            console.warn('mark_totem_payment_needs_refund:', refundMarkErr);
           }
-          paidActivationRef.current = null;
+          try {
+            await supabase.rpc('enqueue_totem_machine_release', {
+              _transaction_id: txId,
+            });
+          } catch (enqueueErr) {
+            console.warn('enqueue_totem_machine_release:', enqueueErr);
+          }
         }
         const raw = error instanceof Error ? error.message : '';
         const description =
           raw === 'ESP32_CONFIRM_TIMEOUT' || raw.includes('não confirmou')
-            ? 'Não foi possível liberar a máquina a tempo. A operação foi cancelada. No totem Cielo o valor é estornado automaticamente; nos demais casos, fale com o atendimento.'
-            : (raw || 'Pagamento aprovado, mas o ESP32 não liberou. Operação cancelada.');
+            ? 'Pagamento aprovado, mas o equipamento ainda não confirmou a liberação. A tentativa continua em segundo plano. Use Tentar novamente sem pagar de novo, ou fale com o atendimento.'
+            : (raw || 'Pagamento aprovado, mas o ESP32 ainda não liberou. Tente novamente sem nova cobrança.');
         toast({
           title: 'Liberação não confirmada',
           description,
@@ -814,8 +836,7 @@ const Totem = () => {
     return (
       <ErrorScreen
         onRetry={() => {
-          // TX já cancelada após falha de ESP → novo pagamento (não reutiliza TX).
-          // Se ainda houver TX viva (caso raro), tenta só o ESP.
+          // Pagamento já autorizado: só reenvia o comando ESP, sem nova cobrança.
           if (paidActivationRef.current) {
             void retryEspActivationAfterPaid();
             return;

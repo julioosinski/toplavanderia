@@ -126,9 +126,14 @@ Deno.serve(async (req) => {
       console.warn("expire_stale_payment_sessions:", expired.error.message);
     }
 
+    const reclaimed = await supabase.rpc("reclaim_stale_processing_esp32_commands");
+    if (reclaimed.error) {
+      console.warn("reclaim_stale_processing_esp32_commands:", reclaimed.error.message);
+    }
+
     const { data: orphans, error: orphanErr } = await supabase.rpc("list_orphan_totem_releases", {
-      _min_age_seconds: 60,
-      _max_age_minutes: 45,
+      _min_age_seconds: 45,
+      _max_age_minutes: 360,
     });
 
     if (orphanErr) {

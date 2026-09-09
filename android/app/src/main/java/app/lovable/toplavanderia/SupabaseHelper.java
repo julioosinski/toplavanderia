@@ -1589,6 +1589,34 @@ public class SupabaseHelper {
         }
     }
 
+    /** Reenfileira ON/crédito da TX paga (reseta processing órfão). Sem nova cobrança. */
+    public boolean enqueueTotemMachineRelease(String transactionId) {
+        if (transactionId == null || transactionId.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            String url = SUPABASE_URL + "/rest/v1/rpc/enqueue_totem_machine_release";
+            JSONObject payload = new JSONObject();
+            payload.put("_transaction_id", transactionId.trim());
+            HttpURLConnection connection = SupabaseConfig.openConnection(url);
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
+            OutputStream os = connection.getOutputStream();
+            os.write(payload.toString().getBytes(StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+            int code = connection.getResponseCode();
+            connection.disconnect();
+            boolean ok = code >= 200 && code < 300;
+            Log.d(TAG, "enqueue_totem_machine_release HTTP " + code + " tx=" + transactionId);
+            return ok;
+        } catch (Exception e) {
+            Log.e(TAG, "enqueueTotemMachineRelease", e);
+            return false;
+        }
+    }
+
     /** Relé ON ou pending_commands completed. Não usa só status da máquina (falso positivo OCUPADA). */
     private boolean isEsp32Confirmed(String esp32Id, int relayPin, String machineId, String transactionId) {
         if (transactionId != null && !transactionId.isEmpty()) {
@@ -1599,11 +1627,8 @@ public class SupabaseHelper {
             if ("failed".equals(cmdStatus)) {
                 return false;
             }
-            // pending/processing: ainda em trânsito — não use relé residual de ciclo anterior.
-            if (cmdStatus == null || cmdStatus.isEmpty()) {
-                // Sem linha visível: tenta prova física só como fallback fraco.
-                return isEsp32RelayOn(esp32Id, relayPin);
-            }
+            // pending/processing/ausente: NÃO use relé residual do ciclo anterior.
+            // Isso marcava a máquina "em uso" sem pulso novo (pagamento aprovado, lavadora parada).
             return false;
         }
         return isEsp32RelayOn(esp32Id, relayPin);

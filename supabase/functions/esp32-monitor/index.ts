@@ -63,7 +63,7 @@ serve(async (req) => {
         });
       }
 
-      // Enrich ON commands with cycle_time_minutes from machines table
+      // Enrich: cycle_time já vem do claim (JOIN machines). Evita N+1 que estourava o timeout do ESP.
       const enrichedCommands = [];
       for (const cmd of (commands || [])) {
         if (cmd.action === 'credito') {
@@ -76,19 +76,25 @@ serve(async (req) => {
           });
         } else if (cmd.action === 'on' || cmd.action === 'activate' || cmd.action === 'turn_on') {
           const payload = (cmd.payload as Record<string, unknown> | null) ?? {};
-          const { data: machine } = await supabaseClient
-            .from('machines')
-            .select('cycle_time_minutes')
-            .eq('id', cmd.machine_id)
-            .single();
-          const cycleFromPayload = payload.cycle_time_minutes;
-          const cycleFromMachine = typeof machine?.cycle_time_minutes === 'number'
-            ? machine.cycle_time_minutes
+          const cycleFromClaim = typeof cmd.cycle_time_minutes === 'number'
+            ? cmd.cycle_time_minutes
             : null;
-          // Banco é a fonte da verdade do tempo (evita cache curto do totem matar a poltrona).
-          const resolvedCycle = (cycleFromMachine && cycleFromMachine > 0)
-            ? cycleFromMachine
-            : (typeof cycleFromPayload === 'number' ? cycleFromPayload : null);
+          const cycleFromPayload = typeof payload.cycle_time_minutes === 'number'
+            ? payload.cycle_time_minutes
+            : null;
+          let resolvedCycle = (cycleFromClaim && cycleFromClaim > 0)
+            ? cycleFromClaim
+            : (cycleFromPayload && cycleFromPayload > 0 ? cycleFromPayload : null);
+          if (!resolvedCycle && cmd.machine_id) {
+            const { data: machine } = await supabaseClient
+              .from('machines')
+              .select('cycle_time_minutes')
+              .eq('id', cmd.machine_id)
+              .maybeSingle();
+            if (typeof machine?.cycle_time_minutes === 'number' && machine.cycle_time_minutes > 0) {
+              resolvedCycle = machine.cycle_time_minutes;
+            }
+          }
           enrichedCommands.push({
             ...cmd,
             cycle_time_minutes: resolvedCycle,

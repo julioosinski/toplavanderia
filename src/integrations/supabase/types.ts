@@ -1226,6 +1226,7 @@ export type Database = {
         Args: { _esp32_id: string; _limit?: number }
         Returns: {
           action: string
+          cycle_time_minutes: number
           id: string
           machine_id: string
           payload: Json
@@ -1237,6 +1238,7 @@ export type Database = {
       cleanup_old_logs: { Args: never; Returns: undefined }
       cleanup_orphan_esp32_status: { Args: never; Returns: undefined }
       cleanup_pending_commands: { Args: never; Returns: undefined }
+      reclaim_stale_processing_esp32_commands: { Args: never; Returns: number }
       cleanup_stale_pending_transactions: { Args: never; Returns: undefined }
       complete_totem_transaction_by_id: {
         Args: { _payment_method?: string; _transaction_id: string }

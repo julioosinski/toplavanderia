@@ -17,7 +17,7 @@ SaÃ­da: `android/app/build/outputs/apk/cieloRelease/app-cieloRelease.apk`
 - Assinatura **V1 + V2** (targetSdk 35 â€” V2 obrigatÃ³rio)
 - Certificado **debug** = mesmo do APK homologado na maquininha
 
-Envie: `releases/TopLavanderia-Totem-2.2.123-cielo.apk` (fix café: preço do produto + confirmação credito)
+Envie: `releases/TopLavanderia-Totem-2.2.124-cielo.apk` (ESP: não perde comando claimed; reentrega processing órfão)
 
 ### SHA-256 dos certificados (referÃªncia)
 
@@ -25,6 +25,15 @@ Envie: `releases/TopLavanderia-Totem-2.2.123-cielo.apk` (fix café: preço do pr
 |----------|------------------|-----|
 | Debug (`androiddebugkey`) | `99:E6:CD:F0:...` | **Cielo Store** (protÃ³tipo jÃ¡ publicado) |
 | Release (`toplavanderia-release.jks`) | `63:5A:ED:7E:...` | App novo / Play Store (nÃ£o usar para update Cielo) |
+
+## Firmware ESP32 (lavadora/secadora)
+
+Arquivo: `releases/ESP32_Lavadora_v2.2.7.ino` (timeout HTTP 20s, poll 3s).
+
+1. Abra no Arduino IDE (placa ESP32, partição **Minimal SPIFFS with OTA**).
+2. Troque `__LAUNDRY_ID__` e `__MACHINE_NAME__` (ou gere o `.ino` em Admin → Configurar ESP32).
+3. Compile e envie por USB. Wi-Fi continua pelo portal AP da placa (`TopLavanderia-…` / senha `toplav123`).
+4. OTA remoto: compile o `.ino.bin` no Arduino IDE (Exportar binário) e envie no painel OTA com versão `v2.2.7`.
 
 ## Desenvolvimento local (ADB na LIO)
 
@@ -38,7 +47,9 @@ adb install -r app\build\outputs\apk\release\app-release.apk
 
 | Arquivo | versionName | Uso |
 |---------|-------------|-----|
-| `TopLavanderia-Totem-2.2.123-cielo.apk` | 2.2.123 | **Atual** — café: cobra preço do produto; confirma credito (não ON) |
+| `TopLavanderia-Totem-2.2.124-cielo.apk` | 2.2.124 | **Atual** — pagamento aprovado reentrega comando ESP; sem falso "em uso" |
+| `ESP32_Lavadora_v2.2.7.ino` | v2.2.7 | Firmware lavadora/secadora — timeout HTTP 20s + poll 3s |
+| `TopLavanderia-Totem-2.2.123-cielo.apk` | 2.2.123 | café: cobra preço do produto; confirma credito (não ON) |
 | `TopLavanderia-Totem-2.2.122-cielo.apk` | 2.2.122 | Stone Deeplink (pay/cancel) + Cielo sessions |
 | `TopLavanderia-Totem-2.2.121-cielo.apk` | 2.2.121 | payment_sessions; reserva atômica; reconciliação Cielo; não cancela TX autorizada |
 | `TopLavanderia-Totem-2.2.120-cielo.apk` | 2.2.120 | pagamentos sequenciais sem travar; confirm ESP robusto; estorno por TX |
