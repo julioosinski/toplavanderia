@@ -8,6 +8,7 @@ import { useLaundry } from "@/hooks/useLaundry";
 import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { Download, Settings, Copy, CheckCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { buildEsp32LavadoraFirmware, ESP32_LAVADORA_FIRMWARE_VERSION } from "@/lib/esp32FirmwareDownload";
 
 export const ESP32ConfigurationDialog = () => {
@@ -104,10 +105,14 @@ export const ESP32ConfigurationDialog = () => {
       </DialogTrigger>
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>Gerar Firmware ESP32</DialogTitle>
+          <DialogTitle className="flex flex-wrap items-center gap-2">
+            Gerar Firmware ESP32
+            <Badge className="text-sm">{ESP32_LAVADORA_FIRMWARE_VERSION}</Badge>
+          </DialogTitle>
           <DialogDescription>
             Firmware {ESP32_LAVADORA_FIRMWARE_VERSION} (lavadora e secadora): cada ESP32 gera o ID via MAC.
             O mesmo .ino serve para qualquer placa — após o upload, aprove o dispositivo no painel.
+            Confira no arquivo: #define FIRMWARE_VERSION "{ESP32_LAVADORA_FIRMWARE_VERSION}"
           </DialogDescription>
         </DialogHeader>
 

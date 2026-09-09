@@ -102,6 +102,7 @@ export function buildEsp32LavadoraFirmware(params: Esp32FirmwareParams): string 
   const cycleMin = Math.max(1, Math.min(24 * 60, cycleTimeMinutes ?? 40));
 
   return esp32FirmwareTemplate
+    .replace(/#define FIRMWARE_VERSION "[^"]+"/g, `#define FIRMWARE_VERSION "${ESP32_LAVADORA_FIRMWARE_VERSION}"`)
     .replace(/__WIFI_SSID__/g, escapeCStr(wifiSsid))
     .replace(/__WIFI_PASSWORD__/g, escapeCStr(wifiPassword))
     .replace(/__LAUNDRY_ID__/g, escapeCStr(laundryId))
