@@ -7,7 +7,7 @@ import { Download, Cpu } from "lucide-react";
 import { useLaundry } from "@/hooks/useLaundry";
 import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { useToast } from "@/hooks/use-toast";
-import { buildEsp32LavadoraFirmware } from "@/lib/esp32FirmwareDownload";
+import { buildEsp32LavadoraFirmware, ESP32_LAVADORA_FIRMWARE_VERSION } from "@/lib/esp32FirmwareDownload";
 
 export const ESP32ConfigQRCode = () => {
   const { currentLaundry } = useLaundry();
@@ -38,13 +38,13 @@ export const ESP32ConfigQRCode = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `ESP32_${currentLaundry.name?.replace(/\s+/g, "_") || "config"}_relay${relayPin}.ino`;
+    link.download = `ESP32_${currentLaundry.name?.replace(/\s+/g, "_") || "config"}_relay${relayPin}_${ESP32_LAVADORA_FIRMWARE_VERSION}.ino`;
     link.click();
     URL.revokeObjectURL(url);
 
     toast({
       title: "Firmware gerado!",
-      description: "v2.2.6 lavadora/secadora — abra no Arduino IDE e faça upload no ESP32.",
+      description: `${ESP32_LAVADORA_FIRMWARE_VERSION} lavadora/secadora — abra no Arduino IDE e faça upload no ESP32.`,
     });
 
     setDownloading(false);
@@ -58,7 +58,7 @@ export const ESP32ConfigQRCode = () => {
           Gerar Firmware ESP32
         </CardTitle>
         <CardDescription>
-          Lavadora e secadora usam o mesmo firmware v2.2.6. O ESP32 gera o ID via MAC. Sem Wi‑Fi
+          Lavadora e secadora usam o mesmo firmware {ESP32_LAVADORA_FIRMWARE_VERSION}. O ESP32 gera o ID via MAC. Sem Wi‑Fi
           salvo, abre o AP <strong>TopLavanderia-…</strong> (senha <code>toplav123</code>).
           Poltrona: use Admin → Poltrona de Massagem (v1.3.6).
         </CardDescription>
