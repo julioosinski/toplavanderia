@@ -589,11 +589,11 @@ export const MachineDialog = ({
             </div>
           )}
 
-          <div className="flex gap-2 pt-4">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">
+          <div className="sticky bottom-0 z-10 -mx-4 sm:-mx-6 mt-2 flex gap-2 border-t bg-background px-4 sm:px-6 py-3">
+            <Button type="button" variant="outline" onClick={() => setOpen(false)} className="min-h-11 flex-1">
               Cancelar
             </Button>
-            <Button type="submit" disabled={loading} className="flex-1">
+            <Button type="submit" disabled={loading} className="min-h-11 flex-1">
               {loading ? "Salvando..." : machine ? "Atualizar" : "Cadastrar"}
             </Button>
           </div>

@@ -23,9 +23,9 @@ export const LaundrySelector = () => {
 
   if (!isSuperAdmin || laundries.length <= 1) {
     return (
-      <div className="flex items-center gap-2">
-        <Building2 className="h-4 w-4 text-muted-foreground" />
-        <Badge variant="outline" className="text-sm max-w-[200px] truncate">
+      <div className="flex items-center gap-2 min-w-0">
+        <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+        <Badge variant="outline" className="text-sm max-w-full truncate">
           {currentLaundry?.name || "Carregando..."}
         </Badge>
       </div>
@@ -46,14 +46,14 @@ export const LaundrySelector = () => {
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex w-full items-center gap-2 sm:w-auto">
       <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
       <Select
         value={isViewingAllLaundries ? "all" : currentLaundry?.id || ""}
         onValueChange={(v) => void handleChange(v)}
         disabled={isChanging}
       >
-        <SelectTrigger className="w-[min(100vw-8rem,260px)]">
+        <SelectTrigger className="w-full sm:w-[min(100vw-8rem,260px)]">
           <SelectValue placeholder="Lavanderia" />
         </SelectTrigger>
         <SelectContent>

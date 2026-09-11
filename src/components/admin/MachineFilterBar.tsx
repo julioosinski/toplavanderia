@@ -15,10 +15,10 @@ export const MachineFilterBar = ({
   onTypeChange,
 }: MachineFilterBarProps) => {
   return (
-    <div className="flex items-center gap-2">
-      <Filter size={16} className="text-muted-foreground" />
+    <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+      <Filter size={16} className="text-muted-foreground shrink-0" />
       <Select value={statusFilter} onValueChange={onStatusChange}>
-        <SelectTrigger className="w-[150px]">
+        <SelectTrigger className="w-full min-w-0 sm:w-[150px]">
           <SelectValue placeholder="Status" />
         </SelectTrigger>
         <SelectContent>
@@ -31,7 +31,7 @@ export const MachineFilterBar = ({
       </Select>
 
       <Select value={typeFilter} onValueChange={onTypeChange}>
-        <SelectTrigger className="w-[150px]">
+        <SelectTrigger className="w-full min-w-0 sm:w-[150px]">
           <SelectValue placeholder="Tipo" />
         </SelectTrigger>
         <SelectContent>

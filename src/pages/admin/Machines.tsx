@@ -28,6 +28,7 @@ import { ESP32ConfigurationDialog } from "@/components/admin/ESP32ConfigurationD
 import { Link } from "react-router-dom";
 import { Sofa, Coffee } from "lucide-react";
 import { ESP32PendingApproval } from "@/components/admin/ESP32PendingApproval";
+import { MachineMobileCards } from "@/components/admin/MachineMobileCards";
 import { SectionErrorBoundary } from "@/components/system/SectionErrorBoundary";
 import {
   DropdownMenu,
@@ -245,6 +246,101 @@ export default function Machines() {
     loadMachines();
   };
 
+  const isMachineInUse = (machine: Machine) =>
+    machine.status === "in_use" ||
+    machine.status === "running" ||
+    machine.realStatus === "running" ||
+    machine.realStatus === "in_use";
+
+  const isMachineMaintenance = (machine: Machine) =>
+    machine.status === "maintenance" || machine.realStatus === "maintenance";
+
+  const releaseLabelFor = (machine: Machine) => {
+    const isWashDry = machine.type === "washing" || machine.type === "drying";
+    if (!isWashDry) {
+      return machine.type === "coffee" || machine.type === "massage" ? "Liberar remoto" : "Liberar";
+    }
+    return isMachineInUse(machine) ? "Parar ciclo" : "Liberar";
+  };
+
+  const handleRelease = async (machine: Machine) => {
+    const isCoffee = machine.type === "coffee";
+    const isMassage = machine.type === "massage";
+    if (isCoffee) {
+      const raw = window.prompt(`Valor do crédito de café em "${machine.name}" (R$):`, "");
+      if (!raw) return;
+      const valorCentavos = reaisToCentavos(raw);
+      if (valorCentavos <= 0) {
+        toast({ title: "Valor inválido", description: "Informe um valor em reais (ex.: 8,50).", variant: "destructive" });
+        return;
+      }
+      if (!confirm(`Liberar R$ ${(valorCentavos / 100).toFixed(2)} no moedeiro de "${machine.name}"?`)) return;
+      const { error } = await adminRemoteRelease({ machineId: machine.id, valorCentavos });
+      if (error) {
+        toast({ ...classifyReleaseError(error.message), variant: "destructive" });
+      } else {
+        toast({ title: "Liberação remota enfileirada", description: `R$ ${(valorCentavos / 100).toFixed(2)} — comando enviado ao ESP32.` });
+        loadMachines();
+        void refetchPermission();
+      }
+      return;
+    }
+    if (isMassage) {
+      if (!confirm("Liberar sessão de massagem remotamente (relé ON pelo tempo do ciclo)?")) return;
+      const { error } = await adminRemoteRelease({ machineId: machine.id });
+      if (error) {
+        toast({ ...classifyReleaseError(error.message), variant: "destructive" });
+      } else {
+        toast({ title: "Liberação remota enfileirada", description: "Comando enviado ao ESP32." });
+        loadMachines();
+        void refetchPermission();
+      }
+      return;
+    }
+    if (isMachineInUse(machine)) {
+      if (!confirm(`Parar ciclo de "${machine.name}" e marcar como disponível?`)) return;
+      const { error } = await forceMachineReleased({ machineId: machine.id });
+      if (error) {
+        toast({ title: "Erro", description: error.message, variant: "destructive" });
+      } else {
+        toast({ title: "Ciclo parado", description: "Máquina disponível no totem." });
+        loadMachines();
+      }
+      return;
+    }
+    if (!confirm(`Liberar crédito (pulso) em "${machine.name}"?`)) return;
+    const { error } = await adminRemoteRelease({ machineId: machine.id });
+    if (error) {
+      toast({ ...classifyReleaseError(error.message), variant: "destructive" });
+    } else {
+      toast({ title: "Crédito enfileirado", description: "Pulso ON enviado ao ESP32." });
+      loadMachines();
+      void refetchPermission();
+    }
+  };
+
+  const handleMaintenanceToggle = async (machine: Machine) => {
+    if (isMachineMaintenance(machine)) {
+      if (!confirm(`Tirar "${machine.name}" de manutenção e marcar como disponível?`)) return;
+      const { error } = await forceMachineReleased({ machineId: machine.id });
+      if (error) {
+        toast({ title: "Erro", description: error.message, variant: "destructive" });
+      } else {
+        toast({ title: "Disponível", description: "Máquina saiu de manutenção." });
+        loadMachines();
+      }
+      return;
+    }
+    if (!confirm("Colocar em manutenção, espelhar relé OFF e enviar comando OFF ao ESP32?")) return;
+    const { error } = await forceMachineMaintenance(machine.id);
+    if (error) {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Manutenção", description: "Status atualizado e relé desligado no painel e no ESP32." });
+      loadMachines();
+    }
+  };
+
   const formatBRL = (cents: number) => `R$ ${(cents / 100).toFixed(2)}`;
 
   const limitBadge = isOperator && canRelease ? (
@@ -386,6 +482,9 @@ export default function Machines() {
     {
       id: "actions",
       header: "Ações",
+      meta: {
+        className: "sticky right-0 z-10 bg-card shadow-[-8px_0_8px_-8px_hsl(var(--foreground)/0.12)]",
+      },
       cell: ({ row }) => {
         const machine = row.original;
 
@@ -397,91 +496,11 @@ export default function Machines() {
           );
         }
 
-        const handleRelease = async () => {
-          const isCoffee = machine.type === 'coffee';
-          const isMassage = machine.type === 'massage';
-          if (isCoffee) {
-            const raw = window.prompt(
-              `Valor do crédito de café em "${machine.name}" (R$):`,
-              '',
-            );
-            if (!raw) return;
-            const valorCentavos = reaisToCentavos(raw);
-            if (valorCentavos <= 0) {
-              toast({ title: 'Valor inválido', description: 'Informe um valor em reais (ex.: 8,50).', variant: 'destructive' });
-              return;
-            }
-            if (!confirm(`Liberar R$ ${(valorCentavos / 100).toFixed(2)} no moedeiro de "${machine.name}"?`)) return;
-            const { error } = await adminRemoteRelease({ machineId: machine.id, valorCentavos });
-            if (error) {
-              toast({ ...classifyReleaseError(error.message), variant: 'destructive' });
-            } else {
-              toast({ title: 'Liberação remota enfileirada', description: `R$ ${(valorCentavos / 100).toFixed(2)} — comando enviado ao ESP32.` });
-              loadMachines();
-              void refetchPermission();
-            }
-            return;
-          }
-          if (isMassage) {
-            if (!confirm('Liberar sessão de massagem remotamente (relé ON pelo tempo do ciclo)?')) return;
-            const { error } = await adminRemoteRelease({ machineId: machine.id });
-            if (error) {
-              toast({ ...classifyReleaseError(error.message), variant: 'destructive' });
-            } else {
-              toast({ title: 'Liberação remota enfileirada', description: 'Comando enviado ao ESP32.' });
-              loadMachines();
-              void refetchPermission();
-            }
-            return;
-          }
-          // Lavadora/secadora: 1 botão — livre = pulso ON; em uso = parar ciclo.
-          const isInUse =
-            machine.status === 'in_use' ||
-            machine.status === 'running' ||
-            machine.realStatus === 'running' ||
-            machine.realStatus === 'in_use';
-
-          if (isInUse) {
-            if (!confirm(`Parar ciclo de "${machine.name}" e marcar como disponível?`)) return;
-            const { error } = await forceMachineReleased({ machineId: machine.id });
-            if (error) {
-              toast({ title: 'Erro', description: error.message, variant: 'destructive' });
-            } else {
-              toast({ title: 'Ciclo parado', description: 'Máquina disponível no totem.' });
-              loadMachines();
-            }
-            return;
-          }
-
-          if (!confirm(`Liberar crédito (pulso) em "${machine.name}"?`)) return;
-          const { error } = await adminRemoteRelease({ machineId: machine.id });
-          if (error) {
-            toast({ ...classifyReleaseError(error.message), variant: 'destructive' });
-          } else {
-            toast({
-              title: 'Crédito enfileirado',
-              description: 'Pulso ON enviado ao ESP32.',
-            });
-            loadMachines();
-            void refetchPermission();
-          }
-        };
-
-        const isWashDry = machine.type === 'washing' || machine.type === 'drying';
-        const isInUseBtn =
-          machine.status === 'in_use' ||
-          machine.status === 'running' ||
-          machine.realStatus === 'running' ||
-          machine.realStatus === 'in_use';
-        const liberarLabel = !isWashDry
-          ? (machine.type === 'coffee' || machine.type === 'massage' ? 'Liberar remoto' : 'Liberar')
-          : isInUseBtn
-            ? 'Parar ciclo'
-            : 'Liberar';
+        const liberarLabel = releaseLabelFor(machine);
 
         if (isOperator) {
           return (
-            <Button variant="outline" size="sm" onClick={handleRelease}>
+            <Button variant="outline" size="sm" onClick={() => void handleRelease(machine)}>
               <Unlock className="mr-2 h-4 w-4" />
               {liberarLabel}
             </Button>
@@ -491,48 +510,22 @@ export default function Machines() {
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" className="min-h-11 min-w-11" aria-label={`Ações de ${machine.name}`}>
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" collisionPadding={16} className="z-[60]">
               <DropdownMenuItem onClick={() => handleEdit(machine)}>
                 <Pencil className="mr-2 h-4 w-4" />
                 Editar
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleRelease}>
+              <DropdownMenuItem onClick={() => void handleRelease(machine)}>
                 <Unlock className="mr-2 h-4 w-4" />
                 {liberarLabel}
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={async () => {
-                  const isMaintenance =
-                    machine.status === 'maintenance' || machine.realStatus === 'maintenance';
-                  if (isMaintenance) {
-                    if (!confirm(`Tirar "${machine.name}" de manutenção e marcar como disponível?`)) return;
-                    const { error } = await forceMachineReleased({ machineId: machine.id });
-                    if (error) {
-                      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
-                    } else {
-                      toast({ title: 'Disponível', description: 'Máquina saiu de manutenção.' });
-                      loadMachines();
-                    }
-                    return;
-                  }
-                  if (!confirm('Colocar em manutenção, espelhar relé OFF e enviar comando OFF ao ESP32?')) return;
-                  const { error } = await forceMachineMaintenance(machine.id);
-                  if (error) {
-                    toast({ title: 'Erro', description: error.message, variant: 'destructive' });
-                  } else {
-                    toast({ title: 'Manutenção', description: 'Status atualizado e relé desligado no painel e no ESP32.' });
-                    loadMachines();
-                  }
-                }}
-              >
+              <DropdownMenuItem onClick={() => void handleMaintenanceToggle(machine)}>
                 <Wrench className="mr-2 h-4 w-4" />
-                {machine.status === 'maintenance' || machine.realStatus === 'maintenance'
-                  ? 'Tirar de manutenção'
-                  : 'Colocar em manutenção'}
+                {isMachineMaintenance(machine) ? "Tirar de manutenção" : "Colocar em manutenção"}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleDelete(machine)} className="text-destructive">
                 <Trash2 className="mr-2 h-4 w-4" />
@@ -576,14 +569,14 @@ export default function Machines() {
           </div>
           {!isOperator && (
             <div className="flex gap-2 flex-wrap">
-              <Button variant="outline" size="sm" className="sm:size-default" asChild>
+              <Button variant="outline" size="sm" className="min-h-11 sm:min-h-9 sm:size-default" asChild>
                 <Link to="/admin/coffee-firmware">
                   <Coffee className="mr-1 sm:mr-2 h-4 w-4" />
                   <span className="hidden sm:inline">Firmware Café</span>
                   <span className="sm:hidden">Café</span>
                 </Link>
               </Button>
-              <Button variant="outline" size="sm" className="sm:size-default" asChild>
+              <Button variant="outline" size="sm" className="min-h-11 sm:min-h-9 sm:size-default" asChild>
                 <Link to="/admin/massage-chair">
                   <Sofa className="mr-1 sm:mr-2 h-4 w-4" />
                   <span className="hidden sm:inline">Firmware Poltrona</span>
@@ -591,7 +584,7 @@ export default function Machines() {
                 </Link>
               </Button>
               <ESP32ConfigurationDialog />
-              <Button size="sm" className="sm:size-default" onClick={() => {
+              <Button size="sm" className="min-h-11 sm:min-h-9 sm:size-default" onClick={() => {
                 setEditingMachine(null);
                 setDialogOpen(true);
               }}>
@@ -639,13 +632,57 @@ export default function Machines() {
                 Lista completa de máquinas cadastradas
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <DataTable
-                columns={visibleColumns}
-                data={machines}
-                searchKey="name"
-                searchPlaceholder="Buscar por nome..."
+            <CardContent className="p-3 sm:p-6">
+              <MachineMobileCards
+                machines={machines}
+                renderActions={(machine) => {
+                  if (isOperator && !canRelease) {
+                    return (
+                      <span className="col-span-2 text-xs text-muted-foreground">
+                        Sem autorização
+                      </span>
+                    );
+                  }
+
+                  if (isOperator) {
+                    return (
+                      <Button className="col-span-2 min-h-11" variant="outline" onClick={() => void handleRelease(machine)}>
+                        <Unlock className="mr-2 h-4 w-4" />
+                        {releaseLabelFor(machine)}
+                      </Button>
+                    );
+                  }
+
+                  return (
+                    <>
+                      <Button className="min-h-11" variant="outline" onClick={() => handleEdit(machine)}>
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Editar
+                      </Button>
+                      <Button className="min-h-11" variant="outline" onClick={() => void handleRelease(machine)}>
+                        <Unlock className="mr-2 h-4 w-4" />
+                        {releaseLabelFor(machine)}
+                      </Button>
+                      <Button className="min-h-11" variant="outline" onClick={() => void handleMaintenanceToggle(machine)}>
+                        <Wrench className="mr-2 h-4 w-4" />
+                        {isMachineMaintenance(machine) ? "Sair da manutenção" : "Manutenção"}
+                      </Button>
+                      <Button className="min-h-11" variant="outline" onClick={() => handleDelete(machine)}>
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Excluir
+                      </Button>
+                    </>
+                  );
+                }}
               />
+              <div className="hidden lg:block">
+                <DataTable
+                  columns={visibleColumns}
+                  data={machines}
+                  searchKey="name"
+                  searchPlaceholder="Buscar por nome..."
+                />
+              </div>
             </CardContent>
           </Card>
         </SectionErrorBoundary>

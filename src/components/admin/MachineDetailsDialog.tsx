@@ -353,7 +353,7 @@ export const MachineDetailsDialog = ({
             </div>
           )}
 
-          <div className="flex gap-2">
+          <div className="flex flex-col-reverse sm:flex-row flex-wrap gap-2">
             <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
               Fechar
             </Button>

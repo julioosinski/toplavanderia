@@ -121,7 +121,6 @@ export default function AdminLayout() {
   const isOperatorOnly = userRole === 'operator' && !isAdmin && !isSuperAdmin;
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const { theme, setTheme } = useTheme();
 
@@ -260,14 +259,13 @@ export default function AdminLayout() {
           {/* Header */}
           <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="flex h-14 sm:h-16 items-center gap-2 sm:gap-4 px-3 sm:px-6">
-              <SidebarTrigger />
+              <SidebarTrigger className="min-h-11 min-w-11 sm:min-h-8 sm:min-w-8" />
               <Link to="/" className="hidden sm:block">
                 <Button variant="ghost" size="icon" title="Início">
                   <Home className="h-4 w-4" />
                 </Button>
               </Link>
               
-              {/* Breadcrumbs - hidden on mobile */}
               <nav className="hidden md:flex items-center gap-2 text-sm text-muted-foreground" aria-label="Breadcrumb">
                 {getBreadcrumbItems().map((item, index, arr) => (
                   <div key={item.path} className="flex items-center gap-2">
@@ -282,10 +280,12 @@ export default function AdminLayout() {
                   </div>
                 ))}
               </nav>
+              <span className="md:hidden truncate text-sm font-medium">
+                {getBreadcrumbItems().at(-1)?.label}
+              </span>
 
               <div className="flex-1" />
               
-              {/* Role Badge */}
               <Badge variant={getRoleBadgeVariant()} className="hidden lg:flex">
                 {getRoleLabel()}
               </Badge>
@@ -297,6 +297,7 @@ export default function AdminLayout() {
                 <Button
                   variant="ghost"
                   size="icon"
+                  className="min-h-11 min-w-11 sm:min-h-10 sm:min-w-10"
                   onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
                 >
                   <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
@@ -305,13 +306,13 @@ export default function AdminLayout() {
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="rounded-full">
+                    <Button variant="ghost" size="icon" className="rounded-full min-h-11 min-w-11 sm:min-h-10 sm:min-w-10">
                       <Avatar>
                         <AvatarFallback>{getUserInitials()}</AvatarFallback>
                       </Avatar>
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuContent align="end" className="w-56" collisionPadding={12}>
                     <DropdownMenuLabel>
                       <div className="flex flex-col space-y-1">
                         <p className="text-sm font-medium">{user?.email}</p>
@@ -337,6 +338,9 @@ export default function AdminLayout() {
                 </DropdownMenu>
                 <PasswordChangeDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} />
               </div>
+            </div>
+            <div className="border-t px-3 py-2 sm:hidden">
+              <LaundrySelector />
             </div>
           </header>
 

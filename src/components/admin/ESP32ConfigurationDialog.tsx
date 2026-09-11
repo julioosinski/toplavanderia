@@ -98,9 +98,10 @@ export const ESP32ConfigurationDialog = () => {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline">
-          <Settings className="mr-2 h-4 w-4" />
-          Configurar ESP32
+        <Button variant="outline" size="sm" className="min-h-11 sm:min-h-9 sm:size-default">
+          <Settings className="mr-1 sm:mr-2 h-4 w-4" />
+          <span className="hidden sm:inline">Configurar ESP32</span>
+          <span className="sm:hidden">ESP32</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[600px]">
