@@ -26,6 +26,7 @@ export const MachineFilterBar = ({
           <SelectItem value="available">Disponíveis</SelectItem>
           <SelectItem value="running">Em Uso</SelectItem>
           <SelectItem value="offline">Offline</SelectItem>
+          <SelectItem value="maintenance">Manutenção</SelectItem>
         </SelectContent>
       </Select>
 

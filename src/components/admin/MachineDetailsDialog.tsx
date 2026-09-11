@@ -12,9 +12,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { type Machine } from "@/hooks/useMachines";
-import { Clock, DollarSign, MapPin, Cpu, Wifi, Play, Zap, AlertTriangle, ShieldOff } from "lucide-react";
+import { Clock, DollarSign, MapPin, Cpu, Wifi, Play, Zap, AlertTriangle, ShieldOff, Wrench } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { forceMachineReleased } from "@/lib/machineEsp32Sync";
+import { forceMachineReleased, forceMachineMaintenance } from "@/lib/machineEsp32Sync";
 import { adminRemoteRelease } from "@/lib/deviceRemoteRelease";
 import { reaisToCentavos } from "@/lib/money";
 import { getMachineTypeMeta } from "@/lib/machineDisplayTypes";
@@ -399,6 +399,70 @@ export const MachineDetailsDialog = ({
                 }}
               >
                 {releasing ? "Parando…" : "Parar ciclo"}
+              </Button>
+            )}
+
+            {machine.status === "maintenance" && (
+              <Button
+                className="flex-1"
+                disabled={releasing}
+                onClick={async () => {
+                  if (!confirm("Tirar de manutenção e marcar como disponível?")) return;
+                  setReleasing(true);
+                  try {
+                    const { error } = await forceMachineReleased({ machineId: machine.id });
+                    if (error) throw error;
+                    toast({
+                      title: "Disponível",
+                      description: "Máquina saiu de manutenção.",
+                    });
+                    onAfterAction?.();
+                    onOpenChange(false);
+                  } catch (e) {
+                    toast({
+                      title: "Erro",
+                      description: e instanceof Error ? e.message : "Tente novamente.",
+                      variant: "destructive",
+                    });
+                  } finally {
+                    setReleasing(false);
+                  }
+                }}
+              >
+                {releasing ? "Atualizando…" : "Tirar de manutenção"}
+              </Button>
+            )}
+
+            {machine.status !== "maintenance" && machine.type !== "coffee" && (
+              <Button
+                variant="outline"
+                className="flex-1"
+                disabled={releasing}
+                onClick={async () => {
+                  if (!confirm("Colocar em manutenção e enviar OFF ao ESP32?")) return;
+                  setReleasing(true);
+                  try {
+                    const { error } = await forceMachineMaintenance(machine.id);
+                    if (error) throw error;
+                    toast({
+                      title: "Manutenção",
+                      description: "Status gravado. O ESP32 não pode mais desfazer este estado.",
+                    });
+                    onAfterAction?.();
+                    onOpenChange(false);
+                  } catch (e) {
+                    toast({
+                      title: "Erro",
+                      description: e instanceof Error ? e.message : "Tente novamente.",
+                      variant: "destructive",
+                    });
+                  } finally {
+                    setReleasing(false);
+                  }
+                }}
+              >
+                <Wrench size={16} className="mr-1" />
+                Manutenção
               </Button>
             )}
           </div>

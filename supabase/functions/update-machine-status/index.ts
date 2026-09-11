@@ -97,6 +97,14 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Manutenção só sai pelo painel autenticado — totem/ESP/cron não podem desfazer.
+    if (machine.status === "maintenance") {
+      return new Response(
+        JSON.stringify({ error: "Machine is in maintenance", machine_id, status: "maintenance" }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Idempotente: totem pode reenviar "running" se já estiver em ciclo (evita 409 e toast falso de "RLS")
     if (status === "running" && machine.status !== "available" && machine.status !== "running") {
       return new Response(

@@ -39,8 +39,9 @@ export const MachineStatusGrid = ({ machines, loading, onAfterMachineAction }: M
 
   const stats = {
     available: machines.filter((m) => m.status === "available").length,
-    running: machines.filter((m) => m.status === "running").length,
+    running: machines.filter((m) => m.status === "running" || m.status === "in_use").length,
     offline: machines.filter((m) => m.status === "offline").length,
+    maintenance: machines.filter((m) => m.status === "maintenance").length,
   };
 
   return (
@@ -50,6 +51,7 @@ export const MachineStatusGrid = ({ machines, loading, onAfterMachineAction }: M
           <h2 className="text-xl sm:text-2xl font-bold">Status das Máquinas</h2>
           <p className="text-sm text-muted-foreground">
             {stats.available} disponíveis • {stats.running} em uso • {stats.offline} offline
+            {stats.maintenance > 0 ? ` • ${stats.maintenance} manutenção` : ""}
           </p>
         </div>
         <MachineFilterBar

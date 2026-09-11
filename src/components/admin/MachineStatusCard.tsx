@@ -45,9 +45,12 @@ export const MachineStatusCard = ({ machine, onClick }: MachineStatusCardProps) 
       case "available":
         return "bg-green-500";
       case "running":
+      case "in_use":
         return "bg-blue-500 animate-pulse";
       case "offline":
         return "bg-red-500";
+      case "maintenance":
+        return "bg-amber-500";
       default:
         return "bg-gray-500";
     }
@@ -58,9 +61,12 @@ export const MachineStatusCard = ({ machine, onClick }: MachineStatusCardProps) 
       case "available":
         return "Disponível";
       case "running":
+      case "in_use":
         return "Em uso";
       case "offline":
         return "Offline";
+      case "maintenance":
+        return "Manutenção";
       default:
         return "Desconhecido";
     }
@@ -71,9 +77,12 @@ export const MachineStatusCard = ({ machine, onClick }: MachineStatusCardProps) 
       case "available":
         return "bg-green-100 text-green-700";
       case "running":
+      case "in_use":
         return "bg-blue-100 text-blue-700";
       case "offline":
         return "bg-red-100 text-red-700";
+      case "maintenance":
+        return "bg-amber-100 text-amber-800";
       default:
         return "bg-gray-100 text-gray-700";
     }

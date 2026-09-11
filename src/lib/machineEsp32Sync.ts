@@ -295,12 +295,19 @@ export async function forceMachineMaintenance(machineId: string): Promise<{ erro
 
   if (mErr || !m) return { error: (mErr as Error) ?? new Error('Máquina não encontrada') };
 
-  const { error: upErr } = await supabase
+  const { data: updated, error: upErr } = await supabase
     .from('machines')
     .update({ status: 'maintenance', updated_at: new Date().toISOString() })
-    .eq('id', machineId);
+    .eq('id', machineId)
+    .select('id, status')
+    .maybeSingle();
 
   if (upErr) return { error: upErr as Error };
+  if (!updated || updated.status !== 'maintenance') {
+    return {
+      error: new Error('Não foi possível gravar manutenção. Use uma conta de administrador da lavanderia.'),
+    };
+  }
 
   if (m.esp32_id && m.laundry_id) {
     const pin = resolvedRelayPin(m.relay_pin);

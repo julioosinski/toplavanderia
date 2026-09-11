@@ -58,8 +58,9 @@ export const ConsolidatedMachineStatus = ({
       {Object.entries(machinesByLaundry).map(([laundryId, { laundryName, machines }]) => {
         const stats = {
           available: machines.filter((m) => m.status === "available").length,
-          running: machines.filter((m) => m.status === "running").length,
+          running: machines.filter((m) => m.status === "running" || m.status === "in_use").length,
           offline: machines.filter((m) => m.status === "offline").length,
+          maintenance: machines.filter((m) => m.status === "maintenance").length,
         };
 
         return (
@@ -74,6 +75,7 @@ export const ConsolidatedMachineStatus = ({
                     <CardTitle>{laundryName}</CardTitle>
                     <p className="text-sm text-muted-foreground">
                       {stats.available} disponíveis • {stats.running} em uso • {stats.offline} offline
+                      {stats.maintenance > 0 ? ` • ${stats.maintenance} manutenção` : ""}
                     </p>
                   </div>
                 </div>

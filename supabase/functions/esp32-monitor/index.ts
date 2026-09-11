@@ -211,11 +211,13 @@ serve(async (req) => {
       // Café (credito): não altera status da máquina nem relay_status
       if (command.action !== 'credito') {
         // CHECK machines.status: available | in_use | maintenance | offline (não "running")
+        // Manutenção é decisão do painel — confirm ON/OFF do ESP não pode desfazê-la.
         const newStatus = command.action === 'on' ? 'in_use' : 'available';
         const { error: machineStatusErr } = await supabaseClient
           .from('machines')
           .update({ status: newStatus, updated_at: new Date().toISOString() })
-          .eq('id', command.machine_id);
+          .eq('id', command.machine_id)
+          .neq('status', 'maintenance');
         if (machineStatusErr) {
           console.warn('machines status update failed:', machineStatusErr.message);
         }
@@ -398,7 +400,8 @@ serve(async (req) => {
         const { error: sessErr } = await supabaseClient
           .from('machines')
           .update({ status: machineStatus, updated_at: new Date().toISOString() })
-          .eq('id', esp32Machines[0].id);
+          .eq('id', esp32Machines[0].id)
+          .neq('status', 'maintenance');
         if (sessErr) {
           console.warn('session_status → machines.status failed:', sessErr.message);
         }

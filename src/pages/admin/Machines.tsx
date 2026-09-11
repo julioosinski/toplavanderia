@@ -506,6 +506,19 @@ export default function Machines() {
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={async () => {
+                  const isMaintenance =
+                    machine.status === 'maintenance' || machine.realStatus === 'maintenance';
+                  if (isMaintenance) {
+                    if (!confirm(`Tirar "${machine.name}" de manutenção e marcar como disponível?`)) return;
+                    const { error } = await forceMachineReleased({ machineId: machine.id });
+                    if (error) {
+                      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+                    } else {
+                      toast({ title: 'Disponível', description: 'Máquina saiu de manutenção.' });
+                      loadMachines();
+                    }
+                    return;
+                  }
                   if (!confirm('Colocar em manutenção, espelhar relé OFF e enviar comando OFF ao ESP32?')) return;
                   const { error } = await forceMachineMaintenance(machine.id);
                   if (error) {
@@ -517,7 +530,9 @@ export default function Machines() {
                 }}
               >
                 <Wrench className="mr-2 h-4 w-4" />
-                Colocar em manutenção
+                {machine.status === 'maintenance' || machine.realStatus === 'maintenance'
+                  ? 'Tirar de manutenção'
+                  : 'Colocar em manutenção'}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleDelete(machine)} className="text-destructive">
                 <Trash2 className="mr-2 h-4 w-4" />
