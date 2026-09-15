@@ -3,8 +3,9 @@
  * Fonte única: este arquivo. Placeholders __LAUNDRY_ID__, __MACHINE_NAME__, etc.
  * Firmware gerado fica em: public/arduino/generated/
  *
- * Versão: 2.2.9 — remove gpio_hold do pulso (RTC hold derrubava o GPIO2 e o relé
- *                 não acionava); mantém reassert HIGH e reentrega se o confirm falhar.
+ * Versão: 2.3.0 — GPIO do relé configurável em tempo de execução (NVS) + teste de
+ *                 pulso em qualquer pino pela página da placa. Sem gpio_hold: o
+ *                 RTC hold derrubava o GPIO2 e o relé não acionava (v2.2.8).
  */
 
 #include <WiFi.h>
@@ -18,7 +19,7 @@
 #include <cstdio>
 #include "driver/gpio.h"
 
-#define FIRMWARE_VERSION "v2.2.9"
+#define FIRMWARE_VERSION "v2.3.0"
 
 // ================== CONFIGURAÇÕES WIFI ==================
 // Wi-Fi é configurado via rede AP do próprio ESP32 e salvo em memória persistente (NVS).
@@ -61,8 +62,56 @@ const char* supabaseUrl = "https://rkdybjzwiwwqqzjfmerm.supabase.co";
 const char* supabaseApiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZHlianp3aXd3cXF6amZtZXJtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMDgxNjcsImV4cCI6MjA2ODg4NDE2N30.CnRP8lrmGmvcbHmWdy72ZWlfZ28cDdNoxdADnyFAOXg";
 
 // ================== CONFIGURAÇÕES HARDWARE ==================
-#define RELAY_PIN 2                // Pino físico do relé na placa (GPIO2)
+/**
+ * Pino físico do relé. GPIO2 é só o PADRÃO de fábrica — se a sua placa tem o relé
+ * em outro pino, ajuste em http://<ip-da-placa>/ (secção "Pino do relé"), sem
+ * recompilar. O valor fica salvo na NVS e sobrevive a reboot e a OTA.
+ */
+#define RELAY_PIN_DEFAULT 2
 #define LED_PIN 2                  // LED embutido (GPIO2)
+#define RELAY_GPIO_NAMESPACE "relay_cfg"
+int relayGpio = RELAY_PIN_DEFAULT;
+
+/** GPIOs de saída válidos no ESP32 (34-39 são só entrada). */
+bool isValidOutputGpio(int gpio) {
+  if (gpio < 0 || gpio > 33) return false;
+  if (gpio == 20 || gpio == 24) return false;
+  if (gpio >= 6 && gpio <= 11) return false;  // flash SPI interna
+  return true;
+}
+
+void loadRelayGpio() {
+  Preferences relayPrefs;
+  relayPrefs.begin(RELAY_GPIO_NAMESPACE, true);
+  int saved = relayPrefs.getInt("gpio", RELAY_PIN_DEFAULT);
+  relayPrefs.end();
+  relayGpio = isValidOutputGpio(saved) ? saved : RELAY_PIN_DEFAULT;
+}
+
+void saveRelayGpio(int gpio) {
+  Preferences relayPrefs;
+  relayPrefs.begin(RELAY_GPIO_NAMESPACE, false);
+  relayPrefs.putInt("gpio", gpio);
+  relayPrefs.end();
+  relayGpio = gpio;
+  pinMode(relayGpio, OUTPUT);
+  digitalWrite(relayGpio, LOW);
+  Serial.printf("🔧 Pino do relé salvo: GPIO%d\n", gpio);
+}
+
+/** Pulso cru em qualquer GPIO — usado pelo teste manual da página da placa. */
+void pulseGpioForTest(int gpio, unsigned long ms) {
+  const unsigned long REASSERT_STEP_MS = 20;
+  pinMode(gpio, OUTPUT);
+  unsigned long startedAt = millis();
+  while (millis() - startedAt < ms) {
+    digitalWrite(gpio, HIGH);
+    delay(REASSERT_STEP_MS);
+  }
+  digitalWrite(gpio, LOW);
+  Serial.printf("🧪 Teste: pulso de %lu ms no GPIO%d\n", ms, gpio);
+}
+
 /** Índice lógico no Supabase (relay_1, relay_2…) — substituído pelo painel "Configurar ESP32" */
 #define RELAY_LOGICAL_PIN __RELAY_LOGICAL_PIN__
 /** Valor inicial do painel — atualizado dinamicamente pela resposta do heartbeat */
@@ -131,24 +180,27 @@ bool loadWiFiCredentials() {
  */
 void pulseCreditRelay() {
   const unsigned long REASSERT_STEP_MS = 20;
-  pinMode(RELAY_PIN, OUTPUT);
+  pinMode(relayGpio, OUTPUT);
+  if (LED_PIN != relayGpio) {
+    pinMode(LED_PIN, OUTPUT);
+  }
   unsigned long startedAt = millis();
   while (millis() - startedAt < RELAY_PULSE_MS) {
-    digitalWrite(RELAY_PIN, HIGH);
-    if (LED_PIN != RELAY_PIN) {
+    digitalWrite(relayGpio, HIGH);
+    if (LED_PIN != relayGpio) {
       digitalWrite(LED_PIN, HIGH);
     }
     delay(REASSERT_STEP_MS);
   }
-  digitalWrite(RELAY_PIN, LOW);
-  if (LED_PIN != RELAY_PIN) {
+  digitalWrite(relayGpio, LOW);
+  if (LED_PIN != relayGpio) {
     digitalWrite(LED_PIN, LOW);
   }
   relayState = false;
   machineRunning = true;
   machineStartTime = millis();
-  Serial.printf("⚡ Pulso de crédito (%lu ms, reassert %lu ms); ciclo: %d min\n",
-                RELAY_PULSE_MS, REASSERT_STEP_MS, cycleTimeMinutes);
+  Serial.printf("⚡ Pulso de crédito GPIO%d (%lu ms, reassert %lu ms); ciclo: %d min\n",
+                relayGpio, RELAY_PULSE_MS, REASSERT_STEP_MS, cycleTimeMinutes);
 }
 
 void saveWiFiCredentials(const String& ssid, const String& password) {
@@ -313,10 +365,13 @@ void setup() {
   Serial.println("\n\n========================================");
   Serial.println("ESP32 Lavadora Individual " FIRMWARE_VERSION);
 
-  // Configurar hardware
-  pinMode(RELAY_PIN, OUTPUT);
+  // Configurar hardware (pino do relé vem da NVS — configurável na página da placa)
+  loadRelayGpio();
+  Serial.printf("🔌 Pino do relé: GPIO%d%s\n", relayGpio,
+                relayGpio == RELAY_PIN_DEFAULT ? " (padrão)" : " (salvo na NVS)");
+  pinMode(relayGpio, OUTPUT);
   pinMode(LED_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);
+  digitalWrite(relayGpio, LOW);
   digitalWrite(LED_PIN, LOW);
 
   // WiFi precisa estar inicializado ANTES de ler o MAC e antes de server.begin()
@@ -573,6 +628,38 @@ void setupRoutes() {
   server.on("/status", HTTP_GET, handleStatus);
   server.on("/start", HTTP_POST, handleStart);
   server.on("/stop", HTTP_POST, handleStop);
+
+  // Teste de pino: pulsa QUALQUER GPIO sem salvar nada. Serve para descobrir em
+  // qual pino o relé está ligado nesta placa. Ex.: POST /pulse?gpio=5&ms=1200
+  server.on("/pulse", HTTP_POST, []() {
+    int gpio = server.hasArg("gpio") ? server.arg("gpio").toInt() : relayGpio;
+    unsigned long ms = server.hasArg("ms") ? server.arg("ms").toInt() : RELAY_PULSE_MS;
+    if (!isValidOutputGpio(gpio)) {
+      server.send(400, "application/json", "{\"error\":\"GPIO inválido para saída\"}");
+      return;
+    }
+    if (ms < 50 || ms > 5000) ms = RELAY_PULSE_MS;
+    pulseGpioForTest(gpio, ms);
+    server.send(200, "application/json",
+      "{\"success\":true,\"gpio\":" + String(gpio) + ",\"ms\":" + String(ms) + "}");
+  });
+
+  // Grava o pino do relé na NVS (persiste em reboot e OTA). Ex.: POST /relay/gpio?gpio=5
+  server.on("/relay/gpio", HTTP_POST, []() {
+    if (!server.hasArg("gpio")) {
+      server.send(400, "application/json", "{\"error\":\"informe gpio\"}");
+      return;
+    }
+    int gpio = server.arg("gpio").toInt();
+    if (!isValidOutputGpio(gpio)) {
+      server.send(400, "application/json", "{\"error\":\"GPIO inválido para saída\"}");
+      return;
+    }
+    saveRelayGpio(gpio);
+    server.send(200, "application/json",
+      "{\"success\":true,\"relay_gpio\":" + String(gpio) + "}");
+  });
+
   server.onNotFound(handleNotFound);
 }
 
@@ -603,10 +690,34 @@ void handleRoot() {
   html += machineRunning ? "online'>▶️ RODANDO" : "offline'>⏹️ PARADA";
   html += "</span></div>";
   html += "<div class='status'><span class='label'>Relé:</span><span class='value'>" + String(relayState ? "LIGADO ✅" : "DESLIGADO ⭕") + "</span></div>";
+  html += "<div class='status'><span class='label'>Pino do relé:</span><span class='value'>GPIO" + String(relayGpio) + "</span></div>";
   html += "<div style='margin-top:20px'>";
   html += "<button onclick=\"fetch('/start',{method:'POST'}).then(()=>location.reload())\">▶️ Iniciar</button>";
   html += "<button class='stop' onclick=\"fetch('/stop',{method:'POST'}).then(()=>location.reload())\">⏹️ Parar</button>";
-  html += "</div></div></body></html>";
+  html += "</div>";
+
+  // Painel de descoberta do pino: pulsa um GPIO por vez até a máquina aceitar o crédito.
+  html += "<hr style='margin:24px 0'>";
+  html += "<h2 style='font-size:18px;color:#333'>🧪 Descobrir o pino do relé</h2>";
+  html += "<p style='color:#666;font-size:14px'>Clique num pino e veja se a máquina aceita o crédito. ";
+  html += "Quando achar o certo, clique em <b>Salvar</b> para gravar na placa.</p>";
+  html += "<div id='pins'>";
+  const int testPins[] = {2, 4, 5, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33};
+  for (unsigned int i = 0; i < sizeof(testPins) / sizeof(testPins[0]); i++) {
+    String p = String(testPins[i]);
+    html += "<button style='background:#1565C0;padding:8px 12px;font-size:14px' ";
+    html += "onclick=\"fetch('/pulse?gpio=" + p + "&ms=1200',{method:'POST'}).then(r=>r.json())";
+    html += ".then(d=>{document.getElementById('res').textContent='Pulsou GPIO'+d.gpio;})\">";
+    html += p + "</button>";
+  }
+  html += "</div><p id='res' style='font-weight:bold;color:#1565C0'></p>";
+  html += "<div style='margin-top:12px'>";
+  html += "<input id='savePin' type='number' min='0' max='33' value='" + String(relayGpio) + "' ";
+  html += "style='padding:10px;font-size:16px;width:90px'>";
+  html += "<button onclick=\"fetch('/relay/gpio?gpio='+document.getElementById('savePin').value,";
+  html += "{method:'POST'}).then(()=>location.reload())\">💾 Salvar pino</button>";
+  html += "</div>";
+  html += "</div></body></html>";
   
   server.send(200, "text/html", html);
 }
@@ -623,6 +734,7 @@ void handleStatus() {
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;
   doc["relay_status"] = relayState ? "on" : "off";
+  doc["relay_gpio"] = relayGpio;
   
   String response;
   serializeJson(doc, response);
@@ -643,7 +755,7 @@ void handleStop() {
   Serial.println("⏹️ Comando STOP recebido");
   relayState = false;
   machineRunning = false;
-  digitalWrite(RELAY_PIN, LOW);
+  digitalWrite(relayGpio, LOW);
   digitalWrite(LED_PIN, LOW);
   server.send(200, "application/json", "{\"success\":true,\"message\":\"Máquina parada\"}");
   Serial.println("✅ Máquina parada com sucesso");
@@ -721,7 +833,7 @@ void pollSupabaseCommands() {
     String action = c["action"].as<String>();
     action.toLowerCase();
     int cmdRelay = c["relay_pin"] | RELAY_LOGICAL_PIN;
-    Serial.printf("📌 Comando relay_%d → GPIO físico %d\n", cmdRelay, RELAY_PIN);
+    Serial.printf("📌 Comando relay_%d → GPIO físico %d\n", cmdRelay, relayGpio);
 
     if (cid.length() > 0 && cid == lastConfirmedCommandId) {
       Serial.println("♻️ Comando já confirmado — sem novo pulso");
@@ -742,8 +854,8 @@ void pollSupabaseCommands() {
     } else if (action == "off" || action == "deactivate" || action == "turn_off") {
       relayState = false;
       machineRunning = false;
-      digitalWrite(RELAY_PIN, LOW);
-      if (LED_PIN != RELAY_PIN) {
+      digitalWrite(relayGpio, LOW);
+      if (LED_PIN != relayGpio) {
         digitalWrite(LED_PIN, LOW);
       }
       Serial.println("⚡ Fila Supabase: OFF");
@@ -859,7 +971,8 @@ void sendHeartbeat() {
   doc["laundry_id"] = LAUNDRY_ID;
   doc["ip_address"] = WiFi.localIP().toString();
   doc["signal_strength"] = WiFi.RSSI();
-  doc["network_status"] = "connected";
+  // Sufixo gpio:N — deixa o pino do relé visível no painel sem coluna nova no banco.
+  doc["network_status"] = "connected|gpio:" + String(relayGpio);
   doc["firmware_version"] = FIRMWARE_VERSION;
   doc["uptime_seconds"] = millis() / 1000;
   doc["is_active"] = machineRunning;

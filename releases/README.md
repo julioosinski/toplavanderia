@@ -28,11 +28,28 @@ Envie: `releases/TopLavanderia-Totem-2.2.127-cielo.apk` (grade livre após pagar
 
 ## Firmware ESP32 (lavadora/secadora)
 
-Arquivo: `releases/ESP32_Lavadora_v2.2.9.ino` (template) ou `ESP32_Lavadora_v2.2.9_relay2_PRONTO.ino` (já com LAUNDRY_ID do Sinuelo).
+Arquivo: `releases/ESP32_Lavadora_v2.3.0.ino` (template) ou
+`ESP32_Lavadora_v2.3.0_relay2_PRONTO.ino` (já com LAUNDRY_ID do Sinuelo, sem placeholders).
 
 > **Não use o v2.2.8.** O `gpio_hold_en` no GPIO2 (RTC_GPIO12) congelava o pad no
 > estado do domínio RTC e o relé não acionava: o comando era confirmado, mas a
-> máquina não recebia o crédito. O v2.2.9 reafirma HIGH a cada 20 ms, sem hold.
+> máquina não recebia o crédito.
+
+### Descobrir o pino do relé (v2.3.0+)
+
+O GPIO do relé virou configuração de tempo de execução, salva na NVS. Abra
+`http://<ip-da-placa>/` e use o painel **Descobrir o pino do relé**: cada botão
+pulsa um GPIO por 1,2 s. Quando a máquina aceitar o crédito, clique em **Salvar pino**.
+
+Pela linha de comando:
+
+```bash
+curl -X POST "http://192.168.3.183/pulse?gpio=5&ms=1200"   # testa sem salvar
+curl -X POST "http://192.168.3.183/relay/gpio?gpio=5"      # grava na NVS
+curl "http://192.168.3.183/status"                          # mostra relay_gpio
+```
+
+O pino ativo também aparece no `network_status` do heartbeat como `connected|gpio:N`.
 
 Para gerar outro relay/ciclo: `node scripts/gen-lavadora-ino.mjs <relayPin> <cicloMin>`.
 
@@ -55,7 +72,8 @@ adb install -r app\build\outputs\apk\release\app-release.apk
 |---------|-------------|-----|
 | `TopLavanderia-Totem-2.2.127-cielo.apk` | 2.2.127 | **Atual** — grade livre na hora; pulso ESP em background |
 | `TopLavanderia-Totem-2.2.126-cielo.apk` | 2.2.126 | esperava ESP confirmar o pulso antes de voltar à grade |
-| `ESP32_Lavadora_v2.2.9.ino` | v2.2.9 | **Atual** — pulso GPIO2 com reassert; corrige relé que não acionava no v2.2.8 |
+| `ESP32_Lavadora_v2.3.0.ino` | v2.3.0 | **Atual** — pino do relé configurável na página da placa + teste de pulso por GPIO |
+| `ESP32_Lavadora_v2.2.9.ino` | v2.2.9 | pulso GPIO2 com reassert (sem hold) |
 | `ESP32_Lavadora_v2.2.8.ino` | v2.2.8 | **Não usar** — gpio_hold derrubava o GPIO2; confirmava sem pulsar |
 | `TopLavanderia-Totem-2.2.125-cielo.apk` | 2.2.125 | PIX: UI 90s, callback tardio 8 min, janitor não fecha PAID |
 | `TopLavanderia-Totem-2.2.124-cielo.apk` | 2.2.124 | pagamento aprovado reentrega comando ESP; sem falso "em uso" |
