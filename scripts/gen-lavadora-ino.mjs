@@ -3,6 +3,9 @@
  *
  * Uso: node scripts/gen-lavadora-ino.mjs [relayPin] [cicloMin] [nome] [saida]
  * Sem argumentos: relay_2, 40 min, nome da lavanderia, salva em releases/.
+ *
+ * Para gerar de uma versão antiga, aponte o template:
+ *   INO_TEMPLATE=releases/ESP32_Lavadora_v2.2.9.ino node scripts/gen-lavadora-ino.mjs 2 40
  */
 import fs from 'fs';
 import path from 'path';
@@ -15,10 +18,11 @@ const relayPin = Number(process.argv[2] || 2);
 const cycleMin = Number(process.argv[3] || 40);
 const machineName = process.argv[4] || 'TOP LAVANDERIA SINUELO';
 
-const template = fs.readFileSync(
-  path.join(root, 'src/firmware/esp32LavadoraTemplate.ino'),
-  'utf8'
+const templatePath = path.resolve(
+  root,
+  process.env.INO_TEMPLATE || 'src/firmware/esp32LavadoraTemplate.ino'
 );
+const template = fs.readFileSync(templatePath, 'utf8');
 
 const version = template.match(/#define FIRMWARE_VERSION "([^"]+)"/)?.[1] ?? 'v0';
 
