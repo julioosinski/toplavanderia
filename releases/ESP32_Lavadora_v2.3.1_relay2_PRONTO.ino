@@ -1,6 +1,6 @@
 /**
  * ESP32 Lavadora Individual — template gerado pelo admin (Configurar ESP32).
- * Fonte única: este arquivo. Placeholders __LAUNDRY_ID__, __MACHINE_NAME__, etc.
+ * Fonte única: este arquivo. Placeholders 8ace0bcb-83a9-4555-a712-63ef5f52e709, TOP LAVANDERIA SINUELO, etc.
  * Firmware gerado fica em: public/arduino/generated/
  *
  * Versão: 2.3.1 — crédito SEMPRE no GPIO2, pulso HIGH de 1500 ms (pagamento e
@@ -46,8 +46,8 @@ void pollOtaUpdate();
 void reportOtaResult(const String& jobId, bool success, const String& message);
 
 // ================== IDENTIFICAÇÃO ==================
-#define LAUNDRY_ID "__LAUNDRY_ID__"
-#define MACHINE_NAME "__MACHINE_NAME__"
+#define LAUNDRY_ID "8ace0bcb-83a9-4555-a712-63ef5f52e709"
+#define MACHINE_NAME "TOP LAVANDERIA SINUELO"
 // ESP32_ID gerado automaticamente a partir do MAC Address (único por chip).
 // Formato: "esp32_AABBCCDD" (últimos 4 bytes do MAC em hex minúsculo).
 char ESP32_ID[16];
@@ -145,9 +145,9 @@ void holdGpioLevel(int gpio, int level) {
 }
 
 /** Índice lógico no Supabase (relay_1, relay_2…) — substituído pelo painel "Configurar ESP32" */
-#define RELAY_LOGICAL_PIN __RELAY_LOGICAL_PIN__
+#define RELAY_LOGICAL_PIN 2
 /** Valor inicial do painel — atualizado dinamicamente pela resposta do heartbeat */
-int cycleTimeMinutes = __CYCLE_TIME_MINUTES__;
+int cycleTimeMinutes = 40;
 
 // ================== VARIÁVEIS DE CONTROLE ==================
 WebServer server(80);
