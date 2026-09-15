@@ -9,7 +9,11 @@ import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { Download, Settings, Copy, CheckCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { buildEsp32LavadoraFirmware, ESP32_LAVADORA_FIRMWARE_VERSION } from "@/lib/esp32FirmwareDownload";
+import {
+  buildEsp32LavadoraFirmware,
+  readFirmwareVersionDefine,
+  useCanonicalFirmwareSource,
+} from "@/lib/esp32FirmwareDownload";
 
 export const ESP32ConfigurationDialog = () => {
   const { currentLaundry } = useLaundry();
@@ -25,6 +29,8 @@ export const ESP32ConfigurationDialog = () => {
   /** Igual a cycle_time_minutes da máquina */
   const [cycleTimeMinutes, setCycleTimeMinutes] = useState(40);
 
+  const { source: lavadoraTemplate, version: firmwareVersion } =
+    useCanonicalFirmwareSource("lavadora");
   const wifiSsid = settings?.wifi_ssid || "";
   const wifiPassword = settings?.wifi_password || "";
   const laundryId = currentLaundry?.id || "";
@@ -51,7 +57,7 @@ export const ESP32ConfigurationDialog = () => {
       machineName: name,
       relayLogicalPin,
       cycleTimeMinutes,
-    });
+    }, lavadoraTemplate);
   };
 
   const handleDownload = () => {
@@ -62,13 +68,13 @@ export const ESP32ConfigurationDialog = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `ESP32_${currentLaundry?.name || 'config'}_relay${relayLogicalPin}_${ESP32_LAVADORA_FIRMWARE_VERSION}.ino`;
+    a.download = `ESP32_${currentLaundry?.name || 'config'}_relay${relayLogicalPin}_${firmwareVersion}.ino`;
     a.click();
     URL.revokeObjectURL(url);
 
     toast({
       title: "Arquivo gerado!",
-      description: `Firmware ${ESP32_LAVADORA_FIRMWARE_VERSION} lavadora/secadora (ID via MAC, pulso 1s, portal Wi‑Fi) — compile no Arduino IDE`
+      description: `Firmware ${firmwareVersion} lavadora/secadora (ID via MAC, pulso 1s, portal Wi‑Fi) — compile no Arduino IDE`
     });
   };
 
@@ -108,12 +114,12 @@ export const ESP32ConfigurationDialog = () => {
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
             Gerar Firmware ESP32
-            <Badge className="text-sm">{ESP32_LAVADORA_FIRMWARE_VERSION}</Badge>
+            <Badge className="text-sm">{firmwareVersion}</Badge>
           </DialogTitle>
           <DialogDescription>
-            Firmware {ESP32_LAVADORA_FIRMWARE_VERSION} (lavadora e secadora): cada ESP32 gera o ID via MAC.
+            Firmware {firmwareVersion} (lavadora e secadora): cada ESP32 gera o ID via MAC.
             O mesmo .ino serve para qualquer placa — após o upload, aprove o dispositivo no painel.
-            Confira no arquivo: #define FIRMWARE_VERSION "{ESP32_LAVADORA_FIRMWARE_VERSION}"
+            Confira no arquivo: #define FIRMWARE_VERSION "{firmwareVersion}"
           </DialogDescription>
         </DialogHeader>
 
@@ -212,9 +218,12 @@ export const ESP32ConfigurationDialog = () => {
 
           {showPreview && laundryId && (
             <Card className="bg-muted/30">
-              <CardContent className="pt-4">
+              <CardContent className="pt-4 space-y-2">
+                <p className="text-sm font-semibold">
+                  #define FIRMWARE_VERSION "{readFirmwareVersionDefine(generateArduinoCode(), firmwareVersion)}"
+                </p>
                 <pre className="text-xs overflow-x-auto p-2 bg-background rounded border max-h-64 overflow-y-auto">
-                  {generateArduinoCode().substring(0, 1200)}...
+                  {generateArduinoCode().substring(0, 1600)}...
                 </pre>
               </CardContent>
             </Card>

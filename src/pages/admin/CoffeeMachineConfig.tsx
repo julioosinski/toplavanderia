@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Coffee, Copy, CheckCircle, Download, Zap, Cpu, ExternalLink } from 'lucide-react';
-import { buildEsp32CafeFirmware, downloadEsp32DeviceFirmware } from '@/lib/esp32FirmwareDownload';
+import { buildEsp32CafeFirmware, downloadEsp32DeviceFirmware, readFirmwareVersionDefine, useCanonicalFirmwareSource } from '@/lib/esp32FirmwareDownload';
 import { adminRemoteRelease } from '@/lib/deviceRemoteRelease';
 import { reaisToCentavos } from '@/lib/money';
 
@@ -52,6 +52,8 @@ export default function CoffeeMachineConfig() {
   const [customReleaseValues, setCustomReleaseValues] = useState<Record<string, string>>({});
 
   const laundryId = currentLaundry?.id ?? '';
+  const { source: cafeTemplate, version: firmwareVersion } =
+    useCanonicalFirmwareSource('cafe');
 
   const selectedMachine = useMemo(
     () => machines.find((m) => m.id === selectedMachineId) ?? null,
@@ -118,7 +120,7 @@ export default function CoffeeMachineConfig() {
       selectedMachine?.name ||
       `${currentLaundry?.name ?? 'Lavanderia'} — Café`;
 
-    return buildEsp32CafeFirmware({ laundryId, machineName: name });
+    return buildEsp32CafeFirmware({ laundryId, machineName: name }, cafeTemplate);
   };
 
   const handleDownload = () => {
@@ -127,7 +129,7 @@ export default function CoffeeMachineConfig() {
 
     setDownloading(true);
     const safeName = (machineName.trim() || 'Cafe').replace(/\s+/g, '_');
-    downloadEsp32DeviceFirmware(code, `ESP32_Cafe_${safeName}.ino`);
+    void downloadEsp32DeviceFirmware(code, `ESP32_Cafe_${safeName}.ino`);
 
     toast({
       title: 'Firmware gerado!',
@@ -328,6 +330,7 @@ export default function CoffeeMachineConfig() {
 
             {showPreview && laundryId && (
               <pre className="text-xs overflow-auto p-3 bg-muted/30 rounded border max-h-64">
+                {`#define FIRMWARE_VERSION "${readFirmwareVersionDefine(generateFirmware(), firmwareVersion)}"\n\n`}
                 {generateFirmware().substring(0, 1500)}…
               </pre>
             )}

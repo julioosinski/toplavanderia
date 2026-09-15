@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Sofa, Copy, CheckCircle, Download, Zap, Cpu } from 'lucide-react';
-import { buildEsp32PoltronaFirmware, downloadEsp32DeviceFirmware } from '@/lib/esp32FirmwareDownload';
+import { buildEsp32PoltronaFirmware, downloadEsp32DeviceFirmware, readFirmwareVersionDefine, useCanonicalFirmwareSource } from '@/lib/esp32FirmwareDownload';
 import { adminRemoteRelease } from '@/lib/deviceRemoteRelease';
 
 interface MassageMachine {
@@ -61,6 +61,8 @@ export default function MassageChairConfig() {
   const [savingMachineConfig, setSavingMachineConfig] = useState(false);
 
   const laundryId = currentLaundry?.id ?? '';
+  const { source: poltronaTemplate, version: firmwareVersion } =
+    useCanonicalFirmwareSource('poltrona');
 
   const selectedMachine = useMemo(
     () => machines.find((m) => m.id === selectedMachineId) ?? null,
@@ -138,7 +140,7 @@ export default function MassageChairConfig() {
       machineName: name,
       defaultCycleMinutes: cycleMinutes,
       audioVolumes,
-    });
+    }, poltronaTemplate);
   };
 
   const handleDownload = () => {
@@ -147,12 +149,12 @@ export default function MassageChairConfig() {
 
     setDownloading(true);
     const safeName = (machineName.trim() || 'Poltrona').replace(/\s+/g, '_');
-    downloadEsp32DeviceFirmware(code, `ESP32_Poltrona_${safeName}.ino`);
+    void downloadEsp32DeviceFirmware(code, `ESP32_Poltrona_${safeName}.ino`);
 
     toast({
       title: 'Firmware gerado!',
       description:
-        'v1.3.7-toplav-poltrona (.ino + .h). Arduino IDE: partition Minimal SPIFFS (1.9MB APP with OTA), USB + Wi‑Fi em TopLavanderia-{ESP32_ID}.',
+        `${firmwareVersion} (.ino + .h). Arduino IDE: partition Minimal SPIFFS (1.9MB APP with OTA), USB + Wi‑Fi em TopLavanderia-{ESP32_ID}.`,
     });
     setDownloading(false);
   };
@@ -291,7 +293,7 @@ export default function MassageChairConfig() {
               Gerar firmware ESP32
             </CardTitle>
             <CardDescription>
-              Template Top Lavanderia: poll via esp32-monitor, relé GPIO 26, DFPlayer (001–007.mp3),
+              Template {firmwareVersion}: poll via esp32-monitor, relé GPIO 26, DFPlayer (001–007.mp3),
               resfriamento 30s ao fim. ID do ESP32 gerado automaticamente pelo MAC.
             </CardDescription>
           </CardHeader>
@@ -445,6 +447,7 @@ export default function MassageChairConfig() {
 
             {showPreview && laundryId && (
               <pre className="text-xs overflow-auto p-3 bg-muted/30 rounded border max-h-64">
+                {`#define FIRMWARE_VERSION "${readFirmwareVersionDefine(generateFirmware(), firmwareVersion)}"\n\n`}
                 {generateFirmware().substring(0, 1500)}…
               </pre>
             )}

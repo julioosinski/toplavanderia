@@ -1,5 +1,6 @@
 /**
  * ESP32 Poltrona de Massagem — Top Lavanderia
+ * Versão atual: v1.3.7-toplav-poltrona
  * Perfil: timed_session — pending_commands action "on" / "off" via esp32-monitor
  *
  * Placeholders:
@@ -7,17 +8,11 @@
  *
  * Hardware: Relé GPIO 26 (BC547 HIGH=liga) | DFPlayer TX16 RX17
  *
- * v1.3.2 — ESTABILIDADE DE REDE (corrige offline + liberação que não chega):
- * - HTTPS com WiFiClientSecure + connect/response timeout; sem gpio_hold; watchdog
- * v1.3.3 — Resfriamento pós-massagem (não bloqueante):
- * - Após fim do tempo OU Parar manual: pausa 2s → relé ON 30s → OFF
- * v1.3.4 — Auto-recuperação quando fica offline e não volta:
- * - Watchdog de tarefa (90s): se HTTPS/TLS travar, reinicia sozinho
- * - Sem heartbeat OK por 3 min → reinicia (mesmo com Wi‑Fi “conectado”)
- * - Wi‑Fi caído por 3 min → reinicia
- * - Sessão em NVS sobrevive ao reboot (relé/tempo restaurados)
- * v1.3.5 — Compat Arduino-ESP32 3.x (esp_task_wdt_init com esp_task_wdt_config_t)
  * v1.3.7 — ON reentregue pulsa de novo se a sessão não estiver ativa (confirm HTTP falhou)
+ * v1.3.5 — Compat Arduino-ESP32 3.x (esp_task_wdt_init com esp_task_wdt_config_t)
+ * v1.3.4 — Auto-recuperação quando fica offline e não volta
+ * v1.3.3 — Resfriamento pós-massagem (não bloqueante)
+ * v1.3.2 — HTTPS com timeout + watchdog
  */
 
 #include <WiFi.h>
