@@ -28,7 +28,13 @@ Envie: `releases/TopLavanderia-Totem-2.2.127-cielo.apk` (grade livre após pagar
 
 ## Firmware ESP32 (lavadora/secadora)
 
-Arquivo: `releases/ESP32_Lavadora_v2.2.8.ino` (gpio_hold no pulso GPIO2 + reentrega se confirm falhar).
+Arquivo: `releases/ESP32_Lavadora_v2.2.9.ino` (template) ou `ESP32_Lavadora_v2.2.9_relay2_PRONTO.ino` (já com LAUNDRY_ID do Sinuelo).
+
+> **Não use o v2.2.8.** O `gpio_hold_en` no GPIO2 (RTC_GPIO12) congelava o pad no
+> estado do domínio RTC e o relé não acionava: o comando era confirmado, mas a
+> máquina não recebia o crédito. O v2.2.9 reafirma HIGH a cada 20 ms, sem hold.
+
+Para gerar outro relay/ciclo: `node scripts/gen-lavadora-ino.mjs <relayPin> <cicloMin>`.
 
 1. Abra no Arduino IDE (placa ESP32, partição **Minimal SPIFFS with OTA**).
 2. Troque `__LAUNDRY_ID__` e `__MACHINE_NAME__` (ou gere o `.ino` em Admin → Configurar ESP32).
@@ -49,7 +55,8 @@ adb install -r app\build\outputs\apk\release\app-release.apk
 |---------|-------------|-----|
 | `TopLavanderia-Totem-2.2.127-cielo.apk` | 2.2.127 | **Atual** — grade livre na hora; pulso ESP em background |
 | `TopLavanderia-Totem-2.2.126-cielo.apk` | 2.2.126 | esperava ESP confirmar o pulso antes de voltar à grade |
-| `ESP32_Lavadora_v2.2.8.ino` | v2.2.8 | Firmware lavadora/secadora — gpio_hold no pulso (Wi‑Fi não corta GPIO2) |
+| `ESP32_Lavadora_v2.2.9.ino` | v2.2.9 | **Atual** — pulso GPIO2 com reassert; corrige relé que não acionava no v2.2.8 |
+| `ESP32_Lavadora_v2.2.8.ino` | v2.2.8 | **Não usar** — gpio_hold derrubava o GPIO2; confirmava sem pulsar |
 | `TopLavanderia-Totem-2.2.125-cielo.apk` | 2.2.125 | PIX: UI 90s, callback tardio 8 min, janitor não fecha PAID |
 | `TopLavanderia-Totem-2.2.124-cielo.apk` | 2.2.124 | pagamento aprovado reentrega comando ESP; sem falso "em uso" |
 | `ESP32_Lavadora_v2.2.7.ino` | v2.2.7 | Firmware lavadora/secadora — timeout HTTP 20s + poll 3s |

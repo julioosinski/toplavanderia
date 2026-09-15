@@ -3,7 +3,8 @@
  * Fonte única: este arquivo. Placeholders __LAUNDRY_ID__, __MACHINE_NAME__, etc.
  * Firmware gerado fica em: public/arduino/generated/
  *
- * Versão: 2.2.8 — pulso com gpio_hold (Wi‑Fi não glitcha GPIO2) + reentrega se confirm falhar
+ * Versão: 2.2.9 — remove gpio_hold do pulso (RTC hold derrubava o GPIO2 e o relé
+ *                 não acionava); mantém reassert HIGH e reentrega se o confirm falhar.
  */
 
 #include <WiFi.h>
@@ -17,7 +18,7 @@
 #include <cstdio>
 #include "driver/gpio.h"
 
-#define FIRMWARE_VERSION "v2.2.8"
+#define FIRMWARE_VERSION "v2.2.9"
 
 // ================== CONFIGURAÇÕES WIFI ==================
 // Wi-Fi é configurado via rede AP do próprio ESP32 e salvo em memória persistente (NVS).
@@ -118,17 +119,27 @@ bool loadWiFiCredentials() {
   return configuredSsid.length() > 0;
 }
 
-/** Aciona relé por RELAY_PULSE_MS. gpio_hold trava GPIO2 contra glitch do rádio Wi‑Fi. */
+/**
+ * Aciona relé por RELAY_PULSE_MS.
+ *
+ * NÃO usar gpio_hold_en aqui: no ESP32 o GPIO2 é RTC_GPIO12, e gpio_hold_en cai em
+ * rtc_gpio_hold_en — que congela o pad no estado do domínio RTC (não inicializado,
+ * nível 0), derrubando o HIGH que acabamos de escrever. Era isso que matava o pulso.
+ *
+ * Em vez de travar o pad, reescrevemos HIGH a cada REASSERT_STEP_MS: qualquer glitch
+ * do rádio Wi‑Fi é corrigido em poucos ms e o relé continua acionado.
+ */
 void pulseCreditRelay() {
-  gpio_hold_dis((gpio_num_t)RELAY_PIN);
+  const unsigned long REASSERT_STEP_MS = 20;
   pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, HIGH);
-  if (LED_PIN != RELAY_PIN) {
-    digitalWrite(LED_PIN, HIGH);
+  unsigned long startedAt = millis();
+  while (millis() - startedAt < RELAY_PULSE_MS) {
+    digitalWrite(RELAY_PIN, HIGH);
+    if (LED_PIN != RELAY_PIN) {
+      digitalWrite(LED_PIN, HIGH);
+    }
+    delay(REASSERT_STEP_MS);
   }
-  gpio_hold_en((gpio_num_t)RELAY_PIN);
-  delay(RELAY_PULSE_MS);
-  gpio_hold_dis((gpio_num_t)RELAY_PIN);
   digitalWrite(RELAY_PIN, LOW);
   if (LED_PIN != RELAY_PIN) {
     digitalWrite(LED_PIN, LOW);
@@ -136,7 +147,8 @@ void pulseCreditRelay() {
   relayState = false;
   machineRunning = true;
   machineStartTime = millis();
-  Serial.printf("⚡ Pulso de crédito (%lu ms, hold); ciclo: %d min\n", RELAY_PULSE_MS, cycleTimeMinutes);
+  Serial.printf("⚡ Pulso de crédito (%lu ms, reassert %lu ms); ciclo: %d min\n",
+                RELAY_PULSE_MS, REASSERT_STEP_MS, cycleTimeMinutes);
 }
 
 void saveWiFiCredentials(const String& ssid, const String& password) {
@@ -728,7 +740,6 @@ void pollSupabaseCommands() {
       pulseCreditRelay();
       Serial.printf("⚡ Fila Supabase: crédito (pulso %lu ms, ciclo: %d min)\n", RELAY_PULSE_MS, cycleTimeMinutes);
     } else if (action == "off" || action == "deactivate" || action == "turn_off") {
-      gpio_hold_dis((gpio_num_t)RELAY_PIN);
       relayState = false;
       machineRunning = false;
       digitalWrite(RELAY_PIN, LOW);

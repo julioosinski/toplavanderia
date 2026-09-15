@@ -37,7 +37,7 @@ const BUNDLED: Record<Esp32FirmwareKind, string> = {
 const sourceCache: Partial<Record<Esp32FirmwareKind, string>> = {};
 
 /** Versões dos templates canônicos em src/firmware/ — manter alinhado aos #define FIRMWARE_VERSION. */
-export const ESP32_LAVADORA_FIRMWARE_VERSION = 'v2.2.8';
+export const ESP32_LAVADORA_FIRMWARE_VERSION = 'v2.2.9';
 export const ESP32_POLTRONA_FIRMWARE_VERSION = 'v1.3.7-toplav-poltrona';
 export const ESP32_CAFE_FIRMWARE_VERSION = 'v1.1.0-toplav-cafe';
 
