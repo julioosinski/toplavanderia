@@ -248,42 +248,44 @@ public final class CieloOrderJanitor {
         return null;
     }
 
-    /** Limpeza rápida (só PAID/ENTERED, 1 tentativa) — antes de novo checkout. */
+    /** Pedidos ainda não cobrados — seguro fechar antes de um novo checkout. */
+    private static final String[] UNPAID_OPEN_STATUSES = { "ENTERED", "RE-ENTERED", "DRAFT" };
 
+    /** Inclui PAID — só após sucesso confirmado no totem (CLOSE do pedido cobrado). */
+    private static final String[] ALL_OPEN_STATUSES = { "PAID", "ENTERED", "RE-ENTERED", "DRAFT" };
+
+    /** Limpeza rápida (PAID + ENTERED) — pós-sucesso / CLOSE do pedido cobrado. */
     public static int closeOpenOrdersQuick(String clientId, String accessToken, String merchantId,
-
                                            String environment) {
+        return closeOpenOrdersQuick(clientId, accessToken, merchantId, environment, ALL_OPEN_STATUSES);
+    }
 
+    /**
+     * Fecha só ENTERED/DRAFT. Nunca fecha PAID — um PIX já cobrado precisa do callback tardio,
+     * não de CLOSE que destrói o pedido pago.
+     */
+    public static int closeUnpaidOpenOrdersQuick(String clientId, String accessToken, String merchantId,
+                                                 String environment) {
+        return closeOpenOrdersQuick(clientId, accessToken, merchantId, environment, UNPAID_OPEN_STATUSES);
+    }
+
+    private static int closeOpenOrdersQuick(String clientId, String accessToken, String merchantId,
+                                            String environment, String[] statuses) {
         if (clientId == null || clientId.isEmpty() || accessToken == null || accessToken.isEmpty()) {
-
             return 0;
-
         }
-
         String merchant = resolveMerchantId(merchantId);
-
         String baseUrl = baseUrl(environment);
-
         int closed = 0;
-
         Set<String> seen = new HashSet<>();
-
-        for (String status : new String[] { "PAID", "ENTERED", "RE-ENTERED", "DRAFT" }) {
-
+        for (String status : statuses) {
             JSONArray orders = fetchOrdersQuick(baseUrl, clientId, accessToken, merchant, status);
-
             closed += closeOrderList(baseUrl, clientId, accessToken, merchant, orders, seen, status);
-
         }
-
         if (closed > 0) {
-
             Log.i(TAG, "Quick janitor: " + closed + " pedido(s) fechado(s)");
-
         }
-
         return closed;
-
     }
 
 

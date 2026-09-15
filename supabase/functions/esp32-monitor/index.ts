@@ -132,10 +132,17 @@ serve(async (req) => {
         .from('pending_commands')
         .select('*')
         .eq('id', command_id)
-        .eq('esp32_id', esp32_id)
         .single();
 
       if (cmdError || !command) {
+        return new Response(JSON.stringify({ success: false, error: 'Command not found' }), {
+          status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const cmdEsp = String(command.esp32_id || '').trim().toLowerCase();
+      const reqEsp = String(esp32_id || '').trim().toLowerCase();
+      if (cmdEsp && reqEsp && cmdEsp !== reqEsp) {
         return new Response(JSON.stringify({ success: false, error: 'Command not found' }), {
           status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });

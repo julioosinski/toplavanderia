@@ -1,8 +1,9 @@
 /**
  * ESP32 Poltrona de Massagem — Top Lavanderia
  *
- * Firmware executável: poltrona_massagem_top_lavanderia.ino
+ * Firmware executável: poltrona_massagem_top_lavanderia.ino (v1.3.7)
  * Perfil: timed_session — pending_commands action "on"/"off" via esp32-monitor
+ * O gerador do admin usa poltrona_massagem_top_lavanderia.ino como template.
  *
  * Placeholders ao gerar pelo admin:
  *   __LAUNDRY_ID__

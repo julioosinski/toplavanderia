@@ -39,10 +39,15 @@ public class CieloLioManager implements PaymentManager {
     /** Sem callback Cielo — cartão; libera o totem sem espera longa. */
     private static final long PROCESSING_WATCHDOG_MS = 90_000L;
     /**
-     * PIX sem callback: janela curta o bastante para pagamentos seguidos,
-     * ainda cobrindo QR lento típico da LIO.
+     * PIX: após este tempo a UI volta à grade e outras máquinas podem pagar.
+     * O checkout (binding/reference) permanece para o callback tardio.
      */
-    private static final long PROCESSING_WATCHDOG_PIX_MS = 90_000L;
+    private static final long PROCESSING_WATCHDOG_PIX_SOFT_MS = 90_000L;
+    /**
+     * PIX: após este tempo abandona o QR não pago (janitor só ENTERED/DRAFT).
+     * Pedidos PAID nunca são fechados aqui.
+     */
+    private static final long PROCESSING_WATCHDOG_PIX_HARD_MS = 8 * 60_000L;
     /** Encerra sessão Cielo rápido para não segurar o próximo pagamento. */
     private static final long END_SESSION_DELAY_MS = 2500L;
     private static final long REVERSAL_CALLBACK_TIMEOUT_MS = 45_000L;
@@ -58,8 +63,36 @@ public class CieloLioManager implements PaymentManager {
     private static final String KEY_BOUND_AMOUNT = "amount_cents";
     private static final String KEY_BOUND_PAY_CODE = "payment_code";
     private static final String KEY_BOUND_REFERENCE = "reference";
+    private static final String KEY_BOUND_SESSION = "session_id";
+    private static final String PREFS_DORMANT_PIX = "cielo_dormant_pix";
+    private static final String KEY_DORMANT_OPERATION = "operation_id";
+    private static final String KEY_DORMANT_MACHINE = "machine_id";
+    private static final String KEY_DORMANT_TX = "pending_tx_id";
+    private static final String KEY_DORMANT_SESSION = "session_id";
+    private static final String KEY_DORMANT_STARTED = "started_at";
+    private static final String KEY_DORMANT_AMOUNT = "amount_cents";
+    private static final String KEY_DORMANT_PAY_CODE = "payment_code";
+    private static final String KEY_DORMANT_REFERENCE = "reference";
+    /** Mensagens internas para o TotemActivity não tratar PIX como erro vermelho. */
+    public static final String PIX_SOFT_TIMEOUT_SIGNAL = "CIELO_PIX_SOFT_TIMEOUT";
+    public static final String PIX_HARD_TIMEOUT_SIGNAL = "CIELO_PIX_HARD_TIMEOUT";
     /** Instância do totem — sobrevive a dropActiveInstance para callback PIX tardio. */
     private static CieloLioManager registeredAppManager;
+
+    /** Contexto do último sucesso entregue (PIX tardio / binding). */
+    public static final class SuccessDelivery {
+        public final long operationId;
+        public final String machineId;
+        public final String pendingTxId;
+        public final String sessionId;
+
+        SuccessDelivery(long operationId, String machineId, String pendingTxId, String sessionId) {
+            this.operationId = operationId;
+            this.machineId = machineId == null ? "" : machineId;
+            this.pendingTxId = pendingTxId == null ? "" : pendingTxId;
+            this.sessionId = sessionId == null ? "" : sessionId;
+        }
+    }
 
     public static void cancelScheduledEndSession() {
         if (pendingEndSessionRunnable != null) {
@@ -71,7 +104,11 @@ public class CieloLioManager implements PaymentManager {
     private final Context context;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private Runnable processingWatchdogRunnable;
+    private Runnable pixHardWatchdogRunnable;
+    private Runnable dormantPixHardWatchdogRunnable;
     private boolean pixWatchdogSoftExpired;
+    private volatile SuccessDelivery lastSuccessDelivery;
+    private String boundSessionId;
     private PaymentCallback callback;
     private boolean isProcessing;
     private boolean isInitialized;
@@ -177,7 +214,7 @@ public class CieloLioManager implements PaymentManager {
             final String cMerchant = merchantCodeForJanitor();
             final String cEnv = this.environment;
             new Thread(() -> {
-                int n = CieloOrderJanitor.closeOpenOrdersQuick(
+                int n = CieloOrderJanitor.closeUnpaidOpenOrdersQuick(
                     cId, cToken, cMerchant, CieloOrderJanitor.resolveEnvironment(cEnv));
                 Log.i(TAG, "Limpeza ao iniciar: " + n + " pedido(s) encerrado(s)"
                     + (CieloOrderJanitor.hadRecentAuthFailure() ? " (API 401 — credenciais inválidas)" : ""));
@@ -211,43 +248,44 @@ public class CieloLioManager implements PaymentManager {
         return isProcessing;
     }
 
-    /** Pagamento aberto na Cielo há tempo demais sem callback. PIX usa janela própria. */
+    /** Pagamento aberto na Cielo há tempo demais sem callback. PIX: janela SOFT (UI). */
     public boolean isProcessingStale() {
         if (!isProcessing || lastDeepLinkLaunchAtMs <= 0L) {
             return false;
         }
         long limitMs = "PIX".equalsIgnoreCase(pendingPaymentCode)
-            ? PROCESSING_WATCHDOG_PIX_MS
+            ? PROCESSING_WATCHDOG_PIX_SOFT_MS
             : PROCESSING_WATCHDOG_MS;
         return System.currentTimeMillis() - lastDeepLinkLaunchAtMs >= limitMs;
     }
 
     /**
      * Libera flag isProcessing se o checkout travou.
+     * PIX soft: NÃO aborta — outras máquinas podem pagar; a mesma fica bloqueada no backend.
      * @return true se o fluxo atual foi abortado (erro notificado — não iniciar novo pagamento)
      */
     public boolean releaseStaleProcessingIfNeeded() {
+        expireDormantPixIfHard();
         if (isProcessingStale()) {
             boolean isPix = "PIX".equalsIgnoreCase(pendingPaymentCode);
             if (isPix) {
-                Log.w(TAG, "Watchdog PIX: abandonando checkout após " + PROCESSING_WATCHDOG_PIX_MS + "ms");
-                abandonExpiredBoundCheckout("watchdog-pix");
-                notifyPaymentError("Tempo esgotado no PIX. Tente novamente.");
-                return true;
+                Log.w(TAG, "Watchdog PIX soft: UI livre após " + PROCESSING_WATCHDOG_PIX_SOFT_MS + "ms");
+                applyPixSoftTimeout("release-stale", false);
+                return false;
             }
             Log.w(TAG, "Watchdog: pagamento sem callback há " + PROCESSING_WATCHDOG_MS + "ms");
             abandonExpiredBoundCheckout("watchdog-cartao");
             notifyPaymentError("Tempo esgotado aguardando resposta da Cielo. Tente novamente.");
             return true;
         }
-        // Binding órfão (isProcessing já false) — libera sem bloquear o próximo pagamento.
+        // Binding órfão (isProcessing já false) — PIX só após HARD 8 min.
         if (hasExpiredBoundCheckout()) {
             abandonExpiredBoundCheckout("binding-expirado");
         }
         return false;
     }
 
-    /** True se ainda há checkout Cielo vinculado e dentro da janela de espera. */
+    /** True se ainda há checkout Cielo vinculado e dentro da janela de espera da UI. */
     public boolean hasFreshBoundCheckout() {
         if (!hasAnyBoundCheckout()) {
             return false;
@@ -260,26 +298,39 @@ public class CieloLioManager implements PaymentManager {
         if (ageMs < 0L) {
             return true;
         }
-        return ageMs < boundCheckoutLimitMs();
+        return ageMs < boundCheckoutUiLimitMs();
     }
 
-    /** Binding existe mas já passou do tempo — deve ser liberado. */
+    /** Binding existe mas já passou do tempo HARD — deve ser liberado. */
     public boolean hasExpiredBoundCheckout() {
         if (!hasAnyBoundCheckout()) {
             return false;
         }
+        if (successDelivered) {
+            return false;
+        }
         long ageMs = boundCheckoutAgeMs();
-        return ageMs >= boundCheckoutLimitMs();
+        return ageMs >= boundCheckoutHardLimitMs();
     }
 
-    private long boundCheckoutLimitMs() {
+    /** Limite para bloquear um segundo checkout na UI (PIX = 90s). */
+    private long boundCheckoutUiLimitMs() {
+        return isBoundCheckoutPix() ? PROCESSING_WATCHDOG_PIX_SOFT_MS : PROCESSING_WATCHDOG_MS;
+    }
+
+    /** Limite para abandonar o checkout (PIX = 8 min). */
+    private long boundCheckoutHardLimitMs() {
+        return isBoundCheckoutPix() ? PROCESSING_WATCHDOG_PIX_HARD_MS : PROCESSING_WATCHDOG_MS;
+    }
+
+    private boolean isBoundCheckoutPix() {
         String code = pendingPaymentCode;
         if (code == null || code.isEmpty()) {
             code = context.getApplicationContext()
                 .getSharedPreferences(PREFS_CHECKOUT, Context.MODE_PRIVATE)
                 .getString(KEY_BOUND_PAY_CODE, "");
         }
-        return "PIX".equalsIgnoreCase(code) ? PROCESSING_WATCHDOG_PIX_MS : PROCESSING_WATCHDOG_MS;
+        return "PIX".equalsIgnoreCase(code);
     }
 
     private boolean hasAnyBoundCheckout() {
@@ -323,6 +374,10 @@ public class CieloLioManager implements PaymentManager {
         if (abandonedTx != null && !abandonedTx.isEmpty()) {
             lastAbandonedTxId = abandonedTx;
         }
+        DormantPix dormant = loadDormantPix();
+        if (dormant != null && abandonedTx != null && abandonedTx.equals(dormant.txId)) {
+            clearDormantPix();
+        }
         pixWatchdogSoftExpired = false;
         finishProcessingAfterCallback();
         clearBoundCheckout();
@@ -330,14 +385,14 @@ public class CieloLioManager implements PaymentManager {
         clearPendingTransaction();
         CieloPaymentSessionHelper.endSession(context);
         CieloPaymentForegroundService.stop(context);
-        // Fecha pedidos abertos na nuvem para liberar o terminal.
+        // Fecha só pedidos NÃO pagos. Fechar PAID destrói PIX já cobrado sem callback.
         new Thread(() -> {
             try {
                 String merchant = merchantCodeForJanitor();
                 String cieloEnv = CieloOrderJanitor.resolveEnvironment(environment);
-                int purged = CieloOrderJanitor.closeOpenOrdersQuick(
+                int purged = CieloOrderJanitor.closeUnpaidOpenOrdersQuick(
                     clientId, accessToken, merchant, cieloEnv);
-                Log.i(TAG, "Pós-abandono: cloud purge=" + purged);
+                Log.i(TAG, "Pós-abandono: cloud purge unpaid=" + purged);
             } catch (Exception e) {
                 Log.w(TAG, "Falha ao limpar pedidos após abandono", e);
             }
@@ -379,7 +434,7 @@ public class CieloLioManager implements PaymentManager {
         // Ainda dentro da janela — evita segundo checkout enquanto o anterior pode concluir.
         if (!isPreparedCurrentCheckout && hasFreshBoundCheckout() && !successDelivered) {
             long age = Math.max(0L, boundCheckoutAgeMs());
-            long remainSec = Math.max(1L, (boundCheckoutLimitMs() - age + 999L) / 1000L);
+            long remainSec = Math.max(1L, (boundCheckoutUiLimitMs() - age + 999L) / 1000L);
             boolean isPixOpen = "PIX".equalsIgnoreCase(pendingPaymentCode)
                 || "PIX".equalsIgnoreCase(
                     context.getApplicationContext()
@@ -421,9 +476,9 @@ public class CieloLioManager implements PaymentManager {
             String merchant = merchantCodeForJanitor();
             String cieloEnv = CieloOrderJanitor.resolveEnvironment(environment);
             // pm clear antes do checkout quebra deviceKey/hasConnectivity → -4281. Só REST janitor.
-            int purged = CieloOrderJanitor.closeOpenOrdersQuick(
+            int purged = CieloOrderJanitor.closeUnpaidOpenOrdersQuick(
                 clientId, accessToken, merchant, cieloEnv);
-            Log.i(TAG, "Pré-checkout: cloud=" + purged + " pedido(s) merchant=" + merchant);
+            Log.i(TAG, "Pré-checkout: cloud unpaid=" + purged + " pedido(s) merchant=" + merchant);
 
             // Deep link direto — sem orderId na nuvem (evita fluxo parcial/troco na L400).
             pendingCloudOrderId = null;
@@ -515,7 +570,8 @@ public class CieloLioManager implements PaymentManager {
             new Thread(() -> {
                 CieloLioManager mgr = activeInstance != null ? activeInstance : tryRehydrateActiveInstance();
                 boolean looksReversal = uriLooksLikeReversalCallback(uri);
-                boolean checkoutAlive = mgr != null && (mgr.isProcessing || mgr.hasFreshBoundCheckout())
+                boolean checkoutAlive = mgr != null
+                    && (mgr.isProcessing || mgr.hasFreshBoundCheckout() || mgr.hasRedeemablePixCheckout())
                     && !mgr.successDelivered;
                 if (checkoutAlive && !looksReversal) {
                     Log.w(TAG, "Callback durante estorno roteado ao pagamento em curso");
@@ -566,17 +622,28 @@ public class CieloLioManager implements PaymentManager {
 
     /** Vincula operação do totem — sobrevive ao timeout de inatividade durante PIX na Cielo. */
     public void bindTotemCheckout(long operationId, String machineId, String pendingTxId) {
-        // Novo pagamento: se o anterior já concluiu (ou ficou órfão), limpa sem esperar watchdog.
-        if (hasAnyBoundCheckout() && !isProcessing) {
+        bindTotemCheckout(operationId, machineId, pendingTxId, null);
+    }
+
+    public void bindTotemCheckout(long operationId, String machineId, String pendingTxId, String sessionId) {
+        // PIX ainda resgatável: guarda para callback tardio antes de sobrescrever o binding.
+        if (hasRedeemablePixCheckout() && !isProcessing) {
+            persistDormantPixFromCurrentBinding();
+            Log.i(TAG, "Novo checkout — PIX anterior preservado como dormente (tx="
+                + getBoundPendingTxId() + ")");
+            clearBoundCheckout();
+        } else if (hasAnyBoundCheckout() && !isProcessing) {
             Log.i(TAG, "Novo checkout — liberando binding anterior para pagamento seguido");
             clearBoundCheckout();
         }
         boundTotemOperationId = operationId;
         boundMachineId = machineId == null ? "" : machineId.trim();
         boundPendingTxId = pendingTxId == null ? "" : pendingTxId.trim();
+        boundSessionId = sessionId == null ? "" : sessionId.trim();
         checkoutPreparedForLaunch = true;
         successDelivered = false;
         persistBoundCheckout();
+        scheduleDormantPixHardWatchdog();
     }
 
     public long getBoundTotemOperationId() {
@@ -608,10 +675,45 @@ public class CieloLioManager implements PaymentManager {
         return operationId > 0 && operationId == getBoundTotemOperationId();
     }
 
+    public boolean acceptsDeliveredOperation(long operationId) {
+        if (operationId <= 0) {
+            return false;
+        }
+        if (matchesBoundOperation(operationId)) {
+            return true;
+        }
+        DormantPix dormant = loadDormantPix();
+        if (dormant != null && dormant.operationId == operationId) {
+            return true;
+        }
+        SuccessDelivery delivered = lastSuccessDelivery;
+        return delivered != null && delivered.operationId == operationId;
+    }
+
+    public SuccessDelivery takeLastSuccessDelivery() {
+        SuccessDelivery d = lastSuccessDelivery;
+        lastSuccessDelivery = null;
+        return d;
+    }
+
+    public SuccessDelivery peekLastSuccessDelivery() {
+        return lastSuccessDelivery;
+    }
+
+    public String getBoundSessionId() {
+        if (boundSessionId != null && !boundSessionId.isEmpty()) {
+            return boundSessionId;
+        }
+        return context.getApplicationContext()
+            .getSharedPreferences(PREFS_CHECKOUT, Context.MODE_PRIVATE)
+            .getString(KEY_BOUND_SESSION, "");
+    }
+
     public void clearBoundCheckout() {
         boundTotemOperationId = 0L;
         boundMachineId = "";
         boundPendingTxId = "";
+        boundSessionId = "";
         checkoutPreparedForLaunch = false;
         successDelivered = false;
         context.getApplicationContext()
@@ -642,6 +744,14 @@ public class CieloLioManager implements PaymentManager {
         if (!currentReference.isEmpty()
                 && rawPayload.toLowerCase(java.util.Locale.ROOT).contains("reference")
                 && !rawPayload.contains(currentReference)) {
+            DormantPix dormant = mgr.loadDormantPix();
+            if (dormant != null && dormant.reference != null && !dormant.reference.isEmpty()
+                    && rawPayload.contains(dormant.reference)) {
+                Log.i(TAG, "Broadcast aprovado do PIX dormente — entregando à máquina original");
+                mgr.deliverDormantPixSuccess("CIELO_BROADCAST", "broadcast-" + System.currentTimeMillis(),
+                    "broadcast:" + source);
+                return;
+            }
             Log.w(TAG, "Broadcast aprovado de outro checkout ignorado (ref atual="
                 + currentReference + ")");
             return;
@@ -716,7 +826,9 @@ public class CieloLioManager implements PaymentManager {
         if (registeredAppManager == null) {
             return null;
         }
-        if (!registeredAppManager.hasFreshBoundCheckout()) {
+        if (!registeredAppManager.hasFreshBoundCheckout()
+                && !registeredAppManager.hasRedeemablePixCheckout()
+                && !registeredAppManager.hasDormantPix()) {
             Log.w(TAG, "Reidratar checkout: binding ausente ou expirado");
             return null;
         }
@@ -735,6 +847,7 @@ public class CieloLioManager implements PaymentManager {
             .putLong(KEY_BOUND_OPERATION, boundTotemOperationId)
             .putString(KEY_BOUND_MACHINE, boundMachineId)
             .putString(KEY_BOUND_TX, boundPendingTxId)
+            .putString(KEY_BOUND_SESSION, boundSessionId == null ? "" : boundSessionId)
             .putLong(KEY_BOUND_STARTED, System.currentTimeMillis())
             .apply();
         persistCheckoutChallenge();
@@ -771,6 +884,9 @@ public class CieloLioManager implements PaymentManager {
         if (boundPendingTxId == null || boundPendingTxId.isEmpty()) {
             boundPendingTxId = prefs.getString(KEY_BOUND_TX, "");
         }
+        if (boundSessionId == null || boundSessionId.isEmpty()) {
+            boundSessionId = prefs.getString(KEY_BOUND_SESSION, "");
+        }
     }
 
     private long loadBoundOperationIdFromPrefs() {
@@ -789,6 +905,16 @@ public class CieloLioManager implements PaymentManager {
                 return;
             }
             Log.w(TAG, "Callback Cielo duplicado — reprocessando (sucesso ainda não entregue)");
+        }
+
+        String peekedReference = peekCallbackReference(uri);
+        if (peekedReference != null && !peekedReference.isEmpty()
+                && isDormantReference(peekedReference)
+                && !isExpectedReference(peekedReference)) {
+            Log.i(TAG, "Callback do PIX dormente — entregando à máquina original (ref="
+                + peekedReference + ")");
+            consumeDormantPixCallback(uri);
+            return;
         }
 
         finishProcessingAfterCallback();
@@ -844,6 +970,15 @@ public class CieloLioManager implements PaymentManager {
             String responseReference = json.optString("reference", "");
 
             if (!isExpectedReference(responseReference)) {
+                if (isDormantReference(responseReference)) {
+                    Log.i(TAG, "Callback roteado ao PIX dormente (ref=" + responseReference + ")");
+                    consumeDormantPixCallback(uri);
+                    finalizeCheckout = false;
+                    isProcessing = true;
+                    scheduleProcessingWatchdog();
+                    CieloPaymentForegroundService.start(context);
+                    return;
+                }
                 // Pode ser retorno tardio de um PIX anterior. Não derruba o checkout atual.
                 Log.w(TAG, "Callback de outro checkout ignorado (recebida=" + responseReference
                     + ", atual=" + pendingReference + ")");
@@ -955,35 +1090,322 @@ public class CieloLioManager implements PaymentManager {
         cancelProcessingWatchdog();
         pixWatchdogSoftExpired = false;
         final boolean isPix = "PIX".equalsIgnoreCase(pendingPaymentCode);
-        final long timeoutMs = isPix ? PROCESSING_WATCHDOG_PIX_MS : PROCESSING_WATCHDOG_MS;
+        if (isPix) {
+            processingWatchdogRunnable = () -> applyPixSoftTimeout("watchdog-soft", true);
+            mainHandler.postDelayed(processingWatchdogRunnable, PROCESSING_WATCHDOG_PIX_SOFT_MS);
+            cancelPixHardWatchdog();
+            pixHardWatchdogRunnable = this::applyPixHardTimeout;
+            mainHandler.postDelayed(pixHardWatchdogRunnable, PROCESSING_WATCHDOG_PIX_HARD_MS);
+            scheduleDormantPixHardWatchdog();
+            return;
+        }
         processingWatchdogRunnable = () -> {
             if (successDelivered) {
-                return;
-            }
-            if (!isProcessing && !hasFreshBoundCheckout() && !hasExpiredBoundCheckout()) {
-                return;
-            }
-            if (isPix) {
-                Log.w(TAG, "Watchdog PIX: sem callback em " + timeoutMs
-                    + "ms — abandonando para liberar novo pagamento");
-                abandonExpiredBoundCheckout("watchdog-pix-timer");
-                notifyPaymentError("Tempo esgotado no PIX. Tente novamente.");
                 return;
             }
             if (!isProcessing) {
                 return;
             }
-            Log.w(TAG, "Watchdog: sem callback Cielo em " + timeoutMs + "ms");
+            Log.w(TAG, "Watchdog: sem callback Cielo em " + PROCESSING_WATCHDOG_MS + "ms");
             abandonExpiredBoundCheckout("watchdog-cartao-timer");
             notifyPaymentError("Tempo esgotado aguardando resposta da Cielo. Tente novamente.");
         };
-        mainHandler.postDelayed(processingWatchdogRunnable, timeoutMs);
+        mainHandler.postDelayed(processingWatchdogRunnable, PROCESSING_WATCHDOG_MS);
+        scheduleDormantPixHardWatchdog();
+    }
+
+    private void applyPixSoftTimeout(String reason, boolean notifyUi) {
+        if (successDelivered) {
+            return;
+        }
+        if (!isBoundCheckoutPix() && !hasDormantPix()) {
+            return;
+        }
+        boolean alreadySoft = pixWatchdogSoftExpired && !isProcessing;
+        pixWatchdogSoftExpired = true;
+        isProcessing = false;
+        persistDormantPixFromCurrentBinding();
+        CieloPaymentForegroundService.stop(context);
+        CieloPaymentSessionHelper.endSession(context);
+        Log.w(TAG, "PIX soft timeout (" + reason + ") — grade livre; checkout preservado para callback tardio");
+        if (notifyUi && !alreadySoft) {
+            notifyPaymentError(PIX_SOFT_TIMEOUT_SIGNAL);
+        }
+        scheduleDormantPixHardWatchdog();
+    }
+
+    private void applyPixHardTimeout() {
+        if (successDelivered && !hasDormantPix()) {
+            return;
+        }
+        if (isBoundCheckoutPix() && !successDelivered && boundCheckoutAgeMs() >= PROCESSING_WATCHDOG_PIX_HARD_MS) {
+            Log.w(TAG, "PIX hard timeout — abandonando checkout não confirmado após 8 min");
+            abandonExpiredBoundCheckout("watchdog-pix-hard");
+            notifyPaymentError(PIX_HARD_TIMEOUT_SIGNAL);
+            return;
+        }
+        expireDormantPixIfHard();
     }
 
     private void cancelProcessingWatchdog() {
         if (processingWatchdogRunnable != null) {
             mainHandler.removeCallbacks(processingWatchdogRunnable);
             processingWatchdogRunnable = null;
+        }
+        cancelPixHardWatchdog();
+    }
+
+    private void cancelPixHardWatchdog() {
+        if (pixHardWatchdogRunnable != null) {
+            mainHandler.removeCallbacks(pixHardWatchdogRunnable);
+            pixHardWatchdogRunnable = null;
+        }
+    }
+
+    private static final class DormantPix {
+        long operationId;
+        String machineId;
+        String txId;
+        String sessionId;
+        String reference;
+        String payCode;
+        long amountCents;
+        long startedAtMs;
+    }
+
+    public boolean hasRedeemablePixCheckout() {
+        return isBoundCheckoutPix()
+            && hasAnyBoundCheckout()
+            && !successDelivered
+            && boundCheckoutAgeMs() < PROCESSING_WATCHDOG_PIX_HARD_MS;
+    }
+
+    public boolean hasDormantPix() {
+        DormantPix d = loadDormantPix();
+        return d != null && d.txId != null && !d.txId.isEmpty();
+    }
+
+    private boolean isDormantReference(String reference) {
+        if (reference == null || reference.isEmpty()) {
+            return false;
+        }
+        DormantPix d = loadDormantPix();
+        return d != null && reference.equals(d.reference);
+    }
+
+    private void persistDormantPixFromCurrentBinding() {
+        if (!isBoundCheckoutPix() || !hasAnyBoundCheckout()) {
+            return;
+        }
+        android.content.SharedPreferences checkout = context.getApplicationContext()
+            .getSharedPreferences(PREFS_CHECKOUT, Context.MODE_PRIVATE);
+        long started = checkout.getLong(KEY_BOUND_STARTED, 0L);
+        if (started <= 0L && lastDeepLinkLaunchAtMs > 0L) {
+            started = lastDeepLinkLaunchAtMs;
+        }
+        if (started <= 0L) {
+            started = System.currentTimeMillis();
+        }
+        String reference = pendingReference;
+        if (reference == null || reference.isEmpty()) {
+            reference = checkout.getString(KEY_BOUND_REFERENCE, "");
+        }
+        long amount = pendingAmountCents > 0 ? pendingAmountCents : checkout.getLong(KEY_BOUND_AMOUNT, 0L);
+        String payCode = pendingPaymentCode;
+        if (payCode == null || payCode.isEmpty()) {
+            payCode = checkout.getString(KEY_BOUND_PAY_CODE, "PIX");
+        }
+        context.getApplicationContext()
+            .getSharedPreferences(PREFS_DORMANT_PIX, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(KEY_DORMANT_OPERATION, getBoundTotemOperationId())
+            .putString(KEY_DORMANT_MACHINE, getBoundMachineId())
+            .putString(KEY_DORMANT_TX, getBoundPendingTxId())
+            .putString(KEY_DORMANT_SESSION, getBoundSessionId())
+            .putLong(KEY_DORMANT_STARTED, started)
+            .putLong(KEY_DORMANT_AMOUNT, amount)
+            .putString(KEY_DORMANT_PAY_CODE, payCode == null ? "PIX" : payCode)
+            .putString(KEY_DORMANT_REFERENCE, reference == null ? "" : reference)
+            .apply();
+        Log.i(TAG, "PIX dormente persistido tx=" + getBoundPendingTxId()
+            + " ref=" + reference + " started=" + started);
+        scheduleDormantPixHardWatchdog();
+    }
+
+    private DormantPix loadDormantPix() {
+        android.content.SharedPreferences prefs = context.getApplicationContext()
+            .getSharedPreferences(PREFS_DORMANT_PIX, Context.MODE_PRIVATE);
+        String tx = prefs.getString(KEY_DORMANT_TX, "");
+        if (tx == null || tx.isEmpty()) {
+            return null;
+        }
+        DormantPix d = new DormantPix();
+        d.operationId = prefs.getLong(KEY_DORMANT_OPERATION, 0L);
+        d.machineId = prefs.getString(KEY_DORMANT_MACHINE, "");
+        d.txId = tx;
+        d.sessionId = prefs.getString(KEY_DORMANT_SESSION, "");
+        d.reference = prefs.getString(KEY_DORMANT_REFERENCE, "");
+        d.payCode = prefs.getString(KEY_DORMANT_PAY_CODE, "PIX");
+        d.amountCents = prefs.getLong(KEY_DORMANT_AMOUNT, 0L);
+        d.startedAtMs = prefs.getLong(KEY_DORMANT_STARTED, 0L);
+        return d;
+    }
+
+    private void clearDormantPix() {
+        if (dormantPixHardWatchdogRunnable != null) {
+            mainHandler.removeCallbacks(dormantPixHardWatchdogRunnable);
+            dormantPixHardWatchdogRunnable = null;
+        }
+        context.getApplicationContext()
+            .getSharedPreferences(PREFS_DORMANT_PIX, Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .apply();
+    }
+
+    private void scheduleDormantPixHardWatchdog() {
+        if (dormantPixHardWatchdogRunnable != null) {
+            mainHandler.removeCallbacks(dormantPixHardWatchdogRunnable);
+            dormantPixHardWatchdogRunnable = null;
+        }
+        DormantPix d = loadDormantPix();
+        if (d == null) {
+            return;
+        }
+        long dueAt = d.startedAtMs + PROCESSING_WATCHDOG_PIX_HARD_MS;
+        long delay = dueAt - System.currentTimeMillis();
+        if (delay <= 0L) {
+            expireDormantPixIfHard();
+            return;
+        }
+        dormantPixHardWatchdogRunnable = this::expireDormantPixIfHard;
+        mainHandler.postDelayed(dormantPixHardWatchdogRunnable, delay);
+    }
+
+    private void expireDormantPixIfHard() {
+        DormantPix d = loadDormantPix();
+        if (d == null) {
+            return;
+        }
+        long age = d.startedAtMs <= 0L ? Long.MAX_VALUE : System.currentTimeMillis() - d.startedAtMs;
+        if (age < PROCESSING_WATCHDOG_PIX_HARD_MS) {
+            return;
+        }
+        Log.w(TAG, "PIX dormente expirado após 8 min tx=" + d.txId);
+        if (d.txId != null && !d.txId.isEmpty()) {
+            lastAbandonedTxId = d.txId;
+        }
+        clearDormantPix();
+        new Thread(() -> {
+            try {
+                String merchant = merchantCodeForJanitor();
+                String cieloEnv = CieloOrderJanitor.resolveEnvironment(environment);
+                int purged = CieloOrderJanitor.closeUnpaidOpenOrdersQuick(
+                    clientId, accessToken, merchant, cieloEnv);
+                Log.i(TAG, "PIX dormente hard expire: unpaid purge=" + purged);
+            } catch (Exception e) {
+                Log.w(TAG, "Falha ao limpar pedidos do PIX dormente", e);
+            }
+        }, "cielo-dormant-purge").start();
+    }
+
+    private String peekCallbackReference(Uri uri) {
+        if (uri == null) {
+            return null;
+        }
+        try {
+            String responseBase64 = uri.getQueryParameter("response");
+            if (responseBase64 == null || responseBase64.isEmpty()) {
+                return null;
+            }
+            String decoded = new String(Base64.decode(responseBase64, Base64.DEFAULT), StandardCharsets.UTF_8);
+            JSONObject json = new JSONObject(decoded);
+            return json.optString("reference", "");
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private void consumeDormantPixCallback(Uri uri) {
+        DormantPix dormant = loadDormantPix();
+        if (dormant == null || uri == null) {
+            return;
+        }
+        try {
+            String responseBase64 = uri.getQueryParameter("response");
+            String responseCode = uri.getQueryParameter("responsecode");
+            if (responseBase64 == null || responseBase64.isEmpty()) {
+                return;
+            }
+            if ("2".equals(responseCode)) {
+                Log.w(TAG, "PIX dormente cancelado no terminal (responsecode=2)");
+                if (dormant.txId != null && !dormant.txId.isEmpty()) {
+                    lastAbandonedTxId = dormant.txId;
+                }
+                clearDormantPix();
+                return;
+            }
+            String decoded = new String(Base64.decode(responseBase64, Base64.DEFAULT), StandardCharsets.UTF_8);
+            JSONObject json = new JSONObject(decoded);
+            if (json.has("code") && json.has("reason")) {
+                Log.w(TAG, "PIX dormente: erro Cielo ignorado no checkout atual: "
+                    + json.optString("reason", ""));
+                return;
+            }
+            JSONArray payments = json.optJSONArray("payments");
+            if (payments == null || payments.length() == 0) {
+                Log.w(TAG, "PIX dormente: callback sem pagamento confirmado");
+                return;
+            }
+            JSONObject payment = payments.getJSONObject(payments.length() - 1);
+            long paidAmount = payment.optLong("amount", json.optLong("paidAmount", -1));
+            if (dormant.amountCents > 0 && paidAmount > 0 && paidAmount != dormant.amountCents) {
+                Log.w(TAG, "PIX dormente: valor divergente esperado=" + dormant.amountCents
+                    + " recebido=" + paidAmount);
+                return;
+            }
+            String authCode = payment.optString("authCode", "");
+            String cieloCode = payment.optString("cieloCode", "");
+            String txnId = payment.optString("externalId", json.optString("id",
+                String.valueOf(System.currentTimeMillis())));
+            if (authCode.isEmpty()) {
+                authCode = cieloCode.isEmpty() ? txnId : cieloCode;
+            }
+            String paymentId = payment.optString("id", json.optString("id", txnId));
+            String savedTx = boundPendingTxId;
+            boundPendingTxId = dormant.txId;
+            setApprovedPaymentSnapshot(new ApprovedPaymentSnapshot(
+                paymentId,
+                authCode,
+                cieloCode,
+                paidAmount > 0 ? paidAmount : dormant.amountCents
+            ));
+            boundPendingTxId = savedTx;
+            lastDetectedSupabasePaymentMethod = "pix";
+            rememberMerchantFromPayment(payment);
+            CieloPrintDismissScheduler.onApprovedDetected(context, "dormant-pix");
+            deliverDormantPixSuccess(authCode, txnId, "dormant-deeplink");
+        } catch (Exception e) {
+            Log.w(TAG, "Falha ao processar callback PIX dormente", e);
+        }
+    }
+
+    private void deliverDormantPixSuccess(String authCode, String txnId, String source) {
+        DormantPix d = loadDormantPix();
+        if (d == null) {
+            return;
+        }
+        lastSuccessDelivery = new SuccessDelivery(d.operationId, d.machineId, d.txId, d.sessionId);
+        Log.i(TAG, "PIX dormente aprovado (" + source + ") tx=" + d.txId + " machine=" + d.machineId);
+        clearDormantPix();
+        if (callback != null) {
+            final String auth = authCode == null ? "" : authCode;
+            final String txn = txnId == null ? "" : txnId;
+            mainHandler.post(() -> {
+                if (callback != null) {
+                    callback.onPaymentSuccess(auth, txn);
+                }
+            });
         }
     }
 
@@ -1221,7 +1643,18 @@ public class CieloLioManager implements PaymentManager {
             return;
         }
         successDelivered = true;
-        Log.i(TAG, "Pagamento aprovado (" + source + ") auth=" + authCode + " txn=" + txnId);
+        lastSuccessDelivery = new SuccessDelivery(
+            getBoundTotemOperationId(),
+            getBoundMachineId(),
+            getBoundPendingTxId(),
+            getBoundSessionId()
+        );
+        DormantPix dormant = loadDormantPix();
+        if (dormant != null && dormant.txId != null && dormant.txId.equals(getBoundPendingTxId())) {
+            clearDormantPix();
+        }
+        Log.i(TAG, "Pagamento aprovado (" + source + ") auth=" + authCode + " txn=" + txnId
+            + " tx=" + getBoundPendingTxId());
         if (callback != null) {
             final String auth = authCode == null ? "" : authCode;
             final String txn = txnId == null ? "" : txnId;
