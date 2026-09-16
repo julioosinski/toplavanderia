@@ -28,13 +28,13 @@ Envie: `releases/TopLavanderia-Totem-2.2.127-cielo.apk` (grade livre após pagar
 
 ## Firmware ESP32 (lavadora/secadora)
 
-Arquivo: `releases/ESP32_Lavadora_v2.3.2.ino` (template) ou
-`ESP32_Lavadora_v2.3.2_relay2_PRONTO.ino` (já com LAUNDRY_ID do Sinuelo, sem placeholders).
+Arquivo: `releases/ESP32_Lavadora_v2.3.3.ino` (template) ou
+`ESP32_Lavadora_v2.3.3_relay2_PRONTO.ino` (já com LAUNDRY_ID do Sinuelo, sem placeholders).
 
 > **Não use o v2.2.8.** O `gpio_hold_en` no GPIO2 (RTC_GPIO12) congelava o pad no
 > estado do domínio RTC e o relé não acionava: o comando era confirmado, mas a
 > máquina não recebia o crédito. O APK 2.2.125+ continua enfileirando ON; o pulso
-> é 100% do firmware. v2.3.2: solta o RTC hold do GPIO2 e pulsa HIGH 1500 ms.
+> é 100% do firmware. v2.3.3: pulso GPIO2 idêntico ao v2.2.7 (HIGH 1000 ms).
 
 ### Descobrir o pino do relé (v2.3.0+)
 
@@ -57,7 +57,7 @@ Para gerar outro relay/ciclo: `node scripts/gen-lavadora-ino.mjs <relayPin> <cic
 1. Abra no Arduino IDE (placa ESP32, partição **Minimal SPIFFS with OTA**).
 2. Troque `__LAUNDRY_ID__` e `__MACHINE_NAME__` (ou gere o `.ino` em Admin → Configurar ESP32).
 3. Compile e envie por USB. Wi-Fi continua pelo portal AP da placa (`TopLavanderia-…` / senha `toplav123`).
-4. OTA remoto: compile o `.ino.bin` no Arduino IDE (Exportar binário) e envie no painel OTA com versão `v2.3.2`.
+4. OTA remoto: compile o `.ino.bin` no Arduino IDE (Exportar binário) e envie no painel OTA com versão `v2.3.3`.
 
 ## Desenvolvimento local (ADB na LIO)
 
@@ -73,7 +73,8 @@ adb install -r app\build\outputs\apk\release\app-release.apk
 |---------|-------------|-----|
 | `TopLavanderia-Totem-2.2.127-cielo.apk` | 2.2.127 | **Atual** — grade livre na hora; pulso ESP em background |
 | `TopLavanderia-Totem-2.2.126-cielo.apk` | 2.2.126 | esperava ESP confirmar o pulso antes de voltar à grade |
-| `ESP32_Lavadora_v2.3.2.ino` | v2.3.2 | **Atual** — solta RTC hold do GPIO2 e pulsa HIGH 1500 ms |
+| `ESP32_Lavadora_v2.3.3.ino` | v2.3.3 | **Atual** — pulso GPIO2 igual ao v2.2.7 (HIGH 1000 ms, digitalWrite) |
+| `ESP32_Lavadora_v2.3.2.ino` | v2.3.2 | rtc_gpio_deinit/gpio_reset_pin — pad do GPIO2 soltava, comando confirmava sem pulso |
 | `ESP32_Lavadora_v2.3.1.ino` | v2.3.1 | GPIO2 HIGH 1500 ms, mas sem soltar o hold legado do v2.2.8 |
 | `ESP32_Lavadora_v2.3.0.ino` | v2.3.0 | pino do relé configurável na página da placa + teste de pulso por GPIO |
 | `ESP32_Lavadora_v2.2.9.ino` | v2.2.9 | pulso GPIO2 com reassert (sem hold) |

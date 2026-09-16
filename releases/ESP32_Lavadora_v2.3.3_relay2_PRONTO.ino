@@ -1,6 +1,11 @@
 /**
- * ESP32 Lavadora Individual — gerado do template v2.3.3 (pulso GPIO2 igual v2.2.7).
- * Lavanderia: 8ace0bcb-83a9-4555-a712-63ef5f52e709 | relay_1 | ciclo inicial 10 min
+ * ESP32 Lavadora Individual — template gerado pelo admin (Configurar ESP32).
+ * Fonte única: este arquivo. Placeholders 8ace0bcb-83a9-4555-a712-63ef5f52e709, TOP LAVANDERIA SINUELO, etc.
+ * Firmware gerado fica em: public/arduino/generated/
+ *
+ * Versão: 2.3.3 — pulso do relé IDÊNTICO ao v2.2.7 (GPIO2 HIGH 1000 ms via
+ *                 pinMode/digitalWrite/delay). Sem rtc_gpio_deinit/gpio_reset_pin:
+ *                 isso soltava o pad e o comando confirmava sem tensão no pino.
  */
 
 #include <WiFi.h>
@@ -41,7 +46,7 @@ void reportOtaResult(const String& jobId, bool success, const String& message);
 
 // ================== IDENTIFICAÇÃO ==================
 #define LAUNDRY_ID "8ace0bcb-83a9-4555-a712-63ef5f52e709"
-#define MACHINE_NAME "ESP32 Teste AP"
+#define MACHINE_NAME "TOP LAVANDERIA SINUELO"
 // ESP32_ID gerado automaticamente a partir do MAC Address (único por chip).
 // Formato: "esp32_AABBCCDD" (últimos 4 bytes do MAC em hex minúsculo).
 char ESP32_ID[16];
@@ -140,9 +145,9 @@ void holdGpioLevel(int gpio, int level) {
 }
 
 /** Índice lógico no Supabase (relay_1, relay_2…) — substituído pelo painel "Configurar ESP32" */
-#define RELAY_LOGICAL_PIN 1
+#define RELAY_LOGICAL_PIN 2
 /** Valor inicial do painel — atualizado dinamicamente pela resposta do heartbeat */
-int cycleTimeMinutes = 10;
+int cycleTimeMinutes = 40;
 
 // ================== VARIÁVEIS DE CONTROLE ==================
 WebServer server(80);
