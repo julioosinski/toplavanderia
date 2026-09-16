@@ -3,9 +3,8 @@
  * Fonte única: este arquivo. Placeholders __LAUNDRY_ID__, __MACHINE_NAME__, etc.
  * Firmware gerado fica em: public/arduino/generated/
  *
- * Versão: 2.3.1 — crédito SEMPRE no GPIO2, pulso HIGH de 1500 ms (pagamento e
- *                 liberação manual). Sem gpio_hold. O APK só enfileira o comando;
- *                 o pulso é 100% deste firmware.
+ * Versão: 2.3.2 — GPIO2 HIGH 1500 ms. Solta o RTC hold que o v2.2.8 deixou no
+ *                 pad (digitalWrite não move o pino enquanto o hold existir).
  */
 
 #include <WiFi.h>
@@ -18,8 +17,9 @@
 #include <Preferences.h>
 #include <cstdio>
 #include "driver/gpio.h"
+#include "driver/rtc_io.h"
 
-#define FIRMWARE_VERSION "v2.3.1"
+#define FIRMWARE_VERSION "v2.3.2"
 
 // ================== CONFIGURAÇÕES WIFI ==================
 // Wi-Fi é configurado via rede AP do próprio ESP32 e salvo em memória persistente (NVS).
@@ -44,6 +44,8 @@ void enterConfigPortalSticky(const char* reason);
 void clearWiFiCredentials();
 void pollOtaUpdate();
 void reportOtaResult(const String& jobId, bool success, const String& message);
+void armGpio2Output();
+void setGpio2Level(int level);
 
 // ================== IDENTIFICAÇÃO ==================
 #define LAUNDRY_ID "__LAUNDRY_ID__"
@@ -115,8 +117,10 @@ void saveRelayConfig(int gpio, bool activeLow, unsigned long pulseMs) {
   relayGpio = gpio;
   relayActiveLow = activeLow;
   relayPulseMs = pulseMs;
-  pinMode(relayGpio, OUTPUT);
-  digitalWrite(relayGpio, relayIdleLevel());
+  if (gpio != RELAY_PIN) {
+    pinMode(relayGpio, OUTPUT);
+    digitalWrite(relayGpio, relayIdleLevel());
+  }
   Serial.printf("🔧 Relé salvo: GPIO%d, %s, pulso %lu ms\n",
                 gpio, activeLow ? "ACTIVE-LOW" : "ACTIVE-HIGH", pulseMs);
 }
@@ -126,13 +130,25 @@ void pulseGpioForTest(int gpio, unsigned long ms, bool activeLow) {
   const unsigned long REASSERT_STEP_MS = 20;
   int active = activeLow ? LOW : HIGH;
   int idle = activeLow ? HIGH : LOW;
-  pinMode(gpio, OUTPUT);
+  if (gpio == RELAY_PIN) {
+    armGpio2Output();
+  } else {
+    pinMode(gpio, OUTPUT);
+  }
   unsigned long startedAt = millis();
   while (millis() - startedAt < ms) {
-    digitalWrite(gpio, active);
+    if (gpio == RELAY_PIN) {
+      setGpio2Level(active);
+    } else {
+      digitalWrite(gpio, active);
+    }
     delay(REASSERT_STEP_MS);
   }
-  digitalWrite(gpio, idle);
+  if (gpio == RELAY_PIN) {
+    setGpio2Level(idle);
+  } else {
+    digitalWrite(gpio, idle);
+  }
   Serial.printf("🧪 Teste: pulso %lu ms no GPIO%d (%s)\n",
                 ms, gpio, activeLow ? "ACTIVE-LOW" : "ACTIVE-HIGH");
 }
@@ -200,19 +216,40 @@ bool loadWiFiCredentials() {
 }
 
 /**
- * Crédito da máquina: GPIO2 HIGH por 1500 ms.
- * Não usa gpio_hold (no GPIO2 isso derruba o pulso). Não usa NVS — pino e tempo
- * são fixos para pagamento e liberação manual não dependerem de configuração.
+ * O v2.2.8 chamou gpio_hold_en no GPIO2 (RTC_GPIO12). Esse hold sobrevive a
+ * reboot e a OTA: o firmware “pulsa” no registrador digital, o pad físico
+ * continua em 0 V e a máquina não credita. Sem hold_dis o digitalWrite é no-op.
+ */
+void armGpio2Output() {
+  gpio_hold_dis(GPIO_NUM_2);
+  gpio_deep_sleep_hold_dis();
+  rtc_gpio_hold_dis(GPIO_NUM_2);
+  rtc_gpio_deinit(GPIO_NUM_2);
+  gpio_reset_pin(GPIO_NUM_2);
+  gpio_set_direction(GPIO_NUM_2, GPIO_MODE_INPUT_OUTPUT);
+}
+
+void setGpio2Level(int level) {
+  gpio_set_level(GPIO_NUM_2, level ? 1 : 0);
+}
+
+/**
+ * Crédito: GPIO2 HIGH 1500 ms, depois LOW. Sem gpio_hold. Sem polaridade NVS.
  */
 void pulseCreditRelay() {
   const unsigned long REASSERT_STEP_MS = 20;
-  pinMode(RELAY_PIN, OUTPUT);
+  armGpio2Output();
   unsigned long startedAt = millis();
+  bool loggedPad = false;
   while (millis() - startedAt < RELAY_PULSE_MS) {
-    digitalWrite(RELAY_PIN, HIGH);
+    setGpio2Level(HIGH);
+    if (!loggedPad && (millis() - startedAt) >= 40) {
+      Serial.printf("📟 GPIO2 pad=%d (1 = HIGH no pino físico)\n", gpio_get_level(GPIO_NUM_2));
+      loggedPad = true;
+    }
     delay(REASSERT_STEP_MS);
   }
-  digitalWrite(RELAY_PIN, LOW);
+  setGpio2Level(LOW);
   relayState = false;
   machineRunning = true;
   machineStartTime = millis();
@@ -384,14 +421,12 @@ void setup() {
 
   // Crédito sempre no GPIO2. NVS (relayGpio) só vale para testes manuais na página.
   loadRelayConfig();
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);
+  armGpio2Output();
+  setGpio2Level(LOW);
   if (relayGpio != RELAY_PIN) {
     pinMode(relayGpio, OUTPUT);
     digitalWrite(relayGpio, relayIdleLevel());
   }
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW);
   Serial.printf("🔌 Crédito: GPIO%d HIGH %lu ms | teste NVS: GPIO%d %s %lu ms\n",
                 RELAY_PIN, RELAY_PULSE_MS, relayGpio,
                 relayActiveLow ? "ACTIVE-LOW" : "ACTIVE-HIGH", relayPulseMs);
@@ -401,6 +436,8 @@ void setup() {
   WiFi.setAutoReconnect(true);
   WiFi.persistent(true);
   delay(100);
+  armGpio2Output();
+  setGpio2Level(LOW);
 
   buildEsp32Id();
   Serial.printf("ESP32 ID (auto MAC): %s\n", ESP32_ID);
@@ -816,8 +853,11 @@ void handleStop() {
   Serial.println("⏹️ Comando STOP recebido");
   relayState = false;
   machineRunning = false;
-  digitalWrite(relayGpio, relayIdleLevel());
-  digitalWrite(LED_PIN, LOW);
+  if (relayGpio == RELAY_PIN) {
+    setGpio2Level(LOW);
+  } else {
+    digitalWrite(relayGpio, relayIdleLevel());
+  }
   server.send(200, "application/json", "{\"success\":true,\"message\":\"Máquina parada\"}");
   Serial.println("✅ Máquina parada com sucesso");
   sendHeartbeat();
@@ -916,9 +956,10 @@ void pollSupabaseCommands() {
     } else if (action == "off" || action == "deactivate" || action == "turn_off") {
       relayState = false;
       machineRunning = false;
-      digitalWrite(relayGpio, relayIdleLevel());
-      if (LED_PIN != relayGpio) {
-        digitalWrite(LED_PIN, LOW);
+      if (relayGpio == RELAY_PIN) {
+        setGpio2Level(LOW);
+      } else {
+        digitalWrite(relayGpio, relayIdleLevel());
       }
       Serial.println("⚡ Fila Supabase: OFF");
     } else {

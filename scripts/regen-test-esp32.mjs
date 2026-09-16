@@ -15,7 +15,7 @@ const out = template
   .replace(/__CYCLE_TIME_MINUTES__/g, '10');
 
 const header = `/**
- * ESP32 Lavadora Individual — gerado do template v2.3.1 (GPIO2 HIGH 1500 ms).
+ * ESP32 Lavadora Individual — gerado do template v2.3.2 (GPIO2 HIGH 1500 ms, solta RTC hold).
  * Lavanderia: 8ace0bcb-83a9-4555-a712-63ef5f52e709 | relay_1 | ciclo inicial 10 min
  */
 
