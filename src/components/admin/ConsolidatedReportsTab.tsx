@@ -9,14 +9,8 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useLaundry } from "@/hooks/useLaundry";
 import { billableRevenueAmount } from "@/lib/transactionRevenue";
-import {
-  brazilDayBoundsUtc,
-  brazilIsoDate,
-  brazilIsoDateDaysAgo,
-  brazilIsoDateLabel,
-  brazilMonthStartIsoDate,
-  brazilRangeBoundsUtc,
-} from "@/lib/brazilReportDates";
+import { brazilIsoDate, brazilIsoDateLabel, brazilMonthStartIsoDate, brazilRangeBoundsUtc } from "@/lib/brazilReportDates";
+import { resolveSalesPeriodRange, type SalesPeriodPreset } from "@/lib/salesReport";
 
 interface LaundryStats {
   laundry_id: string;
@@ -37,8 +31,10 @@ export const ConsolidatedReportsTab = () => {
   const [stats, setStats] = useState<LaundryStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLaundryId, setSelectedLaundryId] = useState<string>("all");
-  const [startDate, setStartDate] = useState(brazilIsoDateDaysAgo(30));
-  const [endDate, setEndDate] = useState(brazilIsoDate());
+  const [preset, setPreset] = useState<SalesPeriodPreset>("month");
+  const [customStart, setCustomStart] = useState(brazilMonthStartIsoDate());
+  const [customEnd, setCustomEnd] = useState(brazilIsoDate());
+  const range = resolveSalesPeriodRange(preset, customStart, customEnd);
 
   const loadConsolidatedStats = useCallback(async () => {
     try {
@@ -52,7 +48,7 @@ export const ConsolidatedReportsTab = () => {
           .eq('laundry_id', laundry.id);
         if (machinesError) throw machinesError;
 
-        const { startUtc, endUtc } = brazilRangeBoundsUtc(startDate, endDate);
+        const { startUtc, endUtc } = brazilRangeBoundsUtc(range.start, range.end);
         const txQuery = supabase
           .from('transactions')
           .select('id, total_amount, payment_method')
@@ -88,7 +84,7 @@ export const ConsolidatedReportsTab = () => {
     } finally {
       setLoading(false);
     }
-  }, [endDate, laundries, selectedLaundryId, startDate, toast]);
+  }, [laundries, range.end, range.start, selectedLaundryId, toast]);
 
   useEffect(() => {
     if (isSuperAdmin) loadConsolidatedStats();
@@ -116,16 +112,38 @@ export const ConsolidatedReportsTab = () => {
     <div className="space-y-6">
       {/* Filters */}
       <Card>
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 space-y-4">
+          <div className="flex flex-wrap gap-1">
+            {([
+              { id: "today", label: "Hoje" },
+              { id: "7d", label: "7 dias" },
+              { id: "month", label: "Este mês" },
+              { id: "custom", label: "Personalizado" },
+            ] as const).map((option) => (
+              <Button
+                key={option.id}
+                type="button"
+                size="sm"
+                variant={preset === option.id ? "default" : "outline"}
+                onClick={() => setPreset(option.id)}
+              >
+                {option.label}
+              </Button>
+            ))}
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-            <div className="space-y-2">
-              <Label>Data Inicial</Label>
-              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Data Final</Label>
-              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-            </div>
+            {preset === "custom" && (
+              <>
+                <div className="space-y-2">
+                  <Label>Data Inicial</Label>
+                  <Input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Data Final</Label>
+                  <Input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} />
+                </div>
+              </>
+            )}
             <div className="space-y-2">
               <Label>Lavanderia</Label>
               <Select value={selectedLaundryId} onValueChange={setSelectedLaundryId}>
@@ -181,7 +199,7 @@ export const ConsolidatedReportsTab = () => {
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Performance por Lavanderia</CardTitle>
-            <CardDescription>Período: {brazilIsoDateLabel(startDate)} — {brazilIsoDateLabel(endDate)}</CardDescription>
+            <CardDescription>Período: {brazilIsoDateLabel(range.start)} — {brazilIsoDateLabel(range.end)}</CardDescription>
           </div>
           <Button onClick={loadConsolidatedStats} variant="outline" size="sm"><RefreshCw className="h-4 w-4 mr-2" />Atualizar</Button>
         </CardHeader>

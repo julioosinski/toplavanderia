@@ -90,7 +90,7 @@ export const SettingsForm = ({ settings, onUpdate, isUpdating, canEdit = true }:
             <span>Rede Wi-Fi</span>
           </CardTitle>
           <CardDescription>
-            Wi-Fi pré-configurado no firmware dos ESP32
+            SSID e senha gravados no firmware gerado em Dispositivos
           </CardDescription>
         </CardHeader>
         <CardContent>

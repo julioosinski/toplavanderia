@@ -30,6 +30,10 @@ interface Machine {
 
 type FilterMode = "all" | "online" | "offline";
 
+interface ESP32DiagnosticsProps {
+  embedded?: boolean;
+}
+
 const ONLINE_THRESHOLD_MIN = 3;
 
 function isOnline(lastHeartbeat?: string | null): boolean {
@@ -74,7 +78,7 @@ function statusVariant(status: string): "default" | "secondary" | "destructive" 
   return "outline";
 }
 
-export default function ESP32Diagnostics() {
+export default function ESP32Diagnostics({ embedded = false }: ESP32DiagnosticsProps) {
   const { currentLaundry } = useLaundry();
   const currentLaundryId = currentLaundry?.id;
   const [esp32List, setEsp32List] = useState<ESP32Status[]>([]);
@@ -190,14 +194,16 @@ export default function ESP32Diagnostics() {
       ) : (
         <div className="space-y-6">
           {/* Header */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
+            {!embedded && (
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Diagnóstico ESP32</h1>
               <p className="text-muted-foreground text-sm">
                 Monitoramento em tempo real — {currentLaundry?.name}
               </p>
             </div>
-            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
+            )}
+            <Button variant="outline" size="sm" className={embedded ? "ml-auto" : undefined} onClick={handleRefresh} disabled={refreshing}>
               <RefreshCw className={`h-4 w-4 mr-1 ${refreshing ? "animate-spin" : ""}`} />
               Atualizar
             </Button>

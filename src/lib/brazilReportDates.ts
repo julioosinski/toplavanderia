@@ -13,10 +13,36 @@ export function brazilIsoDate(date: Date = new Date()): string {
   }).format(date);
 }
 
+/** Soma (ou subtrai) dias em um YYYY-MM-DD civil, sem depender do fuso do navegador. */
+export function brazilAddCalendarDays(isoDate: string, days: number): string {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const utc = new Date(Date.UTC(year, month - 1, day + days));
+  const yyyy = utc.getUTCFullYear();
+  const mm = String(utc.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(utc.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export function brazilIsoDateDaysAgo(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return brazilIsoDate(d);
+  return brazilAddCalendarDays(brazilIsoDate(), -days);
+}
+
+/** Janela inclusiva dos últimos N dias civis em Brasília (hoje conta como 1). */
+export function brazilLastNDaysRange(days: number): { start: string; end: string } {
+  const end = brazilIsoDate();
+  const start = brazilAddCalendarDays(end, -(Math.max(1, days) - 1));
+  return { start, end };
+}
+
+/** Garante start <= end em YYYY-MM-DD. */
+export function brazilNormalizeIsoRange(startDate: string, endDate: string): { start: string; end: string } {
+  if (!startDate || !endDate) {
+    const today = brazilIsoDate();
+    return { start: startDate || today, end: endDate || today };
+  }
+  return startDate <= endDate
+    ? { start: startDate, end: endDate }
+    : { start: endDate, end: startDate };
 }
 
 export function brazilMonthStartIsoDate(date: Date = new Date()): string {
@@ -38,9 +64,8 @@ export function brazilRangeBoundsUtc(
   startDate: string,
   endDate: string,
 ): { startUtc: string; endUtc: string } {
-  const start = brazilDayBoundsUtc(startDate).startUtc;
-  const end = brazilDayBoundsUtc(endDate).endUtc;
-  return { startUtc: start, endUtc: end };
+  const { start, end } = brazilNormalizeIsoRange(startDate, endDate);
+  return { startUtc: brazilDayBoundsUtc(start).startUtc, endUtc: brazilDayBoundsUtc(end).endUtc };
 }
 
 /** Chave dd/mm/aaaa para agrupamento diário (pt-BR, Brasília). */
@@ -65,20 +90,36 @@ export function brazilMonthKeyFromTimestamp(isoTimestamp: string): string {
   return `${year}-${month}`;
 }
 
-/** Rótulo "Semana de dd/mm/aaaa" com início no domingo (calendário Brasília). */
-export function brazilWeekLabelFromTimestamp(isoTimestamp: string): string {
+/** Segunda-feira da semana civil em Brasília (YYYY-MM-DD). */
+export function brazilWeekStartIsoFromTimestamp(isoTimestamp: string): string {
   const iso = brazilIsoDate(new Date(isoTimestamp));
-  const anchor = new Date(`${iso}T12:00:00${BRAZIL_OFFSET}`);
-  const dow = anchor.getUTCDay();
-  anchor.setUTCDate(anchor.getUTCDate() - dow);
-  const weekStart = brazilDateKeyFromTimestamp(anchor.toISOString());
-  return `Semana de ${weekStart}`;
+  const [year, month, day] = iso.split("-").map(Number);
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  const fromMonday = (utc.getUTCDay() + 6) % 7;
+  utc.setUTCDate(utc.getUTCDate() - fromMonday);
+  const yyyy = utc.getUTCFullYear();
+  const mm = String(utc.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(utc.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/** Rótulo "Semana de dd/mm/aaaa" com início na segunda (calendário Brasília). */
+export function brazilWeekLabelFromTimestamp(isoTimestamp: string): string {
+  const weekStart = brazilWeekStartIsoFromTimestamp(isoTimestamp);
+  return `Semana de ${brazilIsoDateLabel(weekStart)}`;
 }
 
 /** Exibe YYYY-MM-DD como dd/mm/aaaa (rótulo de período). */
 export function brazilIsoDateLabel(isoDate: string): string {
   const [y, m, d] = isoDate.split("-");
   return `${d}/${m}/${y}`;
+}
+
+/** YYYY-MM → "setembro de 2026". */
+export function brazilMonthLabelFromKey(yyyyMm: string): string {
+  const [year, month] = yyyyMm.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, 1));
+  return date.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
 }
 
 export function formatBrazilDateTime(isoTimestamp: string): {

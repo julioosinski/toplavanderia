@@ -12,7 +12,7 @@ export default function Settings() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Configurações</h1>
           <p className="text-muted-foreground">
-            Configure o sistema e integrações para {currentLaundry?.name}
+            Wi-Fi da unidade, gateway de pagamento, NFS-e e monitoramento. Firmware ESP32 (QR/OTA) está em Dispositivos.
           </p>
         </div>
 

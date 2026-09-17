@@ -1,336 +1,413 @@
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
-import { BarChart3, Calendar, TrendingUp, Download, Building2 } from "lucide-react";
+import { BarChart3, Download, TrendingUp, Calendar, WashingMachine } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLaundry } from "@/hooks/useLaundry";
-import { billableRevenueAmount, displayTransactionAmount, isManualRelease } from "@/lib/transactionRevenue";
+import { displayTransactionAmount, isManualRelease } from "@/lib/transactionRevenue";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getMachineTypeMeta, mapDbMachineType, type MachineDisplayType } from "@/lib/machineDisplayTypes";
 import {
-  brazilDateKeyFromTimestamp,
   brazilIsoDate,
-  brazilIsoDateDaysAgo,
-  brazilMonthKeyFromTimestamp,
+  brazilIsoDateLabel,
+  brazilMonthStartIsoDate,
   brazilRangeBoundsUtc,
-  brazilWeekLabelFromTimestamp,
   formatBrazilDateTime,
 } from "@/lib/brazilReportDates";
+import {
+  dbTypesForDisplayType,
+  formatBrl,
+  groupSalesTransactions,
+  machineFromJoin,
+  resolveSalesPeriodRange,
+  salesPeriodCaption,
+  type SalesGroupBy,
+  type SalesMachineOption,
+  type SalesPeriodPreset,
+  type SalesTransactionRow,
+} from "@/lib/salesReport";
 
-interface Transaction {
-  id: string;
-  machine_id: string;
-  total_amount: number;
-  created_at: string;
-  payment_method?: string;
-  user_id?: string;
-  machines: {
-    name: string;
-    type: string;
-  };
-  operator_name?: string;
-}
+const PAGE_SIZE = 1000;
+const PRESETS: { id: SalesPeriodPreset; label: string }[] = [
+  { id: "today", label: "Hoje" },
+  { id: "7d", label: "7 dias" },
+  { id: "month", label: "Este mês" },
+  { id: "custom", label: "Personalizado" },
+];
+const GROUP_OPTIONS: { id: SalesGroupBy; label: string }[] = [
+  { id: "machine", label: "Por máquina" },
+  { id: "daily", label: "Por dia" },
+  { id: "weekly", label: "Por semana" },
+  { id: "monthly", label: "Por mês" },
+];
 
-interface ReportData {
-  date: string;
-  sales: number;
-  revenue: number;
-  machine_name?: string;
-}
-
-interface MachineOption {
-  id: string;
-  name: string;
-  type: string;
-}
+const paymentLabel = (method: string | null | undefined) => {
+  if (!method) return "—";
+  if (method === "manual_release") return "Liberação manual";
+  if (method === "pix") return "PIX";
+  if (method === "credit") return "Crédito";
+  if (method === "debit" || method === "card") return "Débito";
+  if (method === "cielo") return "Cielo";
+  if (method === "totem") return "Totem";
+  if (method.includes("*")) return `Cartão ${method}`;
+  return method;
+};
 
 export const LaundryReportsTab = () => {
-  const { currentLaundry, isSuperAdmin } = useLaundry();
+  const { currentLaundry } = useLaundry();
   const currentLaundryId = currentLaundry?.id;
-  const currentLaundryName = currentLaundry?.name;
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [machines, setMachines] = useState<MachineOption[]>([]);
-  const [reportData, setReportData] = useState<ReportData[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({
-    startDate: brazilIsoDateDaysAgo(7),
-    endDate: brazilIsoDate(),
-    machineId: 'all',
-    machineType: 'all',
-    paymentMethod: 'all',
-    reportType: 'daily'
-  });
   const { toast } = useToast();
+  const requestId = useRef(0);
+
+  const [preset, setPreset] = useState<SalesPeriodPreset>("month");
+  const [customStart, setCustomStart] = useState(() => brazilMonthStartIsoDate());
+  const [customEnd, setCustomEnd] = useState(() => brazilIsoDate());
+  const [groupBy, setGroupBy] = useState<SalesGroupBy>("machine");
+  const [machineId, setMachineId] = useState("all");
+  const [machineType, setMachineType] = useState<"all" | MachineDisplayType>("all");
+  const [paymentMethod, setPaymentMethod] = useState("all");
+
+  const [machines, setMachines] = useState<SalesMachineOption[]>([]);
+  const [transactions, setTransactions] = useState<SalesTransactionRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const range = useMemo(
+    () => resolveSalesPeriodRange(preset, customStart, customEnd),
+    [preset, customStart, customEnd],
+  );
 
   const loadMachines = useCallback(async () => {
     if (!currentLaundryId) return;
     const { data, error } = await supabase
-      .from('machines')
-      .select('id, name, type')
-      .eq('laundry_id', currentLaundryId)
-      .order('name');
-    if (!error && data) setMachines(data as MachineOption[]);
+      .from("machines")
+      .select("id, name, type")
+      .eq("laundry_id", currentLaundryId)
+      .order("name");
+    if (!error && data) setMachines(data as SalesMachineOption[]);
   }, [currentLaundryId]);
 
-  const generateReport = useCallback(async () => {
+  const loadReport = useCallback(async () => {
     if (!currentLaundryId) return;
+    const id = ++requestId.current;
     setLoading(true);
     try {
-      const { startUtc, endUtc } = brazilRangeBoundsUtc(filters.startDate, filters.endDate);
-      let query = supabase
-        .from('transactions')
-        .select(`id, machine_id, total_amount, created_at, payment_method, user_id, machines!inner(name, type)`)
-        .eq('laundry_id', currentLaundryId)
-        .eq('status', 'completed')
-        .gte('created_at', startUtc)
-        .lte('created_at', endUtc)
-        .order('created_at', { ascending: false });
+      const { startUtc, endUtc } = brazilRangeBoundsUtc(range.start, range.end);
+      const rows: SalesTransactionRow[] = [];
+      let from = 0;
 
-      if (filters.machineId !== 'all') {
-        query = query.eq('machine_id', filters.machineId);
-      }
-      if (filters.machineType !== 'all') {
-        query = query.eq('machines.type', filters.machineType);
-      }
-      if (filters.paymentMethod !== 'all') {
-        if (filters.paymentMethod === 'debit') {
-          // Débito era gravado como "card" em versões anteriores do totem
-          query = query.in('payment_method', ['debit', 'card']);
-        } else {
-          query = query.eq('payment_method', filters.paymentMethod);
+      for (;;) {
+        let query = supabase
+          .from("transactions")
+          .select("id, machine_id, total_amount, created_at, payment_method, user_id, machines!inner(name, type)")
+          .eq("laundry_id", currentLaundryId)
+          .eq("status", "completed")
+          .gte("created_at", startUtc)
+          .lte("created_at", endUtc)
+          .order("created_at", { ascending: false })
+          .range(from, from + PAGE_SIZE - 1);
+
+        if (machineId !== "all") {
+          query = query.eq("machine_id", machineId);
         }
+        if (paymentMethod === "debit") {
+          query = query.in("payment_method", ["debit", "card"]);
+        } else if (paymentMethod !== "all") {
+          query = query.eq("payment_method", paymentMethod);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+        rows.push(...((data || []) as SalesTransactionRow[]));
+        if (!data || data.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+        if (from >= 20000) break;
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
+      if (id !== requestId.current) return;
 
-      let enriched = (data || []) as Transaction[];
+      let filtered = rows;
+      if (machineType !== "all") {
+        const allowed = new Set(dbTypesForDisplayType(machineType));
+        filtered = rows.filter((tx) => {
+          const joined = machineFromJoin(tx.machines);
+          if (!joined.type) return false;
+          return allowed.has(joined.type) || mapDbMachineType(joined.type) === machineType;
+        });
+      }
 
-      // Fetch operator names for manual releases
-      const manualUserIds = [...new Set(enriched.filter(t => t.payment_method === 'manual_release' && t.user_id).map(t => t.user_id!))];
+      const manualUserIds = [
+        ...new Set(
+          filtered
+            .filter((t) => isManualRelease(t.payment_method) && t.user_id)
+            .map((t) => t.user_id!),
+        ),
+      ];
       if (manualUserIds.length > 0) {
         const { data: profiles } = await supabase
-          .from('profiles')
-          .select('user_id, full_name')
-          .in('user_id', manualUserIds);
-        const profileMap = new Map(profiles?.map(p => [p.user_id, p.full_name]) || []);
-        enriched = enriched.map(t => ({
+          .from("profiles")
+          .select("user_id, full_name")
+          .in("user_id", manualUserIds);
+        const profileMap = new Map(profiles?.map((p) => [p.user_id, p.full_name || ""]) || []);
+        filtered = filtered.map((t) => ({
           ...t,
-          operator_name: t.payment_method === 'manual_release' && t.user_id ? profileMap.get(t.user_id) || undefined : undefined,
+          operator_name:
+            isManualRelease(t.payment_method) && t.user_id
+              ? profileMap.get(t.user_id) || undefined
+              : undefined,
         }));
       }
 
-      setTransactions(enriched);
-
-      // Process grouped data
-      const groupedData: Record<string, ReportData> = {};
-      enriched.forEach(transaction => {
-        let key: string;
-        if (filters.reportType === 'daily') {
-          key = brazilDateKeyFromTimestamp(transaction.created_at);
-        } else if (filters.reportType === 'weekly') {
-          key = brazilWeekLabelFromTimestamp(transaction.created_at);
-        } else {
-          key = brazilMonthKeyFromTimestamp(transaction.created_at);
-        }
-        if (!groupedData[key]) {
-          groupedData[key] = { date: key, sales: 0, revenue: 0, machine_name: filters.machineId !== 'all' ? transaction.machines.name : undefined };
-        }
-        groupedData[key].sales += 1;
-        groupedData[key].revenue += billableRevenueAmount(
-          transaction.total_amount,
-          transaction.payment_method,
-        );
-      });
-
-      const reportArray = Object.values(groupedData).sort((a, b) => {
-        if (filters.reportType === 'monthly') return b.date.localeCompare(a.date);
-        return new Date(b.date.split('/').reverse().join('-')).getTime() - new Date(a.date.split('/').reverse().join('-')).getTime();
-      });
-      setReportData(reportArray);
+      if (id !== requestId.current) return;
+      setTransactions(filtered);
     } catch (error) {
-      console.error('Error generating report:', error);
-      toast({ title: "Erro", description: "Falha ao gerar relatório", variant: "destructive" });
+      console.error("Error generating report:", error);
+      if (id === requestId.current) {
+        toast({ title: "Erro", description: "Falha ao gerar relatório do período", variant: "destructive" });
+      }
     } finally {
-      setLoading(false);
+      if (id === requestId.current) setLoading(false);
     }
-  }, [currentLaundryId, filters, toast]);
+  }, [currentLaundryId, machineId, machineType, paymentMethod, range.end, range.start, toast]);
 
   useEffect(() => {
     if (currentLaundryId) {
-      loadMachines();
-      generateReport();
+      void loadMachines();
     }
-  }, [currentLaundryId, generateReport, loadMachines]);
+  }, [currentLaundryId, loadMachines]);
 
-  const exportReport = () => {
-    const headers = ['Data', 'Vendas', 'Receita'];
-    if (filters.machineId !== 'all') headers.push('Máquina');
-    const csvContent = [
-      headers.join(','),
-      ...reportData.map(row => [row.date, row.sales, `R$ ${row.revenue.toFixed(2)}`, ...(row.machine_name ? [row.machine_name] : [])].join(','))
-    ].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.setAttribute('href', URL.createObjectURL(blob));
-    link.setAttribute('download', `relatorio_${currentLaundryName}_${brazilIsoDate()}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+  useEffect(() => {
+    if (currentLaundryId) {
+      void loadReport();
+    }
+  }, [currentLaundryId, loadReport]);
 
-  const getPaymentLabel = (method: string | undefined) => {
-    if (!method) return "—";
-    if (method === 'manual_release') return 'Liberação Manual';
-    if (method === 'pix') return 'PIX';
-    if (method === 'credit') return 'Crédito';
-    if (method === 'debit' || method === 'card') return 'Débito';
-    if (method === 'cielo') return 'Cielo';
-    if (method === 'totem') return 'Totem';
-    if (method.includes('*')) return `Cartão ${method}`;
-    return method;
-  };
+  const machinesForGroup = useMemo(() => {
+    let list = machines;
+    if (machineId !== "all") list = list.filter((m) => m.id === machineId);
+    if (machineType !== "all") {
+      const allowed = new Set(dbTypesForDisplayType(machineType));
+      list = list.filter((m) => allowed.has(m.type) || mapDbMachineType(m.type) === machineType);
+    }
+    return list;
+  }, [machineId, machineType, machines]);
 
-  const totalSales = reportData.reduce((sum, row) => sum + row.sales, 0);
-  const totalRevenue = reportData.reduce((sum, row) => sum + row.revenue, 0);
+  const reportRows = useMemo(
+    () => groupSalesTransactions(transactions, groupBy, machinesForGroup),
+    [groupBy, machinesForGroup, transactions],
+  );
+
+  const totalSales = transactions.length;
+  const totalRevenue = reportRows.reduce((sum, row) => sum + row.revenue, 0);
   const billableSales = transactions.filter((t) => !isManualRelease(t.payment_method)).length;
   const manualReleaseCount = transactions.filter((t) => isManualRelease(t.payment_method)).length;
-  const manualReleaseValue = transactions
-    .filter((t) => isManualRelease(t.payment_method))
-    .reduce((sum, t) => sum + displayTransactionAmount(t.total_amount), 0);
   const averageTicket = billableSales > 0 ? totalRevenue / billableSales : 0;
+
+  const exportReport = () => {
+    const isMachine = groupBy === "machine";
+    const headers = isMachine
+      ? ["Máquina", "Tipo", "Ciclos", "Vendas pagas", "Receita", "Lib. manuais"]
+      : ["Período", "Ciclos", "Vendas pagas", "Receita", "Lib. manuais"];
+    const lines = [
+      `Lavanderia,${currentLaundry?.name || ""}`,
+      `Período,${salesPeriodCaption(range.start, range.end)}`,
+      "",
+      headers.join(","),
+      ...reportRows.map((row) =>
+        (isMachine
+          ? [
+              row.machineName,
+              row.machineType ? getMachineTypeMeta(row.machineType).label : "",
+              row.sales,
+              row.billableSales,
+              row.revenue.toFixed(2),
+              row.manualCount,
+            ]
+          : [row.label, row.sales, row.billableSales, row.revenue.toFixed(2), row.manualCount]
+        ).join(","),
+      ),
+    ];
+    const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `vendas_${currentLaundry?.name || "unidade"}_${range.start}_${range.end}.csv`;
+    link.click();
+  };
 
   if (!currentLaundry) {
     return (
-      <div className="space-y-6">
-        <Card><CardContent className="p-6"><p className="text-muted-foreground text-center">Nenhuma lavanderia selecionada</p></CardContent></Card>
-      </div>
+      <Card>
+        <CardContent className="p-6">
+          <p className="text-muted-foreground text-center">Nenhuma lavanderia selecionada</p>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Laundry Header */}
-      <Card className="border-primary/20 bg-gradient-to-r from-card to-primary/5">
-        <CardContent className="p-6">
-          <div className="flex items-center space-x-3">
-            <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-              <Building2 className="text-primary" size={24} />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold">{currentLaundry.name}</h2>
-              <p className="text-sm text-muted-foreground">Relatórios e análises de vendas</p>
-            </div>
-            <Badge variant="secondary" className="ml-auto">
-              {isSuperAdmin ? 'Visão Super Admin' : 'Minha Lavanderia'}
-            </Badge>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Filters */}
+    <div className="space-y-5">
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <BarChart3 className="text-primary" />
-            <span>Filtros do Relatório</span>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-primary" />
+            Filtros
           </CardTitle>
+          <CardDescription>
+            {currentLaundry.name} · {salesPeriodCaption(range.start, range.end)}
+          </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <div className="space-y-2">
-              <Label>Data Inicial</Label>
-              <Input type="date" value={filters.startDate} onChange={(e) => setFilters({ ...filters, startDate: e.target.value })} />
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-1">
+            {PRESETS.map((option) => (
+              <Button
+                key={option.id}
+                type="button"
+                size="sm"
+                variant={preset === option.id ? "default" : "outline"}
+                onClick={() => setPreset(option.id)}
+              >
+                {option.label}
+              </Button>
+            ))}
+          </div>
+
+          {preset === "custom" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
+              <div className="space-y-1.5">
+                <Label htmlFor="sales-start">De</Label>
+                <Input
+                  id="sales-start"
+                  type="date"
+                  value={customStart}
+                  max={customEnd || brazilIsoDate()}
+                  onChange={(e) => {
+                    setCustomStart(e.target.value);
+                    setPreset("custom");
+                  }}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="sales-end">Até</Label>
+                <Input
+                  id="sales-end"
+                  type="date"
+                  value={customEnd}
+                  min={customStart}
+                  max={brazilIsoDate()}
+                  onChange={(e) => {
+                    setCustomEnd(e.target.value);
+                    setPreset("custom");
+                  }}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Data Final</Label>
-              <Input type="date" value={filters.endDate} onChange={(e) => setFilters({ ...filters, endDate: e.target.value })} />
-            </div>
-            <div className="space-y-2">
+          )}
+
+          <div className="flex flex-wrap gap-1">
+            {GROUP_OPTIONS.map((option) => (
+              <Button
+                key={option.id}
+                type="button"
+                size="sm"
+                variant={groupBy === option.id ? "default" : "outline"}
+                onClick={() => setGroupBy(option.id)}
+              >
+                {option.label}
+              </Button>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1.5">
               <Label>Máquina</Label>
-              <Select value={filters.machineId} onValueChange={(v) => setFilters({ ...filters, machineId: v })}>
+              <Select value={machineId} onValueChange={setMachineId}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todas</SelectItem>
-                  {machines.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                  {machines.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <Label>Tipo</Label>
-              <Select value={filters.machineType} onValueChange={(v) => setFilters({ ...filters, machineType: v })}>
+              <Select
+                value={machineType}
+                onValueChange={(value) => setMachineType(value as "all" | MachineDisplayType)}
+              >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
                   <SelectItem value="lavadora">Lavadora</SelectItem>
                   <SelectItem value="secadora">Secadora</SelectItem>
+                  <SelectItem value="massage">Poltrona</SelectItem>
+                  <SelectItem value="coffee">Café</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <Label>Pagamento</Label>
-              <Select value={filters.paymentMethod} onValueChange={(v) => setFilters({ ...filters, paymentMethod: v })}>
+              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="manual_release">Lib. Manual</SelectItem>
                   <SelectItem value="pix">PIX</SelectItem>
                   <SelectItem value="credit">Crédito</SelectItem>
                   <SelectItem value="debit">Débito</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Agrupamento</Label>
-              <Select value={filters.reportType} onValueChange={(v) => setFilters({ ...filters, reportType: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="daily">Diário</SelectItem>
-                  <SelectItem value="weekly">Semanal</SelectItem>
-                  <SelectItem value="monthly">Mensal</SelectItem>
+                  <SelectItem value="cielo">Cielo</SelectItem>
+                  <SelectItem value="manual_release">Liberação manual</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
-          <div className="flex gap-2 mt-4">
-            <Button onClick={generateReport} disabled={loading}>{loading ? "Gerando..." : "Gerar Relatório"}</Button>
-            <Button onClick={exportReport} variant="outline" disabled={reportData.length === 0}>
-              <Download size={16} className="mr-1" />Exportar CSV
+
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={() => void loadReport()} disabled={loading}>
+              {loading ? "Atualizando..." : "Atualizar"}
+            </Button>
+            <Button type="button" variant="outline" onClick={exportReport} disabled={reportRows.length === 0}>
+              <Download size={16} className="mr-1" />
+              Exportar CSV
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-5">
             {loading ? <Skeleton className="h-16 w-full" /> : (
-              <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 bg-green-500/10 rounded-full flex items-center justify-center">
-                  <TrendingUp className="text-green-600" size={24} />
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center">
+                  <TrendingUp className="text-green-600 h-5 w-5" />
                 </div>
-                <div><p className="text-sm text-muted-foreground">Total de Vendas</p><p className="text-2xl font-bold">{totalSales}</p></div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Ciclos no período</p>
+                  <p className="text-2xl font-bold">{totalSales}</p>
+                </div>
               </div>
             )}
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-5">
             {loading ? <Skeleton className="h-16 w-full" /> : (
-              <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-                  <BarChart3 className="text-primary" size={24} />
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <BarChart3 className="text-primary h-5 w-5" />
                 </div>
-                <div><p className="text-sm text-muted-foreground">Receita Total</p><p className="text-2xl font-bold">R$ {totalRevenue.toFixed(2)}</p>
+                <div>
+                  <p className="text-sm text-muted-foreground">Receita</p>
+                  <p className="text-2xl font-bold">{formatBrl(totalRevenue)}</p>
                   {manualReleaseCount > 0 && (
                     <p className="text-xs text-muted-foreground mt-1">
-                      {manualReleaseCount} lib. manual(is) · R$ {manualReleaseValue.toFixed(2)} (não entram na receita)
+                      {manualReleaseCount} lib. manual(is) fora da receita
                     </p>
                   )}
                 </div>
@@ -339,13 +416,15 @@ export const LaundryReportsTab = () => {
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-5">
             {loading ? <Skeleton className="h-16 w-full" /> : (
-              <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 bg-purple-500/10 rounded-full flex items-center justify-center">
-                  <Calendar className="text-purple-600" size={24} />
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-purple-500/10 flex items-center justify-center">
+                  <Calendar className="text-purple-600 h-5 w-5" />
                 </div>
-                <div><p className="text-sm text-muted-foreground">Ticket Médio</p><p className="text-2xl font-bold">R$ {averageTicket.toFixed(2)}</p>
+                <div>
+                  <p className="text-sm text-muted-foreground">Ticket médio</p>
+                  <p className="text-2xl font-bold">{formatBrl(averageTicket)}</p>
                   <p className="text-xs text-muted-foreground mt-1">Somente vendas pagas</p>
                 </div>
               </div>
@@ -354,93 +433,117 @@ export const LaundryReportsTab = () => {
         </Card>
       </div>
 
-      {/* Report Data */}
       <Card>
         <CardHeader>
-          <CardTitle>Relatório Detalhado</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <WashingMachine className="h-4 w-4" />
+            {groupBy === "machine" ? "Relatório por máquina" : "Relatório por período"}
+          </CardTitle>
           <CardDescription>
-            {filters.reportType === 'daily' && 'Vendas por dia'}
-            {filters.reportType === 'weekly' && 'Vendas por semana'}
-            {filters.reportType === 'monthly' && 'Vendas por mês'}
-            {filters.machineId !== 'all' && ` - ${machines.find(m => m.id === filters.machineId)?.name}`}
+            {groupBy === "machine"
+              ? "Receita e ciclos de cada máquina no intervalo selecionado."
+              : `Agrupamento ${groupBy === "daily" ? "diário" : groupBy === "weekly" ? "semanal (segunda a domingo)" : "mensal"} em ${salesPeriodCaption(range.start, range.end)}.`}
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="overflow-x-auto">
           {loading ? (
-            <div className="space-y-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-20 w-full" />)}</div>
+            <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
+          ) : reportRows.length === 0 ? (
+            <p className="text-muted-foreground text-center py-8">Nenhum dado neste período.</p>
           ) : (
-            <div className="space-y-4">
-              {reportData.length > 0 ? reportData.map((row, index) => (
-                <div key={index} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-2 h-8 bg-primary rounded"></div>
-                    <div>
-                      <p className="font-medium">{row.date}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {row.sales} venda{row.sales !== 1 ? 's' : ''}{row.machine_name && ` • ${row.machine_name}`}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-semibold">R$ {row.revenue.toFixed(2)}</p>
-                    <div className="w-32 h-2 bg-muted rounded overflow-hidden">
-                      <div className="h-full bg-primary" style={{ width: `${Math.min((row.revenue / (totalRevenue || 1)) * 100, 100)}%` }} />
-                    </div>
-                  </div>
-                </div>
-              )) : (
-                <p className="text-muted-foreground text-center py-8">Nenhum dado encontrado para o período selecionado</p>
-              )}
-            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{groupBy === "machine" ? "Máquina" : "Período"}</TableHead>
+                  {groupBy === "machine" && <TableHead>Tipo</TableHead>}
+                  <TableHead className="text-right">Ciclos</TableHead>
+                  <TableHead className="text-right">Receita</TableHead>
+                  <TableHead className="text-right">Ticket</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {reportRows.map((row) => {
+                  const ticket = row.billableSales > 0 ? row.revenue / row.billableSales : 0;
+                  const meta = row.machineType ? getMachineTypeMeta(row.machineType) : null;
+                  return (
+                    <TableRow key={row.key} className={row.sales === 0 ? "opacity-60" : undefined}>
+                      <TableCell className="font-medium">
+                        {row.label}
+                        {row.manualCount > 0 && (
+                          <span className="block text-xs text-muted-foreground">
+                            {row.manualCount} lib. manual
+                          </span>
+                        )}
+                      </TableCell>
+                      {groupBy === "machine" && (
+                        <TableCell>
+                          {meta ? <Badge variant="outline">{meta.label}</Badge> : "—"}
+                        </TableCell>
+                      )}
+                      <TableCell className="text-right">{row.sales}</TableCell>
+                      <TableCell className="text-right font-semibold">{formatBrl(row.revenue)}</TableCell>
+                      <TableCell className="text-right">{formatBrl(ticket)}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>
 
-      {/* Transactions Detail */}
       <Card>
         <CardHeader>
-          <CardTitle>Detalhes das Transações</CardTitle>
-          <CardDescription>Informações detalhadas sobre pagamentos</CardDescription>
+          <CardTitle className="text-base">Movimentação do período</CardTitle>
+          <CardDescription>
+            {transactions.length} transação(ões) entre {brazilIsoDateLabel(range.start)} e {brazilIsoDateLabel(range.end)}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="space-y-3">{[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>
+            <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
+          ) : transactions.length === 0 ? (
+            <p className="text-muted-foreground text-center py-8">Nenhuma transação neste período.</p>
           ) : (
-            <div className="space-y-3">
-              {transactions.length > 0 ? transactions.map((transaction) => (
-                <div key={transaction.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-2 h-6 bg-accent rounded"></div>
-                    <div>
-                      <p className="font-medium">{transaction.machines.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {(() => {
-                          const { date, time } = formatBrazilDateTime(transaction.created_at);
-                          return `${date} às ${time}`;
-                        })()}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right flex items-center gap-3">
-                    <div>
-                      {transaction.payment_method === 'manual_release' && (
-                        <Badge variant="outline" className="text-xs mb-1 border-amber-500 text-amber-700">
-                          Manual{transaction.operator_name ? ` • ${transaction.operator_name}` : ''}
-                        </Badge>
-                      )}
-                      <p className="text-sm text-muted-foreground">{getPaymentLabel(transaction.payment_method)}</p>
-                    </div>
-                    <p className="font-semibold">
-                      R$ {displayTransactionAmount(transaction.total_amount).toFixed(2)}
-                      {isManualRelease(transaction.payment_method) && (
-                        <span className="block text-xs font-normal text-muted-foreground">sem receita</span>
-                      )}
-                    </p>
-                  </div>
-                </div>
-              )) : (
-                <p className="text-muted-foreground text-center py-8">Nenhuma transação encontrada para o período selecionado</p>
-              )}
+            <div className="max-h-[28rem] overflow-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Quando</TableHead>
+                    <TableHead>Máquina</TableHead>
+                    <TableHead>Pagamento</TableHead>
+                    <TableHead className="text-right">Valor</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {transactions.map((tx) => {
+                    const { date, time } = formatBrazilDateTime(tx.created_at);
+                    const joined = machineFromJoin(tx.machines);
+                    const machineName = machines.find((m) => m.id === tx.machine_id)?.name || joined.name;
+                    return (
+                      <TableRow key={tx.id}>
+                        <TableCell className="whitespace-nowrap text-sm">{date} {time}</TableCell>
+                        <TableCell>{machineName}</TableCell>
+                        <TableCell>
+                          {isManualRelease(tx.payment_method) ? (
+                            <Badge variant="outline" className="border-amber-500 text-amber-700">
+                              Manual{tx.operator_name ? ` · ${tx.operator_name}` : ""}
+                            </Badge>
+                          ) : (
+                            paymentLabel(tx.payment_method)
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatBrl(displayTransactionAmount(tx.total_amount))}
+                          {isManualRelease(tx.payment_method) && (
+                            <span className="block text-xs font-normal text-muted-foreground">sem receita</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>

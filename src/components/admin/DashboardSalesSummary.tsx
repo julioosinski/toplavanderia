@@ -11,7 +11,6 @@ import { billableRevenueAmount } from "@/lib/transactionRevenue";
 
 import {
   brazilIsoDate,
-  brazilIsoDateDaysAgo,
   brazilIsoDateLabel,
   brazilMonthStartIsoDate,
   brazilRangeBoundsUtc,

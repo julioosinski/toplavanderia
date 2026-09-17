@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   LayoutDashboard,
   WashingMachine,
-  Receipt,
   Users,
   Store,
   BarChart3,
@@ -17,13 +16,11 @@ import {
   Moon,
   Sun,
   Activity,
-  Bluetooth,
   Coffee,
   Cpu,
   Sofa,
   Home,
   Key,
-  CreditCard,
 } from "lucide-react";
 import {
   Sidebar,
@@ -55,20 +52,41 @@ import type { User } from "@supabase/supabase-js";
 
 type RoleBadgeVariant = "default" | "secondary" | "outline";
 
-const menuItems = [
-  { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard, operatorAllowed: true },
-  { title: "Máquinas", url: "/admin/machines", icon: WashingMachine },
-  { title: "Cardápio Café", url: "/admin/coffee-menu", icon: Coffee },
-  { title: "Firmware Café", url: "/admin/coffee-firmware", icon: Cpu },
-  { title: "Poltrona Massagem", url: "/admin/massage-chair", icon: Sofa },
-  { title: "Transações", url: "/admin/transactions", icon: Receipt, adminOnly: true },
-  { title: "Usuários", url: "/admin/users", icon: Users, adminOnly: true },
-  { title: "Lavanderias", url: "/admin/laundries", icon: Store, superAdminOnly: true },
-  { title: "Relatórios", url: "/admin/reports", icon: BarChart3, adminOnly: true },
-  { title: "Pagamentos", url: "/admin/payments", icon: CreditCard, adminOnly: true },
-  { title: "Diagnóstico ESP32", url: "/admin/esp32-diagnostics", icon: Activity, adminOnly: true },
-  { title: "Bluetooth ESP32", url: "/admin/ble-diagnostics", icon: Bluetooth, adminOnly: true },
-  { title: "Configurações", url: "/admin/settings", icon: Settings },
+type MenuItem = {
+  title: string;
+  url: string;
+  icon: typeof LayoutDashboard;
+  operatorAllowed?: boolean;
+  adminOnly?: boolean;
+  superAdminOnly?: boolean;
+};
+
+type MenuGroup = {
+  label: string;
+  items: MenuItem[];
+};
+
+const menuGroups: MenuGroup[] = [
+  {
+    label: "Operação",
+    items: [
+      { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard, operatorAllowed: true },
+      { title: "Máquinas", url: "/admin/machines", icon: WashingMachine },
+      { title: "Vendas", url: "/admin/financeiro", icon: BarChart3, adminOnly: true },
+      { title: "Dispositivos", url: "/admin/dispositivos", icon: Activity, adminOnly: true },
+      { title: "Cardápio Café", url: "/admin/coffee-menu", icon: Coffee },
+      { title: "Firmware Café", url: "/admin/coffee-firmware", icon: Cpu },
+      { title: "Poltrona Massagem", url: "/admin/massage-chair", icon: Sofa },
+    ],
+  },
+  {
+    label: "Sistema",
+    items: [
+      { title: "Usuários", url: "/admin/users", icon: Users, adminOnly: true },
+      { title: "Lavanderias", url: "/admin/laundries", icon: Store, superAdminOnly: true },
+      { title: "Configurações", url: "/admin/settings", icon: Settings },
+    ],
+  },
 ];
 
 function AdminSidebar() {
@@ -76,38 +94,47 @@ function AdminSidebar() {
   const { isSuperAdmin, isAdmin, userRole } = useLaundry();
   const isOperatorOnly = userRole === 'operator' && !isAdmin && !isSuperAdmin;
 
-  const filteredItems = menuItems.filter((item) => {
-    if (isOperatorOnly) return item.operatorAllowed === true;
-    if (item.superAdminOnly && !isSuperAdmin) return false;
-    if (item.adminOnly && !isAdmin) return false;
-    return true;
-  });
+  const filteredGroups = menuGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => {
+        if (isOperatorOnly) return item.operatorAllowed === true;
+        if (item.superAdminOnly && !isSuperAdmin) return false;
+        if (item.adminOnly && !isAdmin) return false;
+        return true;
+      }),
+    }))
+    .filter((group) => group.items.length > 0);
 
   return (
     <Sidebar collapsible="icon" className="border-r">
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-lg font-bold px-4 py-6">
-            Top Automações
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {filteredItems.map((item) => {
-                const isActive = location.pathname === item.url;
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={isActive}>
-                      <Link to={item.url}>
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {filteredGroups.map((group) => (
+          <SidebarGroup key={group.label}>
+            <SidebarGroupLabel className={group.label === "Operação" ? "text-lg font-bold px-4 py-6" : undefined}>
+              {group.label === "Operação" ? "Top Automações" : group.label}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((item) => {
+                  const isActive =
+                    location.pathname === item.url
+                    || (item.url !== "/admin/dashboard" && location.pathname.startsWith(item.url));
+                  return (
+                    <SidebarMenuItem key={item.url}>
+                      <SidebarMenuButton asChild isActive={isActive}>
+                        <Link to={item.url}>
+                          <item.icon className="h-4 w-4" />
+                          <span>{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
     </Sidebar>
   );
@@ -143,18 +170,21 @@ export default function AdminLayout() {
     admin: 'Admin',
     dashboard: 'Dashboard',
     machines: 'Máquinas',
-    transactions: 'Transações',
+    transactions: 'Vendas',
+    financeiro: 'Vendas',
     users: 'Usuários',
     laundries: 'Lavanderias',
-    reports: 'Relatórios',
-    payments: 'Pagamentos',
+    reports: 'Vendas',
+    payments: 'Vendas',
     security: 'Segurança',
     settings: 'Configurações',
     'coffee-menu': 'Cardápio Café',
     'coffee-firmware': 'Firmware Café',
     'massage-chair': 'Poltrona Massagem',
     profile: 'Perfil',
-    'esp32-diagnostics': 'Diagnóstico ESP32',
+    'esp32-diagnostics': 'Dispositivos',
+    'ble-diagnostics': 'Dispositivos',
+    dispositivos: 'Dispositivos',
   };
 
   const getBreadcrumbItems = () => {

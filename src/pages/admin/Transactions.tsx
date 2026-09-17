@@ -7,6 +7,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   getMachineTypeMeta,
   mapDbMachineType,
@@ -20,7 +21,7 @@ import {
 import {
   brazilDayBoundsUtc,
   brazilIsoDate,
-  brazilIsoDateDaysAgo,
+  brazilLastNDaysRange,
   brazilMonthStartIsoDate,
   brazilRangeBoundsUtc,
   formatBrazilDateTime,
@@ -166,14 +167,20 @@ const columns: ColumnDef<Transaction>[] = [
   },
 ];
 
-type DateFilter = "all" | "today" | "week" | "month";
+type DateFilter = "today" | "week" | "month" | "custom" | "all";
 
-export default function Transactions() {
+interface TransactionsProps {
+  embedded?: boolean;
+}
+
+export default function Transactions({ embedded = false }: TransactionsProps) {
   const { currentLaundry, isAdmin, isSuperAdmin, userRole } = useLaundry();
   const isOperatorOnly = userRole === "operator" && !isAdmin && !isSuperAdmin;
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+  const [dateFilter, setDateFilter] = useState<DateFilter>("month");
+  const [customStart, setCustomStart] = useState(() => brazilMonthStartIsoDate());
+  const [customEnd, setCustomEnd] = useState(() => brazilIsoDate());
   const currentLaundryId = currentLaundry?.id;
 
   const loadTransactions = useCallback(async () => {
@@ -186,19 +193,18 @@ export default function Transactions() {
       .eq("laundry_id", currentLaundryId)
       .eq("status", "completed")
       .order("created_at", { ascending: false })
-      .limit(200);
+      .limit(500);
 
     if (dateFilter !== "all") {
       let startUtc: string;
       let endUtc: string;
       if (dateFilter === "today") {
-        const today = brazilIsoDate();
-        ({ startUtc, endUtc } = brazilDayBoundsUtc(today));
+        ({ startUtc, endUtc } = brazilDayBoundsUtc(brazilIsoDate()));
       } else if (dateFilter === "week") {
-        ({ startUtc, endUtc } = brazilRangeBoundsUtc(
-          brazilIsoDateDaysAgo(7),
-          brazilIsoDate(),
-        ));
+        const week = brazilLastNDaysRange(7);
+        ({ startUtc, endUtc } = brazilRangeBoundsUtc(week.start, week.end));
+      } else if (dateFilter === "custom") {
+        ({ startUtc, endUtc } = brazilRangeBoundsUtc(customStart, customEnd));
       } else {
         ({ startUtc, endUtc } = brazilRangeBoundsUtc(
           brazilMonthStartIsoDate(),
@@ -251,7 +257,7 @@ export default function Transactions() {
 
     setTransactions(enriched);
     setLoading(false);
-  }, [currentLaundryId, dateFilter, isOperatorOnly]);
+  }, [currentLaundryId, customEnd, customStart, dateFilter, isOperatorOnly]);
 
   const serviceSummaries = useMemo(() => {
     const totals: Record<MachineDisplayType, { count: number; total: number }> = {
@@ -282,38 +288,58 @@ export default function Transactions() {
   const filterLabels: Record<DateFilter, string> = {
     all: "Todas",
     today: "Hoje",
-    week: "Semana",
-    month: "Mês",
+    week: "7 dias",
+    month: "Este mês",
+    custom: "Personalizado",
   };
 
   if (isOperatorOnly) {
     return <Navigate to="/admin/dashboard" replace />;
   }
 
-  if (loading) {
-    return <div className="animate-pulse">Carregando...</div>;
-  }
-
   return (
     <LaundryGuard>
       <div className="space-y-6 animate-in fade-in duration-500">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Transações</h1>
-            <p className="text-sm text-muted-foreground">Histórico completo de transações</p>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            {!embedded && (
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Transações</h1>
+              <p className="text-sm text-muted-foreground">Histórico completo de transações</p>
+            </div>
+            )}
+            <div className="flex flex-wrap gap-1">
+              {(["today", "week", "month", "custom", "all"] as DateFilter[]).map(f => (
+                <Button
+                  key={f}
+                  variant={dateFilter === f ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setDateFilter(f)}
+                >
+                  {filterLabels[f]}
+                </Button>
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-1">
-            {(["all", "today", "week", "month"] as DateFilter[]).map(f => (
-              <Button
-                key={f}
-                variant={dateFilter === f ? "default" : "outline"}
-                size="sm"
-                onClick={() => setDateFilter(f)}
-              >
-                {filterLabels[f]}
-              </Button>
-            ))}
-          </div>
+          {dateFilter === "custom" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
+              <Input
+                type="date"
+                value={customStart}
+                max={customEnd}
+                onChange={(e) => setCustomStart(e.target.value)}
+                aria-label="Data inicial"
+              />
+              <Input
+                type="date"
+                value={customEnd}
+                min={customStart}
+                max={brazilIsoDate()}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                aria-label="Data final"
+              />
+            </div>
+          )}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -360,7 +386,9 @@ export default function Transactions() {
                 Soma de lavagem, secagem, café e massagem (inclui liberações manuais)
               </CardDescription>
             </div>
-            <p className="text-xl font-bold whitespace-nowrap">R$ {grandTotal.toFixed(2)}</p>
+            <p className="text-xl font-bold whitespace-nowrap">
+              {loading ? "…" : `R$ ${grandTotal.toFixed(2)}`}
+            </p>
           </CardHeader>
         </Card>
 
@@ -368,9 +396,9 @@ export default function Transactions() {
           <CardHeader>
             <CardTitle>Transações</CardTitle>
             <CardDescription>
-              {dateFilter === "all" ? "Últimas 200 transações" : `Filtro: ${filterLabels[dateFilter]}`}
+              {dateFilter === "all" ? "Últimas 500 transações" : `Filtro: ${filterLabels[dateFilter]}`}
               {" — "}
-              {transactions.length} registro(s)
+              {loading ? "carregando…" : `${transactions.length} registro(s)`}
             </CardDescription>
           </CardHeader>
           <CardContent>

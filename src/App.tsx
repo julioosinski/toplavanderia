@@ -18,15 +18,12 @@ const Machines = lazy(() => import("./pages/admin/Machines"));
 const CoffeeMenu = lazy(() => import("./pages/admin/CoffeeMenu"));
 const MassageChairConfig = lazy(() => import("./pages/admin/MassageChairConfig"));
 const CoffeeMachineConfig = lazy(() => import("./pages/admin/CoffeeMachineConfig"));
-const Transactions = lazy(() => import("./pages/admin/Transactions"));
+const Financeiro = lazy(() => import("./pages/admin/Financeiro"));
+const Dispositivos = lazy(() => import("./pages/admin/Dispositivos"));
 const Users = lazy(() => import("./pages/admin/Users"));
 const Laundries = lazy(() => import("./pages/admin/Laundries"));
-const Reports = lazy(() => import("./pages/admin/Reports"));
 const Settings = lazy(() => import("./pages/admin/Settings"));
 const Profile = lazy(() => import("./pages/admin/Profile"));
-const ESP32Diagnostics = lazy(() => import("./pages/admin/ESP32Diagnostics"));
-const BLEDiagnostics = lazy(() => import("./pages/admin/BLEDiagnostics"));
-const Payments = lazy(() => import("./pages/admin/Payments"));
 
 const queryClient = new QueryClient();
 
@@ -69,16 +66,18 @@ const App = () => (
                 <Route path="coffee-menu" element={<Suspense fallback={<AdminFallback />}><CoffeeMenu /></Suspense>} />
                 <Route path="coffee-firmware" element={<Suspense fallback={<AdminFallback />}><CoffeeMachineConfig /></Suspense>} />
                 <Route path="massage-chair" element={<Suspense fallback={<AdminFallback />}><MassageChairConfig /></Suspense>} />
-                <Route path="transactions" element={<Suspense fallback={<AdminFallback />}><Transactions /></Suspense>} />
+                <Route path="financeiro" element={<Suspense fallback={<AdminFallback />}><Financeiro /></Suspense>} />
+                <Route path="dispositivos" element={<Suspense fallback={<AdminFallback />}><Dispositivos /></Suspense>} />
+                <Route path="transactions" element={<Navigate to="/admin/financeiro?tab=transacoes" replace />} />
                 <Route path="users" element={<Suspense fallback={<AdminFallback />}><Users /></Suspense>} />
                 <Route path="laundries" element={<Suspense fallback={<AdminFallback />}><Laundries /></Suspense>} />
-                <Route path="reports" element={<Suspense fallback={<AdminFallback />}><Reports /></Suspense>} />
-                <Route path="payments" element={<Suspense fallback={<AdminFallback />}><Payments /></Suspense>} />
+                <Route path="reports" element={<Navigate to="/admin/financeiro?tab=relatorios" replace />} />
+                <Route path="payments" element={<Navigate to="/admin/financeiro?tab=cielo" replace />} />
                 <Route path="security" element={<Navigate to="/admin/dashboard" replace />} />
                 <Route path="settings" element={<Suspense fallback={<AdminFallback />}><Settings /></Suspense>} />
                 <Route path="profile" element={<Suspense fallback={<AdminFallback />}><Profile /></Suspense>} />
-                <Route path="esp32-diagnostics" element={<Suspense fallback={<AdminFallback />}><ESP32Diagnostics /></Suspense>} />
-                <Route path="ble-diagnostics" element={<Suspense fallback={<AdminFallback />}><BLEDiagnostics /></Suspense>} />
+                <Route path="esp32-diagnostics" element={<Navigate to="/admin/dispositivos?tab=status" replace />} />
+                <Route path="ble-diagnostics" element={<Navigate to="/admin/dispositivos?tab=bluetooth" replace />} />
               </Route>
             </Route>
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

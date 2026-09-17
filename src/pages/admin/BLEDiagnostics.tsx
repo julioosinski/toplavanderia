@@ -24,7 +24,11 @@ import {
 } from "lucide-react";
 import { useBLEDiagnostics, type BLEDevice } from "@/hooks/useBLEDiagnostics";
 
-export default function BLEDiagnostics() {
+interface BLEDiagnosticsProps {
+  embedded?: boolean;
+}
+
+export default function BLEDiagnostics({ embedded = false }: BLEDiagnosticsProps) {
   const {
     state,
     devices,
@@ -49,17 +53,19 @@ export default function BLEDiagnostics() {
   if (!isNative) {
     return (
       <div className="space-y-6 animate-in fade-in duration-500">
+        {!embedded && (
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Bluetooth ESP32</h1>
           <p className="text-sm text-muted-foreground">Diagnóstico e configuração via Bluetooth</p>
         </div>
+        )}
         <Card>
-          <CardContent className="p-8 text-center">
-            <Bluetooth className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-            <h2 className="text-xl font-semibold mb-2">Disponível apenas no App Nativo</h2>
-            <p className="text-muted-foreground max-w-md mx-auto">
-              A comunicação Bluetooth Low Energy (BLE) com os ESP32 só funciona no aplicativo Android/iOS instalado no dispositivo.
-              Use o app nativo para acessar esta funcionalidade.
+          <CardContent className="p-8 text-center space-y-3">
+            <Bluetooth className="h-16 w-16 mx-auto text-muted-foreground" />
+            <h2 className="text-xl font-semibold">Bluetooth só no app nativo</h2>
+            <p className="text-muted-foreground max-w-md mx-auto text-sm">
+              O navegador não acessa BLE. No painel web use Status (Wi-Fi em tempo real) e Firmware (QR/OTA).
+              Bluetooth fica no app Android/iOS instalado no totem ou no celular de campo.
             </p>
           </CardContent>
         </Card>
@@ -70,10 +76,12 @@ export default function BLEDiagnostics() {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        {!embedded && (
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Bluetooth ESP32</h1>
           <p className="text-sm text-muted-foreground">Diagnóstico e configuração via BLE</p>
         </div>
+        )}
         <Badge variant={state === "connected" ? "default" : "secondary"} className="text-sm">
           {state === "idle" && "Pronto"}
           {state === "scanning" && "Escaneando..."}
