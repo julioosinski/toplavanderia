@@ -17,7 +17,7 @@ SaÃ­da: `android/app/build/outputs/apk/cieloRelease/app-cieloRelease.apk`
 - Assinatura **V1 + V2** (targetSdk 35 â€” V2 obrigatÃ³rio)
 - Certificado **debug** = mesmo do APK homologado na maquininha
 
-Envie: `releases/TopLavanderia-Totem-2.2.127-cielo.apk` (grade livre após pagar; pulso ESP em background)
+Envie: `releases/TopLavanderia-Totem-2.2.128-cielo.apk` (volta sozinho à grade após reboot da LIO)
 
 ### SHA-256 dos certificados (referÃªncia)
 
@@ -71,7 +71,8 @@ adb install -r app\build\outputs\apk\release\app-release.apk
 
 | Arquivo | versionName | Uso |
 |---------|-------------|-----|
-| `TopLavanderia-Totem-2.2.127-cielo.apk` | 2.2.127 | **Atual** — grade livre na hora; pulso ESP em background |
+| `TopLavanderia-Totem-2.2.128-cielo.apk` | 2.2.128 | **Atual** — reabre a grade após reboot da LIO / launcher Cielo |
+| `TopLavanderia-Totem-2.2.127-cielo.apk` | 2.2.127 | grade livre na hora; pulso ESP em background |
 | `TopLavanderia-Totem-2.2.126-cielo.apk` | 2.2.126 | esperava ESP confirmar o pulso antes de voltar à grade |
 | `ESP32_Lavadora_v2.3.3.ino` | v2.3.3 | **Atual** — pulso GPIO2 igual ao v2.2.7 (HIGH 1000 ms, digitalWrite) |
 | `ESP32_Lavadora_v2.3.2.ino` | v2.3.2 | rtc_gpio_deinit/gpio_reset_pin — pad do GPIO2 soltava, comando confirmava sem pulso |

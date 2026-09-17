@@ -54,6 +54,7 @@ public class TotemActivity extends Activity {
     private static final String TAG = "TotemActivity";
     /** Extra ao retornar do app Cielo — evita flash da tela de escolha de pagamento. */
     public static final String EXTRA_CIELO_PAYMENT_RETURN = "cielo_payment_return";
+    public static final String EXTRA_RESTORE_HOME = TotemAutoLaunch.EXTRA_RESTORE_HOME;
     /** Tela de sucesso após pagamento antes de voltar à seleção de máquinas. */
     private static final long POST_PAYMENT_SUCCESS_MS = 1000L;
     /** Sem interação → volta à HOME (todas as telas do totem, inclusive Cielo em segundo plano). */
@@ -208,6 +209,10 @@ public class TotemActivity extends Activity {
             
             // Criar interface
             createTotemInterface();
+            if (getIntent() != null && getIntent().getBooleanExtra(EXTRA_RESTORE_HOME, false)) {
+                currentScreen = TotemScreen.HOME;
+                restoreHomeScreen();
+            }
             ensureIdleWatchdogRunning();
             
             // Carregar máquinas
@@ -227,6 +232,13 @@ public class TotemActivity extends Activity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        if (intent != null && intent.getBooleanExtra(EXTRA_RESTORE_HOME, false)) {
+            intent.removeExtra(EXTRA_RESTORE_HOME);
+            if (!isCieloPaymentInProgress()) {
+                restoreHomeScreen();
+            }
+            return;
+        }
         if (intent != null && intent.getBooleanExtra(EXTRA_CIELO_PAYMENT_RETURN, false)) {
             if (paymentContextMachine == null && selectedMachine != null) {
                 paymentContextMachine = selectedMachine;
@@ -249,6 +261,13 @@ public class TotemActivity extends Activity {
         applyKeepScreenAwake();
         applyImmersiveMode();
         try {
+            Intent resumeIntent = getIntent();
+            if (resumeIntent != null && resumeIntent.getBooleanExtra(EXTRA_RESTORE_HOME, false)) {
+                resumeIntent.removeExtra(EXTRA_RESTORE_HOME);
+                if (!isCieloPaymentInProgress()) {
+                    restoreHomeScreen();
+                }
+            }
             // Tarja TYPE_ACCESSIBILITY_OVERLAY bloqueia toques na home se ficar presa.
             // Fora de pagamento Cielo ativo: limpa sessão + overlay imediatamente.
             if ("cielo".equalsIgnoreCase(activeProvider) && !isCieloPaymentInProgress()) {
@@ -259,7 +278,6 @@ public class TotemActivity extends Activity {
                 }
             }
             if ("cielo".equalsIgnoreCase(activeProvider)) {
-                Intent resumeIntent = getIntent();
                 if (resumeIntent != null && resumeIntent.getBooleanExtra(EXTRA_CIELO_PAYMENT_RETURN, false)) {
                     resumeIntent.removeExtra(EXTRA_CIELO_PAYMENT_RETURN);
                     if (!postPaymentHardwarePending) {

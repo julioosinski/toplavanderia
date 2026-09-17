@@ -171,6 +171,9 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
     private static final int MAX_PRINT_DISMISS_RETRIES = 12;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final Runnable restoreTotemFromIdleHome = () ->
+        TotemAutoLaunch.bringTotemToFront(getApplicationContext(), "cielo_idle_home");
+    private static final long RESTORE_TOTEM_FROM_LAUNCHER_MS = 8_000L;
     private long lastDismissAtMs = 0L;
     private long lastCardHintAtMs = 0L;
     private long lastShieldUpdateAtMs = 0L;
@@ -420,6 +423,23 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
         return new WindowSnapshot(signature.toString(), allText, initial, approved);
     }
 
+    private void maybeRestoreTotemFromIdleHome(String packageName) {
+        if (TotemAutoLaunch.isCieloCheckoutPackage(packageName)
+                || CieloPaymentSessionHelper.isPaymentWindowOpen(this)
+                || CieloPaymentSessionHelper.hasActiveSession(this)
+                || OUR_PACKAGE.equals(packageName)) {
+            mainHandler.removeCallbacks(restoreTotemFromIdleHome);
+            return;
+        }
+        if (!TotemAutoLaunch.isCieloIdleHomePackage(packageName)) {
+            return;
+        }
+        mainHandler.removeCallbacks(restoreTotemFromIdleHome);
+        mainHandler.postDelayed(restoreTotemFromIdleHome, RESTORE_TOTEM_FROM_LAUNCHER_MS);
+        Log.i(TAG, "Launcher/idle Cielo visível — reagendando volta ao totem em "
+            + RESTORE_TOTEM_FROM_LAUNCHER_MS + "ms");
+    }
+
     private boolean isPaymentWindowPackage(String packageName) {
         if (packageName == null || packageName.isEmpty()) {
             return false;
@@ -517,7 +537,12 @@ public class CieloReceiptAccessibilityService extends AccessibilityService {
             return;
         }
         CharSequence pkgSeq = event.getPackageName();
-        if (pkgSeq == null || !isCieloPackage(pkgSeq.toString())) {
+        String pkg = pkgSeq == null ? "" : pkgSeq.toString();
+        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            maybeRestoreTotemFromIdleHome(pkg);
+        }
+
+        if (pkgSeq == null || !isCieloPackage(pkg)) {
             return;
         }
 
