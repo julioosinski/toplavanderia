@@ -13,7 +13,8 @@ site_url = "http://127.0.0.1:54321"
 jwt_expiry = 3600
 
 [auth.email]
-enable_signup = true
+# Cadastros só pelo painel (Edge Function create-user); sem auto-cadastro público.
+enable_signup = false
 double_confirm_changes = true
 enable_confirmations = false
 

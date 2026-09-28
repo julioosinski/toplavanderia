@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Sparkles, Home } from "lucide-react";
 
+/**
+ * Apenas login. Novos cadastros são criados no painel (Usuários) por
+ * administrador do sistema, dono da lavanderia ou gerente — não há auto-cadastro.
+ */
 export default function Auth() {
-  const [authTab, setAuthTab] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -80,52 +82,6 @@ export default function Auth() {
     }
   };
 
-  const signUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-
-    try {
-      const redirectUrl = `${window.location.origin}/admin`;
-      
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: redirectUrl
-        }
-      });
-
-      if (error) {
-        if (error.message.includes("User already registered")) {
-          toast({
-            title: "Erro",
-            description: "Este email já está cadastrado. Tente fazer login.",
-            variant: "destructive",
-          });
-        } else {
-          toast({
-            title: "Erro",
-            description: error.message,
-            variant: "destructive",
-          });
-        }
-      } else {
-        toast({
-          title: "Conta criada!",
-          description: "Sua conta foi criada com sucesso. Você já pode fazer login.",
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Erro",
-        description: "Ocorreu um erro inesperado. Tente novamente.",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-primary/20 via-background to-accent/20 p-4 animate-fade-in">
       <div className="mb-4 self-start absolute top-4 left-4">
@@ -147,119 +103,47 @@ export default function Auth() {
             Sistema de Gerenciamento Profissional
           </CardDescription>
         </CardHeader>
-        
-        <div className="w-full">
-          <div
-            className="grid w-full grid-cols-2 gap-1 rounded-md bg-muted p-1 mb-4"
-            role="tablist"
-            aria-label="Login ou cadastro"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={authTab === "login"}
-              className={cn(
-                "inline-flex items-center justify-center rounded-sm px-3 py-1.5 text-sm font-medium transition-colors",
-                authTab === "login"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-              onClick={() => setAuthTab("login")}
-            >
-              Login
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={authTab === "signup"}
-              className={cn(
-                "inline-flex items-center justify-center rounded-sm px-3 py-1.5 text-sm font-medium transition-colors",
-                authTab === "signup"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-              onClick={() => setAuthTab("signup")}
-            >
-              Cadastro
-            </button>
-          </div>
 
-          {authTab === "login" ? (
-            <form onSubmit={signIn}>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="seu@email.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Senha</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={loading}
-                >
-                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Entrar
-                </Button>
-              </CardFooter>
-            </form>
-          ) : (
-            <form onSubmit={signUp}>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="signup-email">Email</Label>
-                  <Input
-                    id="signup-email"
-                    type="email"
-                    placeholder="seu@email.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-password">Senha</Label>
-                  <Input
-                    id="signup-password"
-                    type="password"
-                    placeholder="Mínimo 6 caracteres"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    minLength={6}
-                  />
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={loading}
-                >
-                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Criar Conta
-                </Button>
-              </CardFooter>
-            </form>
-          )}
-        </div>
+        <form onSubmit={signIn}>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="seu@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Senha</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            </div>
+          </CardContent>
+          <CardFooter className="flex flex-col gap-3">
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={loading}
+            >
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Entrar
+            </Button>
+            <p className="text-xs text-center text-muted-foreground">
+              Não tem acesso? Peça ao dono ou gerente da sua lavanderia para criar seu usuário.
+            </p>
+          </CardFooter>
+        </form>
       </Card>
     </div>
   );

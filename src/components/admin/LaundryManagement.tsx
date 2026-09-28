@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useLaundry } from "@/hooks/useLaundry";
 import { Laundry, AppRole } from "@/types/laundry";
+import { getEdgeFunctionErrorMessage } from "@/lib/edgeFunctionError";
 
 interface LaundryAdmin {
   id: string;
@@ -171,31 +172,19 @@ export const LaundryManagement = () => {
     }
 
     try {
-      // Obter token de autenticação atual
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("Sessão não encontrada");
-
-      // Chamar edge function para criar usuário admin (não causa logout)
-      const response = await fetch('https://rkdybjzwiwwqqzjfmerm.supabase.co/functions/v1/create-user', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: adminData.email,
+      // Edge function cria o usuário sem trocar a sessão atual
+      const { data: result, error: invokeError } = await supabase.functions.invoke<{ success?: boolean; error?: string }>('create-user', {
+        body: {
+          email: adminData.email.trim(),
           password: adminData.password,
           role: 'admin',
           laundry_id: editingLaundry.id,
           full_name: adminData.fullName,
-        }),
+        },
       });
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Erro ao criar administrador');
-      }
+      if (invokeError) throw new Error(await getEdgeFunctionErrorMessage(invokeError, 'Erro ao criar administrador'));
+      if (!result?.success) throw new Error(result?.error || 'Erro ao criar administrador');
 
       toast({
         title: "Administrador criado",

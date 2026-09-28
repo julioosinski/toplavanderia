@@ -19,10 +19,15 @@ export const classifyReleaseError = (message: string): { title: string; descript
   if (m.includes('limite mensal')) {
     return { title: 'Limite mensal atingido', description: raw };
   }
-  if (m.includes('sem autorização') || m.includes('sem autorizacao')) {
+  if (
+    m.includes('sem autorização') ||
+    m.includes('sem autorizacao') ||
+    m.includes('não autorizada') ||
+    m.includes('nao autorizada')
+  ) {
     return {
       title: 'Sem autorização para liberar',
-      description: 'Peça ao gerente para habilitar em Usuários → Autorização.',
+      description: 'Peça ao dono ou gerente da lavanderia para habilitar em Usuários → Liberação manual.',
     };
   }
   if (m.includes('sem permissão') || m.includes('sem permissao')) {
@@ -60,7 +65,7 @@ export const getManualReleaseBlock = (
   if (!usage.canRelease) {
     return {
       title: 'Sem autorização para liberar',
-      description: 'Este operador ainda não está autorizado em Usuários → Autorização.',
+      description: 'Seu usuário ainda não está autorizado. Peça ao dono ou gerente para habilitar em Usuários → Liberação manual.',
     };
   }
 

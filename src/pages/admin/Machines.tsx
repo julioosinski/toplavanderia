@@ -74,7 +74,17 @@ const asNumber = (value: unknown, fallback = 0) => {
 export default function Machines() {
   const { currentLaundry, isSuperAdmin, isViewingAllLaundries } = useLaundry();
   const permission = useOperatorReleasePermission();
-  const { isOperator, canRelease, dayCents, monthCents, dayLimitCents, monthLimitCents, refetch: refetchPermission } = permission;
+  const {
+    isOperator,
+    requiresPermission,
+    canRelease,
+    dayCents,
+    monthCents,
+    dayLimitCents,
+    monthLimitCents,
+    refetch: refetchPermission,
+  } = permission;
+  const isReleaseBlocked = requiresPermission && !canRelease;
   const { toast } = useToast();
   const [machines, setMachines] = useState<Machine[]>([]);
   const [loading, setLoading] = useState(true);
@@ -255,13 +265,16 @@ export default function Machines() {
   const isMachineMaintenance = (machine: Machine) =>
     machine.status === "maintenance" || machine.realStatus === "maintenance";
 
+  const isStopCycleAction = (machine: Machine) =>
+    (machine.type === "washing" || machine.type === "drying") && isMachineInUse(machine);
+
   const releaseLabelFor = (machine: Machine) => {
-    const isWashDry = machine.type === "washing" || machine.type === "drying";
-    if (!isWashDry) {
-      return machine.type === "coffee" || machine.type === "massage" ? "Liberar remoto" : "Liberar";
-    }
-    return isMachineInUse(machine) ? "Parar ciclo" : "Liberar";
+    if (isStopCycleAction(machine)) return "Parar ciclo";
+    return machine.type === "coffee" || machine.type === "massage" ? "Liberar remoto" : "Liberar";
   };
+
+  /** "Parar ciclo" não gera crédito, então continua disponível sem autorização de liberação. */
+  const canShowReleaseAction = (machine: Machine) => !isReleaseBlocked || isStopCycleAction(machine);
 
   const handleRelease = async (machine: Machine) => {
     const isCoffee = machine.type === "coffee";
@@ -343,7 +356,7 @@ export default function Machines() {
 
   const formatBRL = (cents: number) => `R$ ${(cents / 100).toFixed(2)}`;
 
-  const limitBadge = isOperator && canRelease ? (
+  const limitBadge = requiresPermission && canRelease ? (
     <div className="rounded-lg border bg-muted/30 px-3 py-2 text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
       <span>
         <strong className="text-foreground">Hoje:</strong> {formatBRL(dayCents)}
@@ -488,7 +501,7 @@ export default function Machines() {
       cell: ({ row }) => {
         const machine = row.original;
 
-        if (isOperator && !canRelease) {
+        if (isOperator && isReleaseBlocked) {
           return (
             <span className="text-xs text-muted-foreground">
               Sem autorização
@@ -519,10 +532,12 @@ export default function Machines() {
                 <Pencil className="mr-2 h-4 w-4" />
                 Editar
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void handleRelease(machine)}>
-                <Unlock className="mr-2 h-4 w-4" />
-                {liberarLabel}
-              </DropdownMenuItem>
+              {canShowReleaseAction(machine) && (
+                <DropdownMenuItem onClick={() => void handleRelease(machine)}>
+                  <Unlock className="mr-2 h-4 w-4" />
+                  {liberarLabel}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => void handleMaintenanceToggle(machine)}>
                 <Wrench className="mr-2 h-4 w-4" />
                 {isMachineMaintenance(machine) ? "Tirar de manutenção" : "Colocar em manutenção"}
@@ -636,7 +651,7 @@ export default function Machines() {
               <MachineMobileCards
                 machines={machines}
                 renderActions={(machine) => {
-                  if (isOperator && !canRelease) {
+                  if (isOperator && isReleaseBlocked) {
                     return (
                       <span className="col-span-2 text-xs text-muted-foreground">
                         Sem autorização
@@ -659,10 +674,12 @@ export default function Machines() {
                         <Pencil className="mr-2 h-4 w-4" />
                         Editar
                       </Button>
-                      <Button className="min-h-11" variant="outline" onClick={() => void handleRelease(machine)}>
-                        <Unlock className="mr-2 h-4 w-4" />
-                        {releaseLabelFor(machine)}
-                      </Button>
+                      {canShowReleaseAction(machine) && (
+                        <Button className="min-h-11" variant="outline" onClick={() => void handleRelease(machine)}>
+                          <Unlock className="mr-2 h-4 w-4" />
+                          {releaseLabelFor(machine)}
+                        </Button>
+                      )}
                       <Button className="min-h-11" variant="outline" onClick={() => void handleMaintenanceToggle(machine)}>
                         <Wrench className="mr-2 h-4 w-4" />
                         {isMachineMaintenance(machine) ? "Sair da manutenção" : "Manutenção"}

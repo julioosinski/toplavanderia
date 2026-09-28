@@ -109,7 +109,7 @@ export function OperatorAuthorizationDialog({
         <DialogHeader>
           <DialogTitle>Autorização de liberação manual</DialogTitle>
           <DialogDescription>
-            {userName} — defina se este operador pode liberar máquinas e os limites em reais.
+            {userName} — defina se este usuário pode liberar máquinas manualmente e os limites em reais.
           </DialogDescription>
         </DialogHeader>
 
@@ -118,7 +118,7 @@ export function OperatorAuthorizationDialog({
             <div>
               <Label className="text-sm font-medium">Pode liberar máquinas</Label>
               <p className="text-xs text-muted-foreground">
-                Quando desativado, o botão de liberar não aparece para este operador.
+                Quando desativado, o botão de liberar não aparece para este usuário.
               </p>
             </div>
             <Switch checked={canRelease} onCheckedChange={setCanRelease} disabled={loading} />

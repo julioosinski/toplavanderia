@@ -5,8 +5,16 @@ export interface LaundryContextType {
   currentLaundry: Laundry | null;
   userRole: AppRole | null;
   isSuperAdmin: boolean;
+  /** Acesso administrativo ao painel: super_admin, dono (admin) ou gerente (manager). */
   isAdmin: boolean;
+  /** Dono da lavanderia ou super_admin (exclui gerente). */
+  isOwner: boolean;
+  isManager: boolean;
   isOperator: boolean;
+  /** Pode abrir a tela de usuários e criar cadastros (super_admin, dono, gerente). */
+  canManageUsers: boolean;
+  /** Liberação manual depende de autorização explícita (gerente/operador). */
+  requiresReleasePermission: boolean;
   /** Super admin com visão consolidada (todas as lavanderias) — use no dashboard */
   isViewingAllLaundries: boolean;
   /** Login com perfil sem acesso ao painel (ex.: user, totem_device) */

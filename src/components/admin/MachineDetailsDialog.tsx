@@ -45,21 +45,21 @@ export const MachineDetailsDialog = ({
 
   if (!machine) return null;
 
-  // Preflight (operator only) — bloqueios de autorização/limite antes de enviar à RPC
+  // Preflight (gerente/operador) — bloqueios de autorização/limite antes de enviar à RPC
   const nextReleaseCents = machine.type === "coffee"
     ? (coffeeCentavos > 0 ? coffeeCentavos : 0)
     : Math.round((machine.price || 0) * 100);
   const wouldExceedDaily =
-    permission.isOperator &&
+    permission.requiresPermission &&
     permission.dayLimitCents != null &&
     nextReleaseCents > 0 &&
     permission.dayCents + nextReleaseCents > permission.dayLimitCents;
   const wouldExceedMonthly =
-    permission.isOperator &&
+    permission.requiresPermission &&
     permission.monthLimitCents != null &&
     nextReleaseCents > 0 &&
     permission.monthCents + nextReleaseCents > permission.monthLimitCents;
-  const operatorBlocked = permission.isOperator && !permission.canRelease;
+  const operatorBlocked = permission.requiresPermission && !permission.canRelease;
   const releaseBlocked = operatorBlocked || wouldExceedDaily || wouldExceedMonthly;
   const currentReleaseUsage = {
     canRelease: permission.canRelease,
@@ -70,7 +70,7 @@ export const MachineDetailsDialog = ({
   };
 
   const getFreshOperatorBlock = async (nextCents: number) => {
-    if (!permission.isOperator) return null;
+    if (!permission.requiresPermission) return null;
     const latest = await permission.refetch();
     return getManualReleaseBlock(latest ?? currentReleaseUsage, nextCents);
   };
@@ -305,14 +305,14 @@ export const MachineDetailsDialog = ({
             </div>
           )}
 
-          {permission.isOperator && (
+          {permission.requiresPermission && (
             <div className="rounded-lg border p-3 text-sm space-y-2">
               {operatorBlocked ? (
                 <div className="flex items-start gap-2 text-red-700 dark:text-red-400">
                   <ShieldOff size={16} className="mt-0.5" />
                   <div>
                     <p className="font-medium">Você não tem autorização para liberar máquinas.</p>
-                    <p className="text-xs">Peça ao gerente para habilitar em Usuários → Autorização.</p>
+                    <p className="text-xs">Peça ao dono ou gerente para habilitar em Usuários → Liberação manual.</p>
                   </div>
                 </div>
               ) : (
@@ -344,7 +344,7 @@ export const MachineDetailsDialog = ({
                       <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                       <p className="text-xs">
                         Esta liberação de {brl(nextReleaseCents)} ultrapassaria o limite
-                        {wouldExceedDaily ? " diário" : " mensal"}. Peça ao gerente para aumentar em Usuários → Autorização.
+                        {wouldExceedDaily ? " diário" : " mensal"}. Peça ao dono ou gerente para aumentar em Usuários → Liberação manual.
                       </p>
                     </div>
                   )}

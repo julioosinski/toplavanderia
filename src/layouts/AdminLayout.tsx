@@ -153,7 +153,8 @@ export default function AdminLayout() {
 
   const getRoleLabel = () => {
     if (userRole === 'super_admin') return 'Super Admin';
-    if (userRole === 'admin') return 'Administrador';
+    if (userRole === 'admin') return 'Dono';
+    if (userRole === 'manager') return 'Gerente';
     if (userRole === 'operator') return 'Operador';
     if (userRole === 'totem_device') return 'Dispositivo totem';
     if (userRole === 'user') return 'Usuário';
@@ -162,7 +163,7 @@ export default function AdminLayout() {
 
   const getRoleBadgeVariant = (): RoleBadgeVariant => {
     if (userRole === 'super_admin') return 'default';
-    if (userRole === 'admin') return 'secondary';
+    if (userRole === 'admin' || userRole === 'manager') return 'secondary';
     return 'outline';
   };
 

@@ -1372,6 +1372,31 @@ export type Database = {
       }
       get_totem_settings: { Args: { _laundry_id: string }; Returns: Json }
       get_user_laundry_id: { Args: { _user_id: string }; Returns: string }
+      can_manage_release_permission: {
+        Args: { _actor: string; _laundry_id: string; _target_user: string }
+        Returns: boolean
+      }
+      can_manage_user_role: {
+        Args: {
+          _actor: string
+          _laundry_id: string
+          _target_role: Database["public"]["Enums"]["app_role"]
+          _target_user: string
+        }
+        Returns: boolean
+      }
+      can_manual_release: {
+        Args: { _laundry_id: string; _user_id: string }
+        Returns: boolean
+      }
+      has_exact_role: {
+        Args: {
+          _laundry_id?: string
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _laundry_id?: string
@@ -1468,7 +1493,13 @@ export type Database = {
       validate_admin_pin: { Args: { _pin: string }; Returns: boolean }
     }
     Enums: {
-      app_role: "admin" | "operator" | "user" | "totem_device" | "super_admin"
+      app_role:
+        | "admin"
+        | "operator"
+        | "user"
+        | "totem_device"
+        | "super_admin"
+        | "manager"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1596,7 +1627,14 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "operator", "user", "totem_device", "super_admin"],
+      app_role: [
+        "admin",
+        "operator",
+        "user",
+        "totem_device",
+        "super_admin",
+        "manager",
+      ],
     },
   },
 } as const

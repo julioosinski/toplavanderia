@@ -1,6 +1,6 @@
 import { useCallback, useState, useEffect, useRef, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Laundry, AppRole, ADMIN_PANEL_ROLES } from '@/types/laundry';
+import { Laundry, AppRole, ADMIN_PANEL_ROLES, ROLE_PRIORITY } from '@/types/laundry';
 import { LaundryContext } from '@/contexts/LaundryContextValue';
 
 const debugLaundry = (...args: unknown[]) => {
@@ -22,8 +22,12 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
   const queryClient = useQueryClient();
 
   const isSuperAdmin = userRole === 'super_admin';
-  const isAdmin = userRole === 'admin' || isSuperAdmin;
+  const isOwner = userRole === 'admin' || isSuperAdmin;
+  const isManager = userRole === 'manager';
+  const isAdmin = isOwner || isManager;
   const isOperator = userRole === 'operator' || isAdmin;
+  const canManageUsers = isAdmin;
+  const requiresReleasePermission = userRole === 'manager' || userRole === 'operator';
 
   const fetchUserRoles = useCallback(async (userId: string) => {
     const { data, error } = await supabase
@@ -49,21 +53,23 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
       return superAdminRole;
     }
 
+    const byPriority = [...roles].sort(
+      (a, b) => ROLE_PRIORITY.indexOf(a.role) - ROLE_PRIORITY.indexOf(b.role)
+    );
+
     // Se existe lavanderia já selecionada, usar o papel daquela lavanderia.
     // Isso evita que um admin de uma unidade seja tratado como admin em outra onde é operador.
     if (preferredLaundryId && preferredLaundryId !== 'all') {
-      const preferredRole = roles.find(r => r.laundry_id === preferredLaundryId);
+      const preferredRole = byPriority.find(r => r.laundry_id === preferredLaundryId);
       if (preferredRole) return preferredRole;
     }
 
-    // Se tem outras roles além de super_admin, priorizar role com laundry_id
-    const roleWithLaundry = roles.find(r => r.laundry_id !== null);
+    const roleWithLaundry = byPriority.find(r => r.laundry_id !== null);
     if (roleWithLaundry) {
       return roleWithLaundry;
     }
 
-    // Fallback para primeira role
-    return roles[0];
+    return byPriority[0];
   }, []);
 
   const fetchLaundries = useCallback(async () => {
@@ -385,7 +391,11 @@ export const LaundryProvider = ({ children }: { children: ReactNode }) => {
         userRole,
         isSuperAdmin,
         isAdmin,
+        isOwner,
+        isManager,
         isOperator,
+        canManageUsers,
+        requiresReleasePermission,
         isViewingAllLaundries,
         panelAccessDenied,
         laundries,

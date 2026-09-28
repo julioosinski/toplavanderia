@@ -1,202 +1,119 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.52.1";
+import { z } from "https://esm.sh/zod@3.23.8";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-interface CreditReleaseRequest {
-  transactionId: string;
-  amount: number;
-  esp32Id?: string;
-  machineId?: string;
-  laundryId?: string;
-}
+const creditReleaseSchema = z.object({
+  transactionId: z.string().min(1).max(120),
+  amount: z.number().positive().max(10_000),
+  esp32Id: z.string().max(120).optional(),
+  machineId: z.string().uuid().optional(),
+  laundryId: z.string().uuid().optional(),
+});
 
-interface UserRole {
-  role: string;
-  laundry_id: string | null;
-}
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 
 const getErrorMessage = (error: unknown) => {
-  return error instanceof Error ? error.message : 'Erro inesperado';
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) return String((error as { message: unknown }).message);
+  return 'Erro inesperado';
 };
 
-const canReleaseCredit = (roles: UserRole[], targetLaundryId?: string | null) => {
-  if (roles.some((role) => role.role === 'super_admin')) return true;
-  if (!targetLaundryId) return false;
-
-  return roles.some((role) =>
-    (role.role === 'admin' || role.role === 'operator') &&
-    role.laundry_id === targetLaundryId
-  );
-};
-
+/**
+ * Liberação manual via painel.
+ * Toda a regra de permissão (dono/super_admin livres; gerente/operador dependem de
+ * operator_release_permissions + limites) fica na RPC admin_remote_release, chamada
+ * com o JWT do próprio usuário — nunca com service_role.
+ */
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const supabaseClient = createClient(
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return jsonResponse({ success: false, error: 'Não autorizado' }, 401);
+    }
+
+    const userClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: { headers: { Authorization: authHeader } },
+        auth: { autoRefreshToken: false, persistSession: false },
+      }
     );
 
-    const { transactionId, amount, esp32Id, machineId, laundryId }: CreditReleaseRequest = await req.json();
-
-    if (!transactionId || !amount) {
-      return new Response(JSON.stringify({ success: false, error: 'transactionId and amount are required' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    console.log('Credit release request:', { transactionId, amount, esp32Id, machineId, laundryId });
-
-    const authHeader = req.headers.get('Authorization');
-    const token = authHeader?.replace('Bearer ', '');
-
-    if (!token) {
-      return new Response(JSON.stringify({ success: false, error: 'Não autorizado' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
+    const { data: { user }, error: userError } = await userClient.auth.getUser();
     if (userError || !user) {
-      return new Response(JSON.stringify({ success: false, error: 'Não autorizado' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      return jsonResponse({ success: false, error: 'Não autorizado' }, 401);
+    }
+
+    const parsed = creditReleaseSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) {
+      return jsonResponse({ success: false, error: parsed.error.issues[0]?.message ?? 'Dados inválidos' }, 400);
+    }
+    const { transactionId, amount, esp32Id, machineId, laundryId } = parsed.data;
+
+    // Teste de conectividade sem máquina: não enfileira nada, só confirma a permissão.
+    if (!machineId) {
+      const { data: allowed, error: permError } = await userClient.rpc('can_manual_release', {
+        _user_id: user.id,
+        _laundry_id: laundryId ?? null,
+      });
+      if (permError || !allowed) {
+        return jsonResponse({ success: false, error: 'Liberação manual não autorizada para este usuário' }, 403);
+      }
+      return jsonResponse({
+        success: true,
+        message: 'Teste de permissão concluído (nenhum comando enviado)',
+        transaction_id: transactionId,
+        amount,
+        esp32_id: esp32Id ?? null,
+        machine_id: null,
+        operator_id: user.id,
+        timestamp: new Date().toISOString(),
       });
     }
 
-    let targetESP32Id = esp32Id || 'main';
-    let targetLaundryId = laundryId;
-    let machineDuration: number | null = null;
-    let machineRelayPin: number | null = null;
+    const { data: commandId, error: releaseError } = await userClient.rpc('admin_remote_release', {
+      _machine_id: machineId,
+    });
 
-    // Get machine info
-    if (machineId) {
-      const { data: machine, error: machineError } = await supabaseClient
-        .from('machines')
-        .select('esp32_id, laundry_id, relay_pin, cycle_time_minutes, price_per_cycle')
-        .eq('id', machineId)
-        .single();
-
-      if (!machineError && machine) {
-        if (machine.esp32_id) targetESP32Id = machine.esp32_id;
-        if (machine.laundry_id) targetLaundryId = machine.laundry_id;
-        machineDuration = machine.cycle_time_minutes;
-        machineRelayPin = machine.relay_pin || 1;
-      } else {
-        return new Response(JSON.stringify({ success: false, error: 'Máquina não encontrada' }), {
-          status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-    }
-
-    const { data: roles, error: rolesError } = await supabaseClient
-      .from('user_roles')
-      .select('role, laundry_id')
-      .eq('user_id', user.id)
-      .returns<UserRole[]>();
-
-    if (rolesError || !roles || !canReleaseCredit(roles, targetLaundryId)) {
-      return new Response(JSON.stringify({ success: false, error: 'Sem permissão para liberar crédito' }), {
-        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const now = new Date().toISOString();
-    let createdTransactionId: string | null = null;
-
-    if (machineId) {
-      const { data: txData, error: txError } = await supabaseClient
-        .from('transactions')
-        .insert({
-          machine_id: machineId,
-          laundry_id: targetLaundryId,
-          total_amount: amount,
-          payment_method: 'manual_release',
-          user_id: user.id,
-          status: 'completed',
-          started_at: now,
-          completed_at: now,
-          duration_minutes: machineDuration,
-        })
-        .select('id')
-        .single();
-
-      if (txError) {
-        console.error('Error creating transaction:', txError);
-      } else {
-        createdTransactionId = txData?.id ?? null;
-        console.log('Transaction created:', createdTransactionId);
-      }
-    }
-
-    if (machineId) {
-      // Create pending command for ESP32 (must succeed, otherwise release is not effective)
-      const { error: cmdError } = await supabaseClient
-        .from('pending_commands')
-        .insert({
-          esp32_id: targetESP32Id,
-          machine_id: machineId,
-          relay_pin: machineRelayPin || 1,
-          action: 'on',
-          transaction_id: createdTransactionId ?? undefined,
-          status: 'pending',
-        });
-
-      if (cmdError) {
-        console.error('Error creating pending command:', cmdError);
-        return new Response(JSON.stringify({
-          success: false,
-          error: cmdError.message,
-          message: 'Falha ao enfileirar comando para o ESP32'
-        }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-      console.log('Pending command created for machine:', machineId);
-
-      // Update machine status to running
-      const { error: machineStatusError } = await supabaseClient
-        .from('machines')
-        .update({ status: 'running', updated_at: new Date().toISOString() })
-        .eq('id', machineId);
-      if (machineStatusError) {
-        console.error('Error updating machine status:', machineStatusError);
-      }
+    if (releaseError) {
+      console.warn('Manual release refused:', { user: user.id, machineId, error: releaseError.message });
+      return jsonResponse({ success: false, error: releaseError.message, message: releaseError.message }, 403);
     }
 
     const result = {
       success: true,
       message: 'Crédito liberado com sucesso',
-      transaction_id: createdTransactionId || transactionId,
+      command_id: commandId,
+      transaction_id: transactionId,
       amount,
-      esp32_id: targetESP32Id,
-      machine_id: machineId || null,
+      esp32_id: esp32Id ?? null,
+      machine_id: machineId,
       operator_id: user.id,
-      timestamp: now,
+      timestamp: new Date().toISOString(),
     };
 
     console.log('Credit release result:', result);
-
-    return new Response(JSON.stringify(result), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-
+    return jsonResponse(result);
   } catch (error: unknown) {
     console.error('Error in credit release:', error);
-    return new Response(JSON.stringify({
+    return jsonResponse({
       success: false,
       error: getErrorMessage(error),
-      message: 'Falha na liberação de crédito'
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+      message: 'Falha na liberação de crédito',
+    }, 500);
   }
 });

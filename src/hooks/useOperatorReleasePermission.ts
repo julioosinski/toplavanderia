@@ -8,7 +8,10 @@ export interface OperatorReleaseUsage {
   monthCents: number;
   dayLimitCents: number | null;
   monthLimitCents: number | null;
+  /** Visão restrita de operador (sem preços/colunas administrativas). */
   isOperator: boolean;
+  /** Liberação depende de autorização e limites (gerente ou operador). */
+  requiresPermission: boolean;
   loading: boolean;
   refetch: () => Promise<OperatorReleaseUsageSnapshot | null>;
 }
@@ -19,12 +22,13 @@ export type OperatorReleaseUsageSnapshot = Pick<
 >;
 
 /**
- * Retorna o estado de autorização e uso do usuário logado para libração manual.
- * - Admin/super_admin: canRelease=true, isOperator=false, sem limites.
- * - Operator: consulta operator_release_permissions + uso do dia/mês.
+ * Retorna o estado de autorização e uso do usuário logado para liberação manual.
+ * - Dono/super_admin: canRelease=true, requiresPermission=false, sem limites.
+ * - Gerente/operador (requiresPermission=true): consulta operator_release_permissions + uso do dia/mês.
+ * A regra definitiva é aplicada no banco (admin_remote_release); aqui é só UX.
  */
 export function useOperatorReleasePermission(): OperatorReleaseUsage {
-  const { currentLaundry, userRole, isSuperAdmin, isAdmin } = useLaundry();
+  const { currentLaundry, userRole, isOwner, requiresReleasePermission } = useLaundry();
   const [state, setState] = useState({
     canRelease: false,
     dayCents: 0,
@@ -34,10 +38,11 @@ export function useOperatorReleasePermission(): OperatorReleaseUsage {
     loading: true,
   });
 
-  const isOperator = userRole === 'operator' && !isAdmin && !isSuperAdmin;
+  const isOperator = userRole === 'operator';
+  const requiresPermission = requiresReleasePermission;
 
   const fetchUsage = useCallback(async (): Promise<OperatorReleaseUsageSnapshot | null> => {
-    if (isSuperAdmin || isAdmin) {
+    if (isOwner) {
       const next = {
         canRelease: true,
         dayCents: 0,
@@ -51,7 +56,7 @@ export function useOperatorReleasePermission(): OperatorReleaseUsage {
       });
       return next;
     }
-    if (!isOperator || !currentLaundry?.id) {
+    if (!requiresPermission || !currentLaundry?.id) {
       const next = {
         canRelease: false,
         dayCents: 0,
@@ -92,7 +97,7 @@ export function useOperatorReleasePermission(): OperatorReleaseUsage {
       setState((s) => ({ ...s, loading: false, canRelease: false }));
       return null;
     }
-  }, [isSuperAdmin, isAdmin, isOperator, currentLaundry?.id]);
+  }, [isOwner, requiresPermission, currentLaundry?.id]);
 
   useEffect(() => {
     void fetchUsage();
@@ -101,6 +106,7 @@ export function useOperatorReleasePermission(): OperatorReleaseUsage {
   return {
     ...state,
     isOperator,
+    requiresPermission,
     refetch: fetchUsage,
   };
 }
