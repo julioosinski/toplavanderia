@@ -1993,14 +1993,17 @@ public class TotemActivity extends Activity {
                 currentPendingTransactionId = pendingTxId;
                 currentPaymentSessionId = sessionResult != null ? sessionResult.sessionId : null;
                 if (pendingTxId == null || pendingTxId.trim().isEmpty()) {
-                    Log.e(TAG, "Pagamento bloqueado: não foi possível reservar máquina/sessão no Supabase");
+                    String sessionError = supabaseHelper.getLastPaymentSessionError();
+                    Log.e(TAG, "Pagamento bloqueado: não foi possível reservar máquina/sessão no Supabase ("
+                        + sessionError + ")");
                     paymentLaunchInProgress.set(false);
                     currentOperationId = -1;
                     currentPendingTransactionId = null;
                     currentPaymentSessionId = null;
-                    runOnUiThread(() -> handlePaymentError(
-                        "Não foi possível registrar o pagamento com segurança. Nenhuma cobrança foi iniciada. Tente novamente."
-                    ));
+                    final String userMessage = (sessionError == null || sessionError.isEmpty()
+                        ? "Não foi possível registrar o pagamento com segurança. Tente novamente."
+                        : sessionError) + " Nenhuma cobrança foi iniciada.";
+                    runOnUiThread(() -> handlePaymentError(userMessage));
                     return;
                 }
                 // Café: cobrar o valor do produto/sessão — nunca price_per_cycle da máquina.

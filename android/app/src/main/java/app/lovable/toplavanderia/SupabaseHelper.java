@@ -37,7 +37,8 @@ public class SupabaseHelper {
     private static final String PREF_LAUNDRY_LOGO = "laundry_logo";
     
     private Context context;
-    private boolean isOnline;
+    private volatile boolean isOnline;
+    private volatile String lastPaymentSessionError;
     private List<Machine> realMachines;
     private boolean realMachinesLoaded;
     private OnMachinesLoadedListener listener;
@@ -820,65 +821,155 @@ public class SupabaseHelper {
             String provider,
             String externalReference
     ) {
-        if (!isOnline() || currentLaundryId == null || currentLaundryId.isEmpty()) {
-            return null;
-        }
         try {
-            String url = SUPABASE_URL + "/rest/v1/rpc/begin_totem_payment_session";
             JSONObject body = new JSONObject();
             body.put("_machine_id", machineId);
             body.put("_total_amount", price);
             body.put("_duration_minutes", durationMinutes);
+            body.put("_coffee_product_id", JSONObject.NULL);
+            return requestPaymentSession(
+                body, supabasePaymentMethod, provider, externalReference,
+                machineId, Math.round(price * 100), "máquina"
+            );
+        } catch (Exception e) {
+            Log.e(TAG, "beginTotemPaymentSession", e);
+            lastPaymentSessionError = PAYMENT_SESSION_GENERIC_ERROR;
+            return null;
+        }
+    }
+
+    /**
+     * Motivo amigável da última falha de begin_totem_payment_session (null se a última chamada deu certo).
+     * Não depende do cache isOnline: a chamada é sempre tentada de verdade.
+     */
+    public String getLastPaymentSessionError() {
+        return lastPaymentSessionError;
+    }
+
+    private static final String PAYMENT_SESSION_NETWORK_ERROR =
+        "Sem conexão com o servidor. Verifique a internet do totem e tente novamente.";
+    private static final String PAYMENT_SESSION_GENERIC_ERROR =
+        "Não foi possível registrar o pagamento com segurança. Tente novamente.";
+
+    private PaymentSessionResult requestPaymentSession(
+            JSONObject body,
+            String supabasePaymentMethod,
+            String provider,
+            String externalReference,
+            String fallbackMachineId,
+            long fallbackAmountCents,
+            String logLabel
+    ) {
+        lastPaymentSessionError = null;
+        if (currentLaundryId == null || currentLaundryId.isEmpty()) {
+            Log.e(TAG, "begin_totem_payment_session (" + logLabel + "): totem sem laundry_id configurado");
+            lastPaymentSessionError = "Totem sem lavanderia configurada. Chame o atendimento.";
+            return null;
+        }
+        HttpURLConnection connection = null;
+        try {
             body.put("_payment_method", supabasePaymentMethod == null || supabasePaymentMethod.isEmpty()
                 ? "credit" : supabasePaymentMethod);
             body.put("_laundry_id", currentLaundryId);
             body.put("_provider", provider == null || provider.isEmpty() ? "cielo" : provider);
-            if (externalReference != null && !externalReference.isEmpty()) {
-                body.put("_external_reference", externalReference);
-            } else {
-                body.put("_external_reference", JSONObject.NULL);
-            }
-            body.put("_coffee_product_id", JSONObject.NULL);
+            body.put("_external_reference", externalReference != null && !externalReference.isEmpty()
+                ? externalReference : JSONObject.NULL);
 
-            HttpURLConnection connection = SupabaseConfig.openConnection(url);
+            String url = SUPABASE_URL + "/rest/v1/rpc/begin_totem_payment_session";
+            connection = SupabaseConfig.openConnection(url);
             connection.setRequestMethod("POST");
             SupabaseConfig.applyJsonHeaders(connection);
             connection.setDoOutput(true);
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(15000);
             OutputStream os = connection.getOutputStream();
             os.write(body.toString().getBytes(StandardCharsets.UTF_8));
             os.flush();
             os.close();
 
             int code = connection.getResponseCode();
+            String responseBody = readFully(code >= 200 && code < 300
+                ? connection.getInputStream()
+                : connection.getErrorStream());
+            // Qualquer resposta HTTP prova que há conexão com o servidor.
+            isOnline = true;
+
             if (code != 200) {
-                Log.e(TAG, "begin_totem_payment_session HTTP " + code);
-                connection.disconnect();
+                String serverMessage = extractPostgrestMessage(responseBody);
+                Log.e(TAG, "begin_totem_payment_session (" + logLabel + ") HTTP " + code + ": " + responseBody);
+                lastPaymentSessionError = toFriendlyPaymentSessionError(serverMessage);
                 return null;
             }
-            BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-            StringBuilder response = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) {
-                response.append(line);
-            }
-            br.close();
-            connection.disconnect();
 
-            JSONObject json = new JSONObject(response.toString().trim());
+            JSONObject json = new JSONObject(responseBody.trim());
             String sessionId = json.optString("session_id", "");
             String txId = json.optString("transaction_id", "");
-            String resolvedMachineId = json.optString("machine_id", machineId);
-            long amountCents = json.optLong("amount_cents", Math.round(price * 100));
+            String resolvedMachineId = json.optString("machine_id", fallbackMachineId == null ? "" : fallbackMachineId);
+            long amountCents = json.optLong("amount_cents", fallbackAmountCents);
             if (sessionId.isEmpty() || txId.isEmpty()) {
-                Log.e(TAG, "begin_totem_payment_session resposta incompleta");
+                Log.e(TAG, "begin_totem_payment_session (" + logLabel + ") resposta incompleta: " + responseBody);
+                lastPaymentSessionError = PAYMENT_SESSION_GENERIC_ERROR;
                 return null;
             }
             Log.d(TAG, "Sessão de pagamento criada session=" + sessionId + " tx=" + txId);
             return new PaymentSessionResult(sessionId, txId, resolvedMachineId, amountCents);
-        } catch (Exception e) {
-            Log.e(TAG, "beginTotemPaymentSession", e);
+        } catch (java.io.IOException e) {
+            Log.e(TAG, "begin_totem_payment_session (" + logLabel + ") falha de rede", e);
+            isOnline = false;
+            lastPaymentSessionError = PAYMENT_SESSION_NETWORK_ERROR;
             return null;
+        } catch (Exception e) {
+            Log.e(TAG, "begin_totem_payment_session (" + logLabel + ")", e);
+            lastPaymentSessionError = PAYMENT_SESSION_GENERIC_ERROR;
+            return null;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
+    }
+
+    private static String readFully(InputStream stream) throws java.io.IOException {
+        if (stream == null) {
+            return "";
+        }
+        BufferedReader br = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
+        StringBuilder sb = new StringBuilder();
+        String line;
+        while ((line = br.readLine()) != null) {
+            sb.append(line);
+        }
+        br.close();
+        return sb.toString();
+    }
+
+    private static String extractPostgrestMessage(String responseBody) {
+        if (responseBody == null || responseBody.trim().isEmpty()) {
+            return "";
+        }
+        try {
+            return new JSONObject(responseBody.trim()).optString("message", "");
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    /** Converte as exceções de begin_totem_payment_session em mensagens para o cliente do totem. */
+    private static String toFriendlyPaymentSessionError(String serverMessage) {
+        String msg = serverMessage == null ? "" : serverMessage.toLowerCase(Locale.ROOT);
+        if (msg.contains("pagamento em andamento")) {
+            return "Esta máquina já tem um pagamento em andamento. Aguarde alguns minutos ou escolha outra máquina.";
+        }
+        if (msg.contains("indispon")) {
+            return "Máquina indisponível no momento. Por favor, selecione outra.";
+        }
+        if (msg.contains("sem esp32")) {
+            return "Máquina sem módulo de liberação configurado. Chame o atendimento.";
+        }
+        if (msg.contains("produto")) {
+            return "Produto indisponível no momento. Escolha outro.";
+        }
+        return PAYMENT_SESSION_GENERIC_ERROR;
     }
 
     public PaymentSessionResult beginTotemCoffeePaymentSession(
@@ -887,61 +978,19 @@ public class SupabaseHelper {
             String provider,
             String externalReference
     ) {
-        if (!isOnline() || currentLaundryId == null || currentLaundryId.isEmpty()) {
-            return null;
-        }
         try {
-            String url = SUPABASE_URL + "/rest/v1/rpc/begin_totem_payment_session";
             JSONObject body = new JSONObject();
             body.put("_machine_id", JSONObject.NULL);
             body.put("_total_amount", JSONObject.NULL);
             body.put("_duration_minutes", JSONObject.NULL);
-            body.put("_payment_method", supabasePaymentMethod == null || supabasePaymentMethod.isEmpty()
-                ? "credit" : supabasePaymentMethod);
-            body.put("_laundry_id", currentLaundryId);
-            body.put("_provider", provider == null || provider.isEmpty() ? "cielo" : provider);
-            if (externalReference != null && !externalReference.isEmpty()) {
-                body.put("_external_reference", externalReference);
-            } else {
-                body.put("_external_reference", JSONObject.NULL);
-            }
             body.put("_coffee_product_id", productId);
-
-            HttpURLConnection connection = SupabaseConfig.openConnection(url);
-            connection.setRequestMethod("POST");
-            SupabaseConfig.applyJsonHeaders(connection);
-            connection.setDoOutput(true);
-            OutputStream os = connection.getOutputStream();
-            os.write(body.toString().getBytes(StandardCharsets.UTF_8));
-            os.flush();
-            os.close();
-
-            int code = connection.getResponseCode();
-            if (code != 200) {
-                Log.e(TAG, "begin_totem_payment_session (café) HTTP " + code);
-                connection.disconnect();
-                return null;
-            }
-            BufferedReader br = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-            StringBuilder response = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) {
-                response.append(line);
-            }
-            br.close();
-            connection.disconnect();
-
-            JSONObject json = new JSONObject(response.toString().trim());
-            String sessionId = json.optString("session_id", "");
-            String txId = json.optString("transaction_id", "");
-            String resolvedMachineId = json.optString("machine_id", "");
-            long amountCents = json.optLong("amount_cents", 0L);
-            if (sessionId.isEmpty() || txId.isEmpty()) {
-                return null;
-            }
-            return new PaymentSessionResult(sessionId, txId, resolvedMachineId, amountCents);
+            return requestPaymentSession(
+                body, supabasePaymentMethod, provider, externalReference,
+                "", 0L, "café"
+            );
         } catch (Exception e) {
             Log.e(TAG, "beginTotemCoffeePaymentSession", e);
+            lastPaymentSessionError = PAYMENT_SESSION_GENERIC_ERROR;
             return null;
         }
     }
