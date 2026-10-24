@@ -2122,6 +2122,58 @@ public class SupabaseHelper {
         }
     }
     
+    /**
+     * Sinal de vida do totem para o painel (register_totem_heartbeat). Chamar fora da main thread.
+     * Uma resposta 200 também prova conectividade e corrige o cache isOnline.
+     */
+    public boolean sendTotemHeartbeat(
+            String deviceId,
+            String appVersion,
+            String deviceModel,
+            String currentScreen,
+            boolean paymentInProgress
+    ) {
+        if (currentLaundryId == null || currentLaundryId.isEmpty()) {
+            return false;
+        }
+        HttpURLConnection connection = null;
+        try {
+            JSONObject body = new JSONObject();
+            body.put("_laundry_id", currentLaundryId);
+            body.put("_device_id", deviceId);
+            body.put("_app_version", appVersion);
+            body.put("_device_model", deviceModel);
+            body.put("_network_online", isOnline);
+            body.put("_current_screen", currentScreen);
+            body.put("_payment_in_progress", paymentInProgress);
+
+            connection = SupabaseConfig.openConnection(SUPABASE_URL + "/rest/v1/rpc/register_totem_heartbeat");
+            connection.setRequestMethod("POST");
+            SupabaseConfig.applyJsonHeaders(connection);
+            connection.setDoOutput(true);
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(10000);
+            OutputStream os = connection.getOutputStream();
+            os.write(body.toString().getBytes(StandardCharsets.UTF_8));
+            os.close();
+
+            int code = connection.getResponseCode();
+            if (code == 200) {
+                isOnline = true;
+                return true;
+            }
+            Log.w(TAG, "register_totem_heartbeat HTTP " + code);
+            return false;
+        } catch (Exception e) {
+            Log.w(TAG, "register_totem_heartbeat falhou: " + e.getMessage());
+            return false;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
     // ===== MÉTODOS DE CONECTIVIDADE =====
     
     public boolean isOnline() {

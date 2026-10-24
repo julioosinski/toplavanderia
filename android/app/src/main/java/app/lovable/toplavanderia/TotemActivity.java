@@ -121,7 +121,8 @@ public class TotemActivity extends Activity {
 
     private enum TotemScreen { HOME, LAVAR, SECAR, MASSAGEM, CAFE }
 
-    private TotemScreen currentScreen = TotemScreen.HOME;
+    private volatile TotemScreen currentScreen = TotemScreen.HOME;
+    private TotemHeartbeat totemHeartbeat;
     private List<SupabaseHelper.CoffeeProduct> coffeeProducts = new ArrayList<>();
     private boolean coffeeProductsLoadAttempted = false;
     private static final long COFFEE_MENU_REFRESH_MIN_INTERVAL_MS = 15_000L;
@@ -220,6 +221,19 @@ public class TotemActivity extends Activity {
             
             // Iniciar atualização de tempo
             startTimeUpdater();
+
+            totemHeartbeat = new TotemHeartbeat(this, supabaseHelper, new TotemHeartbeat.StateProvider() {
+                @Override
+                public String currentScreen() {
+                    return currentScreen.name();
+                }
+
+                @Override
+                public boolean paymentInProgress() {
+                    return isCieloPaymentInProgress() || postPaymentHardwarePending;
+                }
+            });
+            totemHeartbeat.start();
             
             Log.d(TAG, "TotemActivity criada com sucesso");
         } catch (Throwable t) {
@@ -338,6 +352,9 @@ public class TotemActivity extends Activity {
         }
         if (statusMonitor != null) {
             statusMonitor.stopMonitoring();
+        }
+        if (totemHeartbeat != null) {
+            totemHeartbeat.stop();
         }
         super.onDestroy();
     }

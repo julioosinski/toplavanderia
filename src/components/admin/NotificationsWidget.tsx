@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useState, useEffect, useMemo } from "react";
 import { Bell, X, AlertTriangle, Info, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,8 @@ import {
 } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
 import { useLaundry } from "@/hooks/useLaundry";
+import { useTotemHeartbeats } from "@/hooks/useTotemHeartbeats";
+import { formatSilentFor } from "@/lib/totemHeartbeat";
 
 interface Notification {
   id: string;
@@ -32,8 +34,32 @@ const normalizeSeverity = (severity: string | null | undefined): NotificationSev
 export const NotificationsWidget = () => {
   const { currentLaundry, isAdmin } = useLaundry();
   const currentLaundryId = currentLaundry?.id;
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [storedNotifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
+  const { totems } = useTotemHeartbeats(currentLaundryId);
+  const [dismissedTotemIds, setDismissedTotemIds] = useState<Set<string>>(() => new Set());
+
+  // Id inclui last_seen_at: uma nova queda gera nova notificação mesmo após dispensar a anterior.
+  const totemNotifications = useMemo<Notification[]>(() => {
+    if (!isAdmin || !currentLaundryId) return [];
+    return totems
+      .filter((totem) => totem.health === 'stale')
+      .map((totem) => ({
+        id: `totem-${totem.laundry_id}-${totem.device_id}-${totem.last_seen_at}`,
+        type: 'maintenance' as const,
+        title: 'Totem sem sinal',
+        message: `${totem.device_model || 'Totem'} sem comunicação (último sinal ${formatSilentFor(totem.silentForMs)})`,
+        severity: 'critical' as const,
+        read: false,
+        timestamp: totem.last_seen_at,
+      }))
+      .filter((n) => !dismissedTotemIds.has(n.id));
+  }, [currentLaundryId, dismissedTotemIds, isAdmin, totems]);
+
+  const notifications = useMemo(
+    () => [...totemNotifications, ...storedNotifications],
+    [storedNotifications, totemNotifications]
+  );
 
   const loadNotifications = useCallback(async () => {
     if (!currentLaundryId) return;
@@ -111,7 +137,20 @@ export const NotificationsWidget = () => {
   };
 
   const removeNotification = (id: string) => {
+    if (id.startsWith('totem-')) {
+      setDismissedTotemIds(prev => new Set(prev).add(id));
+      return;
+    }
     setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+
+  const clearAll = () => {
+    setDismissedTotemIds(prev => {
+      const next = new Set(prev);
+      totemNotifications.forEach(n => next.add(n.id));
+      return next;
+    });
+    setNotifications([]);
   };
 
   const getIcon = (type: string) => {
@@ -214,7 +253,7 @@ export const NotificationsWidget = () => {
               variant="ghost"
               size="sm"
               className="w-full"
-              onClick={() => setNotifications([])}
+              onClick={clearAll}
             >
               Limpar todas
             </Button>

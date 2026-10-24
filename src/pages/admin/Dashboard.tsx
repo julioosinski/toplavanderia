@@ -9,6 +9,7 @@ import { LaundryDashboardSelector } from "@/components/admin/LaundryDashboardSel
 import { MachineStatusGrid } from "@/components/admin/MachineStatusGrid";
 import { ConsolidatedMachineStatus } from "@/components/admin/ConsolidatedMachineStatus";
 import { DashboardSalesSummary } from "@/components/admin/DashboardSalesSummary";
+import { TotemStatusCard } from "@/components/admin/TotemStatusCard";
 import { type Machine, useMachines } from "@/hooks/useMachines";
 import { Badge } from "@/components/ui/badge";
 
@@ -159,6 +160,11 @@ export default function Dashboard() {
 
   const hasAlerts = machineStats.offlineMachines > 0 || machineStats.maintenanceMachines > 0;
 
+  const laundryNames = useMemo(
+    () => Object.fromEntries(laundries.map((laundry) => [laundry.id, laundry.name])),
+    [laundries]
+  );
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -172,6 +178,8 @@ export default function Dashboard() {
         </div>
         <LaundryDashboardSelector />
       </div>
+
+      <TotemStatusCard laundryId={laundryIdForMachines} laundryNames={laundryNames} />
 
       {isAdmin && <DashboardSalesSummary />}
 

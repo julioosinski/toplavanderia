@@ -927,6 +927,50 @@ export type Database = {
           },
         ]
       }
+      totem_heartbeats: {
+        Row: {
+          app_version: string | null
+          current_screen: string | null
+          device_id: string
+          device_model: string | null
+          first_seen_at: string
+          last_seen_at: string
+          laundry_id: string
+          network_online: boolean | null
+          payment_in_progress: boolean
+        }
+        Insert: {
+          app_version?: string | null
+          current_screen?: string | null
+          device_id: string
+          device_model?: string | null
+          first_seen_at?: string
+          last_seen_at?: string
+          laundry_id: string
+          network_online?: boolean | null
+          payment_in_progress?: boolean
+        }
+        Update: {
+          app_version?: string | null
+          current_screen?: string | null
+          device_id?: string
+          device_model?: string | null
+          first_seen_at?: string
+          last_seen_at?: string
+          laundry_id?: string
+          network_online?: boolean | null
+          payment_in_progress?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "totem_heartbeats_laundry_id_fkey"
+            columns: ["laundry_id"]
+            isOneToOne: false
+            referencedRelation: "laundries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       transactions: {
         Row: {
           coffee_product_id: string | null
