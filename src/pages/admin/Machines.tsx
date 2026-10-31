@@ -354,6 +354,26 @@ export default function Machines() {
     }
   };
 
+  /** Operador: parar ciclo e manutenção sempre; liberar crédito só com autorização. */
+  const renderOperatorActions = (machine: Machine, buttonClassName: string) => (
+    <>
+      {canShowReleaseAction(machine) ? (
+        <Button className={buttonClassName} variant="outline" size="sm" onClick={() => void handleRelease(machine)}>
+          <Unlock className="mr-2 h-4 w-4" />
+          {releaseLabelFor(machine)}
+        </Button>
+      ) : (
+        <span className="self-center text-xs text-muted-foreground">Liberação sem autorização</span>
+      )}
+      {machine.type !== "coffee" && (
+        <Button className={buttonClassName} variant="outline" size="sm" onClick={() => void handleMaintenanceToggle(machine)}>
+          <Wrench className="mr-2 h-4 w-4" />
+          {isMachineMaintenance(machine) ? "Sair da manutenção" : "Manutenção"}
+        </Button>
+      )}
+    </>
+  );
+
   const formatBRL = (cents: number) => `R$ ${(cents / 100).toFixed(2)}`;
 
   const limitBadge = requiresPermission && canRelease ? (
@@ -501,24 +521,11 @@ export default function Machines() {
       cell: ({ row }) => {
         const machine = row.original;
 
-        if (isOperator && isReleaseBlocked) {
-          return (
-            <span className="text-xs text-muted-foreground">
-              Sem autorização
-            </span>
-          );
+        if (isOperator) {
+          return <div className="flex flex-wrap justify-end gap-2">{renderOperatorActions(machine, "")}</div>;
         }
 
         const liberarLabel = releaseLabelFor(machine);
-
-        if (isOperator) {
-          return (
-            <Button variant="outline" size="sm" onClick={() => void handleRelease(machine)}>
-              <Unlock className="mr-2 h-4 w-4" />
-              {liberarLabel}
-            </Button>
-          );
-        }
 
         return (
           <DropdownMenu>
@@ -651,21 +658,8 @@ export default function Machines() {
               <MachineMobileCards
                 machines={machines}
                 renderActions={(machine) => {
-                  if (isOperator && isReleaseBlocked) {
-                    return (
-                      <span className="col-span-2 text-xs text-muted-foreground">
-                        Sem autorização
-                      </span>
-                    );
-                  }
-
                   if (isOperator) {
-                    return (
-                      <Button className="col-span-2 min-h-11" variant="outline" onClick={() => void handleRelease(machine)}>
-                        <Unlock className="mr-2 h-4 w-4" />
-                        {releaseLabelFor(machine)}
-                      </Button>
-                    );
+                    return renderOperatorActions(machine, "min-h-11");
                   }
 
                   return (

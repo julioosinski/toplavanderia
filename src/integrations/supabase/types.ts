@@ -1245,6 +1245,13 @@ export type Database = {
         }
         Returns: string
       }
+      admin_set_machine_status: {
+        Args: {
+          _machine_id: string
+          _status: string
+        }
+        Returns: Json
+      }
       begin_totem_payment_session: {
         Args: {
           _coffee_product_id?: string

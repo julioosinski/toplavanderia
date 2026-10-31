@@ -21,6 +21,9 @@ interface MachineControlConfig {
   device_profile?: string | null;
 }
 
+/** OFF agendado chega ~no fim do próprio ciclo; ON criado depois disso indica ciclo novo. */
+const STALE_OFF_TOLERANCE_MINUTES = 1;
+
 const isForcedOff = (payload: Record<string, unknown> | undefined) => {
   if (!payload) return false;
   return payload.force === true
@@ -84,14 +87,50 @@ Deno.serve(async (req) => {
     const resolvedRelayPin = action === 'credito' ? (relay_pin ?? 0) : (relay_pin ?? 1);
     const resolvedPayload: Record<string, unknown> = { ...(payload ?? {}) };
 
-    // Poltrona/timed_session: OFF remoto só com force (evita Android/auto-status matar a sessão).
     if (action === 'off') {
       const { data: machineForOff } = await supabase
         .from('machines')
-        .select('type, device_profile')
+        .select('type, device_profile, cycle_time_minutes')
         .eq('id', machine_id)
-        .maybeSingle<Pick<MachineControlConfig, 'type' | 'device_profile'>>();
+        .maybeSingle<Pick<MachineControlConfig, 'type' | 'device_profile' | 'cycle_time_minutes'>>();
 
+      // OFF agendado (totem/painel, sem force) de um ciclo antigo: se o ciclo foi parado e a
+      // máquina liberada de novo, um ON mais novo existe e o OFF encerraria o ciclo do novo cliente.
+      if (!isForcedOff(resolvedPayload) && !isTimedSessionMachine(machineForOff)) {
+        const cycleMinutes = machineForOff?.cycle_time_minutes && machineForOff.cycle_time_minutes > 0
+          ? machineForOff.cycle_time_minutes
+          : 40;
+        const newerOnSince = new Date(
+          Date.now() - Math.max(cycleMinutes - STALE_OFF_TOLERANCE_MINUTES, 1) * 60_000
+        ).toISOString();
+        const { data: newerOn, error: newerOnErr } = await supabase
+          .from('pending_commands')
+          .select('id')
+          .eq('machine_id', machine_id)
+          .eq('action', 'on')
+          .in('status', ['pending', 'processing', 'completed'])
+          .gt('created_at', newerOnSince)
+          .limit(1)
+          .maybeSingle();
+
+        if (newerOnErr) {
+          console.warn('⚠️ Falha ao verificar ON recente antes do OFF:', newerOnErr.message);
+        } else if (newerOn) {
+          console.warn(
+            `⛔ OFF ignorado para ${machine_id}: ON ${newerOn.id} mais recente (ciclo novo em andamento)`
+          );
+          return new Response(
+            JSON.stringify({
+              success: false,
+              skipped: true,
+              error: 'OFF ignorado: a máquina iniciou um ciclo mais recente',
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 409 }
+          );
+        }
+      }
+
+      // Poltrona/timed_session: OFF remoto só com force (evita Android/auto-status matar a sessão).
       if (isTimedSessionMachine(machineForOff) && !isForcedOff(resolvedPayload)) {
         console.warn(
           `⛔ OFF bloqueado para timed_session/massage (${machine_id}) sem force — firmware controla o tempo`

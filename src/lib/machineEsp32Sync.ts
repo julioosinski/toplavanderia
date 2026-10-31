@@ -252,69 +252,27 @@ export async function queueEsp32RelayOff(
   }
 }
 
-/** Libera no totem (available) + espelha relé OFF no banco + enfileira desligar no ESP32 */
-export async function forceMachineReleased(params: {
-  machineId: string;
-  hardwareOff?: boolean;
-}): Promise<{ error: Error | null }> {
-  const { machineId, hardwareOff = true } = params;
-
-  const { data: m, error: mErr } = await supabase
-    .from('machines')
-    .select('id, esp32_id, relay_pin, laundry_id')
-    .eq('id', machineId)
-    .single();
-
-  if (mErr || !m) return { error: (mErr as Error) ?? new Error('Máquina não encontrada') };
-
-  const now = new Date().toISOString();
-  const { error: upErr } = await supabase
-    .from('machines')
-    .update({ status: 'available', updated_at: now })
-    .eq('id', machineId);
-
-  if (upErr) return { error: upErr as Error };
-
-  if (m.esp32_id && m.laundry_id) {
-    const pin = resolvedRelayPin(m.relay_pin);
-    const { error: relayErr } = await mergeRelayIntoEsp32Status(m.esp32_id, m.laundry_id, pin, 'off');
-    if (relayErr) console.warn('[forceMachineReleased] relay_status:', relayErr);
-    if (hardwareOff) await queueEsp32RelayOff(m.esp32_id, pin, machineId, { force: true });
-  }
-
-  return { error: null };
+/**
+ * RPC admin_set_machine_status: valida dono/gerente/operador da lavanderia no servidor e grava
+ * status + relay_status OFF + comando OFF forçado (UPDATE direto falha por RLS para gerente/operador).
+ */
+async function setMachineStatusWithRelayOff(
+  machineId: string,
+  status: 'available' | 'maintenance'
+): Promise<{ error: Error | null }> {
+  const { error } = await supabase.rpc('admin_set_machine_status', {
+    _machine_id: machineId,
+    _status: status,
+  });
+  return { error: error ? new Error(error.message) : null };
 }
 
-/** Manutenção no banco + relé OFF espelhado + comando off no hardware */
+/** Parar ciclo / sair da manutenção: available + relé OFF espelhado + OFF forçado no ESP32 */
+export async function forceMachineReleased(params: { machineId: string }): Promise<{ error: Error | null }> {
+  return setMachineStatusWithRelayOff(params.machineId, 'available');
+}
+
+/** Manutenção no banco + relé OFF espelhado + OFF forçado no ESP32 */
 export async function forceMachineMaintenance(machineId: string): Promise<{ error: Error | null }> {
-  const { data: m, error: mErr } = await supabase
-    .from('machines')
-    .select('id, esp32_id, relay_pin, laundry_id')
-    .eq('id', machineId)
-    .single();
-
-  if (mErr || !m) return { error: (mErr as Error) ?? new Error('Máquina não encontrada') };
-
-  const { data: updated, error: upErr } = await supabase
-    .from('machines')
-    .update({ status: 'maintenance', updated_at: new Date().toISOString() })
-    .eq('id', machineId)
-    .select('id, status')
-    .maybeSingle();
-
-  if (upErr) return { error: upErr as Error };
-  if (!updated || updated.status !== 'maintenance') {
-    return {
-      error: new Error('Não foi possível gravar manutenção. Use uma conta de administrador da lavanderia.'),
-    };
-  }
-
-  if (m.esp32_id && m.laundry_id) {
-    const pin = resolvedRelayPin(m.relay_pin);
-    const { error: relayErr } = await mergeRelayIntoEsp32Status(m.esp32_id, m.laundry_id, pin, 'off');
-    if (relayErr) console.warn('[forceMachineMaintenance] relay_status:', relayErr);
-    await queueEsp32RelayOff(m.esp32_id, pin, machineId, { force: true });
-  }
-
-  return { error: null };
+  return setMachineStatusWithRelayOff(machineId, 'maintenance');
 }
